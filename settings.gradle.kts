@@ -1,0 +1,35 @@
+pluginManagement {
+    includeBuild("build-logic")              // 컨벤션 플러그인 — buildSrc 대신 includeBuild 방식
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"   // JDK 21 툴체인 자동 프로비저닝
+}
+
+dependencyResolutionManagement {
+    repositories { mavenCentral() }
+    // gradle/libs.versions.toml은 관례 경로라 자동 인식된다
+}
+
+rootProject.name = "aechak"
+
+// 새 모듈은 여기에 등록한다.
+// boot/(실행 모듈 그룹)와 infra/{persistence,client,kafka,redis}(기술 분류 그룹)는 모듈이 아니라 폴더다 —
+// "boot:api"처럼 계층 이름으로 include하면 빈 중간 프로젝트가 생기므로,
+// 모듈 이름은 평평하게 두고 아래 projectDir로 위치만 매핑한다.
+// infra 구체 모듈 예: persistence/jpa = :jpa-persistence, client/pg-client = :pg-client.
+include(
+    "common", "web-common",
+    "domain", "application",
+    "api", "batch",                          // admin — MVP 제외, 필요 시점에 생성
+    "jpa-persistence", "pg-client",     // kafka·redis는 어댑터 코드가 생길 때 하위 모듈 추가
+)
+
+project(":api").projectDir = file("boot/api")
+project(":batch").projectDir = file("boot/batch")
+project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
+project(":pg-client").projectDir = file("infra/client/pg-client")

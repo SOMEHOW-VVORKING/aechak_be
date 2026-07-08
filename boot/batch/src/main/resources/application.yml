@@ -1,0 +1,4 @@
+spring:
+  application:
+    name: aechak-batch
+# TODO: ERD 확정 후 실 DB datasource 설정 — 지금은 내장 H2 자동 구성으로 기동

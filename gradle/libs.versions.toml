@@ -1,0 +1,44 @@
+# 의존성 좌표·버전의 단일 출처.
+#
+# 규칙:
+# - 모듈 build.gradle.kts에 좌표/버전 문자열 하드코딩 금지 — 여기 등록 후 libs.* 로 참조한다.
+# - 새 항목은 그것을 사용하는 코드가 생기는 커밋에서 함께 등록한다. 미리 채워두지 않는다.
+# - Spring 계열은 버전 없이 등록한다(BOM이 해석 — BOM이 적용된 모듈에서만 해석됨).
+#   비 Spring은 [versions]에 버전을 명시한다.
+# - 버전 올리기 = 여기 한 줄 수정. 모듈 파일은 건드리지 않는다.
+
+[versions]
+kotlin = "2.2.21"                # Boot 4의 Kotlin baseline(2.2 계열) — Gradle 9 지원 패치
+spring-boot = "4.0.0"            # TODO: 4.0.x 최신 패치 추종
+jakarta-persistence = "3.2.0"    # domain은 BOM 밖이라 직접 관리 — Boot BOM의 JPA 버전과 일치 유지
+jakarta-servlet = "6.1.0"        # web-common 컴파일 전용 (런타임은 실행 모듈의 내장 톰캣이 제공)
+slf4j = "2.0.17"
+
+[libraries]
+spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+jakarta-persistence = { module = "jakarta.persistence:jakarta.persistence-api", version.ref = "jakarta-persistence" }
+
+# --- web-common: HTTP 번역 계층 ---
+spring-web = { module = "org.springframework:spring-web" }
+jakarta-servlet-api = { module = "jakarta.servlet:jakarta.servlet-api", version.ref = "jakarta-servlet" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+
+# --- application: 유스케이스 조율 계층 ---
+spring-context = { module = "org.springframework:spring-context" }
+spring-tx = { module = "org.springframework:spring-tx" }
+
+# --- infra:persistence: domain 포트의 JPA 어댑터 ---
+spring-data-jpa = { module = "org.springframework.data:spring-data-jpa" }
+
+# --- 실행 모듈(api·batch) 조립용 ---
+spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
+spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
+spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
+spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
+h2 = { module = "com.h2database:h2" }    # 임시 내장 DB — 버전은 Boot BOM이 관리
+
+# --- build-logic 전용: 컨벤션이 적용할 플러그인의 구현체 (플러그인 버전은 여기서 결정된다) ---
+gradleplugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+gradleplugin-kotlin-allopen = { module = "org.jetbrains.kotlin:kotlin-allopen", version.ref = "kotlin" }
+gradleplugin-kotlin-noarg = { module = "org.jetbrains.kotlin:kotlin-noarg", version.ref = "kotlin" }
+gradleplugin-spring-boot = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "spring-boot" }
