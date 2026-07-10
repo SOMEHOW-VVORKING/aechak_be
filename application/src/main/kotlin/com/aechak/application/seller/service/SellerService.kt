@@ -1,6 +1,7 @@
 package com.aechak.application.seller.service
 
 import org.springframework.stereotype.Service
+import com.aechak.domain.seller.seller.repository.SellerRepository
 
 /**
  * seller 도메인 비즈니스 로직 보관함 — Facade에서만 호출된다.
