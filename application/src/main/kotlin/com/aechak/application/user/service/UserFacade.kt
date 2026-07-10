@@ -8,6 +8,7 @@ import com.aechak.application.user.usecase.result.UserSummaryResult
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import com.aechak.domain.user.user.User
 
 /**
  * UserUseCase의 유일한 구현체 — 각 도메인이 따라갈 Facade 템플릿.
