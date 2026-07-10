@@ -1,6 +1,7 @@
 package com.aechak.application.product.service
 
 import org.springframework.stereotype.Service
+import com.aechak.domain.product.product.repository.ProductRepository
 
 /**
  * product 도메인 비즈니스 로직 보관함 — Facade에서만 호출된다.
