@@ -9,7 +9,7 @@ import jakarta.persistence.Transient
  * domain은 Spring을 모르므로 ApplicationEventPublisher를 직접 쓰지 않는다.
  * spring-data-commons의 AbstractAggregateRoot도 같은 이유로 쓰지 않는다.
  */
-abstract class AggregateRoot {
+abstract class AggregateRoot : BaseEntity() {
     @Transient
     private val _events = mutableListOf<Any>()
     val events: List<Any> get() = _events.toList()
