@@ -75,8 +75,8 @@ class OrderGroup protected constructor(
     var appliedCouponId: Long? = null
         protected set
 
-    @Column
-    var couponDiscountAmount: Long? = null
+    @Column(nullable = false)
+    var couponDiscountAmount: Long = 0
         protected set
 
     @Column(nullable = false)
