@@ -61,10 +61,7 @@ class SellerApplication protected constructor(
     var rejectionReason: String? = null
         protected set
 
-    @Column
-    var appliedAt: LocalDateTime? = LocalDateTime.now()
-        protected set
-
+    // 초안 생성 시각은 BaseEntity.createdAt, 제출 시각은 submittedAt으로 커버 — 별도 appliedAt 불요(ERD applied_at 이탈).
     var submittedAt: LocalDateTime? = null
         protected set
 

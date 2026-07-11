@@ -11,7 +11,6 @@ import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
-import java.time.LocalDateTime
 import com.aechak.domain.seller.application.enums.ReviewDecision
 
 @Entity
@@ -36,8 +35,7 @@ class ApplicationReview protected constructor(
     @Column(length = 500)
     val rejectionReason: String? = rejectionReason
 
-    @Column
-    val reviewedAt: LocalDateTime? = LocalDateTime.now()
+    // 심사 시각은 BaseEntity.createdAt — 이 행은 승인/반려 확정 순간에만 생성되므로 별도 필드 불요(ERD reviewed_at 이탈).
 
     companion object {
         fun approved(reviewerAdminId: Long): ApplicationReview =
