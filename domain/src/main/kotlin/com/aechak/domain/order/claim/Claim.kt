@@ -19,7 +19,7 @@ import java.time.LocalDateTime
 import com.aechak.domain.order.claim.enums.ClaimSettlementStatus
 import com.aechak.domain.order.claim.enums.SellerApprovalStatus
 import com.aechak.domain.order.claim.enums.RefundStatus
-import com.aechak.domain.order.claim.enums.FaultParty
+import com.aechak.domain.order.claim.enums.ReturnCostBearer
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.ClaimStatus
 
@@ -51,7 +51,7 @@ class Claim protected constructor(
 
     @Enumerated(EnumType.STRING)
     @Column(length = 30)
-    var faultParty: FaultParty? = null
+    var returnCostBearer: ReturnCostBearer? = null
         protected set
 
     @Column(length = 500)
