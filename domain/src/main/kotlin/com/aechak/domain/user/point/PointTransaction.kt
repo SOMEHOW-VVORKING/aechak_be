@@ -27,7 +27,7 @@ import com.aechak.domain.user.user.User
 )
 class PointTransaction protected constructor(
     buyer: User,
-    amount: Int,
+    amount: Long,
     transactionType: PointTransactionType,
     sourceType: String?,
     sourceId: Long?,
@@ -43,7 +43,7 @@ class PointTransaction protected constructor(
     val buyer: User = buyer
 
     @Column(nullable = false)
-    val amount: Int = amount
+    val amount: Long = amount
 
     @Enumerated(EnumType.STRING)
     @Column(length = 20, nullable = false)
@@ -62,7 +62,7 @@ class PointTransaction protected constructor(
     companion object {
         fun record(
             buyer: User,
-            amount: Int,
+            amount: Long,
             transactionType: PointTransactionType,
             idempotencyKey: String,
             sourceType: String? = null,

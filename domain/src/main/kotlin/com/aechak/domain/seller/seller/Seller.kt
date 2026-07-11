@@ -16,7 +16,7 @@ import com.aechak.domain.seller.seller.enums.SellerStatus
 @Table(name = "sellers")
 class Seller protected constructor(
     userId: Long,
-    baseShippingFee: Int,
+    baseShippingFee: Long,
 ) : AggregateRoot() {
 
     @Id
@@ -69,10 +69,10 @@ class Seller protected constructor(
         protected set
 
     @Column(nullable = false)
-    var baseShippingFee: Int = baseShippingFee
+    var baseShippingFee: Long = baseShippingFee
         protected set
 
-    var freeShippingThreshold: Int? = null
+    var freeShippingThreshold: Long? = null
         protected set
 
     /** 저장소 원자 UPDATE로만 증가 — 엔티티 증가 금지(동시성). */
@@ -93,7 +93,7 @@ class Seller protected constructor(
         protected set
 
     companion object {
-        fun open(userId: Long, baseShippingFee: Int): Seller {
+        fun open(userId: Long, baseShippingFee: Long): Seller {
             return Seller(userId, baseShippingFee)
         }
     }

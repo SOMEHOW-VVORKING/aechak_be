@@ -17,7 +17,7 @@ import jakarta.persistence.Table
 class ClaimItem protected constructor(
     orderItem: OrderItem,
     quantity: Int,
-    refundAmount: Int,
+    refundAmount: Long,
 ) : BaseEntity() {
 
     @Id
@@ -32,10 +32,10 @@ class ClaimItem protected constructor(
     val quantity: Int = quantity
 
     @Column(nullable = false)
-    val refundAmount: Int = refundAmount
+    val refundAmount: Long = refundAmount
 
     companion object {
-        fun of(orderItem: OrderItem, quantity: Int, refundAmount: Int): ClaimItem =
+        fun of(orderItem: OrderItem, quantity: Int, refundAmount: Long): ClaimItem =
             ClaimItem(orderItem, quantity, refundAmount)
     }
 }

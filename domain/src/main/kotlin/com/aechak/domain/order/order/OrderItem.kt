@@ -17,8 +17,8 @@ class OrderItem protected constructor(
     productId: Long,
     optionCombinationId: Long,
     quantity: Int,
-    unitPriceSnapshot: Int,
-    discountAllocatedAmount: Int,
+    unitPriceSnapshot: Long,
+    discountAllocatedAmount: Long,
     productVersionId: Long,
 ) : BaseEntity() {
 
@@ -36,10 +36,10 @@ class OrderItem protected constructor(
     val quantity: Int = quantity
 
     @Column(nullable = false)
-    val unitPriceSnapshot: Int = unitPriceSnapshot
+    val unitPriceSnapshot: Long = unitPriceSnapshot
 
     @Column(nullable = false)
-    val discountAllocatedAmount: Int = discountAllocatedAmount
+    val discountAllocatedAmount: Long = discountAllocatedAmount
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -54,8 +54,8 @@ class OrderItem protected constructor(
             productId: Long,
             optionCombinationId: Long,
             quantity: Int,
-            unitPriceSnapshot: Int,
-            discountAllocatedAmount: Int,
+            unitPriceSnapshot: Long,
+            discountAllocatedAmount: Long,
             productVersionId: Long,
         ): OrderItem = OrderItem(
             productId, optionCombinationId, quantity,

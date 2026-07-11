@@ -38,7 +38,7 @@ class User protected constructor() : AggregateRoot() {
 
     /** 비정규화 캐시 — SoT는 point_transactions, 직접 증감 금지. */
     @Column(nullable = false)
-    var pointBalance: Int = 0
+    var pointBalance: Long = 0
         protected set
 
     @Column(length = 255)

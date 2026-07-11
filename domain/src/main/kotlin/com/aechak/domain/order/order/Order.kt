@@ -33,8 +33,8 @@ import com.aechak.domain.order.order.enums.ConfirmType
 class Order protected constructor(
     orderGroup: OrderGroup,
     sellerId: Long,
-    allocatedCouponDiscount: Int,
-    sellerShippingFee: Int,
+    allocatedCouponDiscount: Long,
+    sellerShippingFee: Long,
 ) : AggregateRoot() {
 
     @Id
@@ -61,10 +61,10 @@ class Order protected constructor(
         protected set
 
     @Column(nullable = false)
-    val allocatedCouponDiscount: Int = allocatedCouponDiscount
+    val allocatedCouponDiscount: Long = allocatedCouponDiscount
 
     @Column(nullable = false)
-    val sellerShippingFee: Int = sellerShippingFee
+    val sellerShippingFee: Long = sellerShippingFee
 
     @Column
     var purchaseConfirmedAt: LocalDateTime? = null
@@ -127,8 +127,8 @@ class Order protected constructor(
         fun place(
             orderGroup: OrderGroup,
             sellerId: Long,
-            allocatedCouponDiscount: Int,
-            sellerShippingFee: Int,
+            allocatedCouponDiscount: Long,
+            sellerShippingFee: Long,
             items: List<OrderItem>,
         ): Order {
             return Order(orderGroup, sellerId, allocatedCouponDiscount, sellerShippingFee).apply {

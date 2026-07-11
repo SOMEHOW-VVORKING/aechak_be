@@ -26,10 +26,10 @@ import com.aechak.domain.order.group.enums.OrderGroupStatus
 )
 class OrderGroup protected constructor(
     buyerId: Long,
-    usedPoint: Int,
-    totalProductAmount: Int,
-    totalShippingFee: Int,
-    finalPaymentAmount: Int,
+    usedPoint: Long,
+    totalProductAmount: Long,
+    totalShippingFee: Long,
+    finalPaymentAmount: Long,
     idempotencyKey: String,
 ) : AggregateRoot() {
 
@@ -76,23 +76,23 @@ class OrderGroup protected constructor(
         protected set
 
     @Column
-    var couponDiscountAmount: Int? = null
+    var couponDiscountAmount: Long? = null
         protected set
 
     @Column(nullable = false)
-    var usedPoint: Int = usedPoint
+    var usedPoint: Long = usedPoint
         protected set
 
     @Column(nullable = false)
-    var totalProductAmount: Int = totalProductAmount
+    var totalProductAmount: Long = totalProductAmount
         protected set
 
     @Column(nullable = false)
-    var totalShippingFee: Int = totalShippingFee
+    var totalShippingFee: Long = totalShippingFee
         protected set
 
     @Column(nullable = false)
-    var finalPaymentAmount: Int = finalPaymentAmount
+    var finalPaymentAmount: Long = finalPaymentAmount
         protected set
 
     @Enumerated(EnumType.STRING)
@@ -120,10 +120,10 @@ class OrderGroup protected constructor(
     companion object {
         fun create(
             buyerId: Long,
-            usedPoint: Int,
-            totalProductAmount: Int,
-            totalShippingFee: Int,
-            finalPaymentAmount: Int,
+            usedPoint: Long,
+            totalProductAmount: Long,
+            totalShippingFee: Long,
+            finalPaymentAmount: Long,
             idempotencyKey: String,
         ): OrderGroup {
             return OrderGroup(buyerId, usedPoint, totalProductAmount, totalShippingFee, finalPaymentAmount, idempotencyKey)
