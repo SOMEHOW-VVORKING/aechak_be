@@ -182,7 +182,12 @@ interface OrderRepository {
 
 - `kotlin("plugin.jpa")` — no-arg 생성자 자동 생성
 - `kotlin("plugin.allopen")` + @Entity/@MappedSuperclass/@Embeddable 지정 — lazy 프록시용 open
-- **data class 금지** — equals/hashCode는 id 기반으로 직접 정의
+- **data class 금지** — 엔티티 동일성은 id 기반으로 판단한다.
+  - equals/hashCode **override는 보류**한다. 현재 연관 컬렉션은 전부 `List`(Set/Map 키로 엔티티를 쓰지 않음)라
+    JPA 기본 참조 동일성으로 충분하고, id 전략이 이종(IDENTITY vs @MapsId/assigned PK)이라 BaseEntity 중앙화가 깔끔히 안 되며,
+    IDENTITY id는 영속 전 0이라 순진한 id-equals가 미영속 엔티티를 동일 판정하는 함정이 있다.
+  - **엔티티를 Set/Map 키로 쓰기 시작하는 시점**에, 프록시-세이프(Hibernate.getClass)·미영속(id=0) 함정을 고려한
+    id-equals를 그 엔티티에 도입한다(그때 값이 생긴다). 그 전까지 boilerplate override는 소비자 없는 코드라 두지 않는다.
 - 위 플러그인 설정은 domain 모듈 build.gradle.kts에만 적용
 
 ## 6. payment 예외 (기존 결정 유지)
