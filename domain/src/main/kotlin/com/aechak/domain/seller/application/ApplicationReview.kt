@@ -32,10 +32,8 @@ class ApplicationReview protected constructor(
     @Column(nullable = false, length = 30)
     val decision: ReviewDecision = decision
 
-    @Column(length = 500)
+    @Column(columnDefinition = "TEXT")
     val rejectionReason: String? = rejectionReason
-
-    // 심사 시각은 BaseEntity.createdAt — 이 행은 승인/반려 확정 순간에만 생성되므로 별도 필드 불요(ERD reviewed_at 이탈).
 
     companion object {
         fun approved(reviewerAdminId: Long): ApplicationReview =

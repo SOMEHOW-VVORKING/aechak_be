@@ -13,7 +13,6 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
-import java.time.LocalDateTime
 import com.aechak.domain.user.social.enums.SocialProvider
 import com.aechak.domain.user.user.User
 
@@ -50,9 +49,6 @@ class SocialIdentity protected constructor(
     @Column(length = 320)
     var email: String? = email
         protected set
-
-    @Column(nullable = false)
-    val linkedAt: LocalDateTime = LocalDateTime.now()
 
     @Column(name = "refresh_token_enc", length = 512)
     var refreshTokenEnc: ByteArray? = refreshTokenEnc

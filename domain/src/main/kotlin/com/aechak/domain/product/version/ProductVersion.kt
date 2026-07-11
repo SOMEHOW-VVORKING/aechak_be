@@ -14,7 +14,6 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import java.time.LocalDateTime
 import com.aechak.domain.product.version.enums.VersionChangedBy
 import com.aechak.domain.product.version.enums.VersionChangeType
 
@@ -44,9 +43,6 @@ class ProductVersion protected constructor(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
-
-    @Column(updatable = false, nullable = false)
-    val changedAt: LocalDateTime = LocalDateTime.now()
 
     companion object {
         fun snapshot(

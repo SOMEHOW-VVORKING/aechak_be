@@ -7,7 +7,6 @@ import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
-import java.time.LocalDateTime
 
 @Entity
 @Table(name = "application_documents")
@@ -29,9 +28,6 @@ class ApplicationDocument protected constructor(
 
     @Column(nullable = false, length = 100)
     val contentType: String = contentType
-
-    @Column(nullable = false, updatable = false)
-    val uploadedAt: LocalDateTime = LocalDateTime.now()
 
     companion object {
         fun of(documentType: String, storageKey: String, contentType: String): ApplicationDocument =
