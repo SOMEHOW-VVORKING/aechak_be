@@ -58,5 +58,7 @@
 
 - 반영: 모듈 지도(00 §1) 전체 + 초기 5개 도메인(user·seller·product·order·payment)의 domain/application 패키지 골격.
   user만 상세 템플릿(포트/어댑터·Command/Result·컨트롤러까지), 나머지는 구조와 에러코드 대역만.
-- 미반영(후속): ERD 63테이블 반영, settlement·search 도메인 패키지, message 모듈(A-2),
+- 반영(2026-07-10): **ERD 엔티티 세팅** — MVP-on 47테이블 도메인 엔티티화(payment 2개는 L3 예외로 보류),
+  settlement·search·review 패키지 신설, 컨텍스트 부팅 스모크 테스트.
+- 미반영(후속): schema-only 14테이블 DDL(마이그레이션 도입 시), payment 엔티티(L3 규칙 문서 선행), message 모듈(A-2),
   admin 실행 모듈(A-5: MVP 제외), Kafka·Outbox 실연동, 인증(소셜 로그인), 실 DB 전환.

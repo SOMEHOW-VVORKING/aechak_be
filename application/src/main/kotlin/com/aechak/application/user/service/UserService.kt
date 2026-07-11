@@ -1,9 +1,9 @@
 package com.aechak.application.user.service
 
 import com.aechak.common.error.BusinessException
-import com.aechak.domain.user.User
+import com.aechak.domain.user.user.User
 import com.aechak.domain.user.error.UserErrorCode
-import com.aechak.domain.user.repository.UserRepository
+import com.aechak.domain.user.user.repository.UserRepository
 import org.springframework.stereotype.Service
 
 /**

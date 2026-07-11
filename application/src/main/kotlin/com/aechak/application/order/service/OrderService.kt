@@ -1,6 +1,7 @@
 package com.aechak.application.order.service
 
 import org.springframework.stereotype.Service
+import com.aechak.domain.order.order.repository.OrderRepository
 
 /**
  * order 도메인 비즈니스 로직 보관함 — Facade에서만 호출된다.

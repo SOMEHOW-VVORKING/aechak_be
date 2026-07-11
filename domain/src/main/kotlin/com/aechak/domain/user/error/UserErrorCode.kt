@@ -2,11 +2,6 @@ package com.aechak.domain.user.error
 
 import com.aechak.common.error.ErrorCode
 
-/**
- * user 도메인 에러 코드 — 대역 20000~20999.
- * 새 코드는 이 파일에만 추가한다 (common/web-common은 건드리지 않는다).
- * status 관례: 대부분 400, NOT_FOUND 404, 중복 409, 인증 401/403, 외부 연동 실패 502.
- */
 enum class UserErrorCode(
     override val code: Int,
     override val message: String,
@@ -15,5 +10,10 @@ enum class UserErrorCode(
 
     USER_NOT_FOUND(20001, "사용자를 찾을 수 없습니다.", 404),
     DUPLICATE_NICKNAME(20002, "이미 사용 중인 닉네임입니다.", 409),
-    // TODO: 도메인 기능 구현하며 추가
+    INVALID_NICKNAME(20003, "닉네임 형식이 올바르지 않습니다.", 400),
+    ALREADY_WITHDRAWN(20004, "이미 탈퇴한 계정입니다.", 409),
+    INVALID_POINT_AMOUNT(20005, "적립금 거래 금액은 0보다 커야 합니다.", 400),
+    INVALID_PET_WEIGHT(20006, "체중은 0보다 커야 합니다.", 400),
+    SELF_REPORT_NOT_ALLOWED(20007, "자기 자신은 신고할 수 없습니다.", 400),
+    REPORT_REASON_REQUIRED(20008, "기타 사유 신고는 상세 사유가 필요합니다.", 400),
 }

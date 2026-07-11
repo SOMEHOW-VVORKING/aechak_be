@@ -2,10 +2,6 @@ package com.aechak.domain.seller.error
 
 import com.aechak.common.error.ErrorCode
 
-/**
- * seller 도메인 에러 코드 — 대역 10000~10999.
- * 새 코드는 이 파일에만 추가한다.
- */
 enum class SellerErrorCode(
     override val code: Int,
     override val message: String,
@@ -13,5 +9,7 @@ enum class SellerErrorCode(
 ) : ErrorCode {
 
     SELLER_NOT_FOUND(10001, "셀러를 찾을 수 없습니다.", 404),
-    // TODO: 도메인 기능 구현하며 추가
+    SELLER_APPLICATION_NOT_FOUND(10003, "입점 신청을 찾을 수 없습니다.", 404),
+    APPLICATION_STATUS_TRANSITION_NOT_ALLOWED(10004, "현재 신청 상태에서 허용되지 않는 전이입니다.", 400),
+    REJECTION_REASON_REQUIRED(10005, "반려 사유는 필수입니다.", 400),
 }
