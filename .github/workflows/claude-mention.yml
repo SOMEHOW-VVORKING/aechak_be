@@ -1,0 +1,69 @@
+name: Claude Mention
+
+# PR·이슈 코멘트에서 "@claude ..."로 Claude를 직접 호출하는 인터랙티브 잡.
+# 예: PR 코멘트에 "@claude 이 함수 왜 이렇게 짰는지 설명해줘" / "@claude 이 버그 고쳐줘"
+# 인증·토큰 세팅은 claude-code-review.yml 헤더 참고 (같은 CLAUDE_OAUTH_TOKEN_1/2/3 사용).
+# 자동 리뷰(claude-code-review.yml)와 별개 — 사람이 멘션할 때만 돈다.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened]
+
+# @claude 연타 시 병렬 잡이 떠 토큰을 동시 소모하는 것 방지 (취소보다 직렬화)
+concurrency:
+  group: claude-mention-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    # 본문에 @claude가 있고, 봇이 단 코멘트가 아닐 때만 실행
+    if: >
+      !endsWith(github.actor, '[bot]') &&
+      (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+        (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write        # @claude에게 코드 수정·커밋을 요청할 수 있으므로 write
+      pull-requests: write
+      issues: write
+      actions: read          # Claude가 CI 실행 결과를 읽는 데 필요
+    steps:
+      # 실행 번호 기준 라운드로빈으로 3명 중 한 명의 토큰 슬롯 선택
+      - name: Pick reviewer token slot
+        id: pick
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: echo "n=$(( RUN_NUMBER % 3 + 1 ))" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1  # 액션이 PR을 자체 클론하므로 전체 히스토리 불필요
+
+      - name: Guard — selected token must exist
+        env:
+          TOKEN: ${{ secrets[format('CLAUDE_OAUTH_TOKEN_{0}', steps.pick.outputs.n)] }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::CLAUDE_OAUTH_TOKEN_${{ steps.pick.outputs.n }} 시크릿이 비어있음 — 이름·등록 확인"
+            exit 1
+          fi
+
+      # prompt를 주지 않으면 액션이 인터랙티브 모드로 @claude 코멘트를 읽고 응답한다
+      - name: Claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets[format('CLAUDE_OAUTH_TOKEN_{0}', steps.pick.outputs.n)] }}
+          claude_args: |
+            --model claude-sonnet-5
