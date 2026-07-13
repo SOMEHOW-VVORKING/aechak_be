@@ -40,4 +40,7 @@ class UserFacade(
         // TODO: 필터·페이징 조회 — 포트에 검색 메서드 추가 시 구현 (복잡 조회 전략은 CQRS-lite 논의)
         TODO("골격 템플릿 — 기능 구현 시 채운다")
     }
+
+    @Transactional
+    override fun registerFromSocial(): Long = userService.registerFromSocial().id
 }

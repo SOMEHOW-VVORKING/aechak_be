@@ -27,4 +27,10 @@ interface UserUseCase {
     fun register(command: RegisterUserCommand): UserResult
     fun getUser(userId: Long): UserResult
     fun searchUsers(query: UserSearchQuery): List<UserSummaryResult>
+
+    /**
+     * 소셜 가입 — 프로필(닉네임) 없는 PENDING_ONBOARDING 계정을 만든다(닉네임은 온보딩에서).
+     * 프로필이 아직 없어 UserResult(nickname 필수) 대신 식별자만 반환한다.
+     */
+    fun registerFromSocial(): Long
 }
