@@ -31,6 +31,7 @@ permissions:
   contents: read        # PR 코드 체크아웃·읽기
   pull-requests: write  # 리뷰 코멘트 작성
   actions: read         # Claude가 PR의 CI 실행 결과를 읽는 데 필요
+  id-token: write       # 액션이 OIDC로 GitHub App 토큰을 교환하는 데 필수 (없으면 인증 실패)
 
 jobs:
   claude-review:

@@ -38,6 +38,7 @@ jobs:
       pull-requests: write
       issues: write
       actions: read          # Claude가 CI 실행 결과를 읽는 데 필요
+      id-token: write        # 액션이 OIDC로 GitHub App 토큰을 교환하는 데 필수 (없으면 인증 실패)
     steps:
       # 실행 번호 기준 라운드로빈으로 3명 중 한 명의 토큰 슬롯 선택
       - name: Pick reviewer token slot
