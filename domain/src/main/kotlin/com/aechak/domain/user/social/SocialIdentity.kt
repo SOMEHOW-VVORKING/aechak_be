@@ -54,6 +54,20 @@ class SocialIdentity protected constructor(
     var refreshTokenEnc: ByteArray? = refreshTokenEnc
         protected set
 
+    /** 소셜 이메일 동기화 — id_token의 email claim이 바뀌었을 때만 갱신. */
+    fun updateEmail(email: String?) {
+        if (email != null && email != this.email) this.email = email
+    }
+
+    /** provider refresh token(AES-256 암호문) 저장·갱신 — 탈퇴 시 revoke용. */
+    fun renewRefreshToken(encrypted: ByteArray) {
+        refreshTokenEnc = encrypted
+    }
+
+    /** revoke 완료 후 폐기. */
+    fun clearRefreshToken() {
+        refreshTokenEnc = null
+    }
 
     companion object {
         fun link(
