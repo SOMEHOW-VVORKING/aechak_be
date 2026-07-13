@@ -1,0 +1,27 @@
+# 로컬 원커맨드 기동: docker compose up --build
+# 인프라(Redis)만 띄우고 서버는 IDE/bootRun으로 돌릴 땐: docker compose up -d redis
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: aechak-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    container_name: aechak-api
+    ports:
+      - "8080:8080"
+    environment:
+      REDIS_HOST: redis                          # 컨테이너 네트워크에선 localhost가 아니라 서비스명
+      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID:-}      # 셸 환경변수 또는 이 파일 옆 .env에서 주입
+      AUTH_JWT_PRIVATE_KEY: ${AUTH_JWT_PRIVATE_KEY:-}
+      AUTH_JWT_PUBLIC_KEY: ${AUTH_JWT_PUBLIC_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
