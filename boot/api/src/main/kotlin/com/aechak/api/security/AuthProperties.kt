@@ -3,7 +3,7 @@ package com.aechak.api.security
 import org.springframework.boot.context.properties.ConfigurationProperties
 import java.time.Duration
 
-/** 토큰 수명 설정(auth.token.*) — access TTL 수치는 미확정(design Open Question, 기본 30분 제안). */
+/** 토큰 수명 설정(auth.token.*) — access TTL 수치는 팀 미확정(기본 제안 30분). */
 @ConfigurationProperties("auth.token")
 data class AuthTokenProperties(
     val accessTtl: Duration = Duration.ofMinutes(30),

@@ -2,7 +2,7 @@ package com.aechak.api.auth.response
 
 import com.aechak.application.auth.usecase.result.SocialLoginResult
 
-/** contracts/auth.yaml LoginResult(TokenPair + user). */
+/** 로그인 응답 — 토큰 쌍 + 유저 온보딩 상태(FE 라우팅용). */
 data class LoginResponse(
     val accessToken: String,
     val refreshToken: String,

@@ -17,8 +17,8 @@ import org.springframework.web.client.RestTemplate
 
 /**
  * yml(auth.social.providers.*) → provider별 JwtDecoder 지도.
- * 검증 규칙(iss/aud/exp)은 provider마다 다르고 코드 경로는 동일하다(design §2).
- * JWKS 페칭 타임아웃은 명시 설정 — 기본값 방치 금지(§Audit G3). 키 캐싱은 Nimbus 내장.
+ * 검증 규칙(iss/aud/exp)은 provider마다 다르고 코드 경로는 동일하다.
+ * JWKS 페칭 타임아웃은 명시 설정 — 기본값 방치 금지. 키 캐싱은 Nimbus 내장.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(SocialProvidersProperties::class)

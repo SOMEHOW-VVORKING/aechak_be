@@ -14,11 +14,11 @@ import org.springframework.stereotype.Component
 import java.time.Instant
 
 /**
- * TokenCodec 포트의 Nimbus 어댑터 — Spring Security 타입을 application 밖(boot:api)에 격리한다.
- * RS256 서명은 결정적이라 동일 클레임 인코딩 = 동일 토큰 — 회전 유예의 멱등 재발급 전제(design §2).
+ * TokenCodec 포트의 Nimbus(Spring Security oauth2-jose) 어댑터 — Spring Security 타입을 application 밖(boot:api)에 격리한다.
+ * RS256 서명은 결정적이라 동일 클레임 인코딩 = 동일 토큰 — 회전 유예의 멱등 재발급이 성립하는 전제다.
  */
 @Component
-class NimbusTokenCodec(
+class NimbusTokenCodecAdapter(
     private val jwtEncoder: JwtEncoder,
     rsaKey: RSAKey,
 ) : TokenCodec {

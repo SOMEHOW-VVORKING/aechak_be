@@ -10,7 +10,7 @@ import jakarta.validation.constraints.NotBlank
  */
 data class AppleLoginRequest(
     @field:NotBlank val idToken: String,
-    /** revoke용 refresh token 교환에 사용 — 1회용·약 5분 유효, 로그인마다 전달(contracts/auth.yaml). */
+    /** revoke용 refresh token 교환에 사용 — 1회용·약 5분 유효, 로그인마다 전달. */
     @field:NotBlank val authorizationCode: String,
     /** 애플이 최초 인가 1회만 제공 — 첫 로그인 때만 포함. */
     val fullName: AppleFullName? = null,

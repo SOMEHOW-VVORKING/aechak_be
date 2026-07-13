@@ -6,7 +6,7 @@ spring:
 
 auth:
   token:
-    access-ttl: 30m          # 수치 미확정(design Open Question) — 기본 제안값
+    access-ttl: 30m          # 수치 팀 미확정 — 기본 제안값
     refresh-ttl: 30d
     rotation-grace: 60s
   jwt:
@@ -26,4 +26,4 @@ auth:
         jwks-uri: https://appleid.apple.com/auth/keys
         issuer: https://appleid.apple.com
         audiences: []        # 채널별 키 병기: iOS 번들 ID + 웹(SIWA JS) Services ID
-# PENDING_ONBOARDING 허용 경로는 UserStatusFilter.ONBOARDING_ALLOWED_PATHS 상수로 관리(결정 문서 Q7)
+# PENDING_ONBOARDING 허용 경로는 UserStatusFilter.ONBOARDING_ALLOWED_PATHS 상수로 관리(인가 규칙이라 설정이 아닌 코드 소유)

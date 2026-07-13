@@ -5,7 +5,7 @@ import com.aechak.domain.user.social.enums.SocialProvider
 import jakarta.validation.constraints.AssertTrue
 
 /**
- * 두 채널 중 정확히 하나로 요청한다(contracts/auth.yaml — design 결정 #10):
+ * 두 채널 중 정확히 하나로 요청한다:
  * - 네이티브 SDK: idToken
  * - 웹(JS SDK): code + redirectUri (서버가 id_token으로 교환)
  * 교차 필드 검증 위반은 @Valid 경로를 타고 400(90002)으로 떨어진다.

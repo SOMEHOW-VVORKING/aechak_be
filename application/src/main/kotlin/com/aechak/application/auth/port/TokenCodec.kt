@@ -12,8 +12,8 @@ data class RefreshTokenClaims(
 )
 
 /**
- * 자체 JWT 인코딩/디코딩 아웃바운드 포트 — 구현은 boot:api(JwtConfig, Nimbus).
- * design §3의 3개 포트에 더해진 4번째 포트: TokenService의 회전·재사용 감지 로직을
+ * 자체 JWT 인코딩/디코딩 아웃바운드 포트 — 구현은 boot:api(Nimbus 어댑터).
+ * 이 포트를 둔 이유: TokenService의 회전·재사용 감지 로직을
  * Spring Security 타입 없이 테스트하기 위한 격리 지점(Spring 타입 역류 금지 규칙).
  *
  * 멱등 재발급 전제: RS256 서명은 결정적이므로 동일 클레임(초 단위 시각) 인코딩 = 동일 토큰 문자열.

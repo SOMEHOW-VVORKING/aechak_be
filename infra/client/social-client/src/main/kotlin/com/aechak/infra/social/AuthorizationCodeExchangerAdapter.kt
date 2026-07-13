@@ -14,7 +14,7 @@ import org.springframework.web.client.RestClientException
 
 /**
  * AuthorizationCodeExchanger 포트 구현 — OAuth 표준 code 교환(grant_type=authorization_code).
- * provider 차이는 설정(token-uri·client-id)뿐이라 코드 경로는 공통이다(결정 #10).
+ * provider 차이는 설정(token-uri·client-id)뿐이라 코드 경로는 공통이다.
  * 카카오 콘솔에서 client secret을 활성화하면 파라미터 추가가 필요 — 현재 미사용 가정.
  */
 @Component

@@ -18,8 +18,8 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * auth API — 계약은 contracts/auth.yaml(SSOT).
- * 탈퇴(DELETE /users/me)는 T10에서 추가한다.
+ * auth API — 컨트롤러는 형식 검증과 Request→Command / Result→Response 변환만 한다.
+ * 탈퇴(DELETE /users/me)는 회원 탈퇴 기능에서 추가한다.
  */
 @RestController
 @RequestMapping("/api/v1/auth")

@@ -18,9 +18,9 @@ import tools.jackson.databind.ObjectMapper // Boot 4 = Jackson 3 (com.fasterxml 
 
 /**
  * API 보안 조립: stateless resource server(자체 RS256 JWT 검증) + 상태검증 필터.
- * "누가 무엇을 쓸 수 있나"(permitAll·401·403·상태 게이트)는 전부 이 파일에서 읽힌다(결정 문서 Q7 — 응집).
+ * "누가 무엇을 쓸 수 있나"(permitAll·401·403·상태 게이트)는 전부 이 파일에서 읽히도록 응집한다.
  *
- * - permitAll: 로그인·토큰 갱신만. 로그아웃은 인증 필요(contracts/auth.yaml).
+ * - permitAll: 로그인·토큰 갱신만. 로그아웃은 인증 필요.
  * - 401(20005): Security 필터 구간이라 @RestControllerAdvice 밖 — EntryPoint가 직접 실패 봉투를 쓴다.
  * - 403(20006/20007): 서명검증 뒤 UserStatusFilter가 users.status를 조회해 직접 쓴다.
  */

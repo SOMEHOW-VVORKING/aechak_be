@@ -28,7 +28,7 @@ import java.util.Base64
 
 /**
  * 자체 토큰 RS256 조립: 키 로드 → JwtEncoder(발급) / JwtDecoder(API 인가).
- * API 인가 디코더는 token_type=refresh인 JWT를 거부한다(refresh를 access로 오용 차단 — design §2).
+ * API 인가 디코더는 token_type=refresh인 JWT를 거부한다 — refresh를 access로 오용하는 것 차단.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AuthTokenProperties::class, JwtKeyProperties::class)
@@ -93,7 +93,7 @@ class JwtConfig {
         const val TOKEN_TYPE_CLAIM = "token_type"
         const val REFRESH_TOKEN_TYPE = "refresh"
         private const val EPHEMERAL_KEY_ID = "local-ephemeral"
-        // TODO: kid 로테이션 절차 확정 시 설정으로 승격(design Open Question)
+        // TODO: kid 로테이션 절차 확정 시 설정으로 승격
         private const val CONFIGURED_KEY_ID = "aechak-auth-v1"
     }
 }

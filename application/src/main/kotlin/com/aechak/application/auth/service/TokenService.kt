@@ -20,7 +20,7 @@ import java.time.temporal.ChronoUnit
 /**
  * 자체 토큰 발급·회전(rotation) 로직 보관함.
  *
- * 회전 규칙(design §2):
+ * 회전 규칙:
  * - 회전 시 옛 토큰은 즉시 삭제하지 않고 successor 기록 + 60초 유예 강등.
  * - 유예 중 재제시 → successor 쌍을 동일하게 재생성해 반환(멱등 — 회전 응답 유실 대비).
  * - 서명·만료는 유효한데 스토어에 없거나 해시 불일치 = 폐기 토큰 재사용(탈취) → 전 세션 무효화.
@@ -40,7 +40,7 @@ class TokenService(
         val claims = tokenCodec.decodeRefreshToken(refreshToken)
             ?: throw BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN)
 
-        // 정지·탈퇴 유저는 회전 자체를 거부 — API 차단(필터)과 별개로 토큰 수명 연장을 막는다(결정 문서 Q7).
+        // 정지·탈퇴 유저는 회전 자체를 거부 — API 차단(필터)과 별개로 토큰 수명 연장을 막는다.
         when (userStatusReader.statusOf(claims.userId)) {
             UserStatus.SUSPENDED, UserStatus.WITHDRAWN, null ->
                 throw BusinessException(AuthErrorCode.ACCOUNT_BLOCKED)

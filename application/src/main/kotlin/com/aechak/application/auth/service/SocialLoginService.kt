@@ -24,7 +24,7 @@ import org.springframework.stereotype.Service
  * - 회원 생성은 UserUseCase에 위임(auth→user 단방향). 연관 매핑용 엔티티 로드만
  *   UserRepository 포트를 직접 쓴다(같은 트랜잭션·영속성 컨텍스트라 추가 비용 없음).
  * - SocialIdentity는 domain.user.social 소속이지만 유스케이스 소유는 auth다
- *   (domain 패키징과 application 패키징은 1:1이 아니다 — design §3).
+ *   (domain 패키징과 application 패키징은 1:1일 필요가 없다).
  */
 @Service
 class SocialLoginService(
@@ -47,12 +47,12 @@ class SocialLoginService(
             registerAndLink(command.provider, providerUser) to true
         }
 
-        // WITHDRAWN 재로그인(재가입) 정책은 user 도메인 미결 — 확정 전까지 차단(contracts/auth.yaml).
+        // WITHDRAWN 재로그인(재가입) 정책은 user 도메인 미결 — 확정 전까지 차단한다.
         if (user.status == UserStatus.SUSPENDED || user.status == UserStatus.WITHDRAWN) {
             throw BusinessException(AuthErrorCode.ACCOUNT_BLOCKED)
         }
 
-        // TODO(T6): 애플이면 authorizationCode 교환 → provider refresh token AES-256 저장.
+        // TODO: 애플이면 authorizationCode 교환 → provider refresh token AES-256 저장.
         //           교환 실패는 완충(로그인 통과 + 경고 로그) — 다음 로그인 upsert로 자기치유.
 
         val tokens = tokenService.issue(user.id, user.role)
@@ -60,7 +60,7 @@ class SocialLoginService(
     }
 
     /**
-     * 채널별 id_token 확보(결정 #10): 네이티브·애플 웹은 직접 제출분, 웹 JS SDK는 code를 서버가 교환.
+     * 채널별 id_token 확보: 네이티브·애플 웹은 직접 제출분, 웹 JS SDK는 code를 서버가 교환.
      * 이후 검증·가입 파이프라인은 채널과 무관하게 동일하다 — 채널 차이는 이 함수 안에 갇힌다.
      */
     private fun resolveIdToken(command: SocialLoginCommand): String {

@@ -12,9 +12,9 @@ import java.time.Instant
 /**
  * RefreshTokenStore 포트의 Redis 어댑터.
  *
- * - 키: refresh:{userId}:{tokenId} · TTL은 Redis에 위임(만료 정리 배치 불필요 — ADR 0001).
+ * - 키: refresh:{userId}:{tokenId} · TTL은 Redis에 위임 — 만료 정리 배치가 불필요해진다.
  * - 값: 현행 "A|{sha256hex}" / 회전 강등 "R|{successorJti}|{iatEpochSec}|{expEpochSec}".
- * - deleteAll은 SCAN 기반 — 유저당 키 소수·호출 드묾(MVP 수용, §Audit B2). 트래픽 증가 시 SET 인덱스 전환.
+ * - deleteAll은 SCAN 기반 — 유저당 키 소수·호출 드묾이라 수용. 트래픽 증가 시 SET 인덱스 전환.
  */
 @Component
 class RedisRefreshTokenStoreAdapter(
