@@ -1,5 +1,6 @@
-package com.aechak.application.user.service
+package com.aechak.application.user.facade
 
+import com.aechak.application.user.service.UserService
 import com.aechak.application.user.usecase.UserUseCase
 import com.aechak.application.user.usecase.command.RegisterUserCommand
 import com.aechak.application.user.usecase.query.UserSearchQuery

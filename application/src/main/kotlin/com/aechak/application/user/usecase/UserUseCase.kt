@@ -10,7 +10,7 @@ import com.aechak.application.user.usecase.result.UserSummaryResult
  *
  * [진입점 규칙]
  * - 외부(Controller/Consumer/Batch/타 도메인 Facade)는 이 패키지(usecase/) 아래만 import한다.
- *   service/는 내부 구현 — 타 도메인이 user를 부를 때도 이 인터페이스만, UserService 직접 호출 금지.
+ *   facade/·service/는 내부 구현 — 타 도메인이 user를 부를 때도 이 인터페이스만, Facade/Service 직접 호출 금지.
  * - 메서드가 10개를 넘어 비대해지면 그때 기능별 분리를 논의한다.
  *
  * [입력 규칙 — 아래 세 메서드가 세 가지 경우의 예시다]

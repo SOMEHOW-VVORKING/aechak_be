@@ -1,5 +1,6 @@
-package com.aechak.application.payment.service
+package com.aechak.application.payment.facade
 
+import com.aechak.application.payment.service.PaymentService
 import com.aechak.application.payment.usecase.PaymentUseCase
 import org.springframework.stereotype.Service
 
