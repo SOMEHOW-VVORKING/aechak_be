@@ -10,7 +10,7 @@ api:
 auth:
   token:
     access-ttl: 30m          # 수치 팀 미확정 — 기본 제안값
-    refresh-ttl: 30d
+    refresh-ttl: 7d          # 주 1회 이상 접속하면 로그인 유지(회전마다 리셋), 7일 미접속 시 재로그인
     rotation-grace: 60s
   jwt:
     # RS256 PEM — prod는 SSM(/aechak/{env}/auth/jwt-private-key) 주입, local은 .env.

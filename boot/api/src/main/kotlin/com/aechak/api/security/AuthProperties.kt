@@ -7,7 +7,7 @@ import java.time.Duration
 @ConfigurationProperties("auth.token")
 data class AuthTokenProperties(
     val accessTtl: Duration = Duration.ofMinutes(30),
-    val refreshTtl: Duration = Duration.ofDays(30),
+    val refreshTtl: Duration = Duration.ofDays(7),
     val rotationGrace: Duration = Duration.ofSeconds(60),
 )
 
