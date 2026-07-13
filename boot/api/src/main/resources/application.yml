@@ -1,12 +1,21 @@
 spring:
   application:
     name: aechak-api
+  profiles:
+    default: local           # 프로파일 미지정 실행(IDE·bootRun) = local
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 # TODO: ERD 확정 후 실 DB datasource 설정 — 지금은 내장 H2 자동 구성으로 기동
-# Redis는 자동 구성 기본값(localhost:6379) — 커넥션은 lazy라 서버 없이도 기동된다
+# Redis 커넥션은 lazy — 서버 없이도 기동은 되고, 실제 사용(로그인·refresh) 시점에 필요하다
+
+# 이 파일은 전 환경 공통(정책값·불변 엔드포인트)만 담는다.
+# 환경마다 달라지는 값(CORS origin, 웹 로그인 return/callback URL, forward-headers)은 application-{profile}.yml로.
+# 시크릿(카카오 REST 키, JWT 키)은 파일에 두지 않고 환경변수로 주입한다 — local은 .env, prod는 SSM.
 
 api:
   base-path: /api/v1         # 컨트롤러 접두(WebConfig)·Security 매처·온보딩 화이트리스트·쿠키 Path가 함께 참조
-  cors-allowed-origins: http://localhost:5173   # 웹 FE(dev) — prod 프로파일에서 실 도메인으로 교체
 
 auth:
   token:
@@ -14,15 +23,12 @@ auth:
     refresh-ttl: 7d          # 주 1회 이상 접속하면 로그인 유지(회전마다 리셋), 7일 미접속 시 재로그인
     rotation-grace: 60s
   jwt:
-    # RS256 PEM — prod는 SSM(/aechak/{env}/auth/jwt-private-key) 주입, local은 .env.
+    # RS256 PEM — prod는 SSM(/aechak/{env}/auth/jwt-private-key) 주입.
     # 비워두면 개발용 임시 키 생성(재시작 시 기존 토큰 전부 무효 — local 한정).
-    private-key: ""
-    public-key: ""
+    private-key: ${AUTH_JWT_PRIVATE_KEY:}
+    public-key: ${AUTH_JWT_PUBLIC_KEY:}
   web:
-    # 서버 콜백 로그인. return은 화이트리스트 "정확 일치"만 통과 — 오픈 리다이렉트 방지.
-    return-urls:
-      - http://localhost:5173/login/complete
-    callback-base-url: http://localhost:8080/api/v1/auth/callback   # provider 콘솔에 등록하는 주소의 밑동
+    # 서버 콜백 로그인 정책값. return 화이트리스트·콜백 주소는 환경별 프로파일에서 정의한다.
     state-ttl: 5m
   social:
     providers:
@@ -31,7 +37,7 @@ auth:
         issuer: https://kauth.kakao.com
         authorize-uri: https://kauth.kakao.com/oauth/authorize   # 웹 로그인 진입(서버 콜백 플로우)
         token-uri: https://kauth.kakao.com/oauth/token           # code → id_token 교환
-        client-id: ""        # 카카오 REST API 키 (비면 웹 로그인·code 채널 비활성)
+        client-id: ${KAKAO_CLIENT_ID:}   # 카카오 REST API 키 (비면 웹 로그인·code 채널 비활성)
         audiences: []        # 채널별 키 병기: 네이티브 앱 키 + REST 키 (비면 aud 검증 생략)
       apple:
         jwks-uri: https://appleid.apple.com/auth/keys
