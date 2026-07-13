@@ -27,18 +27,9 @@ import tools.jackson.databind.ObjectMapper
 class UserStatusFilter(
     private val userStatusReader: UserStatusReader,
     private val objectMapper: ObjectMapper,
-    basePath: String,
+    /** PENDING_ONBOARDING 허용 경로 — 정책은 조립 지점(SecurityConfig) 소유, 이 필터는 메커니즘만 담당한다. */
+    private val onboardingAllowedPaths: Set<String>,
 ) : OncePerRequestFilter() {
-
-    /** PENDING_ONBOARDING 허용 경로 — 무엇이 열려 있는지 한눈에 읽히도록 여기서 관리(인가 규칙이라 설정이 아닌 코드 소유). */
-    private val onboardingAllowedPaths = setOf(
-        "$basePath/users/me",
-        "$basePath/users/me/consents",
-        "$basePath/users/me/nickname",
-        "$basePath/users/nickname/check",
-        "$basePath/terms",
-        "$basePath/auth/logout",
-    )
 
     override fun doFilterInternal(
         request: HttpServletRequest,

@@ -51,11 +51,22 @@ class SecurityConfig {
             }
             .exceptionHandling { it.authenticationEntryPoint(unauthenticatedEntryPoint) }
             .addFilterAfter(
-                UserStatusFilter(userStatusReader, objectMapper, basePath),
+                UserStatusFilter(userStatusReader, objectMapper, onboardingAllowedPaths(basePath)),
                 BearerTokenAuthenticationFilter::class.java,
             )
         return http.build()
     }
+
+    /** PENDING_ONBOARDING 허용 경로 — permitAll과 함께, 인가 정책은 이 파일이 전부다. */
+    private fun onboardingAllowedPaths(basePath: String): Set<String> =
+        setOf(
+            "$basePath/users/me",
+            "$basePath/users/me/consents",
+            "$basePath/users/me/nickname",
+            "$basePath/users/nickname/check",
+            "$basePath/terms",
+            "$basePath/auth/logout",
+        )
 
     @Bean
     fun unauthenticatedEntryPoint(objectMapper: ObjectMapper): AuthenticationEntryPoint =
