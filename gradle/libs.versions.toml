@@ -30,6 +30,9 @@ spring-tx = { module = "org.springframework:spring-tx" }
 # --- infra:persistence: domain 포트의 JPA 어댑터 ---
 spring-data-jpa = { module = "org.springframework.data:spring-data-jpa" }
 
+# --- 인증(ACC-01): 자체 RS256 JWT ---
+spring-boot-starter-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-oauth2-resource-server" }
+
 # --- 실행 모듈(api·batch) 조립용 ---
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
