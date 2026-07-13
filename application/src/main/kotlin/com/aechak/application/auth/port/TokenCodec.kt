@@ -2,15 +2,6 @@ package com.aechak.application.auth.port
 
 import java.time.Instant
 
-/** 검증을 통과한 자체 refresh token의 클레임. */
-data class RefreshTokenClaims(
-    val userId: Long,
-    val role: String,
-    val tokenId: String,
-    val issuedAt: Instant,
-    val expiresAt: Instant,
-)
-
 /**
  * 자체 JWT 인코딩/디코딩 아웃바운드 포트 — 구현은 boot:api(Nimbus 어댑터).
  * 이 포트를 둔 이유: TokenService의 회전·재사용 감지 로직을

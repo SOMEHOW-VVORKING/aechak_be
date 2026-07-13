@@ -1,22 +1,6 @@
 package com.aechak.application.auth.port
 
 import java.time.Duration
-import java.time.Instant
-
-/** 회전 후속 토큰의 클레임 스냅샷 — 유예 중 재제시에 동일 토큰을 재생성(멱등)하기 위해 보관한다. */
-data class RefreshTokenRef(
-    val tokenId: String,
-    val issuedAt: Instant,
-    val expiresAt: Instant,
-)
-
-sealed interface RefreshTokenEntry {
-    /** 현행 토큰 — 제시 토큰의 SHA-256 해시와 대조한다. */
-    data class Active(val tokenHash: String) : RefreshTokenEntry
-
-    /** 회전으로 강등된 토큰 — 유예(grace) 동안만 남아 successor 멱등 재발급에 쓰인다. */
-    data class Rotated(val successor: RefreshTokenRef) : RefreshTokenEntry
-}
 
 /**
  * 자체 refresh token 저장소 아웃바운드 포트 — 구현은 infra:redis (TTL은 저장소에 위임).
