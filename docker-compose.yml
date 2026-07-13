@@ -20,6 +20,7 @@ services:
     environment:
       REDIS_HOST: redis                          # 컨테이너 네트워크에선 localhost가 아니라 서비스명
       KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID:-}      # 셸 환경변수 또는 이 파일 옆 .env에서 주입
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
       AUTH_JWT_PRIVATE_KEY: ${AUTH_JWT_PRIVATE_KEY:-}
       AUTH_JWT_PUBLIC_KEY: ${AUTH_JWT_PUBLIC_KEY:-}
     depends_on:

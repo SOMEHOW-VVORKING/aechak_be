@@ -38,6 +38,7 @@ auth:
         authorize-uri: https://kauth.kakao.com/oauth/authorize   # 웹 로그인 진입(서버 콜백 플로우)
         token-uri: https://kauth.kakao.com/oauth/token           # code → id_token 교환
         client-id: ${KAKAO_CLIENT_ID:}   # 카카오 REST API 키 (비면 웹 로그인·code 채널 비활성)
+        client-secret: ${KAKAO_CLIENT_SECRET:}   # 콘솔 보안 탭에서 "사용함"이면 필수 — 없으면 교환이 KOE010으로 거부
         audiences: []        # 채널별 키 병기: 네이티브 앱 키 + REST 키 (비면 aud 검증 생략)
       apple:
         jwks-uri: https://appleid.apple.com/auth/keys
