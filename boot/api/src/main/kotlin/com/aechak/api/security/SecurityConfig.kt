@@ -42,7 +42,7 @@ class SecurityConfig {
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
-                it.requestMatchers("$basePath/auth/login/**", "$basePath/auth/token/refresh").permitAll()
+                it.requestMatchers("$basePath/auth/login/**", "$basePath/auth/refresh").permitAll()
                     .anyRequest().authenticated()
             }
             .oauth2ResourceServer { resourceServer ->
