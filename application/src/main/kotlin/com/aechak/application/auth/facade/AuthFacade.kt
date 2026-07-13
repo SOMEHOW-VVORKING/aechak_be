@@ -14,6 +14,7 @@ import com.aechak.application.auth.usecase.result.WebLoginCompletion
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.social.enums.SocialProvider
+import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -34,6 +35,8 @@ class AuthFacade(
     transactionManager: PlatformTransactionManager,
 ) : SocialLoginUseCase, TokenRefreshUseCase, LogoutUseCase, WebLoginUseCase {
 
+    private val log = LoggerFactory.getLogger(javaClass)
+
     private val loginTx = TransactionTemplate(transactionManager)
 
     override fun login(command: SocialLoginCommand): SocialLoginResult = loginWithRetry(command)
@@ -52,6 +55,7 @@ class AuthFacade(
 
         if (code == null) {
             // provider 측 거부(사용자 취소 등) — code 없이 콜백만 옴
+            log.warn("웹 로그인 콜백에 code 없음 — provider={} (사용자 취소 또는 provider 거부)", provider)
             return WebLoginCompletion.Failure(returnUrl, LOGIN_FAILED_CODE)
         }
 
@@ -60,7 +64,9 @@ class AuthFacade(
             val login = loginWithRetry(SocialLoginCommand(provider = provider, idToken = idToken))
             WebLoginCompletion.Success(returnUrl, login.tokens.refreshToken, login.userStatus, login.isNew)
         } catch (e: BusinessException) {
-            // 콜백 응답에는 body 수신자가 없다 — 실패도 (검증된) return으로 실어 보낸다
+            // 콜백 응답에는 body 수신자가 없다 — 실패도 (검증된) return으로 실어 보낸다.
+            // 예외가 여기서 소멸하므로 원인(cause에 provider 거절 사유 포함)은 이 로그가 유일한 단서다.
+            log.warn("웹 로그인 실패 — provider={}, errorCode={}", provider, e.errorCode.code, e)
             WebLoginCompletion.Failure(returnUrl, e.errorCode.code)
         }
     }
