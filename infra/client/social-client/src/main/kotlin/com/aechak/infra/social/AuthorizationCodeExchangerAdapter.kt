@@ -43,6 +43,9 @@ class AuthorizationCodeExchangerAdapter(
             add("client_id", providerProperties.clientId)
             add("redirect_uri", redirectUri)
             add("code", code)
+            if (providerProperties.clientSecret.isNotBlank()) {
+                add("client_secret", providerProperties.clientSecret) // 미동봉 시 provider가 KOE010으로 거부
+            }
         }
 
         val body = try {

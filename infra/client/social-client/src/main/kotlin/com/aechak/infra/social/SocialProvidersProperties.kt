@@ -21,5 +21,7 @@ data class SocialProvidersProperties(
         val authorizeUri: String = "",
         /** code 교환·authorize에 쓰는 client_id(카카오=REST API 키) — 비면 code 채널 비활성. */
         val clientId: String = "",
+        /** 콘솔에서 Client Secret을 "사용함"으로 켠 경우 필수 — 비면 교환 요청에 미동봉. */
+        val clientSecret: String = "",
     )
 }
