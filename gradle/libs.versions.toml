@@ -33,6 +33,10 @@ spring-data-jpa = { module = "org.springframework.data:spring-data-jpa" }
 # --- 인증(ACC-01): 자체 RS256 JWT ---
 spring-boot-starter-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-oauth2-resource-server" }
 
+# --- infra:redis: refresh token 저장소 ---
+spring-boot-starter-data-redis = { module = "org.springframework.boot:spring-boot-starter-data-redis" }
+spring-data-redis = { module = "org.springframework.data:spring-data-redis" }
+
 # --- 실행 모듈(api·batch) 조립용 ---
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
