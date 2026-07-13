@@ -2,12 +2,18 @@ package com.aechak.application.auth.facade
 
 import com.aechak.application.auth.service.SocialLoginService
 import com.aechak.application.auth.service.TokenService
+import com.aechak.application.auth.service.WebLoginService
 import com.aechak.application.auth.usecase.LogoutUseCase
 import com.aechak.application.auth.usecase.SocialLoginUseCase
 import com.aechak.application.auth.usecase.TokenRefreshUseCase
+import com.aechak.application.auth.usecase.WebLoginUseCase
 import com.aechak.application.auth.usecase.command.SocialLoginCommand
 import com.aechak.application.auth.usecase.result.SocialLoginResult
 import com.aechak.application.auth.usecase.result.TokenResult
+import com.aechak.application.auth.usecase.result.WebLoginCompletion
+import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
+import com.aechak.domain.user.social.enums.SocialProvider
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -23,13 +29,43 @@ import org.springframework.transaction.support.TransactionTemplate
 @Service
 class AuthFacade(
     private val socialLoginService: SocialLoginService,
+    private val webLoginService: WebLoginService,
     private val tokenService: TokenService,
     transactionManager: PlatformTransactionManager,
-) : SocialLoginUseCase, TokenRefreshUseCase, LogoutUseCase {
+) : SocialLoginUseCase, TokenRefreshUseCase, LogoutUseCase, WebLoginUseCase {
 
     private val loginTx = TransactionTemplate(transactionManager)
 
-    override fun login(command: SocialLoginCommand): SocialLoginResult =
+    override fun login(command: SocialLoginCommand): SocialLoginResult = loginWithRetry(command)
+
+    override fun refresh(refreshToken: String): TokenResult = tokenService.rotate(refreshToken)
+
+    override fun logout(refreshToken: String) = tokenService.revoke(refreshToken)
+
+    override fun prepareLogin(provider: SocialProvider, returnUrl: String): String =
+        webLoginService.prepareLogin(provider, returnUrl)
+
+    override fun completeLogin(provider: SocialProvider, code: String?, state: String): WebLoginCompletion {
+        // state 소비 실패 = returnUrl을 모름 → 리다이렉트 불가, 유일하게 직접 400으로 끝나는 실패
+        val returnUrl = webLoginService.consumeState(state)
+            ?: throw BusinessException(CommonErrorCode.INVALID_REQUEST)
+
+        if (code == null) {
+            // provider 측 거부(사용자 취소 등) — code 없이 콜백만 옴
+            return WebLoginCompletion.Failure(returnUrl, LOGIN_FAILED_CODE)
+        }
+
+        return try {
+            val idToken = webLoginService.exchangeCode(provider, code)
+            val login = loginWithRetry(SocialLoginCommand(provider = provider, idToken = idToken))
+            WebLoginCompletion.Success(returnUrl, login.tokens.refreshToken, login.userStatus, login.isNew)
+        } catch (e: BusinessException) {
+            // 콜백 응답에는 body 수신자가 없다 — 실패도 (검증된) return으로 실어 보낸다
+            WebLoginCompletion.Failure(returnUrl, e.errorCode.code)
+        }
+    }
+
+    private fun loginWithRetry(command: SocialLoginCommand): SocialLoginResult =
         try {
             loginTx.execute { socialLoginService.login(command) }!!
         } catch (e: DataIntegrityViolationException) {
@@ -37,7 +73,8 @@ class AuthFacade(
             loginTx.execute { socialLoginService.login(command) }!!
         }
 
-    override fun refresh(refreshToken: String): TokenResult = tokenService.rotate(refreshToken)
-
-    override fun logout(refreshToken: String) = tokenService.revoke(refreshToken)
+    companion object {
+        /** 소셜 로그인 실패(20001)와 동일 코드 — 사용자 취소도 "다시 시도" UX로 수렴. */
+        private const val LOGIN_FAILED_CODE = 20001
+    }
 }

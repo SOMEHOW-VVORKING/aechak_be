@@ -11,6 +11,15 @@ data class AuthTokenProperties(
     val rotationGrace: Duration = Duration.ofSeconds(60),
 )
 
+/** 웹(서버 콜백) 로그인 설정(auth.web.*) — return 화이트리스트는 정확 일치로만 검증한다. */
+@ConfigurationProperties("auth.web")
+data class WebLoginProperties(
+    val returnUrls: List<String> = emptyList(),
+    /** provider에 등록하는 서버 콜백 주소의 밑동(…/auth/callback까지). */
+    val callbackBaseUrl: String = "",
+    val stateTtl: Duration = Duration.ofMinutes(5),
+)
+
 /**
  * 자체 RS256 키(auth.jwt.*) — PEM 문자열.
  * prod는 SSM Parameter Store(/aechak/{env}/auth/jwt-private-key) 주입, local은 .env.

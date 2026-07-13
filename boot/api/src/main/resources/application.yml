@@ -17,14 +17,21 @@ auth:
     # 비워두면 개발용 임시 키 생성(재시작 시 기존 토큰 전부 무효 — local 한정).
     private-key: ""
     public-key: ""
+  web:
+    # 서버 콜백 로그인. return은 화이트리스트 "정확 일치"만 통과 — 오픈 리다이렉트 방지.
+    return-urls:
+      - http://localhost:5173/login/complete
+    callback-base-url: http://localhost:8080/api/v1/auth/callback   # provider 콘솔에 등록하는 주소의 밑동
+    state-ttl: 5m
   social:
     providers:
       kakao:
         jwks-uri: https://kauth.kakao.com/.well-known/jwks.json
         issuer: https://kauth.kakao.com
-        token-uri: https://kauth.kakao.com/oauth/token   # 웹(JS SDK) 채널 code 교환용
-        client-id: ""        # 카카오 REST API 키 — code 교환에 사용 (비면 code 채널 비활성)
-        audiences: []        # 채널별 키 병기: 네이티브 앱 키 + REST/JS 키 (비면 aud 검증 생략)
+        authorize-uri: https://kauth.kakao.com/oauth/authorize   # 웹 로그인 진입(서버 콜백 플로우)
+        token-uri: https://kauth.kakao.com/oauth/token           # code → id_token 교환
+        client-id: ""        # 카카오 REST API 키 (비면 웹 로그인·code 채널 비활성)
+        audiences: []        # 채널별 키 병기: 네이티브 앱 키 + REST 키 (비면 aud 검증 생략)
       apple:
         jwks-uri: https://appleid.apple.com/auth/keys
         issuer: https://appleid.apple.com

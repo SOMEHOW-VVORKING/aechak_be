@@ -14,4 +14,7 @@ import com.aechak.domain.user.social.enums.SocialProvider
 interface AuthorizationCodeExchanger {
     /** @return provider가 발급한 id_token — 이후 검증 파이프라인은 네이티브 채널과 동일. */
     fun exchange(provider: SocialProvider, code: String, redirectUri: String): String
+
+    /** 서버 콜백 플로우의 진입 URL(provider authorize 화면) 조립 — endpoint·client_id는 설정에서. */
+    fun buildAuthorizeUrl(provider: SocialProvider, state: String, redirectUri: String): String
 }

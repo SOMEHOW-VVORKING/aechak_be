@@ -15,9 +15,11 @@ data class SocialProvidersProperties(
         val issuer: String,
         /** 우리 앱 키 화이트리스트 — 채널별 키(네이티브 앱 키·REST/JS 키·Services ID)를 함께 등록한다. */
         val audiences: List<String> = emptyList(),
-        /** 웹(JS SDK) 채널 code 교환용 token 엔드포인트 — 비면 해당 provider의 code 채널 비활성. */
+        /** 웹 채널 code 교환용 token 엔드포인트 — 비면 해당 provider의 code 채널 비활성. */
         val tokenUri: String = "",
-        /** code 교환에 쓰는 client_id(카카오=REST API 키) — 비면 code 채널 비활성. */
+        /** 서버 콜백 플로우의 authorize(로그인 화면) 엔드포인트 — 비면 웹 로그인 진입 비활성. */
+        val authorizeUri: String = "",
+        /** code 교환·authorize에 쓰는 client_id(카카오=REST API 키) — 비면 code 채널 비활성. */
         val clientId: String = "",
     )
 }
