@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController
  * 탈퇴(DELETE /users/me)는 회원 탈퇴 기능에서 추가한다.
  */
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping("/auth") // 접두(api.base-path)는 WebConfig가 일괄 부착
 class AuthController(
     private val socialLoginUseCase: SocialLoginUseCase,
     private val tokenRefreshUseCase: TokenRefreshUseCase,

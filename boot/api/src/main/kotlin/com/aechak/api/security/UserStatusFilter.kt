@@ -27,7 +27,18 @@ import tools.jackson.databind.ObjectMapper
 class UserStatusFilter(
     private val userStatusReader: UserStatusReader,
     private val objectMapper: ObjectMapper,
+    basePath: String,
 ) : OncePerRequestFilter() {
+
+    /** PENDING_ONBOARDING 허용 경로 — 무엇이 열려 있는지 한눈에 읽히도록 여기서 관리(인가 규칙이라 설정이 아닌 코드 소유). */
+    private val onboardingAllowedPaths = setOf(
+        "$basePath/users/me",
+        "$basePath/users/me/consents",
+        "$basePath/users/me/nickname",
+        "$basePath/users/nickname/check",
+        "$basePath/terms",
+        "$basePath/auth/logout",
+    )
 
     override fun doFilterInternal(
         request: HttpServletRequest,
@@ -43,7 +54,7 @@ class UserStatusFilter(
         when (userStatusReader.statusOf(userId)) {
             UserStatus.ACTIVE -> Unit
             UserStatus.PENDING_ONBOARDING ->
-                if (request.requestURI !in ONBOARDING_ALLOWED_PATHS) {
+                if (request.requestURI !in onboardingAllowedPaths) {
                     return writeError(response, AuthErrorCode.ONBOARDING_REQUIRED)
                 }
             UserStatus.SUSPENDED, UserStatus.WITHDRAWN, null ->
@@ -57,17 +68,5 @@ class UserStatusFilter(
         response.contentType = MediaType.APPLICATION_JSON_VALUE
         response.characterEncoding = Charsets.UTF_8.name()
         response.writer.write(objectMapper.writeValueAsString(ErrorResponse.of(errorCode)))
-    }
-
-    companion object {
-        /** PENDING_ONBOARDING 허용 경로 — 무엇이 열려 있는지 SecurityConfig 옆에서 한눈에 읽히도록 상수 관리. */
-        val ONBOARDING_ALLOWED_PATHS = setOf(
-            "/api/v1/users/me",
-            "/api/v1/users/me/consents",
-            "/api/v1/users/me/nickname",
-            "/api/v1/users/nickname/check",
-            "/api/v1/terms",
-            "/api/v1/auth/logout",
-        )
     }
 }

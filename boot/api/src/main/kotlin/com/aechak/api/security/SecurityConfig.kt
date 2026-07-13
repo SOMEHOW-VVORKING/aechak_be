@@ -3,6 +3,7 @@ package com.aechak.api.security
 import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.port.UserStatusReader
 import com.aechak.webcommon.error.ErrorResponse
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpStatus
@@ -35,12 +36,13 @@ class SecurityConfig {
         unauthenticatedEntryPoint: AuthenticationEntryPoint,
         userStatusReader: UserStatusReader,
         objectMapper: ObjectMapper,
+        @Value("\${api.base-path}") basePath: String,
     ): SecurityFilterChain {
         http
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
-                it.requestMatchers("/api/v1/auth/login/**", "/api/v1/auth/token/refresh").permitAll()
+                it.requestMatchers("$basePath/auth/login/**", "$basePath/auth/token/refresh").permitAll()
                     .anyRequest().authenticated()
             }
             .oauth2ResourceServer { resourceServer ->
@@ -48,7 +50,10 @@ class SecurityConfig {
                 resourceServer.authenticationEntryPoint(unauthenticatedEntryPoint)
             }
             .exceptionHandling { it.authenticationEntryPoint(unauthenticatedEntryPoint) }
-            .addFilterAfter(UserStatusFilter(userStatusReader, objectMapper), BearerTokenAuthenticationFilter::class.java)
+            .addFilterAfter(
+                UserStatusFilter(userStatusReader, objectMapper, basePath),
+                BearerTokenAuthenticationFilter::class.java,
+            )
         return http.build()
     }
 
