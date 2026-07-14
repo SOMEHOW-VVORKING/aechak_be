@@ -16,7 +16,6 @@ class CartItem protected constructor(
     optionCombinationId: Long,
     quantity: Int,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -29,7 +28,10 @@ class CartItem protected constructor(
         protected set
 
     companion object {
-        fun of(optionCombinationId: Long, quantity: Int): CartItem {
+        fun of(
+            optionCombinationId: Long,
+            quantity: Int,
+        ): CartItem {
             if (quantity < 1) {
                 throw BusinessException(OrderErrorCode.INVALID_CART_ITEM_QUANTITY)
             }

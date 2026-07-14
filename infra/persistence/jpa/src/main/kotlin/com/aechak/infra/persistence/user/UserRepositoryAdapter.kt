@@ -18,5 +18,6 @@ class UserRepositoryAdapter(
     private val jpaRepository: UserJpaRepository,
 ) : UserRepository {
     override fun findById(id: Long): User? = jpaRepository.findByIdOrNull(id)
+
     override fun save(user: User): User = jpaRepository.save(user)
 }

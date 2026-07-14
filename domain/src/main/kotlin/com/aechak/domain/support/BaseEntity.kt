@@ -16,7 +16,6 @@ import java.time.LocalDateTime
  */
 @MappedSuperclass
 abstract class BaseEntity {
-
     @Column(nullable = false, updatable = false)
     var createdAt: LocalDateTime = LocalDateTime.now()
         protected set

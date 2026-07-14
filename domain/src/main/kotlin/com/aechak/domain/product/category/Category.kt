@@ -1,6 +1,7 @@
 package com.aechak.domain.product.category
 
 import com.aechak.common.error.BusinessException
+import com.aechak.domain.product.category.enums.CategoryStatus
 import com.aechak.domain.product.error.ProductErrorCode
 import com.aechak.domain.support.AggregateRoot
 import jakarta.persistence.Column
@@ -15,7 +16,6 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.Version
-import com.aechak.domain.product.category.enums.CategoryStatus
 
 @Entity
 @Table(name = "categories")
@@ -28,7 +28,6 @@ class Category protected constructor(
     iconUrl: String?,
     sortOrder: Int,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -53,9 +52,14 @@ class Category protected constructor(
     var version: Long = 0L
         protected set
 
-
     companion object {
-        fun create(parent: Category?, depth: Int, name: String, iconUrl: String?, sortOrder: Int): Category {
+        fun create(
+            parent: Category?,
+            depth: Int,
+            name: String,
+            iconUrl: String?,
+            sortOrder: Int,
+        ): Category {
             if (depth !in 1..3) {
                 throw BusinessException(ProductErrorCode.INVALID_CATEGORY_DEPTH)
             }

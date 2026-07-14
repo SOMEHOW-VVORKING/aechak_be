@@ -25,6 +25,8 @@ import com.aechak.application.user.usecase.result.UserSummaryResult
  */
 interface UserUseCase {
     fun register(command: RegisterUserCommand): UserResult
+
     fun getUser(userId: Long): UserResult
+
     fun searchUsers(query: UserSearchQuery): List<UserSummaryResult>
 }

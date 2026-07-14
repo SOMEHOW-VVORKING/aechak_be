@@ -1,6 +1,8 @@
 package com.aechak.domain.user.social
 
 import com.aechak.domain.support.BaseEntity
+import com.aechak.domain.user.social.enums.SocialProvider
+import com.aechak.domain.user.user.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -13,8 +15,6 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
-import com.aechak.domain.user.social.enums.SocialProvider
-import com.aechak.domain.user.user.User
 
 @Entity
 @Table(
@@ -30,7 +30,6 @@ class SocialIdentity protected constructor(
     email: String?,
     refreshTokenEnc: ByteArray?,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -53,7 +52,6 @@ class SocialIdentity protected constructor(
     @Column(name = "refresh_token_enc", length = 512)
     var refreshTokenEnc: ByteArray? = refreshTokenEnc
         protected set
-
 
     companion object {
         fun link(

@@ -18,7 +18,6 @@ import java.util.UUID
  *       logback 패턴에 %X{traceId} 포함할 것.
  */
 class TraceIdFilter : OncePerRequestFilter() {
-
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,

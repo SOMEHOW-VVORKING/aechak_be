@@ -29,7 +29,6 @@ import org.springframework.transaction.support.TransactionTemplate
     ],
 )
 class AggregateChildSqlTest {
-
     @PersistenceContext
     lateinit var em: EntityManager
 
@@ -43,14 +42,15 @@ class AggregateChildSqlTest {
         val s = stats()
         s.clear()
 
-        val cartId = tx.execute {
-            val cart = Cart.create(buyerId = 1L)
-            cart.addItem(CartItem.of(optionCombinationId = 10L, quantity = 2))
-            cart.addItem(CartItem.of(optionCombinationId = 11L, quantity = 1))
-            em.persist(cart)
-            em.flush()
-            cart.id
-        }!!
+        val cartId =
+            tx.execute {
+                val cart = Cart.create(buyerId = 1L)
+                cart.addItem(CartItem.of(optionCombinationId = 10L, quantity = 2))
+                cart.addItem(CartItem.of(optionCombinationId = 11L, quantity = 1))
+                em.persist(cart)
+                em.flush()
+                cart.id
+            }!!
 
         assertEquals(3, s.entityInsertCount, "부모 1 + 자식 2 INSERT")
         assertEquals(0, s.entityUpdateCount, "잉여 엔티티 UPDATE 없음")

@@ -1,6 +1,8 @@
 package com.aechak.domain.user.address
 
 import com.aechak.domain.support.BaseEntity
+import com.aechak.domain.user.address.enums.DeliveryAddressStatus
+import com.aechak.domain.user.user.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -12,8 +14,6 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import com.aechak.domain.user.address.enums.DeliveryAddressStatus
-import com.aechak.domain.user.user.User
 
 @Entity
 @Table(name = "delivery_addresses")
@@ -27,7 +27,6 @@ class DeliveryAddress protected constructor(
     deliveryMemo: String?,
     isDefault: Boolean,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -73,7 +72,6 @@ class DeliveryAddress protected constructor(
         status = DeliveryAddressStatus.DELETED
     }
 
-
     companion object {
         fun register(
             user: User,
@@ -84,8 +82,16 @@ class DeliveryAddress protected constructor(
             detailAddress: String? = null,
             deliveryMemo: String? = null,
             isDefault: Boolean = false,
-        ): DeliveryAddress = DeliveryAddress(
-            user, receiverName, contactNumber, zipCode, baseAddress, detailAddress, deliveryMemo, isDefault,
-        )
+        ): DeliveryAddress =
+            DeliveryAddress(
+                user,
+                receiverName,
+                contactNumber,
+                zipCode,
+                baseAddress,
+                detailAddress,
+                deliveryMemo,
+                isDefault,
+            )
     }
 }

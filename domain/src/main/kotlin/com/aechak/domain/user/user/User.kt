@@ -1,8 +1,10 @@
 package com.aechak.domain.user.user
 
+import com.aechak.common.error.BusinessException
 import com.aechak.domain.support.AggregateRoot
 import com.aechak.domain.user.error.UserErrorCode
-import com.aechak.common.error.BusinessException
+import com.aechak.domain.user.user.enums.UserRole
+import com.aechak.domain.user.user.enums.UserStatus
 import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -15,13 +17,10 @@ import jakarta.persistence.Id
 import jakarta.persistence.OneToOne
 import jakarta.persistence.Table
 import java.time.LocalDateTime
-import com.aechak.domain.user.user.enums.UserStatus
-import com.aechak.domain.user.user.enums.UserRole
 
 @Entity
 @Table(name = "users")
 class User protected constructor() : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L

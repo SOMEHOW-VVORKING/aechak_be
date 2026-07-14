@@ -3,6 +3,8 @@ package com.aechak.domain.user.point
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.support.BaseEntity
 import com.aechak.domain.user.error.UserErrorCode
+import com.aechak.domain.user.point.enums.PointTransactionType
+import com.aechak.domain.user.user.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -15,8 +17,6 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
-import com.aechak.domain.user.point.enums.PointTransactionType
-import com.aechak.domain.user.user.User
 
 @Entity
 @Table(
@@ -33,7 +33,6 @@ class PointTransaction protected constructor(
     sourceId: Long?,
     idempotencyKey: String,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L

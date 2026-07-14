@@ -7,7 +7,6 @@ enum class UserErrorCode(
     override val message: String,
     override val status: Int,
 ) : ErrorCode {
-
     USER_NOT_FOUND(20001, "사용자를 찾을 수 없습니다.", 404),
     DUPLICATE_NICKNAME(20002, "이미 사용 중인 닉네임입니다.", 409),
     INVALID_NICKNAME(20003, "닉네임 형식이 올바르지 않습니다.", 400),

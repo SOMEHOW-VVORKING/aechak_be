@@ -19,7 +19,6 @@ class ClaimItem protected constructor(
     quantity: Int,
     refundAmount: Long,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -35,7 +34,10 @@ class ClaimItem protected constructor(
     val refundAmount: Long = refundAmount
 
     companion object {
-        fun of(orderItem: OrderItem, quantity: Int, refundAmount: Long): ClaimItem =
-            ClaimItem(orderItem, quantity, refundAmount)
+        fun of(
+            orderItem: OrderItem,
+            quantity: Int,
+            refundAmount: Long,
+        ): ClaimItem = ClaimItem(orderItem, quantity, refundAmount)
     }
 }

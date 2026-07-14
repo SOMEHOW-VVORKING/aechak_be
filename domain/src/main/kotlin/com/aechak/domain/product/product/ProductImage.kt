@@ -1,5 +1,6 @@
 package com.aechak.domain.product.product
 
+import com.aechak.domain.product.product.enums.ProductImageType
 import com.aechak.domain.support.BaseEntity
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -9,7 +10,6 @@ import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
-import com.aechak.domain.product.product.enums.ProductImageType
 
 @Entity
 @Table(name = "product_images")
@@ -21,7 +21,6 @@ class ProductImage protected constructor(
     val storageKey: String,
     sortOrder: Int,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -30,7 +29,10 @@ class ProductImage protected constructor(
         protected set
 
     companion object {
-        fun of(imageType: ProductImageType, storageKey: String, sortOrder: Int): ProductImage =
-            ProductImage(imageType, storageKey, sortOrder)
+        fun of(
+            imageType: ProductImageType,
+            storageKey: String,
+            sortOrder: Int,
+        ): ProductImage = ProductImage(imageType, storageKey, sortOrder)
     }
 }

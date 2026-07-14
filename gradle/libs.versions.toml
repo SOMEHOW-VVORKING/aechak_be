@@ -15,6 +15,7 @@ jakarta-servlet = "6.1.0"        # web-common 컴파일 전용 (런타임은 실
 slf4j = "2.0.17"
 ktlint-gradle = "14.2.0"         # org.jlleitschuh.gradle.ktlint 래퍼
 ktlint = "1.8.0"                 # ktlint 코어
+springdoc = "3.0.3"              # OpenAPI 3/Swagger UI
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -38,6 +39,9 @@ spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-start
 spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
 spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+
+# --- api: API 문서화 (OpenAPI 3 / Swagger UI) ---
+springdoc-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
 
 # --- domain: 외부 노출 식별자(ULID) — 전이 의존 0·순수 Java. domain 허용 의존(A-1 계보, 10 문서 §2-2) ---
 ulid-creator = { module = "com.github.f4b6a3:ulid-creator", version = "5.2.4" }

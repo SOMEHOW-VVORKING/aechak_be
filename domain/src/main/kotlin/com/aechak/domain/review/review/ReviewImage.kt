@@ -16,7 +16,6 @@ class ReviewImage protected constructor(
     val storageKey: String,
     sortOrder: Int,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -28,6 +27,9 @@ class ReviewImage protected constructor(
         protected set
 
     companion object {
-        fun of(storageKey: String, sortOrder: Int): ReviewImage = ReviewImage(storageKey, sortOrder)
+        fun of(
+            storageKey: String,
+            sortOrder: Int,
+        ): ReviewImage = ReviewImage(storageKey, sortOrder)
     }
 }

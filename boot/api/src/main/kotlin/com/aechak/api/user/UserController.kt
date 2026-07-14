@@ -27,14 +27,16 @@ import org.springframework.web.bind.annotation.RestController
 class UserController(
     private val userUseCase: UserUseCase,
 ) {
-
     @PostMapping
-    fun register(@Valid @RequestBody request: RegisterUserRequest): ResponseEntity<ApiResponse<UserResponse>> {
+    fun register(
+        @Valid @RequestBody request: RegisterUserRequest,
+    ): ResponseEntity<ApiResponse<UserResponse>> {
         val result = userUseCase.register(request.toCommand())
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.of(UserResponse.from(result)))
     }
 
     @GetMapping("/{userId}")
-    fun getUser(@PathVariable userId: Long): ResponseEntity<ApiResponse<UserResponse>> =
-        ResponseEntity.ok(ApiResponse.of(UserResponse.from(userUseCase.getUser(userId))))
+    fun getUser(
+        @PathVariable userId: Long,
+    ): ResponseEntity<ApiResponse<UserResponse>> = ResponseEntity.ok(ApiResponse.of(UserResponse.from(userUseCase.getUser(userId))))
 }

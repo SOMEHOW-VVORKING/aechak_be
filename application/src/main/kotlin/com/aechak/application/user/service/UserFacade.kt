@@ -5,10 +5,10 @@ import com.aechak.application.user.usecase.command.RegisterUserCommand
 import com.aechak.application.user.usecase.query.UserSearchQuery
 import com.aechak.application.user.usecase.result.UserResult
 import com.aechak.application.user.usecase.result.UserSummaryResult
+import com.aechak.domain.user.user.User
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import com.aechak.domain.user.user.User
 
 /**
  * UserUseCase의 유일한 구현체 — 각 도메인이 따라갈 Facade 템플릿.
@@ -23,7 +23,6 @@ class UserFacade(
     private val userService: UserService,
     private val eventPublisher: ApplicationEventPublisher,
 ) : UserUseCase {
-
     @Transactional
     override fun register(command: RegisterUserCommand): UserResult {
         // TODO: 외부 지식 검증(닉네임 중복 등) → User.register() → 저장
@@ -32,8 +31,7 @@ class UserFacade(
     }
 
     @Transactional(readOnly = true)
-    override fun getUser(userId: Long): UserResult =
-        UserResult.from(userService.getById(userId))
+    override fun getUser(userId: Long): UserResult = UserResult.from(userService.getById(userId))
 
     @Transactional(readOnly = true)
     override fun searchUsers(query: UserSearchQuery): List<UserSummaryResult> {

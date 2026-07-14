@@ -17,7 +17,6 @@ class RecentSearch protected constructor(
     displayKeyword: String,
     searchedAt: LocalDateTime,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
