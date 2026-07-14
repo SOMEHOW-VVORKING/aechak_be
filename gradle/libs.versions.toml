@@ -13,6 +13,8 @@ spring-boot = "4.0.0"            # TODO: 4.0.x 최신 패치 추종
 jakarta-persistence = "3.2.0"    # domain은 BOM 밖이라 직접 관리 — Boot BOM의 JPA 버전과 일치 유지
 jakarta-servlet = "6.1.0"        # web-common 컴파일 전용 (런타임은 실행 모듈의 내장 톰캣이 제공)
 slf4j = "2.0.17"
+ktlint-gradle = "14.2.0"         # org.jlleitschuh.gradle.ktlint 래퍼
+ktlint = "1.8.0"                 # ktlint 코어
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -46,3 +48,4 @@ gradleplugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", ve
 gradleplugin-kotlin-allopen = { module = "org.jetbrains.kotlin:kotlin-allopen", version.ref = "kotlin" }
 gradleplugin-kotlin-noarg = { module = "org.jetbrains.kotlin:kotlin-noarg", version.ref = "kotlin" }
 gradleplugin-spring-boot = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "spring-boot" }
+gradleplugin-ktlint = { module = "org.jlleitschuh.gradle:ktlint-gradle", version.ref = "ktlint-gradle" }
