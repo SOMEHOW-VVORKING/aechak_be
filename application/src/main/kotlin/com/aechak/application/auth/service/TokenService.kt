@@ -147,6 +147,7 @@ class TokenService(
     /** JWT 시각 클레임은 초 단위 — 나노초를 잘라야 "동일 클레임 = 동일 토큰" 재현(유예 멱등)이 성립한다. */
     private fun now(): Instant = Instant.now().truncatedTo(ChronoUnit.SECONDS)
 
+    /** 저장소 대조용 단방향 해시 — 원문은 저장하지 않으므로 제시된 토큰을 해싱해 비교한다. JWT 서명(TokenCodec)과는 별개 관심사. */
     private fun sha256(token: String): String =
         MessageDigest.getInstance("SHA-256")
             .digest(token.toByteArray(Charsets.UTF_8))
