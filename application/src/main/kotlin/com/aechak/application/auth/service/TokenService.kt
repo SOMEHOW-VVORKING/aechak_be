@@ -49,13 +49,8 @@ class TokenService(
         val claims = tokenCodec.decodeRefreshToken(refreshToken)
             ?: throw BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN)
 
-        // 2차 관문: 정지·탈퇴·삭제된 계정은 회전 자체를 거부 —
-        // API 차단(상태검증 필터)과 별개로, 토큰 수명이 연장되는 것까지 봉쇄하는 두 번째 저지선.
-        when (userStatusReader.statusOf(claims.userId)) {
-            UserStatus.SUSPENDED, UserStatus.WITHDRAWN, null ->
-                throw BusinessException(AuthErrorCode.ACCOUNT_BLOCKED)
-            else -> Unit
-        }
+        // 2차 관문: 계정이 토큰 수명을 연장할 자격이 있는가
+        ensureAccountUsable(claims.userId)
 
         return when (val entry = refreshTokenStore.find(claims.userId, claims.tokenId)) {
             // [시나리오 A — 탈취 의심] 서명은 유효한데 스토어에 흔적이 없다.
@@ -73,6 +68,19 @@ class TokenService(
             is RefreshTokenEntry.Active ->
                 if (entry.tokenHash != sha256(refreshToken)) reportReuse(claims.userId)
                 else rotateActive(claims)
+        }
+    }
+
+    /**
+     * 정지·탈퇴 계정의 회전 거부 — API 차단(상태검증 필터)과 별개로,
+     * 토큰 수명이 연장되는 것까지 봉쇄하는 두 번째 저지선.
+     * 유저 없음(null)도 차단한다: 탈퇴·삭제 직후 살아남은 옛 refresh의 재기동 방지.
+     */
+    private fun ensureAccountUsable(userId: Long) {
+        when (userStatusReader.statusOf(userId)) {
+            UserStatus.SUSPENDED, UserStatus.WITHDRAWN, null ->
+                throw BusinessException(AuthErrorCode.ACCOUNT_BLOCKED)
+            else -> Unit
         }
     }
 
