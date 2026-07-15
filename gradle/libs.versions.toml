@@ -44,6 +44,7 @@ springdoc-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc
 
 # --- domain: 외부 노출 식별자(ULID) — 전이 의존 0·순수 Java. domain 허용 의존(A-1 계보, 10 문서 §2-2) ---
 ulid-creator = { module = "com.github.f4b6a3:ulid-creator", version = "5.2.4" }
+mysql-connector-j = { module = "com.mysql:mysql-connector-j" }  # 실 DB(RDS MySQL 8.4) 드라이버 — 버전은 Boot BOM이 관리
 h2 = { module = "com.h2database:h2" }    # 임시 내장 DB — 버전은 Boot BOM이 관리
 
 # --- build-logic 전용: 컨벤션이 적용할 플러그인의 구현체 (플러그인 버전은 여기서 결정된다) ---
