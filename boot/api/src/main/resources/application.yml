@@ -4,11 +4,11 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
-# ECS 롤링 시 SIGTERM을 받으면 처리 중 요청을 마저 끝내고 종료 (배포마다 5xx 방지)
+# ECS 롤링 시 SIGTERM을 받으면 처리 중 요청까지는 끝내고 종료
 server:
   shutdown: graceful
 
-# ALB 헬스체크 대상 — health만 노출 (env·metrics 등 민감 엔드포인트는 잠금)
+# ALB 헬스체크용. health 외 엔드포인트는 민감정보라 노출 금지
 management:
   endpoints:
     web:
@@ -16,9 +16,9 @@ management:
         include: health
   endpoint:
     health:
-      show-details: never # 외부(ALB)에 컴포넌트 상세 미노출
+      show-details: never # 상세 상태는 숨김
   health:
     redis:
-      enabled: false # Redis(캐시·토큰저장소) 장애가 health DOWN → ALB의 앱 킬로 승격되는 것 방지. 감시는 CloudWatch 몫
+      enabled: false # Redis 장애로 앱 전체가 unhealthy 판정되는 것 방지
 
-# datasource는 여기 없음 — local은 application-local.yml(SCRUM-126 예정), dev는 ECS taskdef env가 주입
+# datasource 설정 없음(의도) — dev는 ECS가 env로 주입, local은 프로파일 yml 담당
