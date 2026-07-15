@@ -41,5 +41,4 @@ bin/
 ### Mac OS ###
 .DS_Store
 
-# 로컬 개인 설정/비밀 (IntelliJ Run Config에서 연결)
-.env-local
+.env*
