@@ -34,7 +34,7 @@ resource "aws_s3_bucket_cors_configuration" "media" {
   bucket = aws_s3_bucket.media.id
   cors_rule {
     allowed_methods = ["PUT", "GET"]
-    allowed_origins = [var.frontend_origin]
+    allowed_origins = var.frontend_origins
     allowed_headers = ["*"]
     max_age_seconds = 3000
   }

@@ -106,6 +106,7 @@ resource "aws_ecs_task_definition" "api" {
     # 프로파일만 env로 주입: import 라인이 프로파일별로 갈리므로 부팅 전에 정해져 있어야 함
     environment = [
       { name = "SPRING_PROFILES_ACTIVE", value = var.env },
+      { name = "AWS_REGION", value = var.region }, # Fargate가 자동 주입하지만 플랫폼 암묵 동작에 안 기대고 명시
     ]
 
     logConfiguration = {

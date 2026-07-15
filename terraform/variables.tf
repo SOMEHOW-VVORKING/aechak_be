@@ -75,8 +75,7 @@ variable "github_repo" {
   default     = "SOMEHOW-VVORKING/aechak_be"
 }
 
-variable "frontend_origin" {
-  type        = string
-  description = "presigned 업로드 CORS 허용 오리진"
-  default     = "http://localhost:3000" # TODO: 실 도메인으로
+variable "frontend_origins" {
+  type        = list(string)
+  description = "presigned 업로드 CORS 허용 오리진 (웹 dev 포트별 복수)"
 }

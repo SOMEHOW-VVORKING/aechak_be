@@ -135,7 +135,7 @@ CI/CD     = 내용물: 앱을 그릇에 배포한다      ← develop 푸시가 
 - 앱 코드만 바꿨으면 terraform 몰라도 됨 — develop 머지가 알아서 배포
 - **새 환경변수/시크릿이 필요한 기능**이면 순서 엄수:
   ① `ecs.tf` taskdef에 env 추가(+필요시 SSM 파라미터) → apply → ② 앱 코드가 사용 → 배포
-- terraform 파일만 바꾼 커밋은 앱 배포를 트리거하지 않음 (deploy-dev.yml의 `paths-ignore`)
+- terraform 변경은 develop 머지 시 자동 apply되고, 새 taskdef 반영을 위해 앱도 재배포됨 (deploy-dev.yml의 deploy-infra → deploy-api 순서)
 
 ## 6. 지켜야 할 것
 
