@@ -2,8 +2,8 @@
 # 구조: cluster → task definition(컨테이너 명세) → service(개수 유지·롤링·ALB 연동)
 #
 # 역할이 2개인 이유 (면접 단골):
-#   execution role = "ECS가 컨테이너를 띄울 때" 쓰는 권한 (ECR pull, 로그 쓰기, secret 주입)
-#   task role      = "앱 코드가 AWS를 부를 때" 쓰는 권한 (S3 업로드, KMS)
+#   execution role = "ECS가 컨테이너를 띄울 때" 쓰는 권한 (ECR pull, 로그 쓰기)
+#   task role      = "앱 코드가 AWS를 부를 때" 쓰는 권한 (S3 업로드, KMS, SSM 설정 조회)
 # 컨테이너 탈취돼도 execution 권한은 앱에 없음 — 최소권한 분리.
 
 resource "aws_ecs_cluster" "main" {
@@ -42,20 +42,6 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_managed" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy" # ECR pull + CloudWatch Logs
 }
 
-# taskdef의 secrets(valueFrom)로 SSM 파라미터를 컨테이너 env에 주입할 때 필요
-data "aws_iam_policy_document" "ecs_execution_secrets" {
-  statement {
-    actions   = ["ssm:GetParameters"]
-    resources = ["arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/*"]
-  }
-}
-
-resource "aws_iam_role_policy" "ecs_execution_secrets" {
-  name   = "read-app-secrets"
-  role   = aws_iam_role.ecs_execution.id
-  policy = data.aws_iam_policy_document.ecs_execution_secrets.json
-}
-
 # ── task role: 앱 런타임용 (기존 EC2 롤의 app_runtime에서 이관) ──
 resource "aws_iam_role" "ecs_task" {
   name               = "${var.project}-ecs-task-${var.env}"
@@ -75,6 +61,16 @@ data "aws_iam_policy_document" "ecs_task_runtime" {
   statement {
     actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
     resources = [aws_kms_key.docs.arn]
+  }
+
+  # 앱이 부팅 시 /aechak/dev/api/ 경로를 직접 조회 (Spring Cloud AWS는 GetParametersByPath 사용)
+  # 없으면 부팅 시 파라미터를 못 읽어 datasource 설정이 비고 앱이 기동 실패한다
+  statement {
+    actions = ["ssm:GetParametersByPath"] # 앱은 경로 조회만 씀 — 리프 단건 조회(GetParameters) 권한은 잉여라 제외
+    resources = [
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/api",
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/api/*",
+    ]
   }
 }
 
@@ -106,19 +102,10 @@ resource "aws_ecs_task_definition" "api" {
 
     portMappings = [{ containerPort = var.app_port, protocol = "tcp" }]
 
+    # 나머지 설정은 앱이 부팅 시 SSM /aechak/dev/api/ 에서 직접 읽는다
+    # 프로파일만 env로 주입: import 라인이 프로파일별로 갈리므로 부팅 전에 정해져 있어야 함
     environment = [
       { name = "SPRING_PROFILES_ACTIVE", value = var.env },
-      { name = "KAFKA_BOOTSTRAP_SERVERS", value = "${local.kafka_private_ip}:9092" },
-      # Spring Boot 3 relaxed binding: spring.data.redis.host/port
-      { name = "SPRING_DATA_REDIS_HOST", value = aws_elasticache_cluster.redis.cache_nodes[0].address },
-      { name = "SPRING_DATA_REDIS_PORT", value = "6379" },
-    ]
-
-    # SSM SecureString → 컨테이너 env로 주입 (이미지·코드에 비밀 없음)
-    secrets = [
-      { name = "SPRING_DATASOURCE_URL", valueFrom = aws_ssm_parameter.db_url.arn },
-      { name = "SPRING_DATASOURCE_USERNAME", valueFrom = aws_ssm_parameter.db_username.arn },
-      { name = "SPRING_DATASOURCE_PASSWORD", valueFrom = aws_ssm_parameter.db_password.arn },
     ]
 
     logConfiguration = {

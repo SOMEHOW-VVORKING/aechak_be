@@ -25,3 +25,16 @@ resource "aws_elasticache_cluster" "redis" {
 output "redis_endpoint" {
   value = "${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379"
 }
+
+# 앱이 부팅 시 직접 읽는 설정 — taskdef에 엔드포인트를 박으면 캐시 교체 때마다 리비전 재배포가 필요해짐
+resource "aws_ssm_parameter" "redis_host" {
+  name  = "/${var.project}/${var.env}/api/SPRING_DATA_REDIS_HOST"
+  type  = "String"
+  value = aws_elasticache_cluster.redis.cache_nodes[0].address
+}
+
+resource "aws_ssm_parameter" "redis_port" {
+  name  = "/${var.project}/${var.env}/api/SPRING_DATA_REDIS_PORT"
+  type  = "String"
+  value = "6379"
+}
