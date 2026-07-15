@@ -93,3 +93,21 @@ output "github_deploy_role_arn" {
   value       = aws_iam_role.github_deploy.arn
   description = "GitHub repo secrets에 AWS_DEPLOY_ROLE_ARN으로 등록"
 }
+
+# ── CI terraform apply용 역할 — 배포 역할과 분리 ──────────
+# terraform은 IAM 자체를 만들고 지우므로 권한을 좁힐 방법이 사실상 없다(최소권한 불가).
+# 실질 방어선: ①OIDC 신뢰조건(이 레포 develop에서만 assume) ②prod 봉인(variables.tf가 env=dev만 허용) ③CloudTrail
+resource "aws_iam_role" "github_terraform" {
+  name               = "${var.project}-github-terraform-${var.env}"
+  assume_role_policy = data.aws_iam_policy_document.github_assume.json
+}
+
+resource "aws_iam_role_policy_attachment" "github_terraform_admin" {
+  role       = aws_iam_role.github_terraform.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}
+
+output "github_terraform_role_arn" {
+  value       = aws_iam_role.github_terraform.arn
+  description = "GitHub repo secrets에 AWS_TERRAFORM_ROLE_ARN으로 등록"
+}
