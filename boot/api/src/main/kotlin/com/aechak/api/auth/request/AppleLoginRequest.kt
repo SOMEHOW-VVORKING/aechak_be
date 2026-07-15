@@ -9,9 +9,9 @@ import jakarta.validation.constraints.NotBlank
  * (카카오와 달리 애플 웹은 서버 교환이 불필요 — aud만 Services ID로 달라짐)
  */
 data class AppleLoginRequest(
-    @field:NotBlank val idToken: String,
+    @field:NotBlank(message = "idToken은 필수입니다") val idToken: String,
     /** revoke용 refresh token 교환에 사용 — 1회용·약 5분 유효, 로그인마다 전달. */
-    @field:NotBlank val authorizationCode: String,
+    @field:NotBlank(message = "authorizationCode는 필수입니다") val authorizationCode: String,
     /** 애플이 최초 인가 1회만 제공 — 첫 로그인 때만 포함. */
     val fullName: FullName? = null,
 ) {
