@@ -9,7 +9,7 @@
 
 [versions]
 kotlin = "2.2.21"                # Boot 4의 Kotlin baseline(2.2 계열) — Gradle 9 지원 패치
-spring-boot = "4.0.0"            # TODO: 4.0.x 최신 패치 추종
+spring-boot = "4.0.5"            # 4.0.x 최신 패치 추종 — actuator·코어 버전 정렬 (혼합 시 NoSuchMethodError)
 jakarta-persistence = "3.2.0"    # domain은 BOM 밖이라 직접 관리 — Boot BOM의 JPA 버전과 일치 유지
 jakarta-servlet = "6.1.0"        # web-common 컴파일 전용 (런타임은 실행 모듈의 내장 톰캣이 제공)
 slf4j = "2.0.17"
