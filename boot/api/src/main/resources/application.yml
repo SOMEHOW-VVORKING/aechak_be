@@ -1,4 +1,21 @@
 spring:
   application:
     name: aechak-api
-# TODO: ERD 확정 후 실 DB datasource 설정 — 지금은 내장 H2 자동 구성으로 기동
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+# ECS 롤링 시 SIGTERM을 받으면 처리 중 요청을 마저 끝내고 종료 (배포마다 5xx 방지)
+server:
+  shutdown: graceful
+
+# ALB 헬스체크 대상 — health만 노출 (env·metrics 등 민감 엔드포인트는 잠금)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never # 외부(ALB)에 컴포넌트 상세 미노출
+
+# datasource는 여기 없음 — local은 application-local.yml(SCRUM-126 예정), dev는 ECS taskdef env가 주입
