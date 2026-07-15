@@ -17,5 +17,8 @@ management:
   endpoint:
     health:
       show-details: never # 외부(ALB)에 컴포넌트 상세 미노출
+  health:
+    redis:
+      enabled: false # Redis(캐시·토큰저장소) 장애가 health DOWN → ALB의 앱 킬로 승격되는 것 방지. 감시는 CloudWatch 몫
 
 # datasource는 여기 없음 — local은 application-local.yml(SCRUM-126 예정), dev는 ECS taskdef env가 주입
