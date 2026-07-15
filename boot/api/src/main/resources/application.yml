@@ -21,4 +21,3 @@ management:
     redis:
       enabled: false # Redis 장애로 앱 전체가 unhealthy 판정되는 것 방지
 
-# datasource 설정 없음(의도) — dev는 ECS가 env로 주입, local은 프로파일 yml 담당

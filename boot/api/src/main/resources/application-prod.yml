@@ -1,0 +1,21 @@
+# prod — 시크릿(JWT 키·카카오 REST 키)은 SSM(/aechak/prod/auth/*)에서 환경변수로 주입한다.
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}           # 필수 — 미주입이면 부팅 실패(fail-fast)
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST}
+      port: ${SPRING_DATA_REDIS_PORT}
+
+api:
+  cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}       # 예: https://aechak.com
+
+auth:
+  web:
+    return-urls: ${AUTH_WEB_RETURN_URLS:}              # 예: https://aechak.com/login/complete
+    callback-base-url: ${AUTH_WEB_CALLBACK_BASE_URL:}  # 예: https://api.aechak.com/api/v1/auth/callback
+
+server:
+  forward-headers-strategy: framework   # LB가 TLS를 종료해도 원 요청 스킴 기준으로 동작(Secure 쿠키·리다이렉트 URL)
