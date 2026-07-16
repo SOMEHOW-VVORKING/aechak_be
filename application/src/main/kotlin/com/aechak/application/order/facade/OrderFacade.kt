@@ -1,5 +1,6 @@
-package com.aechak.application.order.service
+package com.aechak.application.order.facade
 
+import com.aechak.application.order.service.OrderService
 import com.aechak.application.order.usecase.OrderUseCase
 import org.springframework.stereotype.Service
 

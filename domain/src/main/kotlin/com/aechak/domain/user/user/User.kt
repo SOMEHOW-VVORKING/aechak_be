@@ -90,5 +90,8 @@ class User protected constructor() : AggregateRoot() {
             user._profile = UserProfile.of(user, nickname)
             return user
         }
+
+        /** 소셜 가입 진입점 — PENDING_ONBOARDING으로 시작하고 프로필(닉네임)은 온보딩에서 생성한다. */
+        fun preRegister(): User = User()
     }
 }

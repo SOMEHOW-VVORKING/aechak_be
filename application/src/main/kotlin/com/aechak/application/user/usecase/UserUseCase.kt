@@ -10,7 +10,7 @@ import com.aechak.application.user.usecase.result.UserSummaryResult
  *
  * [진입점 규칙]
  * - 외부(Controller/Consumer/Batch/타 도메인 Facade)는 이 패키지(usecase/) 아래만 import한다.
- *   service/는 내부 구현 — 타 도메인이 user를 부를 때도 이 인터페이스만, UserService 직접 호출 금지.
+ *   facade/·service/는 내부 구현 — 타 도메인이 user를 부를 때도 이 인터페이스만, Facade/Service 직접 호출 금지.
  * - 메서드가 10개를 넘어 비대해지면 그때 기능별 분리를 논의한다.
  *
  * [입력 규칙 — 아래 세 메서드가 세 가지 경우의 예시다]
@@ -27,4 +27,10 @@ interface UserUseCase {
     fun register(command: RegisterUserCommand): UserResult
     fun getUser(userId: Long): UserResult
     fun searchUsers(query: UserSearchQuery): List<UserSummaryResult>
+
+    /**
+     * 소셜 가입 — 프로필(닉네임) 없는 PENDING_ONBOARDING 계정을 만든다(닉네임은 온보딩에서).
+     * 프로필이 아직 없어 UserResult(nickname 필수) 대신 식별자만 반환한다.
+     */
+    fun registerFromSocial(): Long
 }
