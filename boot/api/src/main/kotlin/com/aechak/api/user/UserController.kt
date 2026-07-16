@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController
  * - 성공 응답은 ApiResponse로 감싸고, 반환할 데이터 없는 성공은 빈 본문 + 상태코드로만 표현한다.
  */
 @RestController
-@RequestMapping("/api/v1/users")
+@RequestMapping("/users") // 접두(api.base-path)는 WebConfig가 일괄 부착
 class UserController(
     private val userUseCase: UserUseCase,
 ) {

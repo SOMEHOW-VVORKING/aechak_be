@@ -19,4 +19,7 @@ class UserService(
     fun getById(userId: Long): User =
         userRepository.findById(userId)
             ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+
+    /** 소셜 가입 — 프로필 없는 PENDING_ONBOARDING 계정 생성. */
+    fun registerFromSocial(): User = userRepository.save(User.preRegister())
 }
