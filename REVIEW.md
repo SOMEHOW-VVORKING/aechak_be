@@ -1,13 +1,24 @@
 # REVIEW.md — 코드 리뷰 가이드
 
 자동 리뷰(Claude Code Review 워크플로우)와 사람 리뷰어가 공유하는 리뷰 기준이다.
-각 항목의 근거는 `docs/`·`knowledge-base/`의 규범 문서에 있다 — 판단이 애매하면 출처 문서를 직접 확인한다.
+이 문서의 🔴/🟡 항목은 **이 문서만으로 판정 가능**해야 한다(자체 완결 원칙). `(문서 §번호)` 인용은
+판단이 애매할 때 따라가는 근거이며, 살아있는 `docs/` 문서만 가리킨다.
 
 ## 심각도 정의
 
 - **🔴 반려(Blocker)**: 아키텍처 경계 위반, 데이터 정합성 파괴 가능, 보안 결함(인가 누락·PII 평문 저장), 팀이 명시적으로 "반려"라고 못박은 규칙 위반. 하나라도 있으면 머지 불가.
 - **🟡 중요(Important)**: 동작이 틀릴 수 있는 버그, 규범 위반이지만 경계 침범은 아닌 것(잉여 SQL, 규약 어긋난 시그니처, 필수 테스트 누락).
 - **⚪ 니트(Nit)**: 네이밍·가독성 제안. **리뷰당 최대 5개까지만** 보고하고, 나머지는 "유사 N건"으로 요약한다.
+
+## 동작 정확성 — 레이어 무관, 최우선
+
+체크리스트 대조 이전에 "이 코드가 의도대로 동작하는가"를 본다. 판정 기준:
+
+- **경계값**: null·빈 컬렉션·0/음수 금액·최대치에서 분기가 옳은가 (🟡, 데이터 정합성 파괴 가능이면 🔴)
+- **호출자 영향**: 변경된 시그니처·반환값·예외·전제조건이 기존 호출부의 가정을 깨는가 (🟡~🔴)
+- **트랜잭션 경계 안 실패**: 중간 단계 예외 시 부분 커밋·이벤트 유실·보상 누락이 생기는가 (🔴)
+- **동시성**: 같은 행(재고·잔액 등)에 동시 요청 시 정합성이 깨지는가 — 조건부 원자 UPDATE 여부 (🔴)
+- 지적에는 **실패 시나리오(구체 입력 → 잘못된 결과)를 반드시 붙인다.** 시나리오를 못 만들면 니트(⚪)로 낮춘다.
 
 ## 즉시 반려 체크리스트 (🔴)
 
@@ -25,32 +36,34 @@
 보안·데이터:
 - [ ] publicId를 인가 대체로 사용 — 조회 API마다 소유권 검증(BOLA/IDOR) 필수 (`10-domain.md §2-2`)
 - [ ] 내부 bigint id를 API 응답에 노출 (외부 노출은 publicId(ULID)만)
-- [ ] PII(전화번호·계좌·배송지 연락처 등) 평문 저장 — AES-256 AttributeConverter(infra 소속) 경유
 
 ## 레이어별 체크리스트
 
-### domain / 엔티티 — `10-domain.md`, `knowledge-base/61·62`
-- 금액 필드는 **Long**(원 단위 정수). BigDecimal·Int 금지. count/quantity류는 Int 유지 (61 F17)
-- Kotlin non-null 참조타입에 `@Column(nullable=false)` 명시 — Hibernate는 Kotlin null성을 DDL에 반영하지 않음 (61 P1)
+### domain / 엔티티 — `10-domain.md`
+- 금액 필드는 **Long**(원 단위 정수). BigDecimal·Int 금지. count/quantity류는 Int 유지
+- Kotlin non-null 참조타입에 `@Column(nullable=false)` 명시 — Hibernate는 Kotlin null성을 DDL에 반영하지 않음
 - 엔티티는 anemic 금지: setter 노출 대신 의도 드러나는 메서드(cancel, confirm…) (10 §2)
 - 엔티티에 `data class` 금지 (10 §5)
-- 동시성 정합 규칙(재고 차감 등)은 엔티티 메서드가 아니라 저장소 조건부 원자 UPDATE(`WHERE stock >= ?`) (10 §2·§3-5)
+- 동시성 정합 규칙(재고 차감 등)은 엔티티 메서드가 아니라 저장소 조건부 원자 UPDATE(`WHERE stock >= ?`) (10 §2, 근거: 00 §3-5)
 - 자기 상태만으로 판단 가능한 불변식 = domain, 외부 지식(타 애그리거트·DB 조회) 필요 검증 = application (10 §2)
 - created_at/updated_at은 BaseEntity 상속. Spring Data Auditing 금지, 순수 JPA 콜백 사용 (10 §2-2)
 - 엔티티 재구성 merge 금지 — 항상 load 후 수정 (publicId 재채번 사고) (10 §2-2)
 - 도메인 이벤트: 애그리거트가 `registerEvent` 수집 → **Facade가 발행 후 clearEvents()**. domain에서 ApplicationEventPublisher 금지 (10 §3)
-- 에러 코드는 발생 도메인 패키지가 소유, 대역 준수(seller 10000~ … settlement 100000~ 잠정). 실제 던지는 것만 추가 (62)
+- 에러 코드는 발생 도메인 패키지가 소유, 대역 준수(seller 10000~ … settlement 100000~ 잠정). 실제 던지는 것만 추가 (05 §5)
 
 ### 연관관계(JPA) — `10-domain.md §2-1`
 - 애그리거트 내부(루트→자식): `@OneToMany(cascade=ALL, orphanRemoval=true) + @JoinColumn` 단방향, 자식에 부모 참조·FK 필드 금지
-- `@OneToMany @JoinColumn`에 **`updatable=false` 필수** — 누락 시 잉여 FK UPDATE 발생 (61, `AggregateChildSqlTest`가 회귀 단언)
+- `@OneToMany @JoinColumn`에 **`updatable=false` 필수** — Hibernate 단방향 @JoinColumn의 잉여 FK UPDATE 방지 (`AggregateChildSqlTest`가 회귀 단언)
 - 같은 BC 다른 애그리거트: `@ManyToOne(fetch=LAZY)` 단방향. **역방향 @OneToMany 컬렉션 금지**
 - 연관 내비게이션으로 타 애그리거트 상태 변경 금지 (`order.orderGroup.markPaid()` ❌) — 수정은 자기 리포지토리로 로딩
 - fetch는 LAZY 기본
 - 명시적 예외(연관 없이 값참조): RetentionRecord.userRef, PointTransaction.sourceId, ProductStats.productId, review BC의 대외 참조 4건 — 이들에 연관 추가 요구하지 말 것
 
 ### application — `20-application.md`
-- `@Transactional`은 **Facade에만**. Service·도메인 메서드 부착 금지
+- 트랜잭션 경계를 여는 코드(`@Transactional` 또는 `TransactionTemplate`)는 **Facade에만**. Service·도메인 메서드 부착 금지 (20 §2-1)
+- 쓰기 유스케이스 Facade에 트랜잭션 **누락도 지적 대상**. 조회는 `@Transactional(readOnly=true)` — 위반 아님
+- 🔴 **트랜잭션 범위 안에서 infra client(외부 API — PG 등) 호출 금지** — 외부 I/O 동안 커넥션·락 점유. tx 커밋 → 외부 호출 → 새 tx로 분리 (20 §2-1)
+- 반려하지 말 것: `@TransactionalEventListener`(리스너 위치가 정상), Spring Batch Step/chunk 트랜잭션(framework 관리)
 - UseCase 구현은 항상 Facade. Service가 UseCase 직접 구현 금지. 도메인당 UseCase 1개
 - 쓰기 입력은 항상 `{동사}{대상}Command` (인자 1개여도). **Command에 검증 어노테이션 금지** (형식 검증은 boot @Valid에서 종료)
 - 출력은 항상 Result 계열 — **도메인 엔티티 반환 금지**. 변환은 `companion.from(entity)`
@@ -64,7 +77,7 @@
 - 응답 규격: 성공 `ApiResponse.of(...)`, 실패 `errorCode`(int)+message, `X-Trace-Id` (`05` 문서)
 - 도메인 이벤트 클래스를 Kafka 메시지로 재사용 금지 — 필드가 같아 보여도 두 벌 (`00 §3-2`)
 
-### 테스트 — `docs/70-testing.md`
+### 테스트
 - 모든 테스트 KDoc 첫 줄에 정체(계약/회귀/스모크/통합)와 "깨지면 무엇이 잘못인가" 명시
 - 테스트 이름은 한글 백틱으로 행위·기대 서술
 - 결과(상태·출력) 검증 — mock 후 `verify` 횟수 검증으로 끝나는 테스트 반려
@@ -77,9 +90,10 @@
 ## 지적하지 말 것
 
 - **equals/hashCode override 요구 금지** — 팀이 명시적으로 보류 결정. 엔티티를 Set/Map 키로 쓰기 시작할 때 도입 (10 §5)
-- 커버리지 수치 — 팀은 커버리지 숫자를 목표로 삼지 않음 (70 §1.4)
+- 커버리지 수치 — 팀은 커버리지 숫자를 목표로 삼지 않음
 - 린트/포맷 수준의 스타일 (도구 영역)
 - `⚠️ PENDING(A-n)`·`TODO`·`F##` 마커가 붙은 미확정 항목의 구현 요구 (message 모듈, admin, 인증 등은 의도된 미도입)
+- **PII 암호화 방식 — 팀 미확정** (`40-infra.md §1-1` PENDING). 확정 전까지 암호화 누락·방식에 대한 지적 금지
 - ArchUnit 등 아키텍처 테스트 도입 요구 — 패키지 규칙은 리뷰로 강제하기로 결정됨 (00 서문)
 
 ## 범위·형식 (참고 확인)
