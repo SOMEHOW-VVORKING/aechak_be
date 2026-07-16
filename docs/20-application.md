@@ -55,7 +55,7 @@ interface OrderUseCase {
  *
  * [규칙]
  * - UseCase 구현은 항상 Facade다. Service가 UseCase를 직접 구현하는 것 금지 (규칙은 하나만).
- * - @Transactional 경계는 여기 고정. Service/도메인 메서드에 트랜잭션 어노테이션 금지.
+ * - 트랜잭션 경계의 소유자는 Facade (상세 §2-1). Service/도메인 메서드에 트랜잭션 어노테이션 금지.
  * - 도메인이 수집한 이벤트(aggregate.events)를 커밋 전 publisher로 발행하고 clearEvents().
  * - 타 도메인 협력이 필요하면 그쪽 UseCase를 주입받는다. 순환 의존 발생 = 이벤트 전환 신호.
  */
@@ -84,6 +84,26 @@ class OrderFacade(
 @Service
 class OrderService( /* repository 등 */ ) { /* TODO */ }
 ```
+
+### 2-1. 트랜잭션 경계 — "Facade 소유"의 정확한 의미
+
+- 규칙의 본질은 **경계를 여는 코드가 Facade에만 있다**는 소유권이다. 메서드당 `@Transactional` 1개 강제가 아니다 —
+  선언형(`@Transactional`)이든 프로그램형(`TransactionTemplate`)이든 Facade 안이면 규칙 준수.
+- 쓰기 유스케이스 Facade 메서드에는 트랜잭션 **필수**(누락도 리뷰 지적 대상). 조회는 `@Transactional(readOnly = true)`.
+- **외부 네트워크 호출(infra client — PG 등)을 트랜잭션 범위 안에 두지 않는다.** 외부 I/O 동안 DB 커넥션·락을
+  점유해 풀 고갈로 이어진다. 흐름이 [DB 쓰기 → 외부 호출 → DB 쓰기]면 Facade가 경계를 쪼갠다:
+
+```kotlin
+// Facade — 메서드 자체는 트랜잭션 없음. 경계 2개를 Facade가 소유
+override fun confirmPayment(command: ConfirmPaymentCommand): PaymentResult {
+    val order = tx.execute { orderService.markPending(...) }   // tx1: 커밋 후 커넥션 반환
+    val approval = pgPort.approve(...)                          // 트랜잭션 밖에서 외부 호출
+    return tx.execute { orderService.applyApproval(approval) }  // tx2: 결과 반영
+}
+```
+
+- 후속 작업이 비동기여도 되면(알림 등) 트랜잭션 분리 대신 §3의 AFTER_COMMIT 리스너를 쓴다.
+- 이 규칙의 대상 아님: `@TransactionalEventListener`(리스너 위치가 정상), Spring Batch Step/chunk 트랜잭션(framework 관리).
 
 ## 3. 이벤트 리스너 — 수신자 위치
 
