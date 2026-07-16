@@ -20,14 +20,14 @@ data class AppleLoginRequest(
         val familyName: String? = null,
         val givenName: String? = null,
     ) {
-        fun formatted(): String? =
-            listOfNotNull(familyName, givenName).joinToString(" ").ifBlank { null }
+        fun formatted(): String? = listOfNotNull(familyName, givenName).joinToString(" ").ifBlank { null }
     }
 
-    fun toCommand() = SocialLoginCommand(
-        provider = SocialProvider.APPLE,
-        idToken = idToken,
-        authorizationCode = authorizationCode,
-        appleFullName = fullName?.formatted(),
-    )
+    fun toCommand() =
+        SocialLoginCommand(
+            provider = SocialProvider.APPLE,
+            idToken = idToken,
+            authorizationCode = authorizationCode,
+            appleFullName = fullName?.formatted(),
+        )
 }

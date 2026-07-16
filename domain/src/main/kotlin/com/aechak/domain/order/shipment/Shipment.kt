@@ -1,7 +1,10 @@
 package com.aechak.domain.order.shipment
 
 import com.aechak.common.error.BusinessException
+import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.error.ShipmentErrorCode
+import com.aechak.domain.order.order.Order
+import com.aechak.domain.order.shipment.enums.ShipmentType
 import com.aechak.domain.support.AggregateRoot
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -15,9 +18,6 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import java.time.LocalDateTime
-import com.aechak.domain.order.claim.Claim
-import com.aechak.domain.order.order.Order
-import com.aechak.domain.order.shipment.enums.ShipmentType
 
 @Entity
 @Table(name = "shipments")
@@ -28,7 +28,6 @@ class Shipment protected constructor(
     shipmentType: ShipmentType,
     claim: Claim?,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -82,8 +81,9 @@ class Shipment protected constructor(
             trackingNumber: String,
             shipmentType: ShipmentType,
             claim: Claim? = null,
-        ): Shipment = Shipment(courier, order, trackingNumber, shipmentType, claim).apply {
-            dispatchedAt = LocalDateTime.now()
-        }
+        ): Shipment =
+            Shipment(courier, order, trackingNumber, shipmentType, claim).apply {
+                dispatchedAt = LocalDateTime.now()
+            }
     }
 }

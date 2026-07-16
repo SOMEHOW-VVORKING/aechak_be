@@ -25,8 +25,9 @@ class AuthFacade(
     private val socialLoginService: SocialLoginService,
     private val tokenService: TokenService,
     transactionManager: PlatformTransactionManager,
-) : SocialLoginUseCase, TokenRefreshUseCase, LogoutUseCase {
-
+) : SocialLoginUseCase,
+    TokenRefreshUseCase,
+    LogoutUseCase {
     private val loginTx = TransactionTemplate(transactionManager)
 
     override fun login(command: SocialLoginCommand): SocialLoginResult =

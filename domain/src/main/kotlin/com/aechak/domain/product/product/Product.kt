@@ -1,9 +1,11 @@
 package com.aechak.domain.product.product
 
+import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.error.ProductErrorCode
+import com.aechak.domain.product.product.enums.InspectionStatus
+import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.support.AggregateRoot
-import com.aechak.common.error.BusinessException
 import com.aechak.domain.support.Ulid
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -20,8 +22,6 @@ import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import jakarta.persistence.Version
 import java.time.LocalDateTime
-import com.aechak.domain.product.product.enums.SaleStatus
-import com.aechak.domain.product.product.enums.InspectionStatus
 
 @Entity
 @Table(
@@ -41,7 +41,6 @@ class Product protected constructor(
     discountStartAt: LocalDateTime?,
     discountEndAt: LocalDateTime?,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L

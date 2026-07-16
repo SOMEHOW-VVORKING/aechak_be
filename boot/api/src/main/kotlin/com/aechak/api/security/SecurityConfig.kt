@@ -28,7 +28,6 @@ import tools.jackson.databind.ObjectMapper // Boot 4 = Jackson 3 (com.fasterxml 
 @Configuration(proxyBeanMethods = false)
 @EnableWebSecurity
 class SecurityConfig {
-
     @Bean
     fun apiFilterChain(
         http: HttpSecurity,
@@ -42,14 +41,15 @@ class SecurityConfig {
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
-                it.requestMatchers("$basePath/auth/login/**", "$basePath/auth/token/refresh").permitAll()
-                    .anyRequest().authenticated()
-            }
-            .oauth2ResourceServer { resourceServer ->
+                it
+                    .requestMatchers("$basePath/auth/login/**", "$basePath/auth/token/refresh")
+                    .permitAll()
+                    .anyRequest()
+                    .authenticated()
+            }.oauth2ResourceServer { resourceServer ->
                 resourceServer.jwt { it.decoder(jwtDecoder) }
                 resourceServer.authenticationEntryPoint(unauthenticatedEntryPoint)
-            }
-            .exceptionHandling { it.authenticationEntryPoint(unauthenticatedEntryPoint) }
+            }.exceptionHandling { it.authenticationEntryPoint(unauthenticatedEntryPoint) }
             .addFilterAfter(
                 UserStatusFilter(userStatusReader, objectMapper, onboardingAllowedPaths(basePath)),
                 BearerTokenAuthenticationFilter::class.java,

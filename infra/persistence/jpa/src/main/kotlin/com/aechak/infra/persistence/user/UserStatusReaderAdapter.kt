@@ -9,6 +9,5 @@ import org.springframework.stereotype.Repository
 class UserStatusReaderAdapter(
     private val jpaRepository: UserJpaRepository,
 ) : UserStatusReader {
-
     override fun statusOf(userId: Long): UserStatus? = jpaRepository.findStatusById(userId)
 }

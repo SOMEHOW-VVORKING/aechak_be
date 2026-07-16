@@ -23,7 +23,6 @@ import org.springframework.web.client.RestTemplate
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(SocialProvidersProperties::class)
 class SocialJwtDecoderConfig {
-
     @Bean
     fun socialJwtDecoders(props: SocialProvidersProperties): Map<SocialProvider, JwtDecoder> =
         props.providers.entries.associate { (name, provider) ->
@@ -31,20 +30,24 @@ class SocialJwtDecoderConfig {
         }
 
     private fun buildDecoder(props: SocialProvidersProperties.ProviderProperties): JwtDecoder {
-        val restTemplate = RestTemplate(
-            SimpleClientHttpRequestFactory().apply {
-                setConnectTimeout(JWKS_TIMEOUT_MS)
-                setReadTimeout(JWKS_TIMEOUT_MS)
-            },
-        )
-        val decoder = NimbusJwtDecoder.withJwkSetUri(props.jwksUri)
-            .restOperations(restTemplate)
-            .build()
+        val restTemplate =
+            RestTemplate(
+                SimpleClientHttpRequestFactory().apply {
+                    setConnectTimeout(JWKS_TIMEOUT_MS)
+                    setReadTimeout(JWKS_TIMEOUT_MS)
+                },
+            )
+        val decoder =
+            NimbusJwtDecoder
+                .withJwkSetUri(props.jwksUri)
+                .restOperations(restTemplate)
+                .build()
 
-        val validators = buildList {
-            add(JwtValidators.createDefaultWithIssuer(props.issuer))
-            if (props.audiences.isNotEmpty()) add(audienceValidator(props.audiences))
-        }
+        val validators =
+            buildList {
+                add(JwtValidators.createDefaultWithIssuer(props.issuer))
+                if (props.audiences.isNotEmpty()) add(audienceValidator(props.audiences))
+            }
         decoder.setJwtValidator(DelegatingOAuth2TokenValidator(validators))
         return decoder
     }

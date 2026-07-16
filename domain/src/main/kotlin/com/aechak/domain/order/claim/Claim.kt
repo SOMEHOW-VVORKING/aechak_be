@@ -1,7 +1,13 @@
 package com.aechak.domain.order.claim
 
-import com.aechak.domain.support.Ulid
+import com.aechak.domain.order.claim.enums.ClaimSettlementStatus
+import com.aechak.domain.order.claim.enums.ClaimStatus
+import com.aechak.domain.order.claim.enums.ClaimType
+import com.aechak.domain.order.claim.enums.RefundStatus
+import com.aechak.domain.order.claim.enums.ReturnCostBearer
+import com.aechak.domain.order.claim.enums.SellerApprovalStatus
 import com.aechak.domain.support.AggregateRoot
+import com.aechak.domain.support.Ulid
 import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -16,12 +22,6 @@ import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import jakarta.persistence.Version
 import java.time.LocalDateTime
-import com.aechak.domain.order.claim.enums.ClaimSettlementStatus
-import com.aechak.domain.order.claim.enums.SellerApprovalStatus
-import com.aechak.domain.order.claim.enums.RefundStatus
-import com.aechak.domain.order.claim.enums.ReturnCostBearer
-import com.aechak.domain.order.claim.enums.ClaimType
-import com.aechak.domain.order.claim.enums.ClaimStatus
 
 @Entity
 @Table(
@@ -33,7 +33,6 @@ import com.aechak.domain.order.claim.enums.ClaimStatus
 class Claim protected constructor(
     claimType: ClaimType,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -124,11 +123,10 @@ class Claim protected constructor(
         fun request(
             claimType: ClaimType,
             items: List<ClaimItem>,
-        ): Claim {
-            return Claim(claimType).apply {
+        ): Claim =
+            Claim(claimType).apply {
                 requestedAt = LocalDateTime.now()
                 items.forEach { _items += it }
             }
-        }
     }
 }

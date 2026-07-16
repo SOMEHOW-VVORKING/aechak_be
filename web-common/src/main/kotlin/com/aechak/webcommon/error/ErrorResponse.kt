@@ -18,7 +18,6 @@ data class ErrorResponse(
     val message: String,
 ) {
     companion object {
-        fun of(errorCode: ErrorCode): ErrorResponse =
-            ErrorResponse(errorCode.code, errorCode.message)
+        fun of(errorCode: ErrorCode): ErrorResponse = ErrorResponse(errorCode.code, errorCode.message)
     }
 }

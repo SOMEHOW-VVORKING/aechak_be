@@ -9,10 +9,10 @@ import com.aechak.application.user.usecase.UserUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.error.UserErrorCode
-import com.aechak.domain.user.social.vo.ProviderUser
 import com.aechak.domain.user.social.SocialIdentity
 import com.aechak.domain.user.social.enums.SocialProvider
 import com.aechak.domain.user.social.repository.SocialIdentityRepository
+import com.aechak.domain.user.social.vo.ProviderUser
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.domain.user.user.repository.UserRepository
@@ -35,17 +35,17 @@ class SocialLoginService(
     private val userUseCase: UserUseCase,
     private val tokenService: TokenService,
 ) {
-
     fun login(command: SocialLoginCommand): SocialLoginResult {
         val providerUser = socialTokenVerifier.verify(command.provider, resolveIdToken(command))
 
         val identity = socialIdentityRepository.findByProviderAndProviderId(command.provider, providerUser.providerId)
-        val (user, isNew) = if (identity != null) {
-            identity.updateEmail(providerUser.email)
-            identity.user to false
-        } else {
-            registerAndLink(command.provider, providerUser) to true
-        }
+        val (user, isNew) =
+            if (identity != null) {
+                identity.updateEmail(providerUser.email)
+                identity.user to false
+            } else {
+                registerAndLink(command.provider, providerUser) to true
+            }
 
         // WITHDRAWN 재로그인(재가입) 정책은 user 도메인 미결 — 확정 전까지 차단한다.
         if (user.status == UserStatus.SUSPENDED || user.status == UserStatus.WITHDRAWN) {
@@ -71,10 +71,14 @@ class SocialLoginService(
         return authorizationCodeExchanger.exchange(command.provider, code, redirectUri)
     }
 
-    private fun registerAndLink(provider: SocialProvider, providerUser: ProviderUser): User {
+    private fun registerAndLink(
+        provider: SocialProvider,
+        providerUser: ProviderUser,
+    ): User {
         val userId = userUseCase.registerFromSocial()
-        val user = userRepository.findById(userId)
-            ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+        val user =
+            userRepository.findById(userId)
+                ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
         // 동시 가입 race: UNIQUE(provider, provider_id) 충돌은 여기서 터진다 —
         // 트랜잭션이 통째로 롤백되고(고아 user 없음) AuthFacade가 새 트랜잭션으로 재시도해 승자를 조회한다.
         socialIdentityRepository.save(SocialIdentity.link(user, provider, providerUser.providerId, providerUser.email))

@@ -1,6 +1,7 @@
 package com.aechak.domain.user.term
 
 import com.aechak.domain.support.BaseEntity
+import com.aechak.domain.user.term.enums.TermType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -11,7 +12,6 @@ import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
-import com.aechak.domain.user.term.enums.TermType
 
 @Entity
 @Table(
@@ -27,7 +27,6 @@ class Term protected constructor(
     effectiveAt: LocalDateTime,
     isActive: Boolean,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -54,7 +53,6 @@ class Term protected constructor(
     @Column(nullable = false)
     var isActive: Boolean = isActive
         protected set
-
 
     companion object {
         fun of(

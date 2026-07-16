@@ -21,40 +21,47 @@ import org.springframework.web.client.RestClientException
 class AuthorizationCodeExchangerAdapter(
     private val properties: SocialProvidersProperties,
 ) : AuthorizationCodeExchanger {
+    private val restClient =
+        RestClient
+            .builder()
+            .requestFactory(
+                SimpleClientHttpRequestFactory().apply {
+                    setConnectTimeout(TIMEOUT_MS)
+                    setReadTimeout(TIMEOUT_MS)
+                },
+            ).build()
 
-    private val restClient = RestClient.builder()
-        .requestFactory(
-            SimpleClientHttpRequestFactory().apply {
-                setConnectTimeout(TIMEOUT_MS)
-                setReadTimeout(TIMEOUT_MS)
-            },
-        )
-        .build()
-
-    override fun exchange(provider: SocialProvider, code: String, redirectUri: String): String {
+    override fun exchange(
+        provider: SocialProvider,
+        code: String,
+        redirectUri: String,
+    ): String {
         val providerProperties = properties.providers[provider.name.lowercase()]
         if (providerProperties == null || providerProperties.tokenUri.isBlank() || providerProperties.clientId.isBlank()) {
             throw BusinessException(AuthErrorCode.UNSUPPORTED_PROVIDER)
         }
 
-        val form = LinkedMultiValueMap<String, String>().apply {
-            add("grant_type", "authorization_code")
-            add("client_id", providerProperties.clientId)
-            add("redirect_uri", redirectUri)
-            add("code", code)
-        }
+        val form =
+            LinkedMultiValueMap<String, String>().apply {
+                add("grant_type", "authorization_code")
+                add("client_id", providerProperties.clientId)
+                add("redirect_uri", redirectUri)
+                add("code", code)
+            }
 
-        val body = try {
-            restClient.post()
-                .uri(providerProperties.tokenUri)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(form)
-                .retrieve()
-                .body(object : ParameterizedTypeReference<Map<String, Any>>() {})
-        } catch (e: RestClientException) {
-            // 만료·위조 code, redirect_uri 불일치 등 — provider가 교환을 거부한 경우
-            throw BusinessException(AuthErrorCode.INVALID_SOCIAL_TOKEN, e)
-        }
+        val body =
+            try {
+                restClient
+                    .post()
+                    .uri(providerProperties.tokenUri)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .retrieve()
+                    .body(object : ParameterizedTypeReference<Map<String, Any>>() {})
+            } catch (e: RestClientException) {
+                // 만료·위조 code, redirect_uri 불일치 등 — provider가 교환을 거부한 경우
+                throw BusinessException(AuthErrorCode.INVALID_SOCIAL_TOKEN, e)
+            }
 
         return body?.get(ID_TOKEN_FIELD) as? String
             ?: throw BusinessException(AuthErrorCode.INVALID_SOCIAL_TOKEN) // openid scope 누락 등으로 id_token 부재

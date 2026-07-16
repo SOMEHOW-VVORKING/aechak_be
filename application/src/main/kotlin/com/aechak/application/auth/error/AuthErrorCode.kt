@@ -13,7 +13,6 @@ enum class AuthErrorCode(
     override val message: String,
     override val status: Int,
 ) : ErrorCode {
-
     INVALID_SOCIAL_TOKEN(20001, "소셜 로그인에 실패했습니다. 다시 시도해 주세요.", 401),
     UNSUPPORTED_PROVIDER(20002, "지원하지 않는 로그인 방식입니다.", 400),
     INVALID_REFRESH_TOKEN(20003, "유효하지 않은 토큰입니다.", 401),

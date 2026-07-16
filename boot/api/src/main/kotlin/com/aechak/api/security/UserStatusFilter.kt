@@ -30,31 +30,41 @@ class UserStatusFilter(
     /** PENDING_ONBOARDING 허용 경로 — 정책은 조립 지점(SecurityConfig) 소유, 이 필터는 메커니즘만 담당한다. */
     private val onboardingAllowedPaths: Set<String>,
 ) : OncePerRequestFilter() {
-
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
-        val authentication = SecurityContextHolder.getContext().authentication as? JwtAuthenticationToken
-            ?: return filterChain.doFilter(request, response) // 비인증(permitAll) 경로
+        val authentication =
+            SecurityContextHolder.getContext().authentication as? JwtAuthenticationToken
+                ?: return filterChain.doFilter(request, response) // 비인증(permitAll) 경로
 
-        val userId = authentication.token.subject?.toLongOrNull()
-            ?: return writeError(response, AuthErrorCode.UNAUTHENTICATED)
+        val userId =
+            authentication.token.subject?.toLongOrNull()
+                ?: return writeError(response, AuthErrorCode.UNAUTHENTICATED)
 
         when (userStatusReader.statusOf(userId)) {
-            UserStatus.ACTIVE -> Unit
-            UserStatus.PENDING_ONBOARDING ->
+            UserStatus.ACTIVE -> {
+                Unit
+            }
+
+            UserStatus.PENDING_ONBOARDING -> {
                 if (request.requestURI !in onboardingAllowedPaths) {
                     return writeError(response, AuthErrorCode.ONBOARDING_REQUIRED)
                 }
-            UserStatus.SUSPENDED, UserStatus.WITHDRAWN, null ->
+            }
+
+            UserStatus.SUSPENDED, UserStatus.WITHDRAWN, null -> {
                 return writeError(response, AuthErrorCode.ACCOUNT_BLOCKED)
+            }
         }
         filterChain.doFilter(request, response)
     }
 
-    private fun writeError(response: HttpServletResponse, errorCode: AuthErrorCode) {
+    private fun writeError(
+        response: HttpServletResponse,
+        errorCode: AuthErrorCode,
+    ) {
         response.status = errorCode.status
         response.contentType = MediaType.APPLICATION_JSON_VALUE
         response.characterEncoding = Charsets.UTF_8.name()

@@ -16,7 +16,6 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 class WebConfig(
     @param:Value("\${api.base-path}") private val basePath: String,
 ) : WebMvcConfigurer {
-
     override fun configurePathMatch(configurer: PathMatchConfigurer) {
         configurer.addPathPrefix(basePath, HandlerTypePredicate.forBasePackage("com.aechak"))
     }

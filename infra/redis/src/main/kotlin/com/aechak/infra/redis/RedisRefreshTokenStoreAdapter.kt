@@ -20,28 +20,48 @@ import java.time.Instant
 class RedisRefreshTokenStoreAdapter(
     private val redisTemplate: StringRedisTemplate,
 ) : RefreshTokenStore {
-
-    override fun save(userId: Long, tokenId: String, tokenHash: String, ttl: Duration) {
+    override fun save(
+        userId: Long,
+        tokenId: String,
+        tokenHash: String,
+        ttl: Duration,
+    ) {
         redisTemplate.opsForValue().set(key(userId, tokenId), "$ACTIVE$SEP$tokenHash", ttl)
     }
 
-    override fun find(userId: Long, tokenId: String): RefreshTokenEntry? {
+    override fun find(
+        userId: Long,
+        tokenId: String,
+    ): RefreshTokenEntry? {
         val raw = redisTemplate.opsForValue().get(key(userId, tokenId)) ?: return null
         val parts = raw.split(SEP)
         return when (parts.firstOrNull()) {
-            ACTIVE -> RefreshTokenEntry.Active(parts[1])
-            ROTATED -> RefreshTokenEntry.Rotated(
-                RefreshTokenRef(
-                    tokenId = parts[1],
-                    issuedAt = Instant.ofEpochSecond(parts[2].toLong()),
-                    expiresAt = Instant.ofEpochSecond(parts[3].toLong()),
-                ),
-            )
-            else -> null
+            ACTIVE -> {
+                RefreshTokenEntry.Active(parts[1])
+            }
+
+            ROTATED -> {
+                RefreshTokenEntry.Rotated(
+                    RefreshTokenRef(
+                        tokenId = parts[1],
+                        issuedAt = Instant.ofEpochSecond(parts[2].toLong()),
+                        expiresAt = Instant.ofEpochSecond(parts[3].toLong()),
+                    ),
+                )
+            }
+
+            else -> {
+                null
+            }
         }
     }
 
-    override fun markRotated(userId: Long, tokenId: String, successor: RefreshTokenRef, grace: Duration) {
+    override fun markRotated(
+        userId: Long,
+        tokenId: String,
+        successor: RefreshTokenRef,
+        grace: Duration,
+    ) {
         redisTemplate.opsForValue().set(
             key(userId, tokenId),
             "$ROTATED$SEP${successor.tokenId}$SEP${successor.issuedAt.epochSecond}$SEP${successor.expiresAt.epochSecond}",
@@ -49,19 +69,30 @@ class RedisRefreshTokenStoreAdapter(
         )
     }
 
-    override fun delete(userId: Long, tokenId: String) {
+    override fun delete(
+        userId: Long,
+        tokenId: String,
+    ) {
         redisTemplate.delete(key(userId, tokenId))
     }
 
     override fun deleteAll(userId: Long) {
-        val options = ScanOptions.scanOptions().match("$PREFIX$userId:*").count(SCAN_COUNT).build()
+        val options =
+            ScanOptions
+                .scanOptions()
+                .match("$PREFIX$userId:*")
+                .count(SCAN_COUNT)
+                .build()
         redisTemplate.scan(options).use { cursor ->
             val keys = cursor.asSequence().toList()
             if (keys.isNotEmpty()) redisTemplate.delete(keys)
         }
     }
 
-    private fun key(userId: Long, tokenId: String) = "$PREFIX$userId:$tokenId"
+    private fun key(
+        userId: Long,
+        tokenId: String,
+    ) = "$PREFIX$userId:$tokenId"
 
     companion object {
         private const val PREFIX = "refresh:"
