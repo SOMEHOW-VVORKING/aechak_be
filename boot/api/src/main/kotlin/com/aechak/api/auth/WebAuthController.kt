@@ -2,7 +2,6 @@ package com.aechak.api.auth
 
 import com.aechak.api.auth.response.WebTokenResponse
 import com.aechak.application.auth.error.AuthErrorCode
-import com.aechak.application.auth.service.TokenPolicy
 import com.aechak.application.auth.usecase.LogoutUseCase
 import com.aechak.application.auth.usecase.TokenRefreshUseCase
 import com.aechak.application.auth.usecase.WebLoginUseCase
@@ -11,10 +10,8 @@ import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.social.enums.SocialProvider
 import com.aechak.webcommon.response.ApiResponse
 import jakarta.servlet.http.HttpServletRequest
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
-import org.springframework.http.ResponseCookie
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.CookieValue
 import org.springframework.web.bind.annotation.GetMapping
@@ -25,10 +22,10 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.util.UriComponentsBuilder
 import java.net.URI
-import java.time.Duration
 
 /**
- * 웹(브라우저) 채널 전용 컨트롤러 — 쿠키·리다이렉트라는 브라우저 고유물이 이 파일에 격리된다.
+ * 웹(브라우저) 채널 전용 컨트롤러 — 쿠키·리다이렉트라는 브라우저 고유물이 웹 채널에 격리된다
+ * (쿠키 속성 정책은 RefreshCookieFactory 소유).
  * body 채널(AuthController)과 엔드포인트를 분리한 이유: 요청/응답 형태가 채널별로 하나로 고정되어
  * "어느 모드인지" 판별 로직 자체가 필요 없어진다.
  *
@@ -40,8 +37,7 @@ class WebAuthController(
     private val webLoginUseCase: WebLoginUseCase,
     private val tokenRefreshUseCase: TokenRefreshUseCase,
     private val logoutUseCase: LogoutUseCase,
-    private val tokenPolicy: TokenPolicy,
-    @param:Value("\${api.base-path}") private val basePath: String,
+    private val refreshCookieFactory: RefreshCookieFactory,
 ) {
 
     /** 웹 로그인 진입 — provider authorize 화면으로 302. FE는 이 주소로 이동만 하면 된다. */
@@ -82,7 +78,7 @@ class WebAuthController(
         val response = ResponseEntity.status(HttpStatus.FOUND).location(URI.create(redirect))
         if (completion is WebLoginCompletion.Success) {
             // access는 여기 실을 수 없다(수신자 없음·URL은 유출면) — FE가 복귀 후 /auth/web/refresh로 수령
-            response.header(HttpHeaders.SET_COOKIE, refreshCookie(completion.refreshToken, request).toString())
+            response.header(HttpHeaders.SET_COOKIE, refreshCookieFactory.issue(completion.refreshToken, request).toString())
         }
         return response.build()
     }
@@ -90,51 +86,29 @@ class WebAuthController(
     /** 세션 복원·갱신 — 빈 body, 쿠키가 자격증명. 새 refresh는 다시 Set-Cookie로(회전 = 쿠키 교체). */
     @PostMapping("/web/refresh")
     fun refresh(
-        @CookieValue(REFRESH_COOKIE, required = false) refreshToken: String?,
+        @CookieValue(RefreshCookieFactory.REFRESH_COOKIE, required = false) refreshToken: String?,
         request: HttpServletRequest,
     ): ResponseEntity<ApiResponse<WebTokenResponse>> {
         if (refreshToken == null) throw BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN)
         val result = tokenRefreshUseCase.refresh(refreshToken)
         return ResponseEntity.ok()
-            .header(HttpHeaders.SET_COOKIE, refreshCookie(result.refreshToken, request).toString())
+            .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.issue(result.refreshToken, request).toString())
             .body(ApiResponse.of(WebTokenResponse.from(result)))
     }
 
     /** 로그아웃 — 서버 세션 폐기 + 쿠키 파기. 쿠키 없으면 이미 로그아웃 상태라 그대로 204(멱등). */
     @PostMapping("/web/logout")
     fun logout(
-        @CookieValue(REFRESH_COOKIE, required = false) refreshToken: String?,
+        @CookieValue(RefreshCookieFactory.REFRESH_COOKIE, required = false) refreshToken: String?,
         request: HttpServletRequest,
     ): ResponseEntity<Void> {
         refreshToken?.let(logoutUseCase::logout)
         return ResponseEntity.noContent()
-            .header(HttpHeaders.SET_COOKIE, expiredCookie(request).toString())
+            .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.expire(request).toString())
             .build()
     }
-
-    private fun refreshCookie(value: String, request: HttpServletRequest): ResponseCookie =
-        cookieBuilder(value, request).maxAge(tokenPolicy.refreshTtl).build()
-
-    private fun expiredCookie(request: HttpServletRequest): ResponseCookie =
-        cookieBuilder("", request).maxAge(Duration.ZERO).build()
-
-    /**
-     * Path를 auth 계열로 한정 — 이 쿠키는 다른 API 호출에는 아예 실리지 않는다(노출면 축소).
-     * Secure는 요청 스킴 기반 자동 — local(http)은 off, prod(https)는 on.
-     * prod에서 TLS가 LB에서 종료되면 forward-headers 설정이 전제(배포 체크리스트).
-     */
-    private fun cookieBuilder(value: String, request: HttpServletRequest): ResponseCookie.ResponseCookieBuilder =
-        ResponseCookie.from(REFRESH_COOKIE, value)
-            .httpOnly(true)
-            .secure(request.isSecure)
-            .sameSite("Lax")
-            .path("$basePath/auth")
 
     private fun parseProvider(raw: String): SocialProvider =
         runCatching { SocialProvider.valueOf(raw.uppercase()) }
             .getOrElse { throw BusinessException(AuthErrorCode.UNSUPPORTED_PROVIDER) }
-
-    companion object {
-        const val REFRESH_COOKIE = "refresh_token"
-    }
 }
