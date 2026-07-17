@@ -42,7 +42,7 @@ class SecurityConfig {
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
                 it
-                    .requestMatchers("/actuator/health") // ALB 헬스체크 — 익명 호출이라 열어야 함. 안 열면 401로 배포가 롤백됨
+                    .requestMatchers("/actuator/health")
                     .permitAll()
                     .requestMatchers("$basePath/auth/login/**", "$basePath/auth/token/refresh")
                     .permitAll()
