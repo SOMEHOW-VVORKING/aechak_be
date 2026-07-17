@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-dev # 자동 배포와 같은 그룹 — 동시에 ECS를 건드리지 않게 직렬화
+  group: deploy-dev-api # 호출자(deploy-dev)와 같은 그룹이면 부모-자식 상호대기 데드락 — 실제 배포는 전부 이 그룹을 지나므로 직렬화는 유지
   cancel-in-progress: false
 
 jobs:
