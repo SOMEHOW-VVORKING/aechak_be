@@ -1,8 +1,10 @@
 package com.aechak.domain.review.report
 
 import com.aechak.common.error.BusinessException
-import com.aechak.domain.review.review.Review
 import com.aechak.domain.review.error.ReviewErrorCode
+import com.aechak.domain.review.report.enums.ReviewReportReason
+import com.aechak.domain.review.report.enums.ReviewReportStatus
+import com.aechak.domain.review.review.Review
 import com.aechak.domain.support.AggregateRoot
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -15,8 +17,6 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import com.aechak.domain.review.report.enums.ReviewReportStatus
-import com.aechak.domain.review.report.enums.ReviewReportReason
 
 @Entity
 @Table(name = "review_reports")
@@ -31,7 +31,6 @@ class ReviewReport protected constructor(
     @Column(length = 500)
     val reasonText: String?,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L

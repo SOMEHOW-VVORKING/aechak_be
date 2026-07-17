@@ -1,5 +1,6 @@
-package com.aechak.application.seller.service
+package com.aechak.application.seller.facade
 
+import com.aechak.application.seller.service.SellerService
 import com.aechak.application.seller.usecase.SellerUseCase
 import org.springframework.stereotype.Service
 

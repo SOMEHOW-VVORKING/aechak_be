@@ -1,4 +1,3 @@
 package com.aechak.domain.order.group.repository
 
-interface OrderGroupRepository {
-}
+interface OrderGroupRepository

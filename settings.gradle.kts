@@ -26,10 +26,13 @@ include(
     "common", "web-common",
     "domain", "application",
     "api", "batch",                          // admin — MVP 제외, 필요 시점에 생성
-    "jpa-persistence", "pg-client",     // kafka·redis는 어댑터 코드가 생길 때 하위 모듈 추가
+    "jpa-persistence", "pg-client",          // kafka는 어댑터 코드가 생길 때 하위 모듈 추가
+    "social-client", "redis",                // 소셜 로그인(ACC-01): id_token 검증 / refresh token 저장
 )
 
 project(":api").projectDir = file("boot/api")
 project(":batch").projectDir = file("boot/batch")
 project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
 project(":pg-client").projectDir = file("infra/client/pg-client")
+project(":social-client").projectDir = file("infra/client/social-client")
+project(":redis").projectDir = file("infra/redis")

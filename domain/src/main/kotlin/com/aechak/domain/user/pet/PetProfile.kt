@@ -3,6 +3,9 @@ package com.aechak.domain.user.pet
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.support.BaseEntity
 import com.aechak.domain.user.error.UserErrorCode
+import com.aechak.domain.user.pet.enums.PetStatus
+import com.aechak.domain.user.pet.enums.Species
+import com.aechak.domain.user.user.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -16,9 +19,6 @@ import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.Version
 import java.math.BigDecimal
-import com.aechak.domain.user.pet.enums.Species
-import com.aechak.domain.user.pet.enums.PetStatus
-import com.aechak.domain.user.user.User
 
 @Entity
 @Table(name = "pet_profiles")
@@ -32,7 +32,6 @@ class PetProfile protected constructor(
     profileImageKey: String?,
     isPrimary: Boolean,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -84,7 +83,6 @@ class PetProfile protected constructor(
     fun delete() {
         status = PetStatus.DELETED
     }
-
 
     companion object {
         fun register(

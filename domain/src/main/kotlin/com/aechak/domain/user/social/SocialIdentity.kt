@@ -1,6 +1,8 @@
 package com.aechak.domain.user.social
 
 import com.aechak.domain.support.BaseEntity
+import com.aechak.domain.user.social.enums.SocialProvider
+import com.aechak.domain.user.user.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -13,8 +15,6 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
-import com.aechak.domain.user.social.enums.SocialProvider
-import com.aechak.domain.user.user.User
 
 @Entity
 @Table(
@@ -30,7 +30,6 @@ class SocialIdentity protected constructor(
     email: String?,
     refreshTokenEnc: ByteArray?,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -54,6 +53,20 @@ class SocialIdentity protected constructor(
     var refreshTokenEnc: ByteArray? = refreshTokenEnc
         protected set
 
+    /** 소셜 이메일 동기화 — id_token의 email claim이 바뀌었을 때만 갱신. */
+    fun updateEmail(email: String?) {
+        if (email != null && email != this.email) this.email = email
+    }
+
+    /** provider refresh token(AES-256 암호문) 저장·갱신 — 탈퇴 시 revoke용. */
+    fun renewRefreshToken(encrypted: ByteArray) {
+        refreshTokenEnc = encrypted
+    }
+
+    /** revoke 완료 후 폐기. */
+    fun clearRefreshToken() {
+        refreshTokenEnc = null
+    }
 
     companion object {
         fun link(

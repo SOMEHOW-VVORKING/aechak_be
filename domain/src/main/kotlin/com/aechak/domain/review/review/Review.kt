@@ -2,6 +2,7 @@ package com.aechak.domain.review.review
 
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.review.error.ReviewErrorCode
+import com.aechak.domain.review.review.enums.ReviewStatus
 import com.aechak.domain.support.AggregateRoot
 import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
@@ -15,7 +16,6 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.OneToMany
 import jakarta.persistence.Table
 import java.time.LocalDateTime
-import com.aechak.domain.review.review.enums.ReviewStatus
 
 @Entity
 @Table(name = "reviews")
@@ -27,7 +27,6 @@ class Review protected constructor(
     rating: Int,
     content: String,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L

@@ -14,6 +14,11 @@ abstract class AggregateRoot : BaseEntity() {
     private val _events = mutableListOf<Any>()
     val events: List<Any> get() = _events.toList()
 
-    protected fun registerEvent(event: Any) { _events += event }
-    fun clearEvents() { _events.clear() }
+    protected fun registerEvent(event: Any) {
+        _events += event
+    }
+
+    fun clearEvents() {
+        _events.clear()
+    }
 }

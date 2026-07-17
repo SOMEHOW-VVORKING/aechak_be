@@ -10,7 +10,6 @@ import com.github.f4b6a3.ulid.UlidCreator
  * 라이브러리 직접 호출을 엔티티에 흩뿌리지 않기 위한 격리 지점 — 교체·모킹은 이 파일만 건드린다.
  */
 object Ulid {
-
     const val LENGTH = 26
 
     fun generate(): String = UlidCreator.getUlid().toString()

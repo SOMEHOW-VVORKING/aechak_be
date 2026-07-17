@@ -25,3 +25,32 @@ management:
     redis:
       enabled: false # Redis 장애로 앱 전체가 unhealthy 판정되는 것 방지
 
+# Redis는 자동 구성 기본값(localhost:6379) — 커넥션은 lazy라 서버 없이도 기동된다
+# datasource는 프로파일 yml 소유 (dev=ECS 주입, local=docker compose)
+
+api:
+  base-path: /api/v1         # 컨트롤러 접두(WebConfig)·Security 매처·온보딩 화이트리스트가 함께 참조
+
+auth:
+  token:
+    access-ttl: 30m          # 수치 팀 미확정 — 기본 제안값
+    refresh-ttl: 30d
+    rotation-grace: 60s
+  jwt:
+    # RS256 PEM — prod는 SSM(/aechak/{env}/auth/jwt-private-key) 주입, local은 .env.
+    # 비워두면 개발용 임시 키 생성(재시작 시 기존 토큰 전부 무효 — local 한정).
+    private-key: ""
+    public-key: ""
+  social:
+    providers:
+      kakao:
+        jwks-uri: https://kauth.kakao.com/.well-known/jwks.json
+        issuer: https://kauth.kakao.com
+        token-uri: https://kauth.kakao.com/oauth/token   # 웹(JS SDK) 채널 code 교환용
+        client-id: ""        # 카카오 REST API 키 — code 교환에 사용 (비면 code 채널 비활성)
+        audiences: []        # 채널별 키 병기: 네이티브 앱 키 + REST/JS 키 (비면 aud 검증 생략)
+      apple:
+        jwks-uri: https://appleid.apple.com/auth/keys
+        issuer: https://appleid.apple.com
+        audiences: []        # 채널별 키 병기: iOS 번들 ID + 웹(SIWA JS) Services ID
+# PENDING_ONBOARDING 허용 경로는 UserStatusFilter.ONBOARDING_ALLOWED_PATHS 상수로 관리(인가 규칙이라 설정이 아닌 코드 소유)

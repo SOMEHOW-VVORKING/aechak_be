@@ -4,10 +4,14 @@ dependencies {
     implementation(project(":web-common"))
     implementation(project(":application"))
     implementation(project(":jpa-persistence"))         // 도메인 포트의 구현체 조립. 다른 infra 모듈도 어댑터가 생기면 여기 추가
+    implementation(project(":social-client"))           // 소셜 id_token 검증 어댑터(ACC-01)
+    implementation(project(":redis"))                   // refresh token 저장소 어댑터(ACC-01)
     implementation(kotlin("reflect"))                   // Spring(Data)의 Kotlin 리플렉션 지원에 런타임 필수
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.validation) // Request dto의 @Valid 형식 검증
     implementation(libs.spring.boot.starter.data.jpa)   // JPA 자동 구성 — persistence 모듈의 리포지토리 활성화
+    implementation(libs.spring.boot.starter.oauth2.resource.server) // 자체 RS256 토큰 검증 필터 + JwtEncoder/Decoder
+    implementation(libs.spring.boot.starter.data.redis) // Redis 자동 구성 — :redis 어댑터의 커넥션 제공
     implementation(libs.springdoc.webmvc.ui)            // OpenAPI 3 문서 + Swagger UI
     implementation(libs.spring.boot.starter.actuator)   // ALB 헬스체크 /actuator/health — ECS 롤링·롤백의 생사판단 기준 (health만 노출)
     implementation(platform(libs.spring.cloud.aws.bom)) // Spring Cloud AWS 계열 버전 정렬 — 개별 버전 지정 시 SDK 버전 충돌

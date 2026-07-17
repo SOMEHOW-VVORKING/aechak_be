@@ -6,7 +6,6 @@ import kotlin.test.assertTrue
 
 /** 파사드 계약 테스트 — 스펙 정합(비트 연산)은 ulid-creator가 보증하므로 형식·유일성만 고정한다. */
 class UlidTest {
-
     @Test
     fun `길이 26·Crockford 알파벳만 사용한다`() {
         repeat(1_000) {

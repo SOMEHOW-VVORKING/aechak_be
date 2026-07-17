@@ -1,6 +1,9 @@
 package com.aechak.domain.user.privacy
 
 import com.aechak.domain.support.BaseEntity
+import com.aechak.domain.user.privacy.enums.AnonymizationStatus
+import com.aechak.domain.user.privacy.enums.AnonymizationTargetType
+import com.aechak.domain.user.user.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -13,9 +16,6 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import java.time.LocalDateTime
-import com.aechak.domain.user.privacy.enums.AnonymizationTargetType
-import com.aechak.domain.user.privacy.enums.AnonymizationStatus
-import com.aechak.domain.user.user.User
 
 @Entity
 @Table(name = "anonymization_tasks")
@@ -23,7 +23,6 @@ class AnonymizationTask protected constructor(
     user: User,
     targetType: AnonymizationTargetType,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -49,9 +48,10 @@ class AnonymizationTask protected constructor(
     var nextRetryAt: LocalDateTime? = null
         protected set
 
-
     companion object {
-        fun create(user: User, targetType: AnonymizationTargetType): AnonymizationTask =
-            AnonymizationTask(user, targetType)
+        fun create(
+            user: User,
+            targetType: AnonymizationTargetType,
+        ): AnonymizationTask = AnonymizationTask(user, targetType)
     }
 }

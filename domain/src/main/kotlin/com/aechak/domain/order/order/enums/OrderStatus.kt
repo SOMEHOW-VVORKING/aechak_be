@@ -18,15 +18,17 @@ enum class OrderStatus {
 
     fun canCancel(): Boolean = this in CANCELLABLE
 
-    fun canTransitionTo(next: OrderStatus): Boolean = next in when (this) {
-        PENDING_PAYMENT -> setOf(PAID, CANCELLED)
-        PAID -> setOf(PREPARING, CANCELLED)
-        PREPARING -> setOf(DISPATCH_PENDING, CANCELLED)
-        DISPATCH_PENDING -> setOf(SHIPPING, CANCELLED)
-        SHIPPING -> setOf(DELIVERED)
-        DELIVERED -> setOf(PURCHASE_CONFIRMED)
-        PURCHASE_CONFIRMED, CANCELLED -> emptySet()
-    }
+    fun canTransitionTo(next: OrderStatus): Boolean =
+        next in
+            when (this) {
+                PENDING_PAYMENT -> setOf(PAID, CANCELLED)
+                PAID -> setOf(PREPARING, CANCELLED)
+                PREPARING -> setOf(DISPATCH_PENDING, CANCELLED)
+                DISPATCH_PENDING -> setOf(SHIPPING, CANCELLED)
+                SHIPPING -> setOf(DELIVERED)
+                DELIVERED -> setOf(PURCHASE_CONFIRMED)
+                PURCHASE_CONFIRMED, CANCELLED -> emptySet()
+            }
 
     private companion object {
         private val SHIPPED_OR_LATER = setOf(SHIPPING, DELIVERED, PURCHASE_CONFIRMED)
