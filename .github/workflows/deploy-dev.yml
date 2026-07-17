@@ -91,3 +91,4 @@ jobs:
       id-token: write # OIDC 신분증 발급 권한 — 이게 없으면 AWS 인증이 실패함
       contents: read
     uses: ./.github/workflows/deploy-dev-api.yml # 수동 배포와 같은 정의 — 배포 파라미터는 저 파일에만 존재
+    secrets: inherit # 재사용 워크플로는 secrets 자동 상속이 안 됨 — 없으면 role ARN이 빈 값으로 넘어가 AWS 인증 실패

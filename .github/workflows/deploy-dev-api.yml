@@ -21,6 +21,7 @@ jobs:
       id-token: write # OIDC 신분증 발급 권한 — 없으면 AWS 인증 스텝이 실패함
       contents: read
     uses: ./.github/workflows/deploy-module.yml
+    secrets: inherit # 재사용 워크플로는 secrets 자동 상속이 안 됨 — 없으면 role ARN이 빈 값으로 넘어가 AWS 인증 실패
     with:
       module: api
       ecr-repo: aechak-api
