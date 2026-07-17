@@ -40,3 +40,5 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+# 로컬 시크릿(카카오 키·JWT 키) — docker compose와 IDE가 읽는다
+.env

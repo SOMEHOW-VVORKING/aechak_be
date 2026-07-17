@@ -1,0 +1,11 @@
+# 로컬 개발(프로파일 미지정 기본). Redis는 docker compose로 기동한다(compose.yml 참고).
+api:
+  cors-allowed-origins: http://localhost:5175,http://localhost:5173   # web-buyer dev(5175) + 기타 웹 앱
+
+auth:
+  web:
+    # return은 화이트리스트 "정확 일치"만 통과 — 오픈 리다이렉트 방지.
+    return-urls:
+      - http://localhost:5175/login/complete   # web-buyer dev 포트(vite --port 5175)
+      - http://localhost:5173/login/complete
+    callback-base-url: http://localhost:8080/api/v1/auth/callback   # provider 콘솔에 등록하는 주소의 밑동
