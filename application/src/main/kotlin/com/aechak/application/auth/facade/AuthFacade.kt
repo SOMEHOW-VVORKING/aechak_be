@@ -1,5 +1,6 @@
 package com.aechak.application.auth.facade
 
+import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.service.SocialLoginService
 import com.aechak.application.auth.service.TokenService
 import com.aechak.application.auth.service.WebLoginService
@@ -12,7 +13,6 @@ import com.aechak.application.auth.usecase.result.SocialLoginResult
 import com.aechak.application.auth.usecase.result.TokenResult
 import com.aechak.application.auth.usecase.result.WebLoginCompletion
 import com.aechak.common.error.BusinessException
-import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.social.enums.SocialProvider
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
@@ -51,12 +51,12 @@ class AuthFacade(
     override fun completeLogin(provider: SocialProvider, code: String?, state: String): WebLoginCompletion {
         // state 소비 실패 = returnUrl을 모름 → 리다이렉트 불가, 유일하게 직접 400으로 끝나는 실패
         val returnUrl = webLoginService.consumeState(state)
-            ?: throw BusinessException(CommonErrorCode.INVALID_REQUEST)
+            ?: throw BusinessException(AuthErrorCode.INVALID_LOGIN_STATE)
 
         if (code == null) {
             // provider 측 거부(사용자 취소 등) — code 없이 콜백만 옴
             log.warn("웹 로그인 콜백에 code 없음 — provider={} (사용자 취소 또는 provider 거부)", provider)
-            return WebLoginCompletion.Failure(returnUrl, LOGIN_FAILED_CODE)
+            return WebLoginCompletion.Failure(returnUrl, AuthErrorCode.AUTHORIZATION_CODE_MISSING)
         }
 
         return try {
@@ -67,7 +67,7 @@ class AuthFacade(
             // 콜백 응답에는 body 수신자가 없다 — 실패도 (검증된) return으로 실어 보낸다.
             // 예외가 여기서 소멸하므로 원인(cause에 provider 거절 사유 포함)은 이 로그가 유일한 단서다.
             log.warn("웹 로그인 실패 — provider={}, errorCode={}", provider, e.errorCode.code, e)
-            WebLoginCompletion.Failure(returnUrl, e.errorCode.code)
+            WebLoginCompletion.Failure(returnUrl, e.errorCode)
         }
     }
 
@@ -78,9 +78,4 @@ class AuthFacade(
             // 동시 가입 race — 승자의 identity를 새 트랜잭션에서 재조회(폴백)
             loginTx.execute { socialLoginService.login(command) }!!
         }
-
-    companion object {
-        /** 소셜 로그인 실패(20001)와 동일 코드 — 사용자 취소도 "다시 시도" UX로 수렴. */
-        private const val LOGIN_FAILED_CODE = 20001
-    }
 }

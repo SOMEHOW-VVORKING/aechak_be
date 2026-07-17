@@ -1,5 +1,6 @@
 package com.aechak.application.auth.usecase.result
 
+import com.aechak.common.error.ErrorCode
 import com.aechak.domain.user.user.enums.UserStatus
 
 /**
@@ -20,6 +21,7 @@ sealed interface WebLoginCompletion {
 
     data class Failure(
         override val returnUrl: String,
-        val errorCode: Int,
+        /** ?error= 쿼리에는 code만 실린다 — 리다이렉트라 message·status의 수신자가 없다. */
+        val errorCode: ErrorCode,
     ) : WebLoginCompletion
 }

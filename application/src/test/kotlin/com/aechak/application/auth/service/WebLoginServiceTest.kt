@@ -1,9 +1,9 @@
 package com.aechak.application.auth.service
 
+import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.port.AuthorizationCodeExchanger
 import com.aechak.application.auth.port.LoginStateStore
 import com.aechak.common.error.BusinessException
-import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.social.enums.SocialProvider
 import java.time.Duration
 import kotlin.test.Test
@@ -33,7 +33,7 @@ class WebLoginServiceTest {
         val exception = assertFailsWith<BusinessException> {
             service.prepareLogin(SocialProvider.KAKAO, "https://evil-aechak.com/login")
         }
-        assertEquals(CommonErrorCode.INVALID_REQUEST, exception.errorCode)
+        assertEquals(AuthErrorCode.DISALLOWED_RETURN_URL, exception.errorCode)
     }
 
     @Test

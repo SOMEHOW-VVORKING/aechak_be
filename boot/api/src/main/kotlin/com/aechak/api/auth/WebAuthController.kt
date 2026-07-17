@@ -8,7 +8,6 @@ import com.aechak.application.auth.usecase.TokenRefreshUseCase
 import com.aechak.application.auth.usecase.WebLoginUseCase
 import com.aechak.application.auth.usecase.result.WebLoginCompletion
 import com.aechak.common.error.BusinessException
-import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.social.enums.SocialProvider
 import com.aechak.webcommon.response.ApiResponse
 import jakarta.servlet.http.HttpServletRequest
@@ -76,7 +75,7 @@ class WebAuthController(
                     .build().toUriString()
             is WebLoginCompletion.Failure ->
                 UriComponentsBuilder.fromUriString(completion.returnUrl)
-                    .queryParam("error", completion.errorCode)
+                    .queryParam("error", completion.errorCode.code)
                     .build().toUriString()
         }
 
@@ -133,7 +132,7 @@ class WebAuthController(
 
     private fun parseProvider(raw: String): SocialProvider =
         runCatching { SocialProvider.valueOf(raw.uppercase()) }
-            .getOrElse { throw BusinessException(CommonErrorCode.INVALID_REQUEST) }
+            .getOrElse { throw BusinessException(AuthErrorCode.UNSUPPORTED_PROVIDER) }
 
     companion object {
         const val REFRESH_COOKIE = "refresh_token"

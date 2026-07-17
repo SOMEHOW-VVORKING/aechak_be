@@ -1,9 +1,9 @@
 package com.aechak.application.auth.service
 
+import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.port.AuthorizationCodeExchanger
 import com.aechak.application.auth.port.LoginStateStore
 import com.aechak.common.error.BusinessException
-import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.social.enums.SocialProvider
 import org.springframework.stereotype.Service
 import java.security.SecureRandom
@@ -25,7 +25,7 @@ class WebLoginService(
     /** returnUrl은 화이트리스트 **정확 일치**만 통과 — 실패는 400(신뢰 불가 주소로 리다이렉트 금지). */
     fun prepareLogin(provider: SocialProvider, returnUrl: String): String {
         if (returnUrl !in policy.allowedReturnUrls) {
-            throw BusinessException(CommonErrorCode.INVALID_REQUEST)
+            throw BusinessException(AuthErrorCode.DISALLOWED_RETURN_URL)
         }
         val state = generateState()
         loginStateStore.save(state, returnUrl, policy.stateTtl)
