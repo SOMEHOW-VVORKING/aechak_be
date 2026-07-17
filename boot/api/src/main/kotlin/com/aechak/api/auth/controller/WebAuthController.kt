@@ -1,6 +1,7 @@
-package com.aechak.api.auth
+package com.aechak.api.auth.controller
 
 import com.aechak.api.auth.response.WebTokenResponse
+import com.aechak.api.auth.cookie.RefreshCookieFactory
 import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.usecase.LogoutUseCase
 import com.aechak.application.auth.usecase.TokenRefreshUseCase

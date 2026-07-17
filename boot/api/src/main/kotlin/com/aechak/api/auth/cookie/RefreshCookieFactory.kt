@@ -1,4 +1,4 @@
-package com.aechak.api.auth
+package com.aechak.api.auth.cookie
 
 import com.aechak.application.auth.service.TokenPolicy
 import jakarta.servlet.http.HttpServletRequest

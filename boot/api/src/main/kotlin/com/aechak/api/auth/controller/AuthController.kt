@@ -1,4 +1,4 @@
-package com.aechak.api.auth
+package com.aechak.api.auth.controller
 
 import com.aechak.api.auth.request.AppleLoginRequest
 import com.aechak.api.auth.request.KakaoLoginRequest

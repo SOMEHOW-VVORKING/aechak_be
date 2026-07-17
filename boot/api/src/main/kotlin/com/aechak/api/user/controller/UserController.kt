@@ -1,4 +1,4 @@
-package com.aechak.api.user
+package com.aechak.api.user.controller
 
 import com.aechak.api.user.request.RegisterUserRequest
 import com.aechak.api.user.response.UserResponse
