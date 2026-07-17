@@ -15,7 +15,6 @@ class RecommendedKeyword protected constructor(
     sortOrder: Int,
     isActive: Boolean,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -31,7 +30,10 @@ class RecommendedKeyword protected constructor(
         protected set
 
     companion object {
-        fun register(keyword: String, sortOrder: Int, isActive: Boolean = true): RecommendedKeyword =
-            RecommendedKeyword(keyword, sortOrder, isActive)
+        fun register(
+            keyword: String,
+            sortOrder: Int,
+            isActive: Boolean = true,
+        ): RecommendedKeyword = RecommendedKeyword(keyword, sortOrder, isActive)
     }
 }

@@ -1,6 +1,7 @@
 package com.aechak.domain.user.term
 
 import com.aechak.domain.support.BaseEntity
+import com.aechak.domain.user.user.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.FetchType
@@ -10,7 +11,6 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import com.aechak.domain.user.user.User
 
 @Entity
 @Table(name = "consent_records")
@@ -19,7 +19,6 @@ class ConsentRecord protected constructor(
     term: Term,
     isAgreed: Boolean,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -36,7 +35,10 @@ class ConsentRecord protected constructor(
     val isAgreed: Boolean = isAgreed
 
     companion object {
-        fun record(user: User, term: Term, isAgreed: Boolean): ConsentRecord =
-            ConsentRecord(user, term, isAgreed)
+        fun record(
+            user: User,
+            term: Term,
+            isAgreed: Boolean,
+        ): ConsentRecord = ConsentRecord(user, term, isAgreed)
     }
 }

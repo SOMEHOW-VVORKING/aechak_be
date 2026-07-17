@@ -3,6 +3,9 @@ package com.aechak.domain.user.report
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.support.BaseEntity
 import com.aechak.domain.user.error.UserErrorCode
+import com.aechak.domain.user.report.enums.ReportReasonCode
+import com.aechak.domain.user.report.enums.ReportStatus
+import com.aechak.domain.user.user.User
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -14,9 +17,6 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import com.aechak.domain.user.report.enums.ReportStatus
-import com.aechak.domain.user.report.enums.ReportReasonCode
-import com.aechak.domain.user.user.User
 
 @Entity
 @Table(name = "user_reports")
@@ -26,7 +26,6 @@ class UserReport protected constructor(
     reasonCode: ReportReasonCode,
     reasonText: String?,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -50,7 +49,6 @@ class UserReport protected constructor(
     @Column(length = 30, nullable = false)
     var status: ReportStatus = ReportStatus.RECEIVED
         protected set
-
 
     companion object {
         /** 미영속(id=0) 유저 비교 함정 — 영속 유저 전제. */

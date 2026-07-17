@@ -1,5 +1,7 @@
 package com.aechak.domain.seller.seller
 
+import com.aechak.domain.seller.seller.enums.SellerStatus
+import com.aechak.domain.seller.seller.enums.TelesalesNoticeStatus
 import com.aechak.domain.support.AggregateRoot
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -9,8 +11,6 @@ import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.Version
 import java.time.LocalDateTime
-import com.aechak.domain.seller.seller.enums.TelesalesNoticeStatus
-import com.aechak.domain.seller.seller.enums.SellerStatus
 
 @Entity
 @Table(name = "sellers")
@@ -18,7 +18,6 @@ class Seller protected constructor(
     userId: Long,
     baseShippingFee: Long,
 ) : AggregateRoot() {
-
     @Id
     val userId: Long = userId
 
@@ -93,8 +92,9 @@ class Seller protected constructor(
         protected set
 
     companion object {
-        fun open(userId: Long, baseShippingFee: Long): Seller {
-            return Seller(userId, baseShippingFee)
-        }
+        fun open(
+            userId: Long,
+            baseShippingFee: Long,
+        ): Seller = Seller(userId, baseShippingFee)
     }
 }

@@ -1,9 +1,12 @@
 package com.aechak.domain.order.order
 
 import com.aechak.common.error.BusinessException
-import com.aechak.domain.support.Ulid
 import com.aechak.domain.order.error.OrderErrorCode
+import com.aechak.domain.order.group.OrderGroup
+import com.aechak.domain.order.order.enums.ConfirmType
+import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.support.AggregateRoot
+import com.aechak.domain.support.Ulid
 import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -19,9 +22,6 @@ import jakarta.persistence.OneToMany
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
-import com.aechak.domain.order.group.OrderGroup
-import com.aechak.domain.order.order.enums.OrderStatus
-import com.aechak.domain.order.order.enums.ConfirmType
 
 @Entity
 @Table(
@@ -36,7 +36,6 @@ class Order protected constructor(
     allocatedCouponDiscount: Long,
     sellerShippingFee: Long,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -130,10 +129,9 @@ class Order protected constructor(
             allocatedCouponDiscount: Long,
             sellerShippingFee: Long,
             items: List<OrderItem>,
-        ): Order {
-            return Order(orderGroup, sellerId, allocatedCouponDiscount, sellerShippingFee).apply {
+        ): Order =
+            Order(orderGroup, sellerId, allocatedCouponDiscount, sellerShippingFee).apply {
                 items.forEach { _items += it }
             }
-        }
     }
 }

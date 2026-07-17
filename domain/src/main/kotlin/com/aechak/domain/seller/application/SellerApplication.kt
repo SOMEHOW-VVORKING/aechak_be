@@ -1,6 +1,8 @@
 package com.aechak.domain.seller.application
 
 import com.aechak.common.error.BusinessException
+import com.aechak.domain.seller.application.enums.ApplicationStatus
+import com.aechak.domain.seller.application.enums.BusinessType
 import com.aechak.domain.seller.error.SellerErrorCode
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.support.AggregateRoot
@@ -19,8 +21,6 @@ import jakarta.persistence.OneToMany
 import jakarta.persistence.Table
 import jakarta.persistence.Version
 import java.time.LocalDateTime
-import com.aechak.domain.seller.application.enums.BusinessType
-import com.aechak.domain.seller.application.enums.ApplicationStatus
 
 @Entity
 @Table(name = "seller_applications")
@@ -28,7 +28,6 @@ class SellerApplication protected constructor(
     userId: Long?,
     businessType: BusinessType,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -129,7 +128,10 @@ class SellerApplication protected constructor(
         decidedAt = LocalDateTime.now()
     }
 
-    fun reject(reviewerAdminId: Long, reason: String) {
+    fun reject(
+        reviewerAdminId: Long,
+        reason: String,
+    ) {
         requireDecidable()
         if (reason.isBlank()) {
             throw BusinessException(SellerErrorCode.REJECTION_REASON_REQUIRED)
@@ -148,8 +150,9 @@ class SellerApplication protected constructor(
     }
 
     companion object {
-        fun draft(userId: Long?, businessType: BusinessType): SellerApplication {
-            return SellerApplication(userId, businessType)
-        }
+        fun draft(
+            userId: Long?,
+            businessType: BusinessType,
+        ): SellerApplication = SellerApplication(userId, businessType)
     }
 }

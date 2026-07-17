@@ -35,7 +35,6 @@ class OptionCombination protected constructor(
     @Column(length = 255, nullable = false)
     val valueSignature: String,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L

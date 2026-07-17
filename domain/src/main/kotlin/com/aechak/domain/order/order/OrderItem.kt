@@ -1,5 +1,6 @@
 package com.aechak.domain.order.order
 
+import com.aechak.domain.order.order.enums.OrderItemStatus
 import com.aechak.domain.support.BaseEntity
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -9,7 +10,6 @@ import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
-import com.aechak.domain.order.order.enums.OrderItemStatus
 
 @Entity
 @Table(name = "order_items")
@@ -21,7 +21,6 @@ class OrderItem protected constructor(
     discountAllocatedAmount: Long,
     productVersionId: Long,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -57,9 +56,14 @@ class OrderItem protected constructor(
             unitPriceSnapshot: Long,
             discountAllocatedAmount: Long,
             productVersionId: Long,
-        ): OrderItem = OrderItem(
-            productId, optionCombinationId, quantity,
-            unitPriceSnapshot, discountAllocatedAmount, productVersionId,
-        )
+        ): OrderItem =
+            OrderItem(
+                productId,
+                optionCombinationId,
+                quantity,
+                unitPriceSnapshot,
+                discountAllocatedAmount,
+                productVersionId,
+            )
     }
 }

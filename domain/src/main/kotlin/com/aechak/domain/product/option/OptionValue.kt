@@ -14,7 +14,6 @@ class OptionValue protected constructor(
     name: String,
     sortOrder: Int,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -30,6 +29,9 @@ class OptionValue protected constructor(
         protected set
 
     companion object {
-        fun of(name: String, sortOrder: Int): OptionValue = OptionValue(name, sortOrder)
+        fun of(
+            name: String,
+            sortOrder: Int,
+        ): OptionValue = OptionValue(name, sortOrder)
     }
 }

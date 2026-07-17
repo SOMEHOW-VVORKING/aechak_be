@@ -2,6 +2,8 @@ package com.aechak.domain.product.version
 
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.enums.SaleStatus
+import com.aechak.domain.product.version.enums.VersionChangeType
+import com.aechak.domain.product.version.enums.VersionChangedBy
 import com.aechak.domain.support.AggregateRoot
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -14,8 +16,6 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import com.aechak.domain.product.version.enums.VersionChangedBy
-import com.aechak.domain.product.version.enums.VersionChangeType
 
 @Entity
 @Table(name = "product_versions")
@@ -39,7 +39,6 @@ class ProductVersion protected constructor(
     @Column(nullable = false, length = 20)
     val changedBy: VersionChangedBy,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -54,9 +53,16 @@ class ProductVersion protected constructor(
             thumbnailKeySnapshot: String,
             changeType: VersionChangeType,
             changedBy: VersionChangedBy,
-        ): ProductVersion = ProductVersion(
-            product, versionNo, nameSnapshot, priceSnapshot,
-            statusSnapshot, thumbnailKeySnapshot, changeType, changedBy,
-        )
+        ): ProductVersion =
+            ProductVersion(
+                product,
+                versionNo,
+                nameSnapshot,
+                priceSnapshot,
+                statusSnapshot,
+                thumbnailKeySnapshot,
+                changeType,
+                changedBy,
+            )
     }
 }

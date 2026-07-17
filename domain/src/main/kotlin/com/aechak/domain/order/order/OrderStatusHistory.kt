@@ -1,5 +1,7 @@
 package com.aechak.domain.order.order
 
+import com.aechak.domain.order.order.enums.OrderStatus
+import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.support.BaseEntity
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -12,8 +14,6 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
-import com.aechak.domain.order.order.enums.TriggeredBy
-import com.aechak.domain.order.order.enums.OrderStatus
 
 /**
  * [불변식] 이 행은 전이가 일어난 트랜잭션 안에서 동기 insert되어야 한다 — 어기면 createdAt이 실제
@@ -27,7 +27,6 @@ class OrderStatusHistory protected constructor(
     toStatus: OrderStatus,
     triggeredBy: TriggeredBy,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L

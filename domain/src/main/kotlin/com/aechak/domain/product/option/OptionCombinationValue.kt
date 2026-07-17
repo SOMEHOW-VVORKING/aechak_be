@@ -17,7 +17,6 @@ class OptionCombinationValue protected constructor(
     @JoinColumn(name = "option_value_id", nullable = false)
     val optionValue: OptionValue,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L

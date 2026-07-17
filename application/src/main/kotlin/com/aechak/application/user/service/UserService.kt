@@ -1,8 +1,8 @@
 package com.aechak.application.user.service
 
 import com.aechak.common.error.BusinessException
-import com.aechak.domain.user.user.User
 import com.aechak.domain.user.error.UserErrorCode
+import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.repository.UserRepository
 import org.springframework.stereotype.Service
 
@@ -15,9 +15,11 @@ import org.springframework.stereotype.Service
 class UserService(
     private val userRepository: UserRepository,
 ) {
-
     /** 조회 실패는 BusinessException + 도메인 ErrorCode로 던진다. */
     fun getById(userId: Long): User =
         userRepository.findById(userId)
             ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+
+    /** 소셜 가입 — 프로필 없는 PENDING_ONBOARDING 계정 생성. */
+    fun registerFromSocial(): User = userRepository.save(User.preRegister())
 }

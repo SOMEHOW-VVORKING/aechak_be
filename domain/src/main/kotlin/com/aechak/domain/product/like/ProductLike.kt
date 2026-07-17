@@ -25,12 +25,14 @@ class ProductLike protected constructor(
     @Column(name = "user_id")
     val userId: Long,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
 
     companion object {
-        fun of(product: Product, userId: Long): ProductLike = ProductLike(product, userId)
+        fun of(
+            product: Product,
+            userId: Long,
+        ): ProductLike = ProductLike(product, userId)
     }
 }

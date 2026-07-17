@@ -8,7 +8,7 @@ package com.aechak.application.user.usecase.query
  * - 쓰기 입력(Command)과 섞지 않는다 — 쓰기는 Command, 조회는 Query로 분리.
  */
 data class UserSearchQuery(
-    val nickname: String? = null,    // 옵셔널 필터
+    val nickname: String? = null, // 옵셔널 필터
     val page: Int = 0,
     val size: Int = 20,
 )

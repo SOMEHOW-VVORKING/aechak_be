@@ -13,7 +13,6 @@ class ProductStats protected constructor(
     @Id
     val productId: Long,
 ) : AggregateRoot() {
-
     // 카운터·평점 집계는 저장소 조건부 원자 UPDATE로만 갱신, 쿼리에 updated_at = NOW() 동반 SET.
     var reviewCount: Int = 0
         protected set

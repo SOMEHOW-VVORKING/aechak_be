@@ -12,7 +12,6 @@ import org.springframework.context.annotation.Configuration
  */
 @Configuration(proxyBeanMethods = false)
 class OpenApiConfig {
-
     @Bean
     fun openAPI(): OpenAPI =
         OpenAPI().info(
