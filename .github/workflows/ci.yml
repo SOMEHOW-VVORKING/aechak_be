@@ -14,6 +14,16 @@ concurrency:
   cancel-in-progress: true # 같은 PR에 연속 푸시 시 이전 실행 취소 — 최신 커밋만 검증하면 충분
 
 jobs:
+  # 워크플로 파일 정적검사 — 스키마·표현식·셸 오류를 PR에서 차단
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color -ignore SC2016
+
   # terraform은 apply가 develop 머지 후 자동으로 나가므로(deploy-dev.yml), PR 단계에서 문법·형식을 먼저 거른다
   terraform:
     runs-on: ubuntu-latest
