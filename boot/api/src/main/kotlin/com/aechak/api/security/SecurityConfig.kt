@@ -53,6 +53,13 @@ class SecurityConfig {
                     "$basePath/auth/web/refresh",   // 쿠키 채널 갱신 (쿠키가 자격증명)
                     "$basePath/auth/web/logout",    // 쿠키 채널 로그아웃 (쿠키가 자격증명, 멱등)
                 ).permitAll()
+                    .requestMatchers(
+                        // springdoc — 접두(api.base-path) 미부착 경로(우리 컨트롤러가 아님)
+                        "/swagger-ui.html",      // 진입점 (실제론 /swagger-ui/index.html로 redirect)
+                        "/swagger-ui/**",        // UI 정적 리소스 (JS/CSS)
+                        "/v3/api-docs",          // OpenAPI JSON 본체
+                        "/v3/api-docs/**",       // swagger-config, 그룹별 스펙 등
+                    ).permitAll()
                     .anyRequest().authenticated()
             }
             .oauth2ResourceServer { resourceServer ->
