@@ -1,4 +1,18 @@
-# 로컬 개발(프로파일 미지정 기본). Redis는 docker compose로 기동한다(compose.yml 참고).
+# 로컬 개발 — MySQL·Redis는 docker compose로 기동
+# 기본값 = compose 표준값. 개인 오버라이드·로컬 비밀은 IntelliJ Run Config의 환경변수로 주입 (env가 기본값을 이김)
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/aechak}
+    username: ${SPRING_DATASOURCE_USERNAME:app}
+    password: ${SPRING_DATASOURCE_PASSWORD:local}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  jpa:
+    hibernate:
+      ddl-auto: update
+
 api:
   cors-allowed-origins: http://localhost:5175,http://localhost:5173   # web-buyer dev(5175) + 기타 웹 앱
 

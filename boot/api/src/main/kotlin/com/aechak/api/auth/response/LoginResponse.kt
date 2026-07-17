@@ -8,8 +8,14 @@ data class LoginResponse(
     val refreshToken: String,
     val tokenType: String,
     val expiresIn: Long,
-    val user: LoginUserResponse,
+    val user: User,
 ) {
+    data class User(
+        /** PENDING_ONBOARDING이면 FE가 온보딩(약관·닉네임)으로 라우팅한다. */
+        val status: String,
+        val isNew: Boolean,
+    )
+
     companion object {
         fun from(result: SocialLoginResult): LoginResponse {
             val tokens = TokenPairResponse.from(result.tokens)
@@ -18,7 +24,7 @@ data class LoginResponse(
                 refreshToken = tokens.refreshToken,
                 tokenType = tokens.tokenType,
                 expiresIn = tokens.expiresIn,
-                user = LoginUserResponse(result.userStatus.name, result.isNew),
+                user = User(result.userStatus.name, result.isNew),
             )
         }
     }

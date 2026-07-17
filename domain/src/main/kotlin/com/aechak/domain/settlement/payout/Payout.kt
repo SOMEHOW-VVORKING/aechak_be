@@ -1,6 +1,7 @@
 package com.aechak.domain.settlement.payout
 
 import com.aechak.domain.settlement.batch.SettlementExecutionBatch
+import com.aechak.domain.settlement.payout.enums.PayoutStatus
 import com.aechak.domain.support.AggregateRoot
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -15,7 +16,6 @@ import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
-import com.aechak.domain.settlement.payout.enums.PayoutStatus
 
 @Entity
 @Table(
@@ -28,7 +28,6 @@ class Payout protected constructor(
     settlementTargetAmount: Long,
     transferKey: String,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -69,13 +68,12 @@ class Payout protected constructor(
             sellerId: Long,
             settlementTargetAmount: Long,
             transferKey: String,
-        ): Payout {
-            return Payout(
+        ): Payout =
+            Payout(
                 batch = batch,
                 sellerId = sellerId,
                 settlementTargetAmount = settlementTargetAmount,
                 transferKey = transferKey,
             )
-        }
     }
 }

@@ -1,6 +1,7 @@
 package com.aechak.domain.seller.application
 
 import com.aechak.common.error.BusinessException
+import com.aechak.domain.seller.application.enums.ReviewDecision
 import com.aechak.domain.seller.error.SellerErrorCode
 import com.aechak.domain.support.BaseEntity
 import jakarta.persistence.Column
@@ -11,7 +12,6 @@ import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
-import com.aechak.domain.seller.application.enums.ReviewDecision
 
 @Entity
 @Table(name = "application_reviews")
@@ -20,7 +20,6 @@ class ApplicationReview protected constructor(
     decision: ReviewDecision,
     rejectionReason: String?,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -36,10 +35,12 @@ class ApplicationReview protected constructor(
     val rejectionReason: String? = rejectionReason
 
     companion object {
-        fun approved(reviewerAdminId: Long): ApplicationReview =
-            ApplicationReview(reviewerAdminId, ReviewDecision.APPROVED, null)
+        fun approved(reviewerAdminId: Long): ApplicationReview = ApplicationReview(reviewerAdminId, ReviewDecision.APPROVED, null)
 
-        fun rejected(reviewerAdminId: Long, rejectionReason: String): ApplicationReview {
+        fun rejected(
+            reviewerAdminId: Long,
+            rejectionReason: String,
+        ): ApplicationReview {
             if (rejectionReason.isBlank()) {
                 throw BusinessException(SellerErrorCode.REJECTION_REASON_REQUIRED)
             }

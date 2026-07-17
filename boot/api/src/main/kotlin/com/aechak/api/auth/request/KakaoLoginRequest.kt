@@ -23,10 +23,11 @@ data class KakaoLoginRequest(
     val redirectUriPresentForCode: Boolean
         get() = code == null || redirectUri != null
 
-    fun toCommand() = SocialLoginCommand(
-        provider = SocialProvider.KAKAO,
-        idToken = idToken,
-        code = code,
-        redirectUri = redirectUri,
-    )
+    fun toCommand() =
+        SocialLoginCommand(
+            provider = SocialProvider.KAKAO,
+            idToken = idToken,
+            code = code,
+            redirectUri = redirectUri,
+        )
 }

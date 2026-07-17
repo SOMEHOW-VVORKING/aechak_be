@@ -15,24 +15,26 @@ import kotlin.test.assertTrue
 
 /** 서버 콜백 로그인의 앞단 로직 검증 — 화이트리스트 정확 일치·state 1회성·콜백 URI 일관성. */
 class WebLoginServiceTest {
-
     private val stateStore = FakeLoginStateStore()
     private val exchanger = FakeExchanger()
-    private val service = WebLoginService(
-        loginStateStore = stateStore,
-        authorizationCodeExchanger = exchanger,
-        policy = WebLoginPolicy(
-            allowedReturnUrls = setOf(RETURN_URL),
-            callbackBaseUrl = "http://localhost:8080/api/v1/auth/callback",
-            stateTtl = Duration.ofMinutes(5),
-        ),
-    )
+    private val service =
+        WebLoginService(
+            loginStateStore = stateStore,
+            authorizationCodeExchanger = exchanger,
+            policy =
+                WebLoginPolicy(
+                    allowedReturnUrls = setOf(RETURN_URL),
+                    callbackBaseUrl = "http://localhost:8080/api/v1/auth/callback",
+                    stateTtl = Duration.ofMinutes(5),
+                ),
+        )
 
     @Test
     fun `화이트리스트에 없는 return은 400으로 거부된다 - 오픈 리다이렉트 방지`() {
-        val exception = assertFailsWith<BusinessException> {
-            service.prepareLogin(SocialProvider.KAKAO, "https://evil-aechak.com/login")
-        }
+        val exception =
+            assertFailsWith<BusinessException> {
+                service.prepareLogin(SocialProvider.KAKAO, "https://evil-aechak.com/login")
+            }
         assertEquals(AuthErrorCode.DISALLOWED_RETURN_URL, exception.errorCode)
     }
 
@@ -87,9 +89,15 @@ class WebLoginServiceTest {
 
 private class FakeLoginStateStore : LoginStateStore {
     private val entries = mutableMapOf<String, String>()
-    override fun save(state: String, returnUrl: String, ttl: Duration) {
+
+    override fun save(
+        state: String,
+        returnUrl: String,
+        ttl: Duration,
+    ) {
         entries[state] = returnUrl
     }
+
     override fun consume(state: String): String? = entries.remove(state)
 }
 
@@ -97,12 +105,20 @@ private class FakeExchanger : AuthorizationCodeExchanger {
     var lastState: String? = null
     var lastRedirectUri: String? = null
 
-    override fun exchange(provider: SocialProvider, code: String, redirectUri: String): String {
+    override fun exchange(
+        provider: SocialProvider,
+        code: String,
+        redirectUri: String,
+    ): String {
         lastRedirectUri = redirectUri
         return "id-token-for-$code"
     }
 
-    override fun buildAuthorizeUrl(provider: SocialProvider, state: String, redirectUri: String): String {
+    override fun buildAuthorizeUrl(
+        provider: SocialProvider,
+        state: String,
+        redirectUri: String,
+    ): String {
         lastState = state
         lastRedirectUri = redirectUri
         return "https://kauth.example/authorize?state=$state&redirect_uri=$redirectUri"

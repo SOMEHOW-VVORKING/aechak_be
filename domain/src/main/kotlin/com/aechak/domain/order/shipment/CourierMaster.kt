@@ -14,7 +14,6 @@ class CourierMaster protected constructor(
     isActive: Boolean,
     trackingFormatPattern: String?,
 ) : AggregateRoot() {
-
     @Id
     @Column(name = "courier_code", length = 30)
     val courierCode: String = courierCode

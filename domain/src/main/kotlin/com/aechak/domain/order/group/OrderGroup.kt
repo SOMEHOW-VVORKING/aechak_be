@@ -1,9 +1,10 @@
 package com.aechak.domain.order.group
 
 import com.aechak.common.error.BusinessException
-import com.aechak.domain.support.Ulid
 import com.aechak.domain.order.error.OrderErrorCode
+import com.aechak.domain.order.group.enums.OrderGroupStatus
 import com.aechak.domain.support.AggregateRoot
+import com.aechak.domain.support.Ulid
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -14,7 +15,6 @@ import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
-import com.aechak.domain.order.group.enums.OrderGroupStatus
 
 @Entity
 @Table(
@@ -32,7 +32,6 @@ class OrderGroup protected constructor(
     finalPaymentAmount: Long,
     idempotencyKey: String,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -107,8 +106,7 @@ class OrderGroup protected constructor(
     @Column(name = "idempotency_key", nullable = false, length = 100)
     val idempotencyKey: String = idempotencyKey
 
-    fun isExpired(now: LocalDateTime = LocalDateTime.now()): Boolean =
-        expiresAt?.isBefore(now) ?: false
+    fun isExpired(now: LocalDateTime = LocalDateTime.now()): Boolean = expiresAt?.isBefore(now) ?: false
 
     fun markPaid() {
         if (status != OrderGroupStatus.PENDING_PAYMENT) {
@@ -125,8 +123,6 @@ class OrderGroup protected constructor(
             totalShippingFee: Long,
             finalPaymentAmount: Long,
             idempotencyKey: String,
-        ): OrderGroup {
-            return OrderGroup(buyerId, usedPoint, totalProductAmount, totalShippingFee, finalPaymentAmount, idempotencyKey)
-        }
+        ): OrderGroup = OrderGroup(buyerId, usedPoint, totalProductAmount, totalShippingFee, finalPaymentAmount, idempotencyKey)
     }
 }

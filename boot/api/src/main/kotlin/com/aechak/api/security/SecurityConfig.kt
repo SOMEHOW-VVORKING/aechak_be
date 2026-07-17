@@ -24,14 +24,13 @@ import tools.jackson.databind.ObjectMapper // Boot 4 = Jackson 3 (com.fasterxml 
  * API 보안 조립: stateless resource server(자체 RS256 JWT 검증) + 상태검증 필터.
  * "누가 무엇을 쓸 수 있나"(permitAll·401·403·상태 게이트)는 전부 이 파일에서 읽히도록 응집한다.
  *
- * - permitAll: 로그인·토큰 갱신만. 로그아웃은 인증 필요.
+ * - permitAll: 로그인·토큰 갱신·actuator health(ALB 헬스체크)만. 로그아웃은 인증 필요.
  * - 401(20005): Security 필터 구간이라 @RestControllerAdvice 밖 — EntryPoint가 직접 실패 봉투를 쓴다.
  * - 403(20006/20007): 서명검증 뒤 UserStatusFilter가 users.status를 조회해 직접 쓴다.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableWebSecurity
 class SecurityConfig {
-
     @Bean
     fun apiFilterChain(
         http: HttpSecurity,
@@ -46,13 +45,14 @@ class SecurityConfig {
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
-                it.requestMatchers(
-                    "$basePath/auth/login/**",      // body 로그인 + 웹 로그인 진입(login/{provider}/redirect)
-                    "$basePath/auth/refresh",       // body 채널 갱신
-                    "$basePath/auth/callback/**",   // provider → 서버 콜백 (state가 방어선)
-                    "$basePath/auth/web/refresh",   // 쿠키 채널 갱신 (쿠키가 자격증명)
-                    "$basePath/auth/web/logout",    // 쿠키 채널 로그아웃 (쿠키가 자격증명, 멱등)
-                ).permitAll()
+                it
+                    .requestMatchers(
+                        "$basePath/auth/login/**",      // body 로그인 + 웹 로그인 진입(login/{provider}/redirect)
+                        "$basePath/auth/refresh",       // body 채널 갱신
+                        "$basePath/auth/callback/**",   // provider → 서버 콜백 (state가 방어선)
+                        "$basePath/auth/web/refresh",   // 쿠키 채널 갱신 (쿠키가 자격증명)
+                        "$basePath/auth/web/logout",    // 쿠키 채널 로그아웃 (쿠키가 자격증명, 멱등)
+                    ).permitAll()
                     .requestMatchers(
                         // springdoc — 접두(api.base-path) 미부착 경로(우리 컨트롤러가 아님)
                         "/swagger-ui.html",      // 진입점 (실제론 /swagger-ui/index.html로 redirect)
@@ -60,13 +60,14 @@ class SecurityConfig {
                         "/v3/api-docs",          // OpenAPI JSON 본체
                         "/v3/api-docs/**",       // swagger-config, 그룹별 스펙 등
                     ).permitAll()
-                    .anyRequest().authenticated()
-            }
-            .oauth2ResourceServer { resourceServer ->
+                    .requestMatchers("/actuator/health")
+                    .permitAll()
+                    .anyRequest()
+                    .authenticated()
+            }.oauth2ResourceServer { resourceServer ->
                 resourceServer.jwt { it.decoder(jwtDecoder) }
                 resourceServer.authenticationEntryPoint(unauthenticatedEntryPoint)
-            }
-            .exceptionHandling { it.authenticationEntryPoint(unauthenticatedEntryPoint) }
+            }.exceptionHandling { it.authenticationEntryPoint(unauthenticatedEntryPoint) }
             .addFilterAfter(
                 UserStatusFilter(userStatusReader, objectMapper, onboardingAllowedPaths(basePath)),
                 BearerTokenAuthenticationFilter::class.java,
@@ -98,13 +99,14 @@ class SecurityConfig {
     fun corsConfigurationSource(
         @Value("\${api.cors-allowed-origins:}") allowedOriginsProperty: String,
     ): CorsConfigurationSource {
-        val config = CorsConfiguration().apply {
-            allowedOrigins = allowedOriginsProperty.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-            allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE")
-            allowedHeaders = listOf("*")
-            allowCredentials = true // 웹 채널 refresh 쿠키 왕복 — FE는 fetch에 credentials:'include'
-            maxAge = 3600 // preflight 캐시(초) — OPTIONS 왕복 절감
-        }
+        val config =
+            CorsConfiguration().apply {
+                allowedOrigins = allowedOriginsProperty.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE")
+                allowedHeaders = listOf("*")
+                allowCredentials = true // 웹 채널 refresh 쿠키 왕복 — FE는 fetch에 credentials:'include'
+                maxAge = 3600 // preflight 캐시(초) — OPTIONS 왕복 절감
+            }
         return UrlBasedCorsConfigurationSource().apply {
             registerCorsConfiguration("/**", config)
         }

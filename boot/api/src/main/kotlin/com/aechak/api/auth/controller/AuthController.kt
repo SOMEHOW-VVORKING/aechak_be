@@ -28,21 +28,28 @@ class AuthController(
     private val tokenRefreshUseCase: TokenRefreshUseCase,
     private val logoutUseCase: LogoutUseCase,
 ) {
-
     @PostMapping("/login/kakao")
-    fun loginKakao(@Valid @RequestBody request: KakaoLoginRequest): ResponseEntity<ApiResponse<LoginResponse>> =
+    fun loginKakao(
+        @Valid @RequestBody request: KakaoLoginRequest,
+    ): ResponseEntity<ApiResponse<LoginResponse>> =
         ResponseEntity.ok(ApiResponse.of(LoginResponse.from(socialLoginUseCase.login(request.toCommand()))))
 
     @PostMapping("/login/apple")
-    fun loginApple(@Valid @RequestBody request: AppleLoginRequest): ResponseEntity<ApiResponse<LoginResponse>> =
+    fun loginApple(
+        @Valid @RequestBody request: AppleLoginRequest,
+    ): ResponseEntity<ApiResponse<LoginResponse>> =
         ResponseEntity.ok(ApiResponse.of(LoginResponse.from(socialLoginUseCase.login(request.toCommand()))))
 
     @PostMapping("/refresh")
-    fun refresh(@Valid @RequestBody request: RefreshTokenRequest): ResponseEntity<ApiResponse<TokenPairResponse>> =
+    fun refresh(
+        @Valid @RequestBody request: RefreshTokenRequest,
+    ): ResponseEntity<ApiResponse<TokenPairResponse>> =
         ResponseEntity.ok(ApiResponse.of(TokenPairResponse.from(tokenRefreshUseCase.refresh(request.refreshToken))))
 
     @PostMapping("/logout")
-    fun logout(@Valid @RequestBody request: LogoutRequest): ResponseEntity<Void> {
+    fun logout(
+        @Valid @RequestBody request: LogoutRequest,
+    ): ResponseEntity<Void> {
         logoutUseCase.logout(request.refreshToken)
         return ResponseEntity.noContent().build()
     }

@@ -11,10 +11,11 @@ import org.springframework.stereotype.Repository
 
 /** Spring Data 인터페이스는 이 모듈 밖으로 노출되지 않는다 — 어댑터의 내부 부품. */
 interface UserJpaRepository : JpaRepository<User, Long> {
-
     /** 인가 상태검증용 프로젝션 — 엔티티(+eager 프로필) 로딩 없이 status만 읽는다. */
     @Query("select u.status from User u where u.id = :id")
-    fun findStatusById(@Param("id") id: Long): UserStatus?
+    fun findStatusById(
+        @Param("id") id: Long,
+    ): UserStatus?
 }
 
 /**
@@ -26,5 +27,6 @@ class UserRepositoryAdapter(
     private val jpaRepository: UserJpaRepository,
 ) : UserRepository {
     override fun findById(id: Long): User? = jpaRepository.findByIdOrNull(id)
+
     override fun save(user: User): User = jpaRepository.save(user)
 }

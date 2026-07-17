@@ -12,6 +12,11 @@ dependencies {
     implementation(libs.spring.boot.starter.data.jpa)   // JPA 자동 구성 — persistence 모듈의 리포지토리 활성화
     implementation(libs.spring.boot.starter.oauth2.resource.server) // 자체 RS256 토큰 검증 필터 + JwtEncoder/Decoder
     implementation(libs.spring.boot.starter.data.redis) // Redis 자동 구성 — :redis 어댑터의 커넥션 제공
-    runtimeOnly(libs.h2)                                // 임시 내장 DB — ERD 확정 시 실 DB로 교체
+    implementation(libs.springdoc.webmvc.ui)            // OpenAPI 3 문서 + Swagger UI
+    implementation(libs.spring.boot.starter.actuator)   // ALB 헬스체크 /actuator/health — ECS 롤링·롤백의 생사판단 기준 (health만 노출)
+    implementation(platform(libs.spring.cloud.aws.bom)) // Spring Cloud AWS 계열 버전 정렬 — 개별 버전 지정 시 SDK 버전 충돌
+    implementation(libs.spring.cloud.aws.starter.parameter.store) // dev 설정을 부팅 시 SSM에서 로드 — import 미선언 프로파일에선 비활성
+    runtimeOnly(libs.mysql.connector.j)                 // 실 DB(MySQL 8.4) 드라이버 — 접속정보는 프로파일/env가 주입
+    testRuntimeOnly(libs.h2)                            // 테스트 전용. 런타임 상주 금지 — dev에서 URL 누락 시 H2로 조용히 폴백해 유령 DB로 서비스하는 사고 차단
     testImplementation(libs.spring.boot.starter.test)  // 컨텍스트 부팅 스모크 테스트(엔티티 스키마 생성 검증)
 }

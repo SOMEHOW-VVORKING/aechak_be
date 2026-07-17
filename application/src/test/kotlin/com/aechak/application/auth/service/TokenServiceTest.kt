@@ -22,19 +22,20 @@ import kotlin.test.assertTrue
 
 /** 회전(rotation)·유예 멱등·재사용 감지 — 포트 뒤 유스케이스 로직 검증(포트 적용 기준의 근거). */
 class TokenServiceTest {
-
     private val store = FakeRefreshTokenStore()
     private val statusReader = FakeUserStatusReader()
-    private val service = TokenService(
-        tokenCodec = FakeTokenCodec(),
-        refreshTokenStore = store,
-        userStatusReader = statusReader,
-        policy = TokenPolicy(
-            accessTtl = Duration.ofMinutes(30),
-            refreshTtl = Duration.ofDays(30),
-            rotationGrace = Duration.ofSeconds(60),
-        ),
-    )
+    private val service =
+        TokenService(
+            tokenCodec = FakeTokenCodec(),
+            refreshTokenStore = store,
+            userStatusReader = statusReader,
+            policy =
+                TokenPolicy(
+                    accessTtl = Duration.ofMinutes(30),
+                    refreshTtl = Duration.ofDays(30),
+                    rotationGrace = Duration.ofSeconds(60),
+                ),
+        )
 
     @Test
     fun `정상 회전 - 새 쌍이 나오고 옛 토큰은 successor를 기록한 유예 상태로 강등된다`() {
@@ -133,15 +134,20 @@ class TokenServiceTest {
 }
 
 /** 상태를 갈아끼울 수 있는 가짜 리더 — 기본 ACTIVE. */
-private class FakeUserStatusReader(var status: UserStatus? = UserStatus.ACTIVE) : UserStatusReader {
+private class FakeUserStatusReader(
+    var status: UserStatus? = UserStatus.ACTIVE,
+) : UserStatusReader {
     override fun statusOf(userId: Long): UserStatus? = status
 }
 
 /** 결정적 인코딩을 흉내 내는 가짜 코덱 — 동일 클레임이면 동일 문자열(멱등 재발급 전제와 동일). */
 private class FakeTokenCodec : TokenCodec {
-
-    override fun encodeAccessToken(userId: Long, role: String, issuedAt: Instant, expiresAt: Instant): String =
-        "access:$userId:$role:${issuedAt.epochSecond}:${expiresAt.epochSecond}"
+    override fun encodeAccessToken(
+        userId: Long,
+        role: String,
+        issuedAt: Instant,
+        expiresAt: Instant,
+    ): String = "access:$userId:$role:${issuedAt.epochSecond}:${expiresAt.epochSecond}"
 
     override fun encodeRefreshToken(
         userId: Long,
@@ -167,20 +173,35 @@ private class FakeTokenCodec : TokenCodec {
 }
 
 private class FakeRefreshTokenStore : RefreshTokenStore {
-
     private val entries = mutableMapOf<Pair<Long, String>, RefreshTokenEntry>()
 
-    override fun save(userId: Long, tokenId: String, tokenHash: String, ttl: Duration) {
+    override fun save(
+        userId: Long,
+        tokenId: String,
+        tokenHash: String,
+        ttl: Duration,
+    ) {
         entries[userId to tokenId] = RefreshTokenEntry.Active(tokenHash)
     }
 
-    override fun find(userId: Long, tokenId: String): RefreshTokenEntry? = entries[userId to tokenId]
+    override fun find(
+        userId: Long,
+        tokenId: String,
+    ): RefreshTokenEntry? = entries[userId to tokenId]
 
-    override fun markRotated(userId: Long, tokenId: String, successor: RefreshTokenRef, grace: Duration) {
+    override fun markRotated(
+        userId: Long,
+        tokenId: String,
+        successor: RefreshTokenRef,
+        grace: Duration,
+    ) {
         entries[userId to tokenId] = RefreshTokenEntry.Rotated(successor)
     }
 
-    override fun delete(userId: Long, tokenId: String) {
+    override fun delete(
+        userId: Long,
+        tokenId: String,
+    ) {
         entries.remove(userId to tokenId)
     }
 
@@ -189,5 +210,8 @@ private class FakeRefreshTokenStore : RefreshTokenStore {
     }
 
     /** TTL 만료 시뮬레이션 — 테스트 전용. */
-    fun expire(userId: Long, tokenId: String) = delete(userId, tokenId)
+    fun expire(
+        userId: Long,
+        tokenId: String,
+    ) = delete(userId, tokenId)
 }

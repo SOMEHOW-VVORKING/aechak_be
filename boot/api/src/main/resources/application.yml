@@ -1,16 +1,32 @@
 spring:
   application:
     name: aechak-api
-  profiles:
-    default: local           # 프로파일 미지정 실행(IDE·bootRun) = local
-  data:
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  cloud:
+    aws:
+      region:
+        static: ap-northeast-2 # 리전 자동탐지 제거 — CI 러너처럼 AWS 설정 없는 환경에선 탐지 실패로 부팅이 깨짐
+
+# ECS 롤링 시 SIGTERM을 받으면 처리 중 요청까지는 끝내고 종료
+server:
+  shutdown: graceful
+
+# ALB 헬스체크용. health 외 엔드포인트는 민감정보라 노출 금지
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never # 상세 상태는 숨김
+  health:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-# TODO: ERD 확정 후 실 DB datasource 설정 — 지금은 내장 H2 자동 구성으로 기동
-# Redis 커넥션은 lazy — 서버 없이도 기동은 되고, 실제 사용(로그인·refresh) 시점에 필요하다
+      enabled: false # Redis 장애로 앱 전체가 unhealthy 판정되는 것 방지
 
 # 이 파일은 전 환경 공통(정책값·불변 엔드포인트)만 담는다.
+# datasource·redis는 프로파일 yml 소유 (dev=SSM 로드, local=docker compose 표준값).
 # 환경마다 달라지는 값(CORS origin, 웹 로그인 return/callback URL, forward-headers)은 application-{profile}.yml로.
 # 시크릿(카카오 REST 키, JWT 키)은 파일에 두지 않고 환경변수로 주입한다 — local은 .env, prod는 SSM.
 

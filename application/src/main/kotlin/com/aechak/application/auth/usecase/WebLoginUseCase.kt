@@ -12,12 +12,19 @@ interface WebLoginUseCase {
      * 로그인 진입 준비: returnUrl 화이트리스트 검증(실패 시 400 — 신뢰 불가 주소로는 리다이렉트 금지)
      * → state 발급·저장 → provider authorize URL 반환.
      */
-    fun prepareLogin(provider: SocialProvider, returnUrl: String): String
+    fun prepareLogin(
+        provider: SocialProvider,
+        returnUrl: String,
+    ): String
 
     /**
      * provider 콜백 처리: state 1회 소비(실패 시 예외 — returnUrl을 모르므로 리다이렉트 불가)
      * → code 교환·로그인. 로그인 실패는 예외가 아니라 Failure로 — 컨트롤러가 return으로 실어 보낸다.
      * code가 null이면 provider 측 거부(사용자 취소 등)로 취급한다.
      */
-    fun completeLogin(provider: SocialProvider, code: String?, state: String): WebLoginCompletion
+    fun completeLogin(
+        provider: SocialProvider,
+        code: String?,
+        state: String,
+    ): WebLoginCompletion
 }

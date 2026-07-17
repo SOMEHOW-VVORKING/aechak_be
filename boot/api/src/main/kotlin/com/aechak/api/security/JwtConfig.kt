@@ -33,17 +33,18 @@ import java.util.Base64
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(AuthTokenProperties::class, JwtKeyProperties::class)
 class JwtConfig {
-
     private val log = LoggerFactory.getLogger(javaClass)
 
     @Bean
-    fun tokenPolicy(props: AuthTokenProperties): TokenPolicy =
-        TokenPolicy(props.accessTtl, props.refreshTtl, props.rotationGrace)
+    fun tokenPolicy(props: AuthTokenProperties): TokenPolicy = TokenPolicy(props.accessTtl, props.refreshTtl, props.rotationGrace)
 
     @Bean
     fun rsaKey(props: JwtKeyProperties): RSAKey =
-        if (props.privateKey.isBlank() || props.publicKey.isBlank()) generateEphemeralKey()
-        else loadFromPem(props)
+        if (props.privateKey.isBlank() || props.publicKey.isBlank()) {
+            generateEphemeralKey()
+        } else {
+            loadFromPem(props)
+        }
 
     @Bean
     fun jwtEncoder(rsaKey: RSAKey): JwtEncoder = NimbusJwtEncoder(ImmutableJWKSet(JWKSet(rsaKey)))
@@ -71,7 +72,8 @@ class JwtConfig {
     private fun generateEphemeralKey(): RSAKey {
         log.warn("auth.jwt 키 미설정 — 개발용 임시 RS256 키를 생성합니다. 재시작 시 기존 토큰이 전부 무효화됩니다.")
         val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
-        return RSAKey.Builder(keyPair.public as RSAPublicKey)
+        return RSAKey
+            .Builder(keyPair.public as RSAPublicKey)
             .privateKey(keyPair.private as RSAPrivateKey)
             .keyID(EPHEMERAL_KEY_ID)
             .build()
@@ -81,7 +83,11 @@ class JwtConfig {
         val keyFactory = KeyFactory.getInstance("RSA")
         val publicKey = keyFactory.generatePublic(X509EncodedKeySpec(decodePem(props.publicKey))) as RSAPublicKey
         val privateKey = keyFactory.generatePrivate(PKCS8EncodedKeySpec(decodePem(props.privateKey))) as RSAPrivateKey
-        return RSAKey.Builder(publicKey).privateKey(privateKey).keyID(CONFIGURED_KEY_ID).build()
+        return RSAKey
+            .Builder(publicKey)
+            .privateKey(privateKey)
+            .keyID(CONFIGURED_KEY_ID)
+            .build()
     }
 
     private fun decodePem(pem: String): ByteArray =
@@ -93,6 +99,7 @@ class JwtConfig {
         const val TOKEN_TYPE_CLAIM = "token_type"
         const val REFRESH_TOKEN_TYPE = "refresh"
         private const val EPHEMERAL_KEY_ID = "local-ephemeral"
+
         // TODO: kid 로테이션 절차 확정 시 설정으로 승격
         private const val CONFIGURED_KEY_ID = "aechak-auth-v1"
     }

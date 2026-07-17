@@ -3,6 +3,15 @@
 // (예외는 jpa-entity의 persistence-api, spring-library의 BOM 두 곳뿐).
 plugins {
     id("org.jetbrains.kotlin.jvm")                    // 버전 없음 — build-logic classpath가 결정
+    id("org.jlleitschuh.gradle.ktlint")               // ktlint 기반 린트/포맷
+}
+
+ktlint {
+    // 래퍼 기본값과 무관하게 코어 버전을 고정한다 — Kotlin 2.2 문법 파싱에 1.7.0+ 필수
+    version.set(
+        extensions.getByType<VersionCatalogsExtension>()
+            .named("libs").findVersion("ktlint").get().requiredVersion,
+    )
 }
 
 kotlin {

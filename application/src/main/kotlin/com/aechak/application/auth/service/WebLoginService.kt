@@ -19,11 +19,13 @@ class WebLoginService(
     private val authorizationCodeExchanger: AuthorizationCodeExchanger,
     private val policy: WebLoginPolicy,
 ) {
-
     private val random = SecureRandom()
 
     /** returnUrl은 화이트리스트 **정확 일치**만 통과 — 실패는 400(신뢰 불가 주소로 리다이렉트 금지). */
-    fun prepareLogin(provider: SocialProvider, returnUrl: String): String {
+    fun prepareLogin(
+        provider: SocialProvider,
+        returnUrl: String,
+    ): String {
         if (returnUrl !in policy.allowedReturnUrls) {
             throw BusinessException(AuthErrorCode.DISALLOWED_RETURN_URL)
         }
@@ -35,12 +37,13 @@ class WebLoginService(
     /** state 1회 소비 — null이면 만료·재사용·위조(returnUrl을 모르므로 호출부는 직접 400 처리). */
     fun consumeState(state: String): String? = loginStateStore.consume(state)
 
-    fun exchangeCode(provider: SocialProvider, code: String): String =
-        authorizationCodeExchanger.exchange(provider, code, callbackUrl(provider))
+    fun exchangeCode(
+        provider: SocialProvider,
+        code: String,
+    ): String = authorizationCodeExchanger.exchange(provider, code, callbackUrl(provider))
 
     /** authorize 요청과 code 교환의 redirect_uri는 반드시 동일해야 한다(provider가 대조함). */
-    private fun callbackUrl(provider: SocialProvider): String =
-        "${policy.callbackBaseUrl}/${provider.name.lowercase()}"
+    private fun callbackUrl(provider: SocialProvider): String = "${policy.callbackBaseUrl}/${provider.name.lowercase()}"
 
     /** 추측 불가능해야 하므로 SecureRandom 256bit — 시간순 정렬 같은 성질이 오히려 불필요해 ULID 미사용. */
     private fun generateState(): String {

@@ -20,16 +20,20 @@ class RefreshCookieFactory(
     private val tokenPolicy: TokenPolicy,
     @param:Value("\${api.base-path}") private val basePath: String,
 ) {
-
-    fun issue(refreshToken: String, request: HttpServletRequest): ResponseCookie =
-        builder(refreshToken, request).maxAge(tokenPolicy.refreshTtl).build()
+    fun issue(
+        refreshToken: String,
+        request: HttpServletRequest,
+    ): ResponseCookie = builder(refreshToken, request).maxAge(tokenPolicy.refreshTtl).build()
 
     /** 파기 = 빈 값 + maxAge 0 — 발급과 속성이 같아야 브라우저가 기존 쿠키를 덮어쓴다. */
-    fun expire(request: HttpServletRequest): ResponseCookie =
-        builder("", request).maxAge(Duration.ZERO).build()
+    fun expire(request: HttpServletRequest): ResponseCookie = builder("", request).maxAge(Duration.ZERO).build()
 
-    private fun builder(value: String, request: HttpServletRequest): ResponseCookie.ResponseCookieBuilder =
-        ResponseCookie.from(REFRESH_COOKIE, value)
+    private fun builder(
+        value: String,
+        request: HttpServletRequest,
+    ): ResponseCookie.ResponseCookieBuilder =
+        ResponseCookie
+            .from(REFRESH_COOKIE, value)
             .httpOnly(true)
             .secure(request.isSecure)
             .sameSite("Lax")

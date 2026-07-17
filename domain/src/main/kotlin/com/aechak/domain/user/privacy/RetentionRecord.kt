@@ -1,6 +1,7 @@
 package com.aechak.domain.user.privacy
 
 import com.aechak.domain.support.BaseEntity
+import com.aechak.domain.user.privacy.enums.RetentionRecordType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -10,7 +11,6 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.time.LocalDateTime
-import com.aechak.domain.user.privacy.enums.RetentionRecordType
 
 @Entity
 @Table(name = "retention_records")
@@ -19,7 +19,6 @@ class RetentionRecord protected constructor(
     userRef: Long,
     retentionExpiryAt: LocalDateTime,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L

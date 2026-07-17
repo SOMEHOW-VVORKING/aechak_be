@@ -1,4 +1,3 @@
 package com.aechak.domain.settlement.batch.repository
 
-interface SettlementExecutionBatchRepository {
-}
+interface SettlementExecutionBatchRepository

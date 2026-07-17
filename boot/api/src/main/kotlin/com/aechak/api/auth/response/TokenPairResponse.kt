@@ -12,10 +12,11 @@ data class TokenPairResponse(
     companion object {
         private const val BEARER = "Bearer"
 
-        fun from(result: TokenResult) = TokenPairResponse(
-            accessToken = result.accessToken,
-            refreshToken = result.refreshToken,
-            expiresIn = result.expiresInSeconds,
-        )
+        fun from(result: TokenResult) =
+            TokenPairResponse(
+                accessToken = result.accessToken,
+                refreshToken = result.refreshToken,
+                expiresIn = result.expiresInSeconds,
+            )
     }
 }

@@ -18,7 +18,6 @@ import kotlin.test.assertNull
 
 /** RS256 인코딩/디코딩 왕복·결정성(멱등 재발급 전제)·refresh형 토큰의 API 인가 거부 검증. */
 class NimbusTokenCodecAdapterTest {
-
     private val rsaKey: RSAKey = generateKey()
     private val codec = NimbusTokenCodecAdapter(NimbusJwtEncoder(ImmutableJWKSet(JWKSet(rsaKey))), rsaKey)
 
@@ -79,7 +78,8 @@ class NimbusTokenCodecAdapterTest {
 
     private fun generateKey(): RSAKey {
         val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
-        return RSAKey.Builder(keyPair.public as RSAPublicKey)
+        return RSAKey
+            .Builder(keyPair.public as RSAPublicKey)
             .privateKey(keyPair.private as RSAPrivateKey)
             .keyID("test-key")
             .build()

@@ -22,16 +22,21 @@ class NimbusTokenCodecAdapter(
     private val jwtEncoder: JwtEncoder,
     rsaKey: RSAKey,
 ) : TokenCodec {
-
     /** refresh 전용 디코더 — 서명·exp만 검증하고 token_type은 아래서 직접 확인한다. */
     private val refreshDecoder: JwtDecoder =
         NimbusJwtDecoder.withPublicKey(rsaKey.toRSAPublicKey()).build().apply {
             setJwtValidator(JwtValidators.createDefault())
         }
 
-    override fun encodeAccessToken(userId: Long, role: String, issuedAt: Instant, expiresAt: Instant): String =
+    override fun encodeAccessToken(
+        userId: Long,
+        role: String,
+        issuedAt: Instant,
+        expiresAt: Instant,
+    ): String =
         encode(
-            JwtClaimsSet.builder()
+            JwtClaimsSet
+                .builder()
                 .subject(userId.toString())
                 .claim(ROLE_CLAIM, role)
                 .issuedAt(issuedAt)
@@ -47,7 +52,8 @@ class NimbusTokenCodecAdapter(
         expiresAt: Instant,
     ): String =
         encode(
-            JwtClaimsSet.builder()
+            JwtClaimsSet
+                .builder()
                 .subject(userId.toString())
                 .claim(ROLE_CLAIM, role)
                 .id(tokenId)
@@ -58,11 +64,12 @@ class NimbusTokenCodecAdapter(
         )
 
     override fun decodeRefreshToken(token: String): RefreshTokenClaims? {
-        val jwt = try {
-            refreshDecoder.decode(token)
-        } catch (e: JwtException) {
-            return null
-        }
+        val jwt =
+            try {
+                refreshDecoder.decode(token)
+            } catch (e: JwtException) {
+                return null
+            }
         if (jwt.getClaimAsString(JwtConfig.TOKEN_TYPE_CLAIM) != JwtConfig.REFRESH_TOKEN_TYPE) return null
 
         return RefreshTokenClaims(
@@ -74,8 +81,7 @@ class NimbusTokenCodecAdapter(
         )
     }
 
-    private fun encode(claims: JwtClaimsSet): String =
-        jwtEncoder.encode(JwtEncoderParameters.from(claims)).tokenValue
+    private fun encode(claims: JwtClaimsSet): String = jwtEncoder.encode(JwtEncoderParameters.from(claims)).tokenValue
 
     companion object {
         private const val ROLE_CLAIM = "role"

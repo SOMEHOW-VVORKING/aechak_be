@@ -9,7 +9,6 @@ import org.springframework.context.annotation.Configuration
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(WebLoginProperties::class)
 class WebLoginConfig {
-
     @Bean
     fun webLoginPolicy(props: WebLoginProperties): WebLoginPolicy =
         WebLoginPolicy(

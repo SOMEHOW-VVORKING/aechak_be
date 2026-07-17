@@ -13,13 +13,15 @@ import java.time.Duration
 class LoginStateStoreAdapter(
     private val redisTemplate: StringRedisTemplate,
 ) : LoginStateStore {
-
-    override fun save(state: String, returnUrl: String, ttl: Duration) {
+    override fun save(
+        state: String,
+        returnUrl: String,
+        ttl: Duration,
+    ) {
         redisTemplate.opsForValue().set(key(state), returnUrl, ttl)
     }
 
-    override fun consume(state: String): String? =
-        redisTemplate.opsForValue().getAndDelete(key(state))
+    override fun consume(state: String): String? = redisTemplate.opsForValue().getAndDelete(key(state))
 
     private fun key(state: String) = "$PREFIX$state"
 

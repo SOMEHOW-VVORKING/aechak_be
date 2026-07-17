@@ -33,8 +33,10 @@ class AuthFacade(
     private val webLoginService: WebLoginService,
     private val tokenService: TokenService,
     transactionManager: PlatformTransactionManager,
-) : SocialLoginUseCase, TokenRefreshUseCase, LogoutUseCase, WebLoginUseCase {
-
+) : SocialLoginUseCase,
+    TokenRefreshUseCase,
+    LogoutUseCase,
+    WebLoginUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
 
     private val loginTx = TransactionTemplate(transactionManager)
@@ -45,13 +47,20 @@ class AuthFacade(
 
     override fun logout(refreshToken: String) = tokenService.revoke(refreshToken)
 
-    override fun prepareLogin(provider: SocialProvider, returnUrl: String): String =
-        webLoginService.prepareLogin(provider, returnUrl)
+    override fun prepareLogin(
+        provider: SocialProvider,
+        returnUrl: String,
+    ): String = webLoginService.prepareLogin(provider, returnUrl)
 
-    override fun completeLogin(provider: SocialProvider, code: String?, state: String): WebLoginCompletion {
+    override fun completeLogin(
+        provider: SocialProvider,
+        code: String?,
+        state: String,
+    ): WebLoginCompletion {
         // state 소비 실패 = returnUrl을 모름 → 리다이렉트 불가, 유일하게 직접 400으로 끝나는 실패
-        val returnUrl = webLoginService.consumeState(state)
-            ?: throw BusinessException(AuthErrorCode.INVALID_LOGIN_STATE)
+        val returnUrl =
+            webLoginService.consumeState(state)
+                ?: throw BusinessException(AuthErrorCode.INVALID_LOGIN_STATE)
 
         if (code == null) {
             // provider 측 거부(사용자 취소 등) — code 없이 콜백만 옴

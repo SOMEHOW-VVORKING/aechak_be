@@ -10,9 +10,20 @@ import java.time.Instant
  * 멱등 재발급 전제: RS256 서명은 결정적이므로 동일 클레임(초 단위 시각) 인코딩 = 동일 토큰 문자열.
  */
 interface TokenCodec {
-    fun encodeAccessToken(userId: Long, role: String, issuedAt: Instant, expiresAt: Instant): String
+    fun encodeAccessToken(
+        userId: Long,
+        role: String,
+        issuedAt: Instant,
+        expiresAt: Instant,
+    ): String
 
-    fun encodeRefreshToken(userId: Long, role: String, tokenId: String, issuedAt: Instant, expiresAt: Instant): String
+    fun encodeRefreshToken(
+        userId: Long,
+        role: String,
+        tokenId: String,
+        issuedAt: Instant,
+        expiresAt: Instant,
+    ): String
 
     /** 서명·만료·token_type=refresh 검증 실패 시 null. */
     fun decodeRefreshToken(token: String): RefreshTokenClaims?

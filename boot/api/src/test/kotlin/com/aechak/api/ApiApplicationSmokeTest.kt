@@ -13,7 +13,6 @@ import org.springframework.boot.test.context.SpringBootTest
  */
 @SpringBootTest
 class ApiApplicationSmokeTest {
-
     @Test
     fun contextLoads() {
         // 컨텍스트 기동 자체가 검증이다 — 매핑이 깨지면 여기서 실패한다.

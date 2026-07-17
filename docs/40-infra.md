@@ -34,6 +34,19 @@ class OrderRepositoryAdapter(
 
 - payment(L3)의 영속 모델·매퍼는 채택 레벨과 무관하게 항상 이 모듈에 위치한다. // TODO: 결제 착수 시
 
+### 1-1. PII 암호화 ⚠️ PENDING — 방식 미확정
+
+PII(전화번호·계좌번호 등)의 저장 암호화(AES-256) 방식은 아직 팀 결정 전이다.
+확정 전까지 리뷰에서 암호화 누락·방식을 지적하지 않는다 (REVIEW.md 참조).
+
+논의 중 확인된 제약 (확정 시 반영):
+- 엔티티에서 `@Convert`로 infra converter를 지목하면 domain→infra 의존 발생 → 00 §2 위반.
+  후보안은 domain 값 타입(`data class Encrypted`) + infra의 `@Converter(autoApply=true)` 타입 매칭.
+- 값 타입에 `@JvmInline` 금지 — 인라인 언박싱으로 JVM 필드가 String이 되어 Hibernate가
+  converter를 매칭하지 못한다(조용한 평문 저장).
+- 미결 쟁점: 암호화 로직의 위치 — jpa-persistence 내부 vs 독립 crypto 모듈(캐시·메시지 등
+  JPA 외 경로에서 재사용 필요 시). // TODO: 멘토 자문 후 확정
+
 ## 2. infra/kafka
 
 ```

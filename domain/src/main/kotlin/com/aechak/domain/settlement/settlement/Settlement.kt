@@ -3,6 +3,7 @@ package com.aechak.domain.settlement.settlement
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.settlement.error.SettlementErrorCode
 import com.aechak.domain.settlement.payout.Payout
+import com.aechak.domain.settlement.settlement.enums.SettlementStatus
 import com.aechak.domain.support.AggregateRoot
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -16,7 +17,6 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
-import com.aechak.domain.settlement.settlement.enums.SettlementStatus
 
 @Entity
 @Table(
@@ -33,7 +33,6 @@ class Settlement protected constructor(
     netAmount: Long,
     idempotencyKey: String,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L

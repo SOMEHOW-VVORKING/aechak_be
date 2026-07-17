@@ -7,7 +7,6 @@ enum class ProductErrorCode(
     override val message: String,
     override val status: Int,
 ) : ErrorCode {
-
     PRODUCT_NOT_FOUND(40001, "상품을 찾을 수 없습니다.", 404),
     INVALID_PRODUCT_PRICE(40002, "상품 가격이 올바르지 않습니다.", 400),
 

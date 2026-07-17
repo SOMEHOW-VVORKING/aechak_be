@@ -1,7 +1,7 @@
 package com.aechak.api.auth.controller
 
-import com.aechak.api.auth.response.WebTokenResponse
 import com.aechak.api.auth.cookie.RefreshCookieFactory
+import com.aechak.api.auth.response.WebTokenResponse
 import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.usecase.LogoutUseCase
 import com.aechak.application.auth.usecase.TokenRefreshUseCase
@@ -40,7 +40,6 @@ class WebAuthController(
     private val logoutUseCase: LogoutUseCase,
     private val refreshCookieFactory: RefreshCookieFactory,
 ) {
-
     /** 웹 로그인 진입 — provider authorize 화면으로 302. FE는 이 주소로 이동만 하면 된다. */
     @GetMapping("/login/{provider}/redirect")
     fun redirectToProvider(
@@ -64,17 +63,25 @@ class WebAuthController(
     ): ResponseEntity<Void> {
         val completion = webLoginUseCase.completeLogin(parseProvider(provider), code, state)
 
-        val redirect = when (completion) {
-            is WebLoginCompletion.Success ->
-                UriComponentsBuilder.fromUriString(completion.returnUrl)
-                    .queryParam("status", completion.userStatus.name)
-                    .queryParam("isNew", completion.isNew)
-                    .build().toUriString()
-            is WebLoginCompletion.Failure ->
-                UriComponentsBuilder.fromUriString(completion.returnUrl)
-                    .queryParam("error", completion.errorCode.code)
-                    .build().toUriString()
-        }
+        val redirect =
+            when (completion) {
+                is WebLoginCompletion.Success -> {
+                    UriComponentsBuilder
+                        .fromUriString(completion.returnUrl)
+                        .queryParam("status", completion.userStatus.name)
+                        .queryParam("isNew", completion.isNew)
+                        .build()
+                        .toUriString()
+                }
+
+                is WebLoginCompletion.Failure -> {
+                    UriComponentsBuilder
+                        .fromUriString(completion.returnUrl)
+                        .queryParam("error", completion.errorCode.code)
+                        .build()
+                        .toUriString()
+                }
+            }
 
         val response = ResponseEntity.status(HttpStatus.FOUND).location(URI.create(redirect))
         if (completion is WebLoginCompletion.Success) {
@@ -92,7 +99,8 @@ class WebAuthController(
     ): ResponseEntity<ApiResponse<WebTokenResponse>> {
         if (refreshToken == null) throw BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN)
         val result = tokenRefreshUseCase.refresh(refreshToken)
-        return ResponseEntity.ok()
+        return ResponseEntity
+            .ok()
             .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.issue(result.refreshToken, request).toString())
             .body(ApiResponse.of(WebTokenResponse.from(result)))
     }
@@ -104,7 +112,8 @@ class WebAuthController(
         request: HttpServletRequest,
     ): ResponseEntity<Void> {
         refreshToken?.let(logoutUseCase::logout)
-        return ResponseEntity.noContent()
+        return ResponseEntity
+            .noContent()
             .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.expire(request).toString())
             .build()
     }

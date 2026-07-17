@@ -23,7 +23,6 @@ class OptionGroup protected constructor(
     name: String,
     sortOrder: Int,
 ) : AggregateRoot() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -43,9 +42,11 @@ class OptionGroup protected constructor(
     private val _values: MutableList<OptionValue> = mutableListOf()
     val values: List<OptionValue> get() = _values.toList()
 
-
     companion object {
-        fun create(product: Product, name: String, sortOrder: Int): OptionGroup =
-            OptionGroup(product, name, sortOrder)
+        fun create(
+            product: Product,
+            name: String,
+            sortOrder: Int,
+        ): OptionGroup = OptionGroup(product, name, sortOrder)
     }
 }

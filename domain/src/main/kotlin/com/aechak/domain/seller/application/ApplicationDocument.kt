@@ -15,7 +15,6 @@ class ApplicationDocument protected constructor(
     storageKey: String,
     contentType: String,
 ) : BaseEntity() {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
@@ -30,7 +29,10 @@ class ApplicationDocument protected constructor(
     val contentType: String = contentType
 
     companion object {
-        fun of(documentType: String, storageKey: String, contentType: String): ApplicationDocument =
-            ApplicationDocument(documentType, storageKey, contentType)
+        fun of(
+            documentType: String,
+            storageKey: String,
+            contentType: String,
+        ): ApplicationDocument = ApplicationDocument(documentType, storageKey, contentType)
     }
 }

@@ -1,0 +1,104 @@
+# 배포 본체(재사용) — 모듈 하나를 이미지로 빌드해 ECS에 롤링 배포
+# 직접 실행되지 않음 — deploy-dev.yml이 모듈 파라미터와 함께 호출
+# gradle 셋업이 없는 이유: 빌드는 Dockerfile 안(멀티스테이지)에서 돎. 테스트는 ci.yml이 PR에서 이미 통과시킴
+
+name: deploy-module
+
+on:
+  workflow_call:
+    inputs:
+      module:
+        description: "gradle 모듈명 (api, batch, ...)"
+        required: true
+        type: string
+      ecr-repo:
+        required: true
+        type: string
+      ecs-cluster:
+        required: true
+        type: string
+      ecs-service:
+        required: true
+        type: string
+      task-family:
+        required: true
+        type: string
+
+permissions:
+  id-token: write # OIDC 신분증 발급 — AWS 인증의 재료
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # 롤아웃 폴링(최대 25분) 보다 크게
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        # GitHub이 서명한 신분증으로 배포 전용 role의 임시 자격증명을 받음 — 장기 access key가 존재하지 않는 구조
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }} # ARN은 열쇠가 아니지만 public 전환 대비 계정 ID를 로그에서 마스킹
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push image
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          # 태그 == 커밋 해시 7자리 -> 현재 이미지가 어떤 커밋 코드인지 추적 가능
+          IMAGE="$REGISTRY/${{ inputs.ecr-repo }}:${GITHUB_SHA::7}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "uri=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Register new task definition revision
+        id: taskdef
+        run: |
+          # 현재 taskdef를 복제해 image만 교체 — env, secrets 명세는 terraform 소관이라 여기서 안 건드림
+          aws ecs describe-task-definition --task-definition "${{ inputs.task-family }}" \
+            --query taskDefinition > td.json
+          # del(...) — 조회 응답에만 붙는 읽기전용 필드. 남기면 등록 API가 거부함
+          jq --arg IMG "${{ steps.image.outputs.uri }}" \
+            '.containerDefinitions[0].image = $IMG
+             | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                   .compatibilities, .registeredAt, .registeredBy)' td.json > td-new.json
+          NEW_ARN=$(aws ecs register-task-definition --cli-input-json file://td-new.json \
+            --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "arn=$NEW_ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy (rolling update)
+        run: |
+          aws ecs update-service \
+            --cluster "${{ inputs.ecs-cluster }}" \
+            --service "${{ inputs.ecs-service }}" \
+            --task-definition "${{ steps.taskdef.outputs.arn }}"
+
+          # 직접 폴링(30초×50=최대 25분)하는 이유 — `aws ecs wait services-stable`은 10분 하드 상한이라
+          # 서킷브레이커 롤백(6~10분+)과 레이스가 나서 "실패인데 성공"으로 끝날 수 있음
+          STATE=IN_PROGRESS
+          for i in $(seq 1 50); do
+            STATE=$(aws ecs describe-services --cluster "${{ inputs.ecs-cluster }}" --services "${{ inputs.ecs-service }}" \
+              --query 'services[0].deployments[?status==`PRIMARY`].rolloutState | [0]' --output text)
+            echo "rollout: $STATE ($i/50)"
+            case "$STATE" in
+              COMPLETED) break ;;
+              FAILED) echo "::error::배포 실패 — 서킷브레이커가 롤백함"; exit 1 ;;
+            esac
+            sleep 30
+          done
+          [ "$STATE" = "COMPLETED" ] || { echo "::error::25분 내 안정화 실패"; exit 1; }
+
+          # COMPLETED여도 롤백으로 옛 리비전이 안정화된 것일 수 있음 — 새 리비전이 맞는지 대조
+          DEPLOYED=$(aws ecs describe-services --cluster "${{ inputs.ecs-cluster }}" --services "${{ inputs.ecs-service }}" \
+            --query 'services[0].deployments[?status==`PRIMARY`].taskDefinition | [0]' --output text)
+          echo "PRIMARY taskdef: $DEPLOYED"
+          [ "$DEPLOYED" = "${{ steps.taskdef.outputs.arn }}" ] || { echo "::error::롤백됨 — 새 리비전이 헬스체크를 통과하지 못함"; exit 1; }

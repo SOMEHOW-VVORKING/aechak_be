@@ -14,9 +14,10 @@ data class WebTokenResponse(
     companion object {
         private const val BEARER = "Bearer"
 
-        fun from(result: TokenResult) = WebTokenResponse(
-            accessToken = result.accessToken,
-            expiresIn = result.expiresInSeconds,
-        )
+        fun from(result: TokenResult) =
+            WebTokenResponse(
+                accessToken = result.accessToken,
+                expiresIn = result.expiresInSeconds,
+            )
     }
 }

@@ -23,7 +23,6 @@ class UserProfile protected constructor(
     user: User,
     nickname: String,
 ) : BaseEntity() {
-
     @Id
     val userId: Long = 0L
 
@@ -53,12 +52,13 @@ class UserProfile protected constructor(
         this.nickname = validateNickname(nickname)
     }
 
-
     companion object {
         private const val NICKNAME_MAX = 12
 
-        fun of(user: User, nickname: String): UserProfile =
-            UserProfile(user, validateNickname(nickname))
+        fun of(
+            user: User,
+            nickname: String,
+        ): UserProfile = UserProfile(user, validateNickname(nickname))
 
         private fun validateNickname(nickname: String): String {
             val trimmed = nickname.trim()

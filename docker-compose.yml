@@ -1,28 +1,64 @@
-# 로컬 원커맨드 기동: docker compose up --build
-# 인프라(Redis)만 띄우고 서버는 IDE/bootRun으로 돌릴 땐: docker compose up -d redis
+# 로컬 개발용 백킹 서비스 — 프로덕션과 버전·설정 미러링이 원칙
+#   MySQL 8.4  ← RDS와 동일 (utf8mb4 / utf8mb4_0900_ai_ci / Asia/Seoul, rds.tf 파라미터그룹과 일치)
+#   Kafka 3.8.0 KRaft 단일노드 ← EC2 카프카(user_data)와 동일
+# 앱은 여기 안 담는다 — IDE에서 bootRun (핫리로드·디버거). 프로드의 컨테이너 명세는 ECS taskdef가 담당.
+#
+# 실행:  docker compose up -d      중지: docker compose down      초기화: docker compose down -v
+
 services:
+  mysql:
+    image: mysql:8.4
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: aechak
+      MYSQL_USER: app
+      MYSQL_PASSWORD: local
+      MYSQL_ROOT_PASSWORD: local
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-plocal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   redis:
-    image: redis:7-alpine
-    container_name: aechak-redis
+    image: redis:7.2 # 프로드 ElastiCache는 7.1 (지원 상한) — 마이너 한 끗 차이 수용
     ports:
       - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
 
-  api:
-    build: .
-    container_name: aechak-api
+  kafka:
+    image: apache/kafka:3.8.0
     ports:
-      - "8080:8080"
+      - "9092:9092"
     environment:
-      REDIS_HOST: redis                          # 컨테이너 네트워크에선 localhost가 아니라 서비스명
-      KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID:-}      # 셸 환경변수 또는 이 파일 옆 .env에서 주입
-      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-}
-      AUTH_JWT_PRIVATE_KEY: ${AUTH_JWT_PRIVATE_KEY:-}
-      AUTH_JWT_PUBLIC_KEY: ${AUTH_JWT_PUBLIC_KEY:-}
-    depends_on:
-      redis:
-        condition: service_healthy
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysql-data:
+  kafka-data:
