@@ -6,8 +6,10 @@ import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.MethodArgumentNotValidException
+import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 
 /**
  * 웹 계열 실행 모듈(api/admin) 공용 전역 예외 처리기.
@@ -34,6 +36,18 @@ class GlobalExceptionHandler {
             .status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse(CommonErrorCode.INVALID_REQUEST.code, detail))
     }
+
+    @ExceptionHandler(MissingServletRequestParameterException::class)
+    fun handleMissingParameter(e: MissingServletRequestParameterException): ResponseEntity<ErrorResponse> =
+        ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(CommonErrorCode.INVALID_REQUEST.code, "${e.parameterName}: 필수 파라미터가 누락되었습니다."))
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleTypeMismatch(e: MethodArgumentTypeMismatchException): ResponseEntity<ErrorResponse> =
+        ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(CommonErrorCode.INVALID_REQUEST.code, "${e.name}: 잘못된 값입니다."))
 
     @ExceptionHandler(BusinessException::class)
     fun handleBusiness(e: BusinessException): ResponseEntity<ErrorResponse> {
