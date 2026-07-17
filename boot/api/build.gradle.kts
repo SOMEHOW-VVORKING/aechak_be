@@ -13,6 +13,8 @@ dependencies {
     implementation(libs.spring.boot.starter.oauth2.resource.server) // 자체 RS256 토큰 검증 필터 + JwtEncoder/Decoder
     implementation(libs.spring.boot.starter.data.redis) // Redis 자동 구성 — :redis 어댑터의 커넥션 제공
     implementation(libs.springdoc.webmvc.ui)            // OpenAPI 3 문서 + Swagger UI
-    runtimeOnly(libs.h2)                                // 임시 내장 DB — ERD 확정 시 실 DB로 교체
+    implementation(libs.spring.boot.starter.actuator)   // ALB 헬스체크 /actuator/health — ECS 롤링·롤백의 생사판단 기준 (health만 노출)
+    runtimeOnly(libs.mysql.connector.j)                 // 실 DB(MySQL 8.4) 드라이버 — 접속정보는 프로파일/env가 주입
+    testRuntimeOnly(libs.h2)                            // 테스트 전용. 런타임 상주 금지 — dev에서 URL 누락 시 H2로 조용히 폴백해 유령 DB로 서비스하는 사고 차단
     testImplementation(libs.spring.boot.starter.test)  // 컨텍스트 부팅 스모크 테스트(엔티티 스키마 생성 검증)
 }

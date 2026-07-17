@@ -9,7 +9,7 @@
 
 [versions]
 kotlin = "2.2.21"                # Boot 4의 Kotlin baseline(2.2 계열) — Gradle 9 지원 패치
-spring-boot = "4.0.0"            # TODO: 4.0.x 최신 패치 추종
+spring-boot = "4.0.5"            # 4.0.x 최신 패치 추종 — actuator·코어 버전 정렬 (혼합 시 NoSuchMethodError)
 jakarta-persistence = "3.2.0"    # domain은 BOM 밖이라 직접 관리 — Boot BOM의 JPA 버전과 일치 유지
 jakarta-servlet = "6.1.0"        # web-common 컴파일 전용 (런타임은 실행 모듈의 내장 톰캣이 제공)
 slf4j = "2.0.17"
@@ -47,6 +47,7 @@ spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" 
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
 spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
 spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" } # ALB 헬스체크(/actuator/health) — 배포 전제조건
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 
 # --- api: API 문서화 (OpenAPI 3 / Swagger UI) ---
@@ -54,6 +55,7 @@ springdoc-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc
 
 # --- domain: 외부 노출 식별자(ULID) — 전이 의존 0·순수 Java. domain 허용 의존(A-1 계보, 10 문서 §2-2) ---
 ulid-creator = { module = "com.github.f4b6a3:ulid-creator", version = "5.2.4" }
+mysql-connector-j = { module = "com.mysql:mysql-connector-j" }  # 실 DB(RDS MySQL 8.4) 드라이버 — 버전은 Boot BOM이 관리
 h2 = { module = "com.h2database:h2" }    # 임시 내장 DB — 버전은 Boot BOM이 관리
 
 # --- build-logic 전용: 컨벤션이 적용할 플러그인의 구현체 (플러그인 버전은 여기서 결정된다) ---

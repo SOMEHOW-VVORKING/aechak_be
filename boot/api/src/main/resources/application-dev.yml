@@ -1,0 +1,25 @@
+# dev 서버 — 값은 전부 환경변수 주입 (ECS taskdef로 설정)
+# 접속값(필수)은 기본값 없이 — 미주입이면 부팅 실패(fail-fast). 기능값은 빈값 기본 — 미주입이면 기능 꺼짐
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}           # RDS - terraform(ecs.tf)이 SSM에서 주입
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST}       # ElastiCache - terraform 주입
+      port: ${SPRING_DATA_REDIS_PORT}
+  jpa:
+    hibernate:
+      ddl-auto: update                      # RDS 스키마 부트스트랩 — Flyway 도입 시 validate로
+
+api:
+  cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}       # 예: https://dev.aechak.com (쉼표 구분 복수 가능)
+
+auth:
+  web:
+    return-urls: ${AUTH_WEB_RETURN_URLS:}              # 예: https://dev.aechak.com/login/complete (쉼표 구분)
+    callback-base-url: ${AUTH_WEB_CALLBACK_BASE_URL:}  # 예: https://api-dev.aechak.com/api/v1/auth/callback
+
+server:
+  forward-headers-strategy: framework   # LB가 TLS를 종료해도 원 요청 스킴 기준으로 동작(Secure 쿠키·리다이렉트 URL)

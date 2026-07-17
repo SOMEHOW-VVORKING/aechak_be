@@ -1,8 +1,28 @@
 spring:
   application:
     name: aechak-api
-# TODO: ERD 확정 후 실 DB datasource 설정 — 지금은 내장 H2 자동 구성으로 기동
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+# ECS 롤링 시 SIGTERM을 받으면 처리 중 요청까지는 끝내고 종료
+server:
+  shutdown: graceful
+
+# ALB 헬스체크용. health 외 엔드포인트는 민감정보라 노출 금지
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never # 상세 상태는 숨김
+  health:
+    redis:
+      enabled: false # Redis 장애로 앱 전체가 unhealthy 판정되는 것 방지
+
 # Redis는 자동 구성 기본값(localhost:6379) — 커넥션은 lazy라 서버 없이도 기동된다
+# datasource는 프로파일 yml 소유 (dev=ECS 주입, local=docker compose)
 
 api:
   base-path: /api/v1         # 컨트롤러 접두(WebConfig)·Security 매처·온보딩 화이트리스트가 함께 참조
