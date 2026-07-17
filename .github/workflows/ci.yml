@@ -1,0 +1,47 @@
+# PR 테스트 게이트 — develop에 들어가는 코드는 테스트 통과가 전제
+# 배포(deploy-dev.yml)와 분리한 이유: 검증은 PR마다 필요하고 AWS 권한이 필요 없음
+
+name: ci
+
+on:
+  pull_request: # 경로 필터 없음(의도) — required check로 걸었을 때 "skipped라 머지 불가" 함정 방지
+
+permissions:
+  contents: read # 코드 읽기만 필요 — 토큰 권한 최소화
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true # 같은 PR에 연속 푸시 시 이전 실행 취소 — 최신 커밋만 검증하면 충분
+
+jobs:
+  # terraform은 apply가 develop 머지 후 자동으로 나가므로(deploy-dev.yml), PR 단계에서 문법·형식을 먼저 거른다
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: fmt + validate
+        # backend=false: state·AWS 접근 없이 코드만 검증 — PR 단계에선 자격증명을 주지 않는다
+        run: |
+          if [ ! -d terraform ]; then echo "terraform/ 없는 브랜치 — 검증 생략"; exit 0; fi
+          cd terraform
+          terraform fmt -check -recursive -no-color
+          terraform init -backend=false -input=false -no-color
+          terraform validate -no-color
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20 # 행 걸린 테스트가 러너를 무한 점유하는 것 방지
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4 # gradle 캐시 — 매번 의존성 재다운로드 방지
+
+      - name: Test
+        run: ./gradlew test --console=plain # Testcontainers(MySQL) 포함 — 러너에 Docker가 기본 탑재라 그대로 돎
