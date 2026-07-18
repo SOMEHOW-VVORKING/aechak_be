@@ -6,6 +6,10 @@ spring:
   flyway:
     baseline-on-migrate: true
     baseline-version: 0
+  cloud:
+    aws:
+      region:
+        static: ap-northeast-2 # 리전 자동탐지 제거 — CI 러너처럼 AWS 설정 없는 환경에선 탐지 실패로 부팅이 깨짐
 
 # ECS 롤링 시 SIGTERM을 받으면 처리 중 요청까지는 끝내고 종료
 server:

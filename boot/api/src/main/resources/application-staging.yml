@@ -1,7 +1,9 @@
-# staging — prod와 동일 구조, 값만 스테이징 리소스. 도메인 확정 전이라 환경변수 주입.
+# staging — prod와 동일 구조, SSM /aechak/staging/api/ 에서 로드. yml은 어떤 값이 필요한지 명시하는 계약서
 spring:
+  config:
+    import: aws-parameterstore:/aechak/staging/api/   # staging 인프라 구축 시 이 경로에 파라미터를 만들어야 부팅됨
   datasource:
-    url: ${SPRING_DATASOURCE_URL}           # 필수 — 미주입이면 부팅 실패(fail-fast)
+    url: ${SPRING_DATASOURCE_URL}           # 필수 — 미존재 시 부팅 실패(fail-fast)
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
   data:

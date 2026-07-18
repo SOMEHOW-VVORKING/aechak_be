@@ -1,13 +1,14 @@
-# dev 서버 — 값은 전부 환경변수 주입 (ECS taskdef로 설정)
-# 접속값(필수)은 기본값 없이 — 미주입이면 부팅 실패(fail-fast). 기능값은 빈값 기본 — 미주입이면 기능 꺼짐
+# dev 서버 — 값은 부팅 시 SSM /aechak/dev/api/ 에서 로드(아래 import). yml은 어떤 값이 필요한지 명시하는 계약서
 spring:
+  config:
+    import: aws-parameterstore:/aechak/dev/api/   # SSM 접근 실패(권한·네트워크) 시 부팅 실패
   datasource:
-    url: ${SPRING_DATASOURCE_URL}           # RDS - terraform(ecs.tf)이 SSM에서 주입
+    url: ${SPRING_DATASOURCE_URL}           # RDS - 필수, 미존재 시 부팅 실패(fail-fast)
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
   data:
     redis:
-      host: ${SPRING_DATA_REDIS_HOST}       # ElastiCache - terraform 주입
+      host: ${SPRING_DATA_REDIS_HOST}       # ElastiCache
       port: ${SPRING_DATA_REDIS_PORT}
   jpa:
     hibernate:

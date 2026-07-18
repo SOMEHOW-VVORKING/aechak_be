@@ -1,7 +1,9 @@
-# prod — 시크릿(JWT 키·카카오 REST 키)은 SSM(/aechak/prod/auth/*)에서 환경변수로 주입한다.
+# prod — 값은 부팅 시 SSM /aechak/prod/api/ 에서 로드(아래 import). yml은 어떤 값이 필요한지 명시하는 계약서
 spring:
+  config:
+    import: aws-parameterstore:/aechak/prod/api/   # prod 인프라 구축 시 이 경로에 파라미터를 만들어야 부팅됨
   datasource:
-    url: ${SPRING_DATASOURCE_URL}           # 필수 — 미주입이면 부팅 실패(fail-fast)
+    url: ${SPRING_DATASOURCE_URL}           # 필수 — 미존재 시 부팅 실패(fail-fast)
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
   data:

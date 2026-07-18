@@ -1,5 +1,9 @@
 name: Review Assign
 
+# PR 작성자를 assignee로, 나머지 팀원을 리뷰어로 자동 지정한다.
+# 리뷰어는 반드시 한 명씩 개별 요청한다 — GitHub API가 여러 명 묶음 요청 시
+# 특정 유저를 201 응답과 함께 조용히 누락시키는 이상 동작이 있다 (SCRUM-133).
+
 on:
   pull_request:
     types: [opened, ready_for_review]
@@ -9,9 +13,20 @@ permissions:
 
 jobs:
   assign:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.pull_request.number }}
+      AUTHOR: ${{ github.event.pull_request.user.login }}
     steps:
-      - uses: hkusu/review-assign-action@v1
-        with:
-          assignees: ${{ github.actor }}
-          reviewers: jher235, splguyjr, tl1l1l1s
+      - name: Assign author & reviewers
+        run: |
+          gh api -X POST "repos/$REPO/issues/$PR/assignees" \
+            -f "assignees[]=$AUTHOR" --silent || echo "::warning::assignee 지정 실패: $AUTHOR"
+          for r in jher235 splguyjr tl1l1l1s; do
+            [ "$r" = "$AUTHOR" ] && continue
+            gh api -X POST "repos/$REPO/pulls/$PR/requested_reviewers" \
+              -f "reviewers[]=$r" --silent || echo "::warning::리뷰어 지정 실패: $r"
+          done
