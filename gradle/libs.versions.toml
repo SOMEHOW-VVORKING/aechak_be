@@ -63,6 +63,10 @@ ulid-creator = { module = "com.github.f4b6a3:ulid-creator", version = "5.2.4" }
 mysql-connector-j = { module = "com.mysql:mysql-connector-j" }  # 실 DB(RDS MySQL 8.4) 드라이버 — 버전은 Boot BOM이 관리
 h2 = { module = "com.h2database:h2" }    # 임시 내장 DB — 버전은 Boot BOM이 관리
 
+# --- boot 테스트: Testcontainers MySQL 통합 테스트를 위함. 버전은 Boot BOM이 관리 ---
+spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
+testcontainers-mysql = { module = "org.testcontainers:testcontainers-mysql" }
+
 # --- build-logic 전용: 컨벤션이 적용할 플러그인의 구현체 (플러그인 버전은 여기서 결정된다) ---
 gradleplugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 gradleplugin-kotlin-allopen = { module = "org.jetbrains.kotlin:kotlin-allopen", version.ref = "kotlin" }
