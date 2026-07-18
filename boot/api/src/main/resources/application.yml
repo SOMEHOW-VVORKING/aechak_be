@@ -3,6 +3,9 @@ spring:
     name: aechak-api
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 0
 
 # ECS 롤링 시 SIGTERM을 받으면 처리 중 요청까지는 끝내고 종료
 server:
@@ -44,9 +47,9 @@ auth:
         issuer: https://kauth.kakao.com
         token-uri: https://kauth.kakao.com/oauth/token   # 웹(JS SDK) 채널 code 교환용
         client-id: ""        # 카카오 REST API 키 — code 교환에 사용 (비면 code 채널 비활성)
-        audiences: []        # 채널별 키 병기: 네이티브 앱 키 + REST/JS 키 (비면 aud 검증 생략)
+        audiences: [ ]        # 채널별 키 병기: 네이티브 앱 키 + REST/JS 키 (비면 aud 검증 생략)
       apple:
         jwks-uri: https://appleid.apple.com/auth/keys
         issuer: https://appleid.apple.com
-        audiences: []        # 채널별 키 병기: iOS 번들 ID + 웹(SIWA JS) Services ID
+        audiences: [ ]        # 채널별 키 병기: iOS 번들 ID + 웹(SIWA JS) Services ID
 # PENDING_ONBOARDING 허용 경로는 UserStatusFilter.ONBOARDING_ALLOWED_PATHS 상수로 관리(인가 규칙이라 설정이 아닌 코드 소유)

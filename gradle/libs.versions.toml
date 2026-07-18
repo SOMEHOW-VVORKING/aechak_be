@@ -32,6 +32,8 @@ spring-tx = { module = "org.springframework:spring-tx" }
 
 # --- infra:persistence: domain 포트의 JPA 어댑터 ---
 spring-data-jpa = { module = "org.springframework.data:spring-data-jpa" }
+spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-starter-flyway" }  # flyway-core + Boot 4 분리형 자동 구성(spring-boot-flyway)
+flyway-mysql = { module = "org.flywaydb:flyway-mysql" }    # Flyway 10+ MySQL 지원 분리 모듈
 
 # --- 인증(ACC-01): 자체 RS256 JWT·소셜 id_token 검증 ---
 spring-boot-starter-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-oauth2-resource-server" }
@@ -55,8 +57,8 @@ springdoc-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc
 
 # --- domain: 외부 노출 식별자(ULID) — 전이 의존 0·순수 Java. domain 허용 의존(A-1 계보, 10 문서 §2-2) ---
 ulid-creator = { module = "com.github.f4b6a3:ulid-creator", version = "5.2.4" }
-mysql-connector-j = { module = "com.mysql:mysql-connector-j" }  # 실 DB(RDS MySQL 8.4) 드라이버 — 버전은 Boot BOM이 관리
-h2 = { module = "com.h2database:h2" }    # 임시 내장 DB — 버전은 Boot BOM이 관리
+mysql-connector-j = { module = "com.mysql:mysql-connector-j" }  # 실 DB(RDS MySQL 8.4) 드라이버
+h2 = { module = "com.h2database:h2" }    # 임시 내장 DB
 
 # --- build-logic 전용: 컨벤션이 적용할 플러그인의 구현체 (플러그인 버전은 여기서 결정된다) ---
 gradleplugin-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
