@@ -1,4 +1,4 @@
-package com.aechak.api.auth
+package com.aechak.api.auth.controller
 
 import com.aechak.api.auth.request.AppleLoginRequest
 import com.aechak.api.auth.request.KakaoLoginRequest
@@ -40,7 +40,7 @@ class AuthController(
     ): ResponseEntity<ApiResponse<LoginResponse>> =
         ResponseEntity.ok(ApiResponse.of(LoginResponse.from(socialLoginUseCase.login(request.toCommand()))))
 
-    @PostMapping("/token/refresh")
+    @PostMapping("/refresh")
     fun refresh(
         @Valid @RequestBody request: RefreshTokenRequest,
     ): ResponseEntity<ApiResponse<TokenPairResponse>> =

@@ -15,6 +15,9 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter
 import org.springframework.security.web.AuthenticationEntryPoint
 import org.springframework.security.web.SecurityFilterChain
+import org.springframework.web.cors.CorsConfiguration
+import org.springframework.web.cors.CorsConfigurationSource
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 import tools.jackson.databind.ObjectMapper // Boot 4 = Jackson 3 (com.fasterxml → tools.jackson)
 
 /**
@@ -38,13 +41,26 @@ class SecurityConfig {
         @Value("\${api.base-path}") basePath: String,
     ): SecurityFilterChain {
         http
+            .cors { } // corsConfigurationSource 빈 자동 적용
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
                 it
+                    .requestMatchers(
+                        "$basePath/auth/login/**",      // body 로그인 + 웹 로그인 진입(login/{provider}/redirect)
+                        "$basePath/auth/refresh",       // body 채널 갱신
+                        "$basePath/auth/callback/**",   // provider → 서버 콜백 (state가 방어선)
+                        "$basePath/auth/web/refresh",   // 쿠키 채널 갱신 (쿠키가 자격증명)
+                        "$basePath/auth/web/logout",    // 쿠키 채널 로그아웃 (쿠키가 자격증명, 멱등)
+                    ).permitAll()
+                    .requestMatchers(
+                        // springdoc — 접두(api.base-path) 미부착 경로(우리 컨트롤러가 아님)
+                        "/swagger-ui.html",      // 진입점 (실제론 /swagger-ui/index.html로 redirect)
+                        "/swagger-ui/**",        // UI 정적 리소스 (JS/CSS)
+                        "/v3/api-docs",          // OpenAPI JSON 본체
+                        "/v3/api-docs/**",       // swagger-config, 그룹별 스펙 등
+                    ).permitAll()
                     .requestMatchers("/actuator/health")
-                    .permitAll()
-                    .requestMatchers("$basePath/auth/login/**", "$basePath/auth/token/refresh")
                     .permitAll()
                     .anyRequest()
                     .authenticated()
@@ -68,7 +84,33 @@ class SecurityConfig {
             "$basePath/users/nickname/check",
             "$basePath/terms",
             "$basePath/auth/logout",
+            "$basePath/auth/web/refresh",   // PENDING 유저가 Authorization을 붙여 불러도 세션 유지·이탈은 허용
+            "$basePath/auth/web/logout",
         )
+
+    /**
+     * 브라우저 클라이언트(웹 FE·어드민) 허용 origin — 값은 환경 설정(api.cors-allowed-origins, 쉼표 구분).
+     * 비어 있으면 사실상 비활성(허용 origin 0개).
+     * allowCredentials=true인 이유: 웹 채널 refresh가 httpOnly 쿠키로 오가므로
+     * cross-origin fetch(credentials:'include')에 쿠키 왕복을 허용해야 한다. 와일드카드 origin 금지 제약은
+     * 명시 리스트라 충족. CSRF는 SameSite=Lax + 쿠키 Path 한정 + bearer 주 인증으로 방어.
+     */
+    @Bean
+    fun corsConfigurationSource(
+        @Value("\${api.cors-allowed-origins:}") allowedOriginsProperty: String,
+    ): CorsConfigurationSource {
+        val config =
+            CorsConfiguration().apply {
+                allowedOrigins = allowedOriginsProperty.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE")
+                allowedHeaders = listOf("*")
+                allowCredentials = true // 웹 채널 refresh 쿠키 왕복 — FE는 fetch에 credentials:'include'
+                maxAge = 3600 // preflight 캐시(초) — OPTIONS 왕복 절감
+            }
+        return UrlBasedCorsConfigurationSource().apply {
+            registerCorsConfiguration("/**", config)
+        }
+    }
 
     @Bean
     fun unauthenticatedEntryPoint(objectMapper: ObjectMapper): AuthenticationEntryPoint =
