@@ -21,4 +21,9 @@ enum class AuthErrorCode(
     ACCOUNT_BLOCKED(20006, "이용이 제한된 계정입니다.", 403),
     ONBOARDING_REQUIRED(20007, "온보딩을 완료해야 이용할 수 있습니다.", 403),
     APPLE_RELOGIN_REQUIRED(20008, "탈퇴를 위해 애플 로그인이 한 번 더 필요합니다.", 409),
+    DISALLOWED_RETURN_URL(20009, "허용되지 않은 returnUrl입니다.", 400),
+    INVALID_LOGIN_STATE(20010, "로그인 요청이 만료되었거나 유효하지 않습니다. 다시 시도해 주세요.", 400),
+
+    /** HTTP 응답이 아니라 콜백 302의 ?error= 값으로만 나간다 — status는 명목값. */
+    AUTHORIZATION_CODE_MISSING(20011, "소셜 로그인이 완료되지 않았습니다.", 401),
 }

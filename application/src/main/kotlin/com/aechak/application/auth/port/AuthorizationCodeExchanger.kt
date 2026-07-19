@@ -18,4 +18,11 @@ interface AuthorizationCodeExchanger {
         code: String,
         redirectUri: String,
     ): String
+
+    /** 서버 콜백 플로우의 진입 URL(provider authorize 화면) 조립 — endpoint·client_id는 설정에서. */
+    fun buildAuthorizeUrl(
+        provider: SocialProvider,
+        state: String,
+        redirectUri: String,
+    ): String
 }

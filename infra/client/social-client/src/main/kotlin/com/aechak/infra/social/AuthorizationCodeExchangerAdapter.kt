@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component
 import org.springframework.util.LinkedMultiValueMap
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
+import org.springframework.web.util.UriComponentsBuilder
 
 /**
  * AuthorizationCodeExchanger 포트 구현 — OAuth 표준 code 교환(grant_type=authorization_code).
@@ -47,6 +48,9 @@ class AuthorizationCodeExchangerAdapter(
                 add("client_id", providerProperties.clientId)
                 add("redirect_uri", redirectUri)
                 add("code", code)
+                if (providerProperties.clientSecret.isNotBlank()) {
+                    add("client_secret", providerProperties.clientSecret) // 미동봉 시 provider가 KOE010으로 거부
+                }
             }
 
         val body =
@@ -65,6 +69,26 @@ class AuthorizationCodeExchangerAdapter(
 
         return body?.get(ID_TOKEN_FIELD) as? String
             ?: throw BusinessException(AuthErrorCode.INVALID_SOCIAL_TOKEN) // openid scope 누락 등으로 id_token 부재
+    }
+
+    override fun buildAuthorizeUrl(
+        provider: SocialProvider,
+        state: String,
+        redirectUri: String,
+    ): String {
+        val providerProperties = properties.providers[provider.name.lowercase()]
+        if (providerProperties == null || providerProperties.authorizeUri.isBlank() || providerProperties.clientId.isBlank()) {
+            throw BusinessException(AuthErrorCode.UNSUPPORTED_PROVIDER)
+        }
+        return UriComponentsBuilder
+            .fromUriString(providerProperties.authorizeUri)
+            .queryParam("client_id", providerProperties.clientId)
+            .queryParam("redirect_uri", redirectUri)
+            .queryParam("response_type", "code")
+            .queryParam("scope", "openid")
+            .queryParam("state", state)
+            .build()
+            .toUriString()
     }
 
     companion object {
