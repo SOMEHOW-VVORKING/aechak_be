@@ -39,7 +39,7 @@ class TokenCodecAdapter(
             JwtClaimsSet
                 .builder()
                 .subject(userId.toString())
-                .claim(ROLE_CLAIM, role)
+                .claim(JwtConfig.ROLE_CLAIM, role)
                 .issuedAt(issuedAt)
                 .expiresAt(expiresAt)
                 .build(),
@@ -56,7 +56,7 @@ class TokenCodecAdapter(
             JwtClaimsSet
                 .builder()
                 .subject(userId.toString())
-                .claim(ROLE_CLAIM, role)
+                .claim(JwtConfig.ROLE_CLAIM, role)
                 .id(tokenId)
                 .claim(JwtConfig.TOKEN_TYPE_CLAIM, JwtConfig.REFRESH_TOKEN_TYPE)
                 .issuedAt(issuedAt)
@@ -75,7 +75,7 @@ class TokenCodecAdapter(
 
         return RefreshTokenClaims(
             userId = jwt.subject?.toLongOrNull() ?: return null,
-            role = jwt.getClaimAsString(ROLE_CLAIM) ?: return null,
+            role = jwt.getClaimAsString(JwtConfig.ROLE_CLAIM) ?: return null,
             tokenId = jwt.id ?: return null,
             issuedAt = jwt.issuedAt ?: return null,
             expiresAt = jwt.expiresAt ?: return null,
@@ -83,8 +83,4 @@ class TokenCodecAdapter(
     }
 
     private fun encode(claims: JwtClaimsSet): String = jwtEncoder.encode(JwtEncoderParameters.from(claims)).tokenValue
-
-    companion object {
-        private const val ROLE_CLAIM = "role"
-    }
 }

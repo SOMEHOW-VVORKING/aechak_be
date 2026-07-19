@@ -98,6 +98,7 @@ class JwtConfig {
     companion object {
         const val TOKEN_TYPE_CLAIM = "token_type"
         const val REFRESH_TOKEN_TYPE = "refresh"
+        const val ROLE_CLAIM = "role"
         private const val EPHEMERAL_KEY_ID = "local-ephemeral"
 
         // TODO: kid 로테이션 절차 확정 시 설정으로 승격
