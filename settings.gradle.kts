@@ -23,7 +23,7 @@ rootProject.name = "aechak"
 // 모듈 이름은 평평하게 두고 아래 projectDir로 위치만 매핑한다.
 // infra 구체 모듈 예: persistence/jpa = :jpa-persistence, client/pg-client = :pg-client.
 include(
-    "common", "web-common",
+    "common", "web-common", "web-security",
     "domain", "application",
     "api", "batch",                          // admin — MVP 제외, 필요 시점에 생성
     "jpa-persistence", "pg-client",          // kafka는 어댑터 코드가 생길 때 하위 모듈 추가

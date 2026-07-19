@@ -1,4 +1,4 @@
-package com.aechak.api.security
+package com.aechak.websecurity.config
 
 import com.aechak.application.auth.service.TokenPolicy
 import com.nimbusds.jose.jwk.JWKSet

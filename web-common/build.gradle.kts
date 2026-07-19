@@ -1,4 +1,4 @@
-// HTTP 번역 계층: 응답 규격·전역 예외 핸들러·TraceId 필터. 웹 실행 모듈(api)만 의존한다.
+// HTTP 번역 계층: 응답 규격·전역 예외 핸들러·TraceId 필터. 웹 계열 모듈(실행 모듈·web-security)이 의존한다.
 // domain/application은 이 모듈을 절대 의존하지 않는다.
 plugins { id("aechak.spring-library") }
 dependencies {
