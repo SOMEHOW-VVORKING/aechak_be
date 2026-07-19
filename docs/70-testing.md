@@ -6,11 +6,12 @@
 
 ## 0. 핵심 요약 — 이것만 기억한다
 
-1. 순수 로직은 domain/common **단위 테스트**, 배선이 필요하면 boot **통합 테스트**.
-2. 통합 테스트는 `IntegrationTestBase` **상속이 전부다** — 컨텍스트 하나, MySQL 컨테이너 하나를 전원이 공유한다.
+1. 순수 로직은 스프링 없는 **단위 테스트**(모듈 무관), 스프링 배선(트랜잭션·JPA·이벤트·HTTP)이 필요하면 boot **통합 테스트**.
+2. 통합 테스트는 `IntegrationTestBase` **상속 하나로 통일한다** — 컨텍스트 하나, MySQL 컨테이너 하나를 전원이 공유한다.
 3. 격리는 롤백이 아니라 **커밋 + truncate**.
-4. 금지: **H2 · `@DirtiesContext` · 클래스별 properties/`@MockitoBean` · 자체 `@Testcontainers` · 이벤트 테스트에 `@Transactional` · 리포지토리 mock + verify**.
-5. 목표는 커버리지 숫자가 아니라 **"깨지면 안 되는 계약이 테스트로 못 박혀 있는가"**다.
+4. 더블은 **mock보다 Fake 우선** — 외부 경계만 가짜로 바꾸고, 검증은 호출 횟수가 아니라 결과로 한다.
+5. 금지: **H2 · `@DirtiesContext` · 클래스별 properties/`@MockitoBean` · 자체 `@Testcontainers` · 이벤트 테스트에 `@Transactional` · 리포지토리 mock + verify**.
+6. 목표는 커버리지 숫자가 아니라 **"깨지면 안 되는 계약이 테스트로 못 박혀 있는가"**다.
 
 ---
 
@@ -24,16 +25,16 @@
 
 | 계층 | 무엇을 | 어디서 | 도구 |
 | --- | --- | --- | --- |
-| domain/common 단위 | 불변식·계산·상태 전이 | `{domain,common}/src/test` | `kotlin.test`, 스프링 없음 |
+| 순수 단위 | 불변식·계산·상태 전이·포트 Fake 유스케이스·어댑터 로직 | 대상 코드가 있는 모듈의 `src/test` | `kotlin.test`, 스프링 없음 |
 | 유스케이스·매핑·이벤트 통합 | 실 배선 검증 | `boot/api/src/test` | JUnit5 + 공용 베이스 |
 | 부팅 스모크 | 매핑·컨텍스트 안전망 | `boot/*/src/test` | 공용 베이스(contextLoads) |
 | 외부 클라이언트 | 계약 검증 | `infra/client/*/src/test` | stub 허용(§5) |
 
-## 2. 단위 테스트 (domain / common)
+## 2. 단위 테스트
 
-**규칙**: 도메인 규칙(불변식·계산·상태 전이·값 객체 검증)은 `kotlin.test`로 스프링 없이 검증한다. 이 모듈들엔 스프링이 클래스패스에 없어 구조적으로 강제된다.
+**규칙**: 순수 로직은 `kotlin.test`로 스프링 없이 검증한다. 단위 테스트의 기준은 모듈이 아니라 **테스트 성격**이다 — domain/common은 스프링이 클래스패스에 없어 구조적으로 강제되고, application·boot의 코드도 스프링 없이 검증 가능하면 순수 단위로 쓴다(포트 In-Memory Fake 기반 유스케이스 로직, 어댑터 로직 등 — 예: `TokenServiceTest`). 테스트는 대상 코드가 있는 모듈에 둔다.
 
-**예외**: 레포지토리·시간·랜덤 같은 협력자가 필요해지면 단위 대상이 아니다 — 통합으로 올린다. 통합으로 검증하기 지나치게 무거운 순수 분기 로직에 한해 domain 포트의 In-Memory Fake로 application 단위 테스트를 허용한다(남용 금지).
+**예외**: 실 레포지토리·트랜잭션·커밋 관찰이 필요해지면 단위 대상이 아니다 — 통합으로 올린다. Fake 단위는 남용하지 않는다 — 배선 검증을 대체하지 못한다.
 
 역방향도 금지다: 순수 계산을 `@SpringBootTest`로 검증하지 않는다(부팅 비용 낭비 + 실패 국소화 저하).
 
@@ -41,15 +42,22 @@
 
 **규칙**: 모든 통합 테스트는 `IntegrationTestBase`를 상속한다. 현재 프로젝트는 이 단일 베이스 방식을 표준으로 채택한다. 개별 테스트 클래스에서 `@SpringBootTest(properties=...)`·`@MockitoBean`·`@DirtiesContext`·자체 `@Testcontainers`/`@Container`를 선언하지 않는다.
 
-**근거**: Spring 테스트 컨텍스트 캐시는 프로퍼티·bean override·`@AutoConfigure*` 등 설정 전부를 캐시 키에 넣는다. 클래스마다 설정이 조금이라도 다르면 컨텍스트가 갈라져 부팅이 반복되고, 갈라진 컨텍스트가 같은 DB에 DDL을 다시 실행한다. 전원이 같은 베이스를 상속하면 부팅은 JVM당 1회로 상수화된다. 캐시 논리 설명은 이 절에만 둔다 — 다른 절의 금지 규칙들은 전부 여기로 귀결된다.
+**근거**: Spring 테스트 컨텍스트 캐시는 프로퍼티·bean override·`@AutoConfigure*` 등 설정 전부를 캐시 키에 넣는다. 클래스마다 설정이 조금이라도 다르면 컨텍스트가 갈라져 부팅이 반복된다(실행 시간 증가 + 같은 DB에 스키마 생성 중복). 전원이 같은 베이스를 상속하면 부팅은 JVM당 1회로 상수화된다. 캐시 논리 설명은 이 절에만 둔다 — 다른 절의 금지 규칙들은 전부 여기로 귀결된다.
 
 **예외**: 정말 다른 설정이 필요하면 런타임 토글로 우회 가능한지 먼저 보고(예: Hibernate statistics는 `isStatisticsEnabled` 런타임 토글), 불가피할 때만 명시적 2번째 베이스를 만들어 여러 클래스가 재사용한다. 2번째 베이스를 만드는 커밋에서는 컨테이너를 빈 수명에서 분리(수동 start)하는 전환을 함께 한다 — 빈으로 등록된 컨테이너는 컨텍스트가 닫힐 때 함께 멈출 수 있다.
 
-세부:
-- **컨트롤러 통합**은 MockMvc로 HTTP 계층까지 검증한다. `@AutoConfigureMockMvc`는 개별 클래스가 아니라 베이스에 붙인다(캐시 키 참여). `webEnvironment=RANDOM_PORT`는 쓰지 않는다.
-- **부팅 스모크**(`contextLoads`)는 전 엔티티 매핑 검증 + 스키마 생성을 겸하는 최소 안전망이다. 공용 베이스 위라 매핑 검증도 실 MySQL 기준이다.
-- **`@DataJpaTest` 슬라이스는 쓰지 않는다** — 별도 컨텍스트를 만들어 단일 컨텍스트를 분할하고 얻는 게 적다.
-- **매핑 SQL 회귀 테스트는 상시로 두지 않는다** — 컬렉션 매핑의 SQL 특성은 엔티티 셋업 시점에 실측으로 검증을 마쳤고, SQL 문장 수 고정 단언은 배칭·채번·Hibernate 버전에 커플링돼 유지비가 이득을 넘는다. 이후 N+1 등 SQL 개수가 계약인 테스트를 만들게 되면: 컬렉션 액션 UPDATE는 `entityUpdateCount`에 안 잡히므로 `prepareStatementCount`로 세고, 전제(배칭·채번·fetch)를 KDoc에 명시한다.
+### 3.1 컨트롤러 통합
+
+MockMvc로 HTTP 계층까지 검증한다. `@AutoConfigureMockMvc`는 개별 클래스가 아니라 베이스에 붙인다(캐시 키 참여). `webEnvironment=RANDOM_PORT`는 쓰지 않는다.
+
+### 3.2 부팅 스모크
+
+`contextLoads()`는 전 엔티티 매핑 검증 + 스키마 생성을 겸하는 최소 안전망이다. 공용 베이스 위라 매핑 검증도 실 MySQL 기준이다.
+
+### 3.3 쓰지 않는 것
+
+- **`@DataJpaTest` 슬라이스** — 별도 컨텍스트를 만들어 단일 컨텍스트를 분할하고 얻는 게 적다.
+- **상시 매핑 SQL 회귀 테스트** — 컬렉션 매핑의 SQL 특성은 엔티티 셋업 시점에 실측으로 검증을 마쳤고, SQL 문장 수 고정 단언은 배칭·채번·Hibernate 버전에 커플링돼 유지비가 이득을 넘는다. 이후 N+1 등 SQL 개수가 계약인 테스트를 만들게 되면: 컬렉션 액션 UPDATE는 `entityUpdateCount`에 안 잡히므로 `prepareStatementCount`로 세고, 전제(배칭·채번·fetch)를 KDoc에 명시한다.
 
 ## 4. 격리와 정리
 
@@ -80,7 +88,7 @@
 
 세부:
 - 이미지 태그는 운영 DB 버전으로 고정한다(`latest` 금지). 현재 태그 값은 코드가 들고 있다.
-- 스키마는 지금 `ddl-auto=create`로 만든다(ERD 확정 전 과도기). CI는 GitHub Actions ubuntu 러너에 Docker가 내장이라 추가 설정이 없다.
+- 스키마는 지금 `ddl-auto=create`로 만든다(ERD 확정 전 과도기).
 - 알려진 예외: `boot/batch`는 ERD 확정 전까지 임시로 H2를 쓴다. batch에 테스트가 착수되는 커밋에서 제거하고 같은 패턴으로 정렬한다 — 그 전까지 batch 테스트 작성 금지.
 
 ## 7. 스타일
@@ -88,7 +96,7 @@
 - 클래스 KDoc 첫 줄에 테스트 정체(계약/회귀/스모크/통합)와 존재 이유를 밝힌다 — "깨지면 무엇이 잘못된 것인가".
 - 테스트 이름은 한글 백틱으로 행위·기대를 서술한다: `` fun `장바구니 저장 후 재조회하면 담긴 품목이 복원된다`() ``.
 - 단언에는 실패 이유 메시지를 붙인다.
-- import 출처: domain/common은 `kotlin.test`, boot는 JUnit5. 섞지 않는다.
+- import 출처는 테스트 성격 기준: 순수 단위는 `kotlin.test`, 통합(공용 베이스 상속)은 JUnit5. 한 파일에서 섞지 않는다.
 - 행위를 고정하되 구현을 고정하지 마라 — 결과(상태·출력)를 검증하고, 상호작용 검증(메서드 호출 횟수)은 원칙적으로 금지.
 - 아키텍처 테스트(ArchUnit 등)는 쓰지 않는다 — 모듈 경계는 Gradle 컴파일이 강제한다.
 
@@ -131,7 +139,7 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
 
 ## 10. PR 전 체크리스트
 
-- [ ] 순수 로직은 domain/common 단위로, 배선은 boot 통합으로 갔는가
+- [ ] 순수 로직은 스프링 없는 단위로, 배선은 boot 통합으로 갔는가
 - [ ] 통합 테스트가 `IntegrationTestBase`를 상속하는가 (개별 properties/@MockitoBean/자체 컨테이너 없음)
 - [ ] 이벤트/커밋 side-effect 테스트에 `@Transactional`을 붙이지 않았는가
 - [ ] 저장 검증을 별도 트랜잭션 재조회로 했는가
