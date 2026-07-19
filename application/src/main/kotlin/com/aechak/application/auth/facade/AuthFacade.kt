@@ -12,6 +12,7 @@ import com.aechak.application.auth.usecase.command.SocialLoginCommand
 import com.aechak.application.auth.usecase.result.SocialLoginResult
 import com.aechak.application.auth.usecase.result.TokenResult
 import com.aechak.application.auth.usecase.result.WebLoginCompletion
+import com.aechak.application.auth.usecase.result.WebLoginPreparation
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.social.enums.SocialProvider
 import org.slf4j.LoggerFactory
@@ -50,7 +51,7 @@ class AuthFacade(
     override fun prepareLogin(
         provider: SocialProvider,
         returnUrl: String,
-    ): String = webLoginService.prepareLogin(provider, returnUrl)
+    ): WebLoginPreparation = webLoginService.prepareLogin(provider, returnUrl)
 
     override fun completeLogin(
         provider: SocialProvider,

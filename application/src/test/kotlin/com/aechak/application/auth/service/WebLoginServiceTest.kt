@@ -47,10 +47,11 @@ class WebLoginServiceTest {
 
     @Test
     fun `진입 준비 - state가 저장되고 authorize URL에 state와 서버 콜백이 실린다`() {
-        val authorizeUrl = service.prepareLogin(SocialProvider.KAKAO, RETURN_URL)
+        val preparation = service.prepareLogin(SocialProvider.KAKAO, RETURN_URL)
 
         val state = exchanger.lastState
-        assertTrue(authorizeUrl.contains(state!!))
+        assertEquals(state, preparation.state) // 쿠키로 심을 state = authorize URL에 실린 state (바인딩 대조 전제)
+        assertTrue(preparation.authorizeUrl.contains(state!!))
         assertEquals("http://localhost:8080/api/v1/auth/callback/kakao", exchanger.lastRedirectUri)
         assertEquals(RETURN_URL, stateStore.consume(state)) // 저장 확인 겸 소비
     }

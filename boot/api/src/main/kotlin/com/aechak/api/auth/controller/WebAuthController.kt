@@ -1,5 +1,6 @@
 package com.aechak.api.auth.controller
 
+import com.aechak.api.auth.cookie.LoginStateCookieFactory
 import com.aechak.api.auth.cookie.RefreshCookieFactory
 import com.aechak.api.auth.response.WebTokenResponse
 import com.aechak.application.auth.error.AuthErrorCode
@@ -26,7 +27,7 @@ import java.net.URI
 
 /**
  * 웹(브라우저) 채널 전용 컨트롤러 — 쿠키·리다이렉트라는 브라우저 고유물이 웹 채널에 격리된다
- * (쿠키 속성 정책은 RefreshCookieFactory 소유).
+ * (쿠키 속성 정책은 cookie 패키지의 팩토리들이 소유).
  * body 채널(AuthController)과 엔드포인트를 분리한 이유: 요청/응답 형태가 채널별로 하나로 고정되어
  * "어느 모드인지" 판별 로직 자체가 필요 없어진다.
  *
@@ -39,15 +40,24 @@ class WebAuthController(
     private val tokenRefreshUseCase: TokenRefreshUseCase,
     private val logoutUseCase: LogoutUseCase,
     private val refreshCookieFactory: RefreshCookieFactory,
+    private val loginStateCookieFactory: LoginStateCookieFactory,
 ) {
-    /** 웹 로그인 진입 — provider authorize 화면으로 302. FE는 이 주소로 이동만 하면 된다. */
+    /**
+     * 웹 로그인 진입 — provider authorize 화면으로 302. FE는 이 주소로 이동만 하면 된다.
+     * state를 쿠키에도 심는다(브라우저 바인딩) — 콜백에서 이중 제출 대조해 로그인 CSRF를 막는다.
+     */
     @GetMapping("/login/{provider}/redirect")
     fun redirectToProvider(
         @PathVariable provider: String,
         @RequestParam("return") returnUrl: String,
+        request: HttpServletRequest,
     ): ResponseEntity<Void> {
-        val authorizeUrl = webLoginUseCase.prepareLogin(parseProvider(provider), returnUrl)
-        return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(authorizeUrl)).build()
+        val preparation = webLoginUseCase.prepareLogin(parseProvider(provider), returnUrl)
+        return ResponseEntity
+            .status(HttpStatus.FOUND)
+            .location(URI.create(preparation.authorizeUrl))
+            .header(HttpHeaders.SET_COOKIE, loginStateCookieFactory.issue(preparation.state, request).toString())
+            .build()
     }
 
     /**
@@ -59,8 +69,13 @@ class WebAuthController(
         @PathVariable provider: String,
         @RequestParam(required = false) code: String?,
         @RequestParam state: String,
+        @CookieValue(LoginStateCookieFactory.LOGIN_STATE_COOKIE, required = false) stateCookie: String?,
         request: HttpServletRequest,
     ): ResponseEntity<Void> {
+        // 브라우저 바인딩 대조(이중 제출) — 쿠키 부재·불일치 = 이 브라우저가 시작한 로그인이 아니다(로그인 CSRF 차단).
+        // 진입 없이 콜백만 밟은 요청이므로 returnUrl도 알 수 없다 → state 소비 실패와 같은 직접 400.
+        if (stateCookie != state) throw BusinessException(AuthErrorCode.INVALID_LOGIN_STATE)
+
         val completion = webLoginUseCase.completeLogin(parseProvider(provider), code, state)
 
         val redirect =
@@ -83,7 +98,11 @@ class WebAuthController(
                 }
             }
 
-        val response = ResponseEntity.status(HttpStatus.FOUND).location(URI.create(redirect))
+        val response =
+            ResponseEntity
+                .status(HttpStatus.FOUND)
+                .location(URI.create(redirect))
+                .header(HttpHeaders.SET_COOKIE, loginStateCookieFactory.expire(request).toString()) // state는 1회용 — 쿠키도 파기
         if (completion is WebLoginCompletion.Success) {
             // access는 여기 실을 수 없다(수신자 없음·URL은 유출면) — FE가 복귀 후 /auth/web/refresh로 수령
             response.header(HttpHeaders.SET_COOKIE, refreshCookieFactory.issue(completion.refreshToken, request).toString())

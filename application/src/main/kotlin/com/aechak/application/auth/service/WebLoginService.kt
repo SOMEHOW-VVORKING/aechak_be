@@ -3,6 +3,7 @@ package com.aechak.application.auth.service
 import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.port.AuthorizationCodeExchanger
 import com.aechak.application.auth.port.LoginStateStore
+import com.aechak.application.auth.usecase.result.WebLoginPreparation
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.social.enums.SocialProvider
 import org.springframework.stereotype.Service
@@ -25,13 +26,16 @@ class WebLoginService(
     fun prepareLogin(
         provider: SocialProvider,
         returnUrl: String,
-    ): String {
+    ): WebLoginPreparation {
         if (returnUrl !in policy.allowedReturnUrls) {
             throw BusinessException(AuthErrorCode.DISALLOWED_RETURN_URL)
         }
         val state = generateState()
         loginStateStore.save(state, returnUrl, policy.stateTtl)
-        return authorizationCodeExchanger.buildAuthorizeUrl(provider, state, callbackUrl(provider))
+        return WebLoginPreparation(
+            authorizeUrl = authorizationCodeExchanger.buildAuthorizeUrl(provider, state, callbackUrl(provider)),
+            state = state,
+        )
     }
 
     /** state 1회 소비 — null이면 만료·재사용·위조(returnUrl을 모르므로 호출부는 직접 400 처리). */
