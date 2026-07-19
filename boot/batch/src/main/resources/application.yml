@@ -1,6 +1,4 @@
 spring:
   application:
     name: aechak-batch
-  flyway:
-    enabled: false   # jpa-persistence 경유로 classpath에 전파되지만 batch는 아직 내장 H2 — MySQL 방언 SQL이 실패한다. 실 DB 전환 시 api와 동일 설정으로 활성화
 # TODO: ERD 확정 후 실 DB datasource 설정 — 지금은 내장 H2 자동 구성으로 기동
