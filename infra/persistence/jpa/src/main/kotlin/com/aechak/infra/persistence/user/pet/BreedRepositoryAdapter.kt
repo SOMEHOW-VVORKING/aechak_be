@@ -14,5 +14,5 @@ interface BreedJpaRepository : JpaRepository<Breed, Long> {
 class BreedRepositoryAdapter(
     private val jpaRepository: BreedJpaRepository,
 ) : BreedRepository {
-    override fun findAllBySpecies(species: Species): List<Breed> = jpaRepository.findAllBySpeciesOrderByIdAsc(species)
+    override fun findAllBySpeciesOrderedById(species: Species): List<Breed> = jpaRepository.findAllBySpeciesOrderByIdAsc(species)
 }

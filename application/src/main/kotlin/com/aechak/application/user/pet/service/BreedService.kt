@@ -9,5 +9,5 @@ import org.springframework.stereotype.Service
 class BreedService(
     private val breedRepository: BreedRepository,
 ) {
-    fun getBySpecies(species: Species): List<Breed> = breedRepository.findAllBySpecies(species)
+    fun getBySpecies(species: Species): List<Breed> = breedRepository.findAllBySpeciesOrderedById(species)
 }
