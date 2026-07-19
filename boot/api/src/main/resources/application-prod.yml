@@ -21,3 +21,9 @@ auth:
 
 server:
   forward-headers-strategy: framework   # LB가 TLS를 종료해도 원 요청 스킴 기준으로 동작(Secure 쿠키·리다이렉트 URL)
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

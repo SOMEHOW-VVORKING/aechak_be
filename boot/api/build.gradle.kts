@@ -16,6 +16,8 @@ dependencies {
     implementation(libs.spring.boot.starter.actuator)   // ALB 헬스체크 /actuator/health — ECS 롤링·롤백의 생사판단 기준 (health만 노출)
     implementation(platform(libs.spring.cloud.aws.bom)) // Spring Cloud AWS 계열 버전 정렬 — 개별 버전 지정 시 SDK 버전 충돌
     implementation(libs.spring.cloud.aws.starter.parameter.store) // dev 설정을 부팅 시 SSM에서 로드 — import 미선언 프로파일에선 비활성
+    runtimeOnly(libs.spring.boot.starter.flyway)        // API 모듈만 DB 마이그레이션을 수행
+    runtimeOnly(libs.flyway.mysql)                      // Flyway 10+ MySQL 지원 모듈
     runtimeOnly(libs.mysql.connector.j)                 // 실 DB(MySQL 8.4) 드라이버 — 접속정보는 프로파일/env가 주입
     testImplementation(libs.spring.boot.starter.test)  // 컨텍스트 부팅 스모크 테스트(엔티티 스키마 생성 검증)
     testImplementation(libs.spring.boot.testcontainers) // @ServiceConnection — 통합 테스트 DB를 실 MySQL 컨테이너로 배선(70 §9)

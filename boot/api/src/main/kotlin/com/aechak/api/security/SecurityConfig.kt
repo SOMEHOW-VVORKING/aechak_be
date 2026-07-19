@@ -24,7 +24,7 @@ import tools.jackson.databind.ObjectMapper // Boot 4 = Jackson 3 (com.fasterxml 
  * API 보안 조립: stateless resource server(자체 RS256 JWT 검증) + 상태검증 필터.
  * "누가 무엇을 쓸 수 있나"(permitAll·401·403·상태 게이트)는 전부 이 파일에서 읽히도록 응집한다.
  *
- * - permitAll: 로그인·토큰 갱신·actuator health(ALB 헬스체크)만. 로그아웃은 인증 필요.
+ * - permitAll: 로그인·토큰 갱신·actuator health(ALB 헬스체크)·API 문서(swagger — prod는 springdoc 자체 비활성). 로그아웃은 인증 필요.
  * - 401(20005): Security 필터 구간이라 @RestControllerAdvice 밖 — EntryPoint가 직접 실패 봉투를 쓴다.
  * - 403(20006/20007): 서명검증 뒤 UserStatusFilter가 users.status를 조회해 직접 쓴다.
  */
@@ -83,6 +83,7 @@ class SecurityConfig {
             "$basePath/users/me/nickname",
             "$basePath/users/nickname/check",
             "$basePath/terms",
+            "$basePath/breeds",
             "$basePath/auth/logout",
             "$basePath/auth/web/refresh",   // PENDING 유저가 Authorization을 붙여 불러도 세션 유지·이탈은 허용
             "$basePath/auth/web/logout",

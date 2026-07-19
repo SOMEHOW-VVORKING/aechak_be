@@ -12,7 +12,7 @@ spring:
       port: ${SPRING_DATA_REDIS_PORT}
   jpa:
     hibernate:
-      ddl-auto: update                      # RDS 스키마 부트스트랩 — Flyway 도입 시 validate로
+      ddl-auto: update                      # RDS 스키마 부트스트랩 — 전체 DDL 이관 완료 시 validate로
 
 api:
   cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}       # 예: https://dev.aechak.com (쉼표 구분 복수 가능)
