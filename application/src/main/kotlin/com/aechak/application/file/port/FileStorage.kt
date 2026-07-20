@@ -15,7 +15,6 @@ interface FileStorage {
      */
     fun promote(
         tmpKey: String,
-        userId: Long,
         purpose: UploadPurpose,
     ): String
 }

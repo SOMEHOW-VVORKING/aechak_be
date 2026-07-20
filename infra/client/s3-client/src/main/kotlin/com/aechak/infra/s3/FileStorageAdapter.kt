@@ -1,6 +1,7 @@
 package com.aechak.infra.s3
 
 import com.aechak.application.file.error.FileErrorCode
+import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.IssueFileUrl
 import com.aechak.application.file.port.enums.FileType
@@ -52,19 +53,12 @@ class FileStorageAdapter(
         userId: Long,
         purpose: UploadPurpose,
         fileType: FileType,
-    ): String = "$TMP_PREFIX/$userId/${purpose.prefix}/${Ulid.generate()}.${fileType.extension}"
-
-    private fun tmpPrefixOf(userId: Long): String = "$TMP_PREFIX/$userId/"
+    ): String = "${FileKey.TMP_PREFIX}/$userId/${purpose.prefix}/${Ulid.generate()}.${fileType.extension}"
 
     override fun promote(
         tmpKey: String,
-        userId: Long,
         purpose: UploadPurpose,
     ): String {
-        if (!tmpKey.startsWith(tmpPrefixOf(userId))) {
-            throw BusinessException(FileErrorCode.FILE_ACCESS_DENIED)
-        }
-
         val bucket = bucketOf(purpose.category)
         val promotedKey = "${purpose.prefix}/${tmpKey.substringAfterLast('/')}"
 
@@ -81,9 +75,5 @@ class FileStorageAdapter(
         }
 
         return promotedKey
-    }
-
-    companion object {
-        private const val TMP_PREFIX = "tmp"
     }
 }

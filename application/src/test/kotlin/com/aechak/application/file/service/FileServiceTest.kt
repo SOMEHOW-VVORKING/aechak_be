@@ -6,13 +6,18 @@ import com.aechak.application.file.port.IssueFileUrl
 import com.aechak.application.file.port.enums.FileType
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
+import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.common.error.BusinessException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-/** 발급 화이트리스트 계약 — 허용되지 않은 MIME은 포트에 닿기 전에 거절되고, 허용된 것만 위임된다. */
+private const val PROMOTED_SENTINEL = "promoted/sentinel-key"
+
+/**
+ * 파일 발급·승격의 보안 계약 — 허용 안 된 MIME이나 본인 소유가 아닌 tmp 키는 S3에 닿기 전에 거절된다.
+ */
 class FileServiceTest {
     private val service = FileService(FakeFileStorage())
 
@@ -45,7 +50,44 @@ class FileServiceTest {
         assertTrue(result.key.endsWith(".png"), "검증 통과한 MIME의 확장자(png)가 키에 반영돼야 한다")
     }
 
-    /** 외부 경계(S3)만 가짜로 — 발급 로직은 진짜 FileService가 돈다. */
+    @Test
+    fun `본인 소유가 아닌 tmp 키면 FILE_ACCESS_DENIED로 거절한다`() {
+        val command = PromoteFileCommand("tmp/999/users/profile/x.png", USER_ID, UploadPurpose.USER_PROFILE)
+
+        val ex = assertFailsWith<BusinessException> { service.promote(command) }
+
+        assertEquals(FileErrorCode.FILE_ACCESS_DENIED, ex.errorCode, "다른 유저의 tmp 키는 승격할 수 없어야 한다")
+    }
+
+    @Test
+    fun `userId prefix가 부분일치해도 다른 유저 키면 거절한다`() {
+        // userId=1 이지만 tmp/12/... — tmpOwnerPrefix의 후행 슬래시가 없으면 오인될 경계
+        val command = PromoteFileCommand("tmp/12/users/profile/x.png", USER_ID, UploadPurpose.USER_PROFILE)
+
+        val ex = assertFailsWith<BusinessException> { service.promote(command) }
+
+        assertEquals(FileErrorCode.FILE_ACCESS_DENIED, ex.errorCode, "tmp/12는 userId=1 소유가 아니어야 한다")
+    }
+
+    @Test
+    fun `tmp 스테이징 키가 아니면 거절한다`() {
+        val command = PromoteFileCommand("users/profile/x.png", USER_ID, UploadPurpose.USER_PROFILE)
+
+        val ex = assertFailsWith<BusinessException> { service.promote(command) }
+
+        assertEquals(FileErrorCode.FILE_ACCESS_DENIED, ex.errorCode, "tmp staging 밖 키는 승격 대상이 아니어야 한다")
+    }
+
+    @Test
+    fun `본인 tmp 키면 소유검증 통과 후 storage 승격 결과를 그대로 반환한다`() {
+        val command = PromoteFileCommand("tmp/$USER_ID/users/profile/ULID.png", USER_ID, UploadPurpose.USER_PROFILE)
+
+        val result = service.promote(command)
+
+        assertEquals(PROMOTED_SENTINEL, result.key, "가드 통과 후 storage가 돌려준 키를 그대로 위임해야 한다")
+    }
+
+    /** 외부 경계(S3)만 가짜로 — 발급·승격 로직은 진짜 FileService가 돈다. */
     private class FakeFileStorage : FileStorage {
         override fun issueUploadUrl(
             purpose: UploadPurpose,
@@ -59,9 +101,8 @@ class FileServiceTest {
 
         override fun promote(
             tmpKey: String,
-            userId: Long,
             purpose: UploadPurpose,
-        ): String = tmpKey
+        ): String = PROMOTED_SENTINEL
     }
 
     companion object {
