@@ -36,6 +36,12 @@ management:
 api:
   base-path: /api/v1         # 컨트롤러 접두(WebConfig)·Security 매처·온보딩 화이트리스트·쿠키 Path가 함께 참조
 
+aws:
+  s3:
+    # local은 .env로 dev 버킷을 지정한다. 비면 부팅은 되고 발급 시 실패 — dev/prod는 프로파일 yml이 fail-fast
+    media-bucket: ${AWS_S3_MEDIA_BUCKET:}
+    docs-bucket: ${AWS_S3_DOCS_BUCKET:}
+
 auth:
   token:
     access-ttl: 30m          # 수치 팀 미확정 — 기본 제안값
