@@ -2,6 +2,7 @@
 plugins { id("aechak.spring-boot-app") }
 dependencies {
     implementation(project(":web-common"))
+    implementation(project(":web-security"))            // 토큰 코덱·상태 필터 등 요청 보안 판단 부품 — 정책 조립(SecurityConfig)은 api 소유
     implementation(project(":application"))
     implementation(project(":jpa-persistence"))         // 도메인 포트의 구현체 조립. 다른 infra 모듈도 어댑터가 생기면 여기 추가
     implementation(project(":social-client"))           // 소셜 id_token 검증 어댑터(ACC-01)

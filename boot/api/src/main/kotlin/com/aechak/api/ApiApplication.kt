@@ -9,7 +9,7 @@ import org.springframework.boot.runApplication
  *
  * 패키지 규칙:
  * - {도메인}/ — 도메인별 Controller + request/response dto (예: user/, auth/)
- * - security/ — 인증·인가 전부(체인 조립·상태 필터·JWT 키/코덱·프로퍼티). "누가 무엇을 쓸 수 있나"는 여기서 읽는다
+ * - security/ — 인가 정책 조립(SecurityConfig)만. "누가 무엇을 쓸 수 있나"는 여기서 읽는다 — 판단 부품(토큰 코덱·상태 필터)은 :web-security 모듈
  * - config/ — 그 외 기술 조립 (JPA 스캔 등)
  *
  * TODO: config/ — TraceIdFilter 등록(FilterRegistrationBean), Jackson 설정

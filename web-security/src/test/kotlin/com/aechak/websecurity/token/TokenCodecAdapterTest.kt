@@ -1,5 +1,6 @@
-package com.aechak.api.security
+package com.aechak.websecurity.token
 
+import com.aechak.websecurity.config.JwtConfig
 import com.nimbusds.jose.jwk.JWKSet
 import com.nimbusds.jose.jwk.RSAKey
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet
@@ -17,9 +18,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /** RS256 인코딩/디코딩 왕복·결정성(멱등 재발급 전제)·refresh형 토큰의 API 인가 거부 검증. */
-class NimbusTokenCodecAdapterTest {
+class TokenCodecAdapterTest {
     private val rsaKey: RSAKey = generateKey()
-    private val codec = NimbusTokenCodecAdapter(NimbusJwtEncoder(ImmutableJWKSet(JWKSet(rsaKey))), rsaKey)
+    private val codec = TokenCodecAdapter(NimbusJwtEncoder(ImmutableJWKSet(JWKSet(rsaKey))), rsaKey)
 
     @Test
     fun `refresh 토큰 왕복 - 클레임이 보존된다`() {

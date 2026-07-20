@@ -1,4 +1,4 @@
-package com.aechak.api.security
+package com.aechak.api.auth.config
 
 import com.aechak.application.auth.service.WebLoginPolicy
 import org.springframework.boot.context.properties.EnableConfigurationProperties

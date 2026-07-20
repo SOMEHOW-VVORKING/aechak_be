@@ -3,6 +3,7 @@ package com.aechak.api.security
 import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.port.UserStatusReader
 import com.aechak.webcommon.error.ErrorResponse
+import com.aechak.websecurity.filter.UserStatusFilter
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration

@@ -40,6 +40,7 @@ flyway-mysql = { module = "org.flywaydb:flyway-mysql" }    # Flyway 10+ MySQL �
 spring-boot-starter-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-oauth2-resource-server" }
 spring-security-oauth2-jose = { module = "org.springframework.security:spring-security-oauth2-jose" }
 spring-boot = { module = "org.springframework.boot:spring-boot" }    # @ConfigurationProperties — infra 어댑터의 설정 바인딩용
+jackson-databind = { module = "tools.jackson.core:jackson-databind" } # web-security 필터가 에러 응답(ErrorResponse)을 JSON으로 쓸 때 사용 — Boot 4 = Jackson 3, 버전은 BOM이 해석
 
 # --- infra:redis: refresh token 저장소 ---
 spring-boot-starter-data-redis = { module = "org.springframework.boot:spring-boot-starter-data-redis" }

@@ -1,7 +1,8 @@
-package com.aechak.api.security
+package com.aechak.websecurity.token
 
 import com.aechak.application.auth.port.RefreshTokenClaims
 import com.aechak.application.auth.port.TokenCodec
+import com.aechak.websecurity.config.JwtConfig
 import com.nimbusds.jose.jwk.RSAKey
 import org.springframework.security.oauth2.jwt.JwtClaimsSet
 import org.springframework.security.oauth2.jwt.JwtDecoder
@@ -18,7 +19,7 @@ import java.time.Instant
  * RS256 서명은 결정적이라 동일 클레임 인코딩 = 동일 토큰 — 회전 유예의 멱등 재발급이 성립하는 전제다.
  */
 @Component
-class NimbusTokenCodecAdapter(
+class TokenCodecAdapter(
     private val jwtEncoder: JwtEncoder,
     rsaKey: RSAKey,
 ) : TokenCodec {

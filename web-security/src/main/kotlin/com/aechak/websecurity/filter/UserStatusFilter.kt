@@ -1,4 +1,4 @@
-package com.aechak.api.security
+package com.aechak.websecurity.filter
 
 import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.port.UserStatusReader
