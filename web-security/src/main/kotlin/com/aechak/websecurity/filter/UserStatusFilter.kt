@@ -4,12 +4,12 @@ import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.port.UserStatusReader
 import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.webcommon.error.ErrorResponse
+import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.MediaType
 import org.springframework.security.core.context.SecurityContextHolder
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken
 import org.springframework.web.filter.OncePerRequestFilter
 import tools.jackson.databind.ObjectMapper
 
@@ -35,15 +35,11 @@ class UserStatusFilter(
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
-        val authentication =
-            SecurityContextHolder.getContext().authentication as? JwtAuthenticationToken
+        val principal =
+            SecurityContextHolder.getContext().authentication?.principal as? AuthPrincipal
                 ?: return filterChain.doFilter(request, response) // 비인증(permitAll) 경로
 
-        val userId =
-            authentication.token.subject?.toLongOrNull()
-                ?: return writeError(response, AuthErrorCode.UNAUTHENTICATED)
-
-        when (userStatusReader.statusOf(userId)) {
+        when (userStatusReader.statusOf(principal.userId)) {
             UserStatus.ACTIVE -> {
                 Unit
             }

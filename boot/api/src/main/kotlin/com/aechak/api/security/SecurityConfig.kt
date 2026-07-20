@@ -3,6 +3,7 @@ package com.aechak.api.security
 import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.port.UserStatusReader
 import com.aechak.webcommon.error.ErrorResponse
+import com.aechak.websecurity.authentication.AuthPrincipalConverter
 import com.aechak.websecurity.filter.UserStatusFilter
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
@@ -66,7 +67,10 @@ class SecurityConfig {
                     .anyRequest()
                     .authenticated()
             }.oauth2ResourceServer { resourceServer ->
-                resourceServer.jwt { it.decoder(jwtDecoder) }
+                resourceServer.jwt {
+                    it.decoder(jwtDecoder)
+                    it.jwtAuthenticationConverter(AuthPrincipalConverter())
+                }
                 resourceServer.authenticationEntryPoint(unauthenticatedEntryPoint)
             }.exceptionHandling { it.authenticationEntryPoint(unauthenticatedEntryPoint) }
             .addFilterAfter(
