@@ -3,6 +3,7 @@ package com.aechak.api.auth.cookie
 import com.aechak.application.auth.service.TokenPolicy
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.web.server.Cookie
 import org.springframework.http.ResponseCookie
 import org.springframework.stereotype.Component
 import java.time.Duration
@@ -36,7 +37,7 @@ class RefreshCookieFactory(
             .from(REFRESH_COOKIE, value)
             .httpOnly(true)
             .secure(request.isSecure)
-            .sameSite("Lax")
+            .sameSite(Cookie.SameSite.LAX.attributeValue())
             .path("$basePath/auth")
 
     companion object {
