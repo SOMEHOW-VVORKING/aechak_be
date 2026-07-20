@@ -1,6 +1,7 @@
 package com.aechak.application.auth.usecase
 
 import com.aechak.application.auth.usecase.result.WebLoginCompletion
+import com.aechak.application.auth.usecase.result.WebLoginPreparation
 import com.aechak.domain.user.social.enums.SocialProvider
 
 /**
@@ -10,12 +11,12 @@ import com.aechak.domain.user.social.enums.SocialProvider
 interface WebLoginUseCase {
     /**
      * 로그인 진입 준비: returnUrl 화이트리스트 검증(실패 시 400 — 신뢰 불가 주소로는 리다이렉트 금지)
-     * → state 발급·저장 → provider authorize URL 반환.
+     * → state 발급·저장 → authorize URL과 state 반환(state는 컨트롤러의 브라우저 바인딩 쿠키용).
      */
     fun prepareLogin(
         provider: SocialProvider,
         returnUrl: String,
-    ): String
+    ): WebLoginPreparation
 
     /**
      * provider 콜백 처리: state 1회 소비(실패 시 예외 — returnUrl을 모르므로 리다이렉트 불가)
