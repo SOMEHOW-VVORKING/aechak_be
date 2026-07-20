@@ -34,6 +34,9 @@ class FileService(
         if (!command.tmpKey.startsWith(FileKey.tmpOwnerPrefix(command.userId))) {
             throw BusinessException(FileErrorCode.FILE_ACCESS_DENIED)
         }
+        if (!command.tmpKey.startsWith(FileKey.tmpPrefixOf(command.userId, command.purpose))) {
+            throw BusinessException(FileErrorCode.FILE_PURPOSE_MISMATCH)
+        }
         val promotedKey = fileStorage.promote(command.tmpKey, command.purpose)
         return PromoteFileResult(key = promotedKey)
     }

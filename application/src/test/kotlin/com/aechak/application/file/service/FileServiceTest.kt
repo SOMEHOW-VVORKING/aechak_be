@@ -61,7 +61,7 @@ class FileServiceTest {
 
     @Test
     fun `userId prefix가 부분일치해도 다른 유저 키면 거절한다`() {
-        // userId=1 이지만 tmp/12/... — tmpOwnerPrefix의 후행 슬래시가 없으면 오인될 경계
+        // userId=1 이지만 tmp/12/... — 접두 검증의 후행 슬래시가 없으면 오인될 경계
         val command = PromoteFileCommand("tmp/12/users/profile/x.png", USER_ID, UploadPurpose.USER_PROFILE)
 
         val ex = assertFailsWith<BusinessException> { service.promote(command) }
@@ -76,6 +76,16 @@ class FileServiceTest {
         val ex = assertFailsWith<BusinessException> { service.promote(command) }
 
         assertEquals(FileErrorCode.FILE_ACCESS_DENIED, ex.errorCode, "tmp staging 밖 키는 승격 대상이 아니어야 한다")
+    }
+
+    @Test
+    fun `발급 용도와 다른 경로의 tmp 키면 FILE_PURPOSE_MISMATCH로 거절한다`() {
+        // userId·소유는 맞지만 키의 용도 경로가 USER_PROFILE(users/profile)이 아니다
+        val command = PromoteFileCommand("tmp/$USER_ID/other/x.png", USER_ID, UploadPurpose.USER_PROFILE)
+
+        val ex = assertFailsWith<BusinessException> { service.promote(command) }
+
+        assertEquals(FileErrorCode.FILE_PURPOSE_MISMATCH, ex.errorCode, "다른 용도로 발급된 키는 소유 거절과 구분해 거절해야 한다")
     }
 
     @Test
