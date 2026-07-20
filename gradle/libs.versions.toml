@@ -17,6 +17,8 @@ ktlint-gradle = "14.2.0"         # org.jlleitschuh.gradle.ktlint 래퍼
 ktlint = "1.8.0"                 # ktlint 코어
 springdoc = "3.0.3"              # OpenAPI 3/Swagger UI
 spring-cloud-aws = "4.0.2"       # Boot 4.x 호환 계열(4.0.x) 최신 패치 — 3.x는 Boot 4에서 미동작
+querydsl = "7.0"                 # OpenFeign 포크 — JPA 3.2/Hibernate 7 타깃(원조 com.querydsl는 Hibernate 7 미지원)
+ksp = "2.2.21-2.0.5"             # QueryDSL Q클래스 생성 — Kotlin 2.2.21 정합 버전
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -33,6 +35,8 @@ spring-tx = { module = "org.springframework:spring-tx" }
 
 # --- infra:persistence: domain 포트의 JPA 어댑터 ---
 spring-data-jpa = { module = "org.springframework.data:spring-data-jpa" }
+querydsl-jpa = { module = "io.github.openfeign.querydsl:querydsl-jpa", version.ref = "querydsl" }              # JPAQueryFactory + Q클래스 런타임
+querydsl-ksp-codegen = { module = "io.github.openfeign.querydsl:querydsl-ksp-codegen", version.ref = "querydsl" }  # domain에서 Q클래스 생성(KSP)
 spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-starter-flyway" }  # flyway-core + Boot 4 분리형 자동 구성(spring-boot-flyway)
 flyway-mysql = { module = "org.flywaydb:flyway-mysql" }    # Flyway 10+ MySQL 지원 분리 모듈
 
@@ -76,3 +80,4 @@ gradleplugin-kotlin-allopen = { module = "org.jetbrains.kotlin:kotlin-allopen", 
 gradleplugin-kotlin-noarg = { module = "org.jetbrains.kotlin:kotlin-noarg", version.ref = "kotlin" }
 gradleplugin-spring-boot = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "spring-boot" }
 gradleplugin-ktlint = { module = "org.jlleitschuh.gradle:ktlint-gradle", version.ref = "ktlint-gradle" }
+gradleplugin-ksp = { module = "com.google.devtools.ksp:symbol-processing-gradle-plugin", version.ref = "ksp" }
