@@ -1,13 +1,11 @@
 package com.aechak.application.auth.service
 
 import com.aechak.application.auth.error.AuthErrorCode
-import com.aechak.application.auth.port.AuthorizationCodeExchanger
 import com.aechak.application.auth.port.SocialTokenVerifier
 import com.aechak.application.auth.usecase.command.SocialLoginCommand
 import com.aechak.application.auth.usecase.result.SocialLoginResult
 import com.aechak.application.user.usecase.UserUseCase
 import com.aechak.common.error.BusinessException
-import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.social.SocialIdentity
 import com.aechak.domain.user.social.enums.SocialProvider
@@ -29,14 +27,13 @@ import org.springframework.stereotype.Service
 @Service
 class SocialLoginService(
     private val socialTokenVerifier: SocialTokenVerifier,
-    private val authorizationCodeExchanger: AuthorizationCodeExchanger,
     private val socialIdentityRepository: SocialIdentityRepository,
     private val userRepository: UserRepository,
     private val userUseCase: UserUseCase,
     private val tokenService: TokenService,
 ) {
     fun login(command: SocialLoginCommand): SocialLoginResult {
-        val providerUser = socialTokenVerifier.verify(command.provider, resolveIdToken(command))
+        val providerUser = socialTokenVerifier.verify(command.provider, command.idToken)
 
         val identity = socialIdentityRepository.findByProviderAndProviderId(command.provider, providerUser.providerId)
         val (user, isNew) =
@@ -57,18 +54,6 @@ class SocialLoginService(
 
         val tokens = tokenService.issue(user.id, user.role)
         return SocialLoginResult(tokens, user.status, isNew)
-    }
-
-    /**
-     * 채널별 id_token 확보: 네이티브·애플 웹은 직접 제출분, 웹 JS SDK는 code를 서버가 교환.
-     * 이후 검증·가입 파이프라인은 채널과 무관하게 동일하다 — 채널 차이는 이 함수 안에 갇힌다.
-     */
-    private fun resolveIdToken(command: SocialLoginCommand): String {
-        command.idToken?.let { return it }
-        val code = command.code
-        val redirectUri = command.redirectUri
-        if (code == null || redirectUri == null) throw BusinessException(CommonErrorCode.INVALID_REQUEST)
-        return authorizationCodeExchanger.exchange(command.provider, code, redirectUri)
     }
 
     private fun registerAndLink(
