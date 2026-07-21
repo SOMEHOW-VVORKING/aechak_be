@@ -14,6 +14,11 @@ spring:
 api:
   cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}       # 예: https://aechak.com
 
+aws:
+  s3:
+    media-bucket: ${AWS_S3_MEDIA_BUCKET}
+    docs-bucket: ${AWS_S3_DOCS_BUCKET}
+
 auth:
   web:
     return-urls: ${AUTH_WEB_RETURN_URLS:}              # 예: https://aechak.com/login/complete
