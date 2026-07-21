@@ -49,6 +49,12 @@ spring-data-redis = { module = "org.springframework.data:spring-data-redis" }
 # --- infra:s3-client ---
 spring-cloud-aws-starter-s3 = { module = "io.awspring.cloud:spring-cloud-aws-starter-s3" }
 
+# --- infra:kafka ---
+spring-kafka = { module = "org.springframework.kafka:spring-kafka" }   # Boot BOM 버전
+spring-jdbc = { module = "org.springframework:spring-jdbc" }  # 아웃박스 JdbcClient
+# jackson-databind는 위에서 사용 중
+jackson-module-kotlin = { module = "tools.jackson.module:jackson-module-kotlin" }  # Jackson 3 Kotlin 모듈, 버전은 BOM
+
 # --- 실행 모듈(api·batch) 조립용 ---
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
