@@ -16,6 +16,11 @@ spring:
 api:
   cors-allowed-origins: http://localhost:5175,http://localhost:5173   # web-buyer dev(5175) + 기타 웹 앱
 
+aws:
+  s3:
+    media-bucket: ${AWS_S3_MEDIA_BUCKET}
+    docs-bucket: ${AWS_S3_DOCS_BUCKET}
+
 auth:
   web:
     # return은 화이트리스트 "정확 일치"만 통과 — 오픈 리다이렉트 방지.

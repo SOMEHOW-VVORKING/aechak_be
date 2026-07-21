@@ -46,6 +46,9 @@ jackson-databind = { module = "tools.jackson.core:jackson-databind" } # web-secu
 spring-boot-starter-data-redis = { module = "org.springframework.boot:spring-boot-starter-data-redis" }
 spring-data-redis = { module = "org.springframework.data:spring-data-redis" }
 
+# --- infra:s3-client ---
+spring-cloud-aws-starter-s3 = { module = "io.awspring.cloud:spring-cloud-aws-starter-s3" }
+
 # --- 실행 모듈(api·batch) 조립용 ---
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }

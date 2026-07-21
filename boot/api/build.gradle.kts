@@ -7,6 +7,7 @@ dependencies {
     implementation(project(":jpa-persistence"))         // 도메인 포트의 구현체 조립. 다른 infra 모듈도 어댑터가 생기면 여기 추가
     implementation(project(":social-client"))           // 소셜 id_token 검증 어댑터(ACC-01)
     implementation(project(":redis"))                   // refresh token 저장소 어댑터(ACC-01)
+    implementation(project(":s3-client"))               // presigned URL 발급·승격 어댑터
     implementation(kotlin("reflect"))                   // Spring(Data)의 Kotlin 리플렉션 지원에 런타임 필수
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.validation) // Request dto의 @Valid 형식 검증
