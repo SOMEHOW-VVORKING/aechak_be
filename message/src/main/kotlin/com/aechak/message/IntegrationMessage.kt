@@ -1,4 +1,3 @@
 package com.aechak.message
 
-interface IntegrationMessage {
-}
+interface IntegrationMessage
