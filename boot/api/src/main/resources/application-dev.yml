@@ -10,6 +10,8 @@ spring:
     redis:
       host: ${SPRING_DATA_REDIS_HOST}       # ElastiCache
       port: ${SPRING_DATA_REDIS_PORT}
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS}   # EC2 Kafka 고정 IP — 필수, 미존재 시 부팅 실패(fail-fast)
   jpa:
     hibernate:
       ddl-auto: update                      # RDS 스키마 부트스트랩 — 전체 DDL 이관 완료 시 validate로

@@ -10,6 +10,8 @@ spring:
     redis:
       host: ${SPRING_DATA_REDIS_HOST}
       port: ${SPRING_DATA_REDIS_PORT}
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS}   # 필수 — 미존재 시 부팅 실패(fail-fast)
 
 api:
   cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}
