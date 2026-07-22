@@ -27,4 +27,6 @@ dependencies {
     testImplementation(libs.spring.boot.starter.test)  // 컨텍스트 부팅 스모크 테스트(엔티티 스키마 생성 검증)
     testImplementation(libs.spring.boot.testcontainers) // @ServiceConnection — 통합 테스트 DB를 실 MySQL 컨테이너로 배선(70 §9)
     testImplementation(libs.testcontainers.mysql)       // MySQL 컨테이너 모듈. H2는 두지 않는다 — 폴백 통과(false confidence) 차단
+    testImplementation(libs.spring.kafka.test)          // EmbeddedKafka — 이벤트 백본 통합 테스트
+    testImplementation(libs.awaitility)                 // 릴레이·컨슈머가 별도 스레드라 비동기 단언 필요
 }

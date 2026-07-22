@@ -55,6 +55,10 @@ spring-jdbc = { module = "org.springframework:spring-jdbc" }  # 아웃박스 Jdb
 # jackson-databind는 위에서 사용 중
 jackson-module-kotlin = { module = "tools.jackson.module:jackson-module-kotlin" }  # Jackson 3 Kotlin 모듈, 버전은 BOM
 
+# --- api 통합 테스트: 이벤트 백본 ---
+spring-kafka-test = { module = "org.springframework.kafka:spring-kafka-test" }   # EmbeddedKafka
+awaitility = { module = "org.awaitility:awaitility" }    # 비동기 단언 — 버전은 Boot BOM
+
 # --- 실행 모듈(api·batch) 조립용 ---
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
