@@ -1,4 +1,8 @@
 package com.aechak.domain.product.stats.repository
 
-/** PK=product_id. 집계 증감은 어댑터 원자 UPDATE로 위임한다. */
-interface ProductStatsRepository
+import com.aechak.domain.product.stats.ProductStats
+
+interface ProductStatsRepository {
+    /** 상품 배치 조회 */
+    fun findAllByProductIds(productIds: Collection<Long>): List<ProductStats>
+}
