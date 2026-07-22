@@ -1,5 +1,6 @@
 package com.aechak.infra.kafka.outbox
 
+import com.aechak.infra.kafka.Topics
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.slf4j.LoggerFactory
 import org.springframework.jdbc.core.simple.JdbcClient
@@ -76,7 +77,7 @@ class OutboxRelay(
      */
     private fun send(row: OutboxRow) {
         val record =
-            ProducerRecord("aechak.${row.aggregateType}.events", row.aggregateId, row.payload)
+            ProducerRecord(Topics.of(row.aggregateType), row.aggregateId, row.payload)
         record.headers().add("event_id", row.eventId.toByteArray())
         record.headers().add("event_type", row.eventType.toByteArray())
         record.headers().add("trace_id", row.traceId.toByteArray())

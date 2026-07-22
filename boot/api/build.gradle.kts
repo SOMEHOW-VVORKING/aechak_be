@@ -9,7 +9,8 @@ dependencies {
     implementation(project(":redis"))                   // refresh token 저장소 어댑터(ACC-01)
     implementation(project(":s3-client"))               // presigned URL 발급·승격 어댑터
     implementation(kotlin("reflect"))                   // Spring(Data)의 Kotlin 리플렉션 지원에 런타임 필수
-    implementation(project(":kafka"))               // 릴레이·퍼블리셔 빈 조립
+    implementation(project(":kafka"))                   // 릴레이·퍼블리셔 빈 조립
+    implementation(project(":message"))
     implementation(libs.spring.boot.starter.kafka)
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.validation) // Request dto의 @Valid 형식 검증

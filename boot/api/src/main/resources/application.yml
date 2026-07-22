@@ -11,6 +11,24 @@ spring:
       region:
         static: ap-northeast-2 # 리전 자동탐지 제거 — CI 러너처럼 AWS 설정 없는 환경에선 탐지 실패로 부팅이 깨짐
 
+  # 브로커 주소(bootstrap-servers)만 프로파일 yml 소유 — local은 compose 기본값,
+  # dev/prod는 datasource처럼 SSM에서 fail-fast 로드(terraform ec2.tf가 파라미터 생성).
+  kafka:
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer   # value = 엔벨로프 JSON 문자열
+      acks: all                        # 단일 브로커에선 acks=1과 사실상 같지만, 브로커 늘리는 날 옳도록 지금 명시
+      properties:
+        enable.idempotence: true       # 전송 재시도로 인한 중복·재정렬 방지 (Kafka 3+ 기본이지만 명시)
+        linger.ms: 10
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest   # 새 그룹은 처음부터 재처리 (이벤트는 건너뛰기보다 재처리가 안전)
+    listener:
+      ack-mode: RECORD              # 레코드 단위 오프셋 커밋 — 크래시 시 재전달 폭 최소
+      concurrency: 1                # 파티션 수 이하로. 스케일은 파티션부터 늘리고 그다음 이 값
+
 # ECS 롤링 시 SIGTERM을 받으면 처리 중 요청까지는 끝내고 종료
 server:
   shutdown: graceful

@@ -14,14 +14,7 @@ spring:
       ddl-auto: update
 
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}   # docker compose 기본값
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.apache.kafka.common.serialization.StringSerializer   # value = 엔벨로프 JSON 문자열
-      acks: all                        # 단일 브로커에선 acks=1과 사실상 같지만, 브로커 늘리는 날 옳도록 지금 명시
-      properties:
-        enable.idempotence: true       # 전송 재시도로 인한 중복·재정렬 방지 (Kafka 3+ 기본이지만 명시)
-        linger.ms: 10
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}   # docker compose 기본값. 정책값(직렬화·acks 등)은 application.yml 공통
 
 api:
   cors-allowed-origins: http://localhost:5175,http://localhost:5173   # web-buyer dev(5175) + 기타 웹 앱

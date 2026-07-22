@@ -5,7 +5,6 @@ import com.aechak.domain.support.DomainEvent
 import com.aechak.infra.kafka.config.MessagingJacksonConfig.Companion.MESSAGING_OBJECT_MAPPER
 import com.aechak.message.Envelope
 import com.aechak.message.IntegrationMessage
-import java.util.UUID
 import org.slf4j.LoggerFactory
 import org.slf4j.MDC
 import org.springframework.beans.factory.annotation.Qualifier
@@ -14,6 +13,7 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
 import tools.jackson.databind.ObjectMapper
 import java.time.Instant
+import java.util.UUID
 
 @Component
 class OutboxMessagePublisher(
