@@ -84,9 +84,7 @@ class OutboxRelay(
     }
 
     /**
-     * send 실패 시. status 판정이 attempts 증가보다 먼저인 이유:
-     * MySQL은 SET 절을 왼쪽부터 순차 평가해 뒤 할당이 앞 할당의 "새 값"을 본다(표준 SQL과 다름).
-     * 순서를 바꾸면 cap보다 한 번 일찍 DEAD가 된다 — 2026-07-22 검증에서 실제로 발생.
+     * send 실패 시. status 상태 검증을 attempts 증가보다 먼저해야 함. (MySQL)
      */
     private fun markFailed(
         row: OutboxRow,
