@@ -70,6 +70,9 @@ springdoc-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc
 spring-cloud-aws-bom = { module = "io.awspring.cloud:spring-cloud-aws-dependencies", version.ref = "spring-cloud-aws" }
 spring-cloud-aws-starter-parameter-store = { module = "io.awspring.cloud:spring-cloud-aws-starter-parameter-store" }  # 버전은 위 BOM이 해석
 
+# --- api: Kafka 구성 ---
+spring-boot-starter-kafka = { module = "org.springframework.boot:spring-boot-starter-kafka" }
+
 # --- domain: 외부 노출 식별자(ULID) — 전이 의존 0·순수 Java. domain 허용 의존(A-1 계보, 10 문서 §2-2) ---
 ulid-creator = { module = "com.github.f4b6a3:ulid-creator", version = "5.2.4" }
 mysql-connector-j = { module = "com.mysql:mysql-connector-j" }  # 실 DB(RDS MySQL 8.4) 드라이버
