@@ -67,7 +67,7 @@ flowchart TB
 | 왜 앱은 ECS Fargate? | 무중단 롤링·실패 시 자동 롤백·오토스케일링을 기본으로 얻고, 서버 패치·접속 관리가 소멸 |
 | S3 버킷이 왜 2개? | 도메인별이 아니라 **성격별** 분리 — media(공개, CDN)와 docs(민감, KMS·presigned). 도메인 구분은 버킷 안 prefix(`products/`, `reviews/`)로 |
 | SSH 키는? | **없음.** 22번 포트도 안 열림. 접속은 SSM Session Manager(`aws ssm start-session`) — IAM 권한만으로 셸·포트포워딩, 접속 기록은 CloudTrail 자동 |
-| 비밀번호는 어디에? | 레포·이미지 어디에도 없음. RDS 비밀번호는 Terraform이 생성해 **SSM Parameter Store**(`/aechak/{env}/...`)에만 저장, ECS가 기동 시 컨테이너 env로 주입 |
+| 비밀번호는 어디에? | 레포·이미지 어디에도 없음. RDS 비밀번호는 Terraform이 생성해 **SSM Parameter Store**(`/aechak/{env}/...`)에만 저장, 앱이 부팅 시 `spring.config.import`로 경로째 직접 로드 (taskdef가 주입하는 env는 프로파일·리전 2개뿐) |
 
 ## 3. 파일 지도
 
@@ -134,7 +134,8 @@ CI/CD     = 내용물: 앱을 그릇에 배포한다      ← develop 푸시가 
 
 - 앱 코드만 바꿨으면 terraform 몰라도 됨 — develop 머지가 알아서 배포
 - **새 환경변수/시크릿이 필요한 기능**이면 순서 엄수:
-  ① `ecs.tf` taskdef에 env 추가(+필요시 SSM 파라미터) → apply → ② 앱 코드가 사용 → 배포
+  ① SSM 파라미터 생성(`aws_ssm_parameter`, rds.tf 패턴) → apply → ② profile yml에 `${...}` 계약 라인 + 앱 코드가 사용 → 배포
+  (앱이 부팅 시 `/aechak/{env}/api/` 경로째 읽으므로 taskdef 수정 불필요)
 - terraform 변경은 develop 머지 시 자동 apply되고, 새 taskdef 반영을 위해 앱도 재배포됨 (deploy-dev.yml의 deploy-infra → deploy-api 순서)
 
 ## 6. 지켜야 할 것
