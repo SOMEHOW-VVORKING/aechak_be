@@ -7,6 +7,7 @@ import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.support.AggregateRoot
 import com.aechak.domain.support.Ulid
+import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -86,10 +87,28 @@ class Product protected constructor(
     var version: Int = 0
         protected set
 
-    @OneToMany(cascade = [jakarta.persistence.CascadeType.ALL], orphanRemoval = true)
+    @OneToMany(cascade = [CascadeType.ALL], orphanRemoval = true)
     @JoinColumn(name = "product_id", nullable = false, updatable = false)
     private val _images: MutableList<ProductImage> = mutableListOf()
     val images: List<ProductImage> get() = _images.toList()
+
+    /** 가격 계산 정책(정가/할인가/기간) */
+    fun pricing(): ProductPricing =
+        ProductPricing(
+            regularPrice = regularPrice,
+            discountPrice = discountPrice,
+            discountStartAt = discountStartAt,
+            discountEndAt = discountEndAt,
+        )
+
+    /** 할인이 적용되는 기간이면 할인가 반환, 이외에는 null 반환, 기간이 없는 경우 상시 할인으로 취급 */
+    fun discountedPriceAt(at: LocalDateTime): Long? = pricing().discountedPriceAt(at)
+
+    /** 현재 판매 가격 */
+    fun sellingPriceAt(at: LocalDateTime): Long = pricing().sellingPriceAt(at)
+
+    /** 표시용 현재 할인율(%) */
+    fun discountRateAt(at: LocalDateTime): Int? = pricing().discountRateAt(at)
 
     companion object {
         fun register(
@@ -106,8 +125,20 @@ class Product protected constructor(
             if (regularPrice < 0L) {
                 throw BusinessException(ProductErrorCode.INVALID_PRODUCT_PRICE)
             }
-            if (discountPrice != null && (discountPrice < 0L || discountPrice > regularPrice)) {
+            if (discountPrice != null && (discountPrice !in 0L..regularPrice)) {
                 throw BusinessException(ProductErrorCode.INVALID_PRODUCT_PRICE)
+            }
+            // 할인가가 있으면 시작일 필수(종료일은 선택 — 없으면 무기한). 상시할인은 불허.
+            if (discountPrice != null && discountStartAt == null) {
+                throw BusinessException(ProductErrorCode.INVALID_DISCOUNT_PERIOD)
+            }
+            // 역전 구간(시작 > 종료)은 어떤 시각에도 성립하지 않는 죽은 할인
+            if (discountStartAt != null && discountEndAt != null && discountStartAt.isAfter(discountEndAt)) {
+                throw BusinessException(ProductErrorCode.INVALID_DISCOUNT_PERIOD)
+            }
+            // 할인가 없이 기간(시작·종료 어느 쪽이든)만 있는 데이터는 무의미
+            if (discountPrice == null && (discountStartAt != null || discountEndAt != null)) {
+                throw BusinessException(ProductErrorCode.INVALID_DISCOUNT_PERIOD)
             }
             return Product(
                 category = category,
