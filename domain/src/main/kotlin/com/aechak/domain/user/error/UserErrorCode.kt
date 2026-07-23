@@ -16,4 +16,9 @@ enum class UserErrorCode(
     INVALID_PET_WEIGHT(30006, "체중은 0보다 커야 합니다.", 400),
     SELF_REPORT_NOT_ALLOWED(30007, "자기 자신은 신고할 수 없습니다.", 400),
     REPORT_REASON_REQUIRED(30008, "기타 사유 신고는 상세 사유가 필요합니다.", 400),
+
+    // 배송지 서브대역(30120~) — 주문 대역이 아니라 여기인 이유: 배송지는 User 애그리거트 소속(BC 기준).
+    DELIVERY_ADDRESS_LIMIT_EXCEEDED(30120, "배송지는 최대 10개까지만 등록할 수 있습니다.", 422),
+    DELIVERY_ADDRESS_NOT_FOUND(30121, "배송지를 찾을 수 없습니다.", 404),
+    DELIVERY_ADDRESS_ACCESS_DENIED(30122, "본인의 배송지만 접근할 수 있습니다.", 403),
 }
