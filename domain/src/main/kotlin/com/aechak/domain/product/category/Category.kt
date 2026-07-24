@@ -17,6 +17,7 @@ import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import jakarta.persistence.Version
 
+/** 카테고리 계층(대>중>소, 최대 depth 3)의 노드. */
 @Entity
 @Table(name = "categories")
 class Category protected constructor(

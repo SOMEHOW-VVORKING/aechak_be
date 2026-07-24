@@ -11,5 +11,5 @@ enum class CommonErrorCode(
 ) : ErrorCode {
     INTERNAL_SERVER_ERROR(90001, "서버 오류가 발생했습니다.", 500),
     INVALID_REQUEST(90002, "잘못된 요청입니다.", 400),
-    // TODO: 90000번대 공통 코드 필요 시 여기에만 추가
+    INVALID_CURSOR(90003, "유효하지 않은 커서입니다.", 400),
 }
