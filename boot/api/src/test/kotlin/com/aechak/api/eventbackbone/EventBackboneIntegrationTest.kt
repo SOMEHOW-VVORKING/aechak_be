@@ -6,15 +6,22 @@ import com.aechak.application.messaging.ProcessedMessages
 import com.aechak.domain.support.DomainEvent
 import com.aechak.infra.kafka.Topics
 import com.aechak.infra.kafka.config.MessagingJacksonConfig.Companion.MESSAGING_OBJECT_MAPPER
+import com.aechak.infra.kafka.consumer.TraceIdRecordInterceptor
 import com.aechak.message.Envelope
 import com.aechak.message.IntegrationMessage
 import org.apache.kafka.clients.consumer.ConsumerConfig
+import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.assertj.core.api.Assertions.assertThat
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Test
+import org.slf4j.MDC
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
+import org.springframework.core.env.Environment
+import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.test.utils.KafkaTestUtils
@@ -22,6 +29,7 @@ import tools.jackson.databind.ObjectMapper
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.LinkedBlockingQueue
 
 class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     @Autowired
@@ -36,6 +44,12 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     @Autowired
     @Qualifier(MESSAGING_OBJECT_MAPPER)
     lateinit var objectMapper: ObjectMapper
+
+    @Autowired
+    lateinit var traceProbe: TraceProbe
+
+    @Autowired
+    lateinit var environment: Environment
 
     /** 테스트 전용 합성 이벤트. 도메인 이벤트이자 통합 메시지라 별도 매핑 없이 발행된다. */
     data class SyntheticMessage(
@@ -56,6 +70,49 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
             assertThat(statusOf(aggregateId))
                 .`as`("커밋된 아웃박스 행은 릴레이가 브로커 응답까지 받은 뒤 PUBLISHED(1)로 바뀌어야 한다")
                 .isEqualTo(1)
+        }
+        assertThat(traceIdOf(aggregateId))
+            .`as`("MDC 없는 발행 경로에서도 체인 뿌리가 될 traceId가 만들어져야 한다")
+            .isNotBlank()
+    }
+
+    @Test
+    fun `발행 스레드의 MDC traceId가 이벤트에 그대로 실린다`() {
+        val aggregateId = "mdc-propagation-test"
+        // TraceIdFilter가 HTTP 스레드에 넣어주는 것과 같은 상황을 리터럴 키로 재현
+        MDC.put("traceId", "trace-from-request")
+        try {
+            tx.executeWithoutResult {
+                publisher.publish("order", aggregateId, SyntheticMessage("hi"))
+            }
+        } finally {
+            MDC.remove("traceId")
+        }
+
+        assertThat(traceIdOf(aggregateId))
+            .`as`("퍼블리셔가 다른 MDC 키를 읽으면 요청과 이벤트의 트레이스가 끊긴다")
+            .isEqualTo("trace-from-request")
+    }
+
+    @Test
+    fun `로그 패턴은 MDC의 traceId를 출력한다`() {
+        assertThat(environment.getProperty("logging.pattern.level"))
+            .`as`("패턴에서 %X{traceId}가 빠지면 traceId가 어디에도 찍히지 않는다")
+            .contains("%X{traceId")
+    }
+
+    @Test
+    fun `컨슈머 스레드는 레코드 헤더의 traceId를 MDC로 복원받는다`() {
+        val traceId = "trace-chain-${UUID.randomUUID()}"
+        val record = ProducerRecord(Topics.ORDER, null, "trace-test", envelopeJson(UUID.randomUUID().toString()))
+        record.headers().add(TraceIdRecordInterceptor.TRACE_ID_HEADER, traceId.toByteArray())
+
+        kafka.send(record).get()
+
+        await().atMost(Duration.ofSeconds(15)).untilAsserted {
+            assertThat(traceProbe.captured)
+                .`as`("복원이 안 되면 컨슈머 로그·재발행 이벤트가 발행 홉의 traceId와 끊긴다")
+                .contains(traceId)
         }
     }
 
@@ -193,6 +250,127 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     }
 
     @Test
+    fun `처리가 실패해 롤백되면 인박스 기록도 사라져 재시도가 막히지 않는다`() {
+        val eventId = UUID.randomUUID().toString()
+
+        runCatching {
+            tx.executeWithoutResult {
+                processedMessages.markProcessed("tx-consumer", eventId)
+                error("인박스 기록 후 처리 실패 재현")
+            }
+        }
+
+        assertThat(inboxCount(eventId))
+            .`as`("실패한 처리가 '처리됨'으로 남으면 재전달이 헛스킵되어 메시지가 유실된다")
+            .isEqualTo(0)
+        assertThat(processedMessages.markProcessed("tx-consumer", eventId))
+            .`as`("롤백 후 재전달은 새 처리로 받아들여져야 한다")
+            .isTrue()
+    }
+
+    @Test
+    fun `발행 완료 기록 전에 죽어 같은 행이 두 번 발행돼도 컨슈머 효과는 한 번이다`() {
+        val eventId = UUID.randomUUID().toString()
+        val aggregateId = "redelivery-test"
+        insertOutboxRow(aggregateId = aggregateId, eventId = eventId)
+
+        await().atMost(Duration.ofSeconds(15)).untilAsserted {
+            assertThat(inboxCount(eventId))
+                .`as`("첫 발행분이 처리돼야 한다")
+                .isEqualTo(1)
+        }
+
+        // 브로커 전송 후 PUBLISHED 기록 직전에 릴레이가 죽은 상황 재현: 행이 PENDING으로 남는다
+        db
+            .sql("UPDATE outbox_message SET status = 0, next_attempt_at = NOW(6) WHERE aggregate_id = :aggregateId")
+            .param("aggregateId", aggregateId)
+            .update()
+
+        await().atMost(Duration.ofSeconds(15)).untilAsserted {
+            assertThat(statusOf(aggregateId))
+                .`as`("릴레이는 PENDING으로 남은 행을 다시 발행해야 한다")
+                .isEqualTo(1)
+        }
+        Thread.sleep(1500)
+        assertThat(inboxCount(eventId))
+            .`as`("중복 발행이 효과를 두 번 내면 at-least-once가 exactly-once 효과로 좁혀지지 않는 것이다")
+            .isEqualTo(1)
+    }
+
+    @Test
+    fun `DEAD가 된 앞 행은 같은 애그리거트의 뒷 행을 계속 막는다`() {
+        val blockedAggregate = "dead-blocked-order"
+        val independentAggregate = "alive-order"
+
+        insertOutboxRow(aggregateId = blockedAggregate, nextAttemptAtSql = "NOW(6) + INTERVAL 1 DAY")
+        db
+            .sql("UPDATE outbox_message SET status = 2 WHERE aggregate_id = :aggregateId") // 앞 행을 DEAD로
+            .param("aggregateId", blockedAggregate)
+            .update()
+        insertOutboxRow(aggregateId = blockedAggregate)
+        insertOutboxRow(aggregateId = independentAggregate)
+
+        await().atMost(Duration.ofSeconds(15)).untilAsserted {
+            assertThat(statusOf(independentAggregate))
+                .`as`("무관한 애그리거트는 계속 흘러야 한다")
+                .isEqualTo(1)
+        }
+        val publishedCount =
+            db
+                .sql("SELECT COUNT(*) FROM outbox_message WHERE aggregate_id = :aggregateId AND status = 1")
+                .param("aggregateId", blockedAggregate)
+                .query(Int::class.java)
+                .single()
+        assertThat(publishedCount)
+            .`as`("DEAD를 건너뛰고 뒷 행을 발행하면 사람이 복구하기 전에 순서가 깨진다")
+            .isEqualTo(0)
+    }
+
+    @Test
+    fun `엔벨로프에 모르는 필드가 있어도 소비는 실패하지 않는다`() {
+        val eventId = UUID.randomUUID().toString()
+        val withUnknownField = envelopeJson(eventId).removeSuffix("}") + ""","addedInV2":"future"}"""
+
+        kafka.send(Topics.ORDER, "tolerant-reader-test", withUnknownField).get()
+
+        await().atMost(Duration.ofSeconds(15)).untilAsserted {
+            assertThat(inboxCount(eventId))
+                .`as`("프로듀서가 필드를 먼저 추가해도 배포가 늦은 컨슈머는 계속 소비할 수 있어야 한다")
+                .isEqualTo(1)
+        }
+    }
+
+    @Test
+    fun `전송 실패는 즉시 재시도하지 않고 백오프만큼 미룬다`() {
+        val aggregateId = "backoff-test"
+        insertOutboxRow(aggregateType = "invalid topic!", aggregateId = aggregateId, nextAttemptAtSql = "NOW(6) + INTERVAL 1 DAY")
+        // 6번째 실패(백오프 32초)를 관찰하도록 앞 실패 5번을 세팅한 뒤 시도 가능하게 연다
+        db
+            .sql("UPDATE outbox_message SET attempts = 5, next_attempt_at = NOW(6) WHERE aggregate_id = :aggregateId")
+            .param("aggregateId", aggregateId)
+            .update()
+
+        await().atMost(Duration.ofSeconds(15)).untilAsserted {
+            assertThat(attemptsOf(aggregateId))
+                .`as`("여섯 번째 실패가 기록돼야 한다")
+                .isEqualTo(6)
+        }
+        val secondsUntilRetry =
+            db
+                .sql("SELECT TIMESTAMPDIFF(SECOND, NOW(6), next_attempt_at) FROM outbox_message WHERE aggregate_id = :aggregateId")
+                .param("aggregateId", aggregateId)
+                .query(Int::class.java)
+                .single()
+        assertThat(secondsUntilRetry)
+            .`as`("백오프 없이 즉시 재시도하면 실패 행이 릴레이 주기마다 브로커를 두드린다")
+            .isGreaterThan(10)
+        Thread.sleep(1500)
+        assertThat(attemptsOf(aggregateId))
+            .`as`("백오프 중에는 재시도가 없어야 한다")
+            .isEqualTo(6)
+    }
+
+    @Test
     fun `인박스는 컨슈머별로 중복을 판정한다`() {
         val eventId = UUID.randomUUID().toString()
         assertThat(processedMessages.markProcessed("consumer-a", eventId))
@@ -222,21 +400,23 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
             ),
         )
 
-    /** 발행 경로를 거치지 않고 아웃박스 행을 직접 심는다. */
+    /** 발행 경로를 거치지 않고 아웃박스 행을 직접 심는다. payload는 실제 발행과 같은 엔벨로프 JSON. */
     private fun insertOutboxRow(
         aggregateType: String = "order",
         aggregateId: String,
         nextAttemptAtSql: String = "NOW(6)",
+        eventId: String = UUID.randomUUID().toString(),
     ) {
         db
             .sql(
                 """
                 INSERT INTO outbox_message (event_id, aggregate_type, aggregate_id, event_type, trace_id, payload, next_attempt_at)
-                VALUES (UUID_TO_BIN(:eventId), :aggregateType, :aggregateId, 'SyntheticMessage', '', '{"hello":"row"}', $nextAttemptAtSql)
+                VALUES (UUID_TO_BIN(:eventId), :aggregateType, :aggregateId, 'SyntheticMessage', '', :payload, $nextAttemptAtSql)
                 """.trimIndent(),
-            ).param("eventId", UUID.randomUUID().toString())
+            ).param("eventId", eventId)
             .param("aggregateType", aggregateType)
             .param("aggregateId", aggregateId)
+            .param("payload", envelopeJson(eventId))
             .update()
     }
 
@@ -260,4 +440,27 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
             .param("eventId", eventId)
             .query(Int::class.java)
             .single()
+
+    private fun traceIdOf(aggregateId: String): String =
+        db
+            .sql("SELECT trace_id FROM outbox_message WHERE aggregate_id = :aggregateId ORDER BY id LIMIT 1")
+            .param("aggregateId", aggregateId)
+            .query(String::class.java)
+            .single()
+
+    /** 리스너 스레드에서 보이는 MDC traceId를 붙잡아 두는 테스트 전용 컨슈머. */
+    class TraceProbe {
+        val captured = LinkedBlockingQueue<String>()
+
+        @KafkaListener(topics = [Topics.ORDER], groupId = "trace-probe")
+        fun onMessage(value: String) {
+            captured.add(MDC.get(TraceIdRecordInterceptor.TRACE_ID_MDC_KEY) ?: "")
+        }
+    }
+
+    @TestConfiguration
+    class TraceProbeConfig {
+        @Bean
+        fun traceProbe() = TraceProbe()
+    }
 }
