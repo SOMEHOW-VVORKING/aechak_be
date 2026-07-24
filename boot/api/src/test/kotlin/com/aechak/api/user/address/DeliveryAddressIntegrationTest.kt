@@ -256,6 +256,19 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `목록은 updated_at이 가장 오래됐어도 기본 배송지를 최상단에 노출한다`() {
+        // 첫 등록이 기본 → 이후 다른 배송지를 추가/수정하면 updatedAt이 더 최신이라
+        // 정렬이 updatedAt뿐이면 기본이 맨 아래로 밀린다. isDefault 선순위로 고정되는지 본다.
+        addDeliveryAddress(ownerToken, addressJson(label = "old-default", isDefault = true))
+        val b = addDeliveryAddress(ownerToken, addressJson(label = "b"))
+        addDeliveryAddress(ownerToken, addressJson(label = "c"))
+        mockMvc.perform(patchDeliveryAddress(ownerToken, b, addressJson(label = "b-updated"))).andExpect(status().isOk)
+
+        val labels = JsonPath.read<List<String>>(listBody(ownerToken), "$.data.addresses[*].label")
+        assertEquals("old-default", labels.first(), "updatedAt이 가장 오래된 기본이라도 맨 위여야 한다")
+    }
+
+    @Test
     fun `미인증 요청은 401을 반환한다`() {
         mockMvc.perform(get("/api/v1/delivery-addresses")).andExpect(status().isUnauthorized)
         mockMvc

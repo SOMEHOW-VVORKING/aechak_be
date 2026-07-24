@@ -15,7 +15,7 @@ class DeliveryAddressService(
     private val userService: UserService,
 ) {
     fun getActiveDeliveryAddresses(userId: Long): List<DeliveryAddress> =
-        deliveryAddressRepository.findAllActiveByUserIdOrderByUpdatedAtDesc(userId)
+        deliveryAddressRepository.findAllActiveByUserIdDefaultFirst(userId)
 
     fun countActive(userId: Long): Long = deliveryAddressRepository.countActiveByUserId(userId)
 
