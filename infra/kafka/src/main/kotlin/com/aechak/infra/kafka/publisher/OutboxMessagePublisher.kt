@@ -43,8 +43,6 @@ class OutboxMessagePublisher(
                 occurredAt = Instant.now(),
                 aggregateType = aggregateType,
                 aggregateId = aggregateId,
-                // MDC가 비는 진입점(배치·스케줄러·컨슈머 스레드)에서도 다운스트림 체인을 묶을 뿌리를 만든다.
-                // 진입점별 트레이스(배치 런 1회 = 트레이스 1개)는 배치 도입 시 MDC 시딩으로 — 여긴 최후 방어선.
                 traceId = MDC.get("traceId") ?: UUID.randomUUID().toString(),
                 producer = producer,
                 payload = objectMapper.writeValueAsString(message),
