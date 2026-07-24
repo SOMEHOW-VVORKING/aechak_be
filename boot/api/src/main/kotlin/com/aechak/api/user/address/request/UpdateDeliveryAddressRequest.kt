@@ -26,8 +26,9 @@ data class UpdateDeliveryAddressRequest(
     @field:NotBlank(message = "기본 주소는 필수입니다.")
     @field:Size(max = 512, message = "기본 주소는 {max}자를 넘을 수 없습니다.")
     val baseAddress: String,
+    @field:NotBlank(message = "상세 주소는 필수입니다.")
     @field:Size(max = 512, message = "상세 주소는 {max}자를 넘을 수 없습니다.")
-    val detailedAddress: String? = null,
+    val detailedAddress: String,
     @field:Size(max = 255, message = "배송 메모는 {max}자를 넘을 수 없습니다.")
     val deliveryMemo: String? = null,
     @field:Size(max = 100, message = "배송지 별칭은 {max}자를 넘을 수 없습니다.")

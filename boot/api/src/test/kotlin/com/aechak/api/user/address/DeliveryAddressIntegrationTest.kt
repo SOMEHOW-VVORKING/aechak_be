@@ -118,6 +118,14 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `상세 주소가 비어 있으면 400과 INVALID_REQUEST를 반환한다`() {
+        mockMvc
+            .perform(postDeliveryAddress(ownerToken, addressJson(detailedAddress = "")))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
+    }
+
+    @Test
     fun `기본 배송지로 추가하면 기존 기본은 해제된다`() {
         val first = addDeliveryAddress(ownerToken, addressJson(label = "first", isDefault = true))
         val second = addDeliveryAddress(ownerToken, addressJson(label = "second", isDefault = true))
