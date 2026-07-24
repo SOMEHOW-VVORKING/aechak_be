@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@RequestMapping("/addresses")
+@RequestMapping("/delivery-addresses") // 접두(api.base-path)는 WebConfig가 일괄 부착
 class DeliveryAddressController(
     private val deliveryAddressUseCase: DeliveryAddressUseCase,
 ) {

@@ -193,7 +193,7 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
 
         val body =
             mockMvc
-                .perform(delete("/api/v1/addresses/$default").bearer(ownerToken))
+                .perform(delete("/api/v1/delivery-addresses/$default").bearer(ownerToken))
                 .andExpect(status().isOk)
                 .andReturn()
                 .response
@@ -209,7 +209,7 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
 
         val body =
             mockMvc
-                .perform(delete("/api/v1/addresses/$only").bearer(ownerToken))
+                .perform(delete("/api/v1/delivery-addresses/$only").bearer(ownerToken))
                 .andExpect(status().isOk)
                 .andReturn()
                 .response
@@ -226,7 +226,7 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
         addDeliveryAddress(ownerToken, addressJson(label = "c"))
 
         mockMvc
-            .perform(patch("/api/v1/addresses/$b/default").bearer(ownerToken))
+            .perform(patch("/api/v1/delivery-addresses/$b/default").bearer(ownerToken))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.isDefault").value(true))
 
@@ -257,12 +257,12 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `미인증 요청은 401을 반환한다`() {
-        mockMvc.perform(get("/api/v1/addresses")).andExpect(status().isUnauthorized)
+        mockMvc.perform(get("/api/v1/delivery-addresses")).andExpect(status().isUnauthorized)
         mockMvc
-            .perform(get("/api/v1/addresses").header(HttpHeaders.AUTHORIZATION, "Bearer garbage"))
+            .perform(get("/api/v1/delivery-addresses").header(HttpHeaders.AUTHORIZATION, "Bearer garbage"))
             .andExpect(status().isUnauthorized)
         mockMvc
-            .perform(post("/api/v1/addresses").contentType(MediaType.APPLICATION_JSON).content(addressJson()))
+            .perform(post("/api/v1/delivery-addresses").contentType(MediaType.APPLICATION_JSON).content(addressJson()))
             .andExpect(status().isUnauthorized)
     }
 
@@ -271,15 +271,15 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
         val addr = addDeliveryAddress(ownerToken, addressJson())
 
         mockMvc
-            .perform(delete("/api/v1/addresses/$addr").bearer(otherToken))
+            .perform(delete("/api/v1/delivery-addresses/$addr").bearer(otherToken))
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.errorCode").value(UserErrorCode.DELIVERY_ADDRESS_ACCESS_DENIED.code))
         mockMvc
-            .perform(delete("/api/v1/addresses/999999").bearer(ownerToken))
+            .perform(delete("/api/v1/delivery-addresses/999999").bearer(ownerToken))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value(UserErrorCode.DELIVERY_ADDRESS_NOT_FOUND.code))
         mockMvc
-            .perform(patch("/api/v1/addresses/999999/default").bearer(ownerToken))
+            .perform(patch("/api/v1/delivery-addresses/999999/default").bearer(ownerToken))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value(UserErrorCode.DELIVERY_ADDRESS_NOT_FOUND.code))
     }
@@ -293,7 +293,7 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
         token: String,
         body: String,
     ): MockHttpServletRequestBuilder =
-        post("/api/v1/addresses")
+        post("/api/v1/delivery-addresses")
             .bearer(token)
             .contentType(MediaType.APPLICATION_JSON)
             .content(body)
@@ -303,7 +303,7 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
         addressId: Long,
         body: String,
     ): MockHttpServletRequestBuilder =
-        patch("/api/v1/addresses/$addressId")
+        patch("/api/v1/delivery-addresses/$addressId")
             .bearer(token)
             .contentType(MediaType.APPLICATION_JSON)
             .content(body)
@@ -325,7 +325,7 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
 
     private fun listBody(token: String): String =
         mockMvc
-            .perform(get("/api/v1/addresses").bearer(token))
+            .perform(get("/api/v1/delivery-addresses").bearer(token))
             .andExpect(status().isOk)
             .andReturn()
             .response
