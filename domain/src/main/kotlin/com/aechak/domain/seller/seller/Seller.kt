@@ -17,6 +17,7 @@ import java.time.LocalDateTime
 class Seller protected constructor(
     userId: Long,
     baseShippingFee: Long,
+    storeName: String,
 ) : AggregateRoot() {
     @Id
     val userId: Long = userId
@@ -37,6 +38,10 @@ class Seller protected constructor(
 
     @Column(nullable = false)
     var statusChangedAt: LocalDateTime = LocalDateTime.now()
+        protected set
+
+    @Column(length = 100, nullable = false)
+    var storeName: String = storeName
         protected set
 
     @Column(length = 1000)
@@ -94,7 +99,8 @@ class Seller protected constructor(
     companion object {
         fun open(
             userId: Long,
+            storeName: String,
             baseShippingFee: Long,
-        ): Seller = Seller(userId, baseShippingFee)
+        ): Seller = Seller(userId, baseShippingFee, storeName)
     }
 }

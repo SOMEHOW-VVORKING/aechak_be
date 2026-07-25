@@ -8,4 +8,5 @@ dependencies {
     implementation(libs.gradleplugin.kotlin.noarg)
     implementation(libs.gradleplugin.spring.boot)
     implementation(libs.gradleplugin.ktlint)
+    implementation(libs.gradleplugin.ksp)               // domain 컨벤션이 QueryDSL Q클래스 생성을 적용
 }

@@ -12,6 +12,10 @@ ktlint {
         extensions.getByType<VersionCatalogsExtension>()
             .named("libs").findVersion("ktlint").get().requiredVersion,
     )
+    // 생성 코드(KSP의 Q클래스 등)는 우리 스타일 규칙 대상이 아니다 — build/ 산출물 제외
+    filter {
+        exclude { it.file.path.contains("${layout.buildDirectory.get().asFile.path}/generated/") }
+    }
 }
 
 kotlin {

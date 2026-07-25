@@ -1,14 +1,117 @@
 package com.aechak.application.product.service
 
-import com.aechak.domain.product.product.repository.ProductRepository
+import com.aechak.application.product.port.ProductCatalogCondition
+import com.aechak.application.product.port.ProductCatalogQueryPort
+import com.aechak.application.product.port.ProductCatalogSort
+import com.aechak.application.product.port.result.ProductCatalogView
+import com.aechak.application.product.support.ProductCursorCodec
+import com.aechak.application.product.usecase.query.ProductSearchQuery
+import com.aechak.application.support.CursorPageResult
+import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
+import com.aechak.domain.product.category.repository.CategoryRepository
+import com.aechak.domain.product.error.ProductErrorCode
+import com.aechak.domain.product.stats.ProductStats
+import com.aechak.domain.product.stats.repository.ProductStatsRepository
 import org.springframework.stereotype.Service
+import java.time.LocalDateTime
 
-/**
- * product 도메인 비즈니스 로직 보관함 — Facade에서만 호출된다.
- * 리포지토리는 domain의 포트(ProductRepository)를 주입받는다 — 어댑터가 생기는 시점에 연결.
- * 재고 차감 등 동시성 규칙은 저장소 레벨 강제(조건부 원자 UPDATE)를 우선한다.
- */
 @Service
-class ProductService {
-    // TODO: 기능 구현 시 로직 추가
+class ProductService(
+    private val productCatalogQueryPort: ProductCatalogQueryPort,
+    private val categoryRepository: CategoryRepository,
+    private val productStatsRepository: ProductStatsRepository,
+) {
+    fun getVisiblePage(
+        query: ProductSearchQuery,
+        now: LocalDateTime,
+    ): CursorPageResult<ProductCatalogView> {
+        validateCategoryFilter(query.categoryId)
+        val anchor = query.cursor?.let { resolveCursor(it, query.sort, query.categoryId, now) }
+        // PRICE_ASC 순회는 첫 페이지 시각으로 유효가격 뷰를 고정
+        // 페이지 요청 사이 시간 경과로 할인 경계가 지나며 keyset이 어긋나 생기는 중복, 누락을 차단
+        // 카드 표시가는 Facade의 현재 시각을 그대로 써 만료 할인가를 계속 보여주지 않음
+        val queryNow = anchor?.anchorNow ?: now
+        val fetched =
+            productCatalogQueryPort.findVisiblePage(
+                ProductCatalogCondition(
+                    categoryId = query.categoryId,
+                    sort = query.sort,
+                    lastId = anchor?.lastId,
+                    lastPrice = anchor?.lastPrice,
+                    limit = query.size + 1,
+                    now = queryNow,
+                ),
+            )
+        val hasNext = fetched.size > query.size
+        val page = if (hasNext) fetched.take(query.size) else fetched
+        return CursorPageResult(
+            items = page,
+            // 첫 페이지에서만 총개수 게산
+            totalCount = if (query.cursor == null) productCatalogQueryPort.countVisible(query.categoryId) else null,
+            nextCursor =
+                if (hasNext) {
+                    val last = page.last()
+                    ProductCursorCodec.encode(
+                        query.sort,
+                        query.categoryId,
+                        last.publicId,
+                        last.sortPriceAtAnchor,
+                        queryNow,
+                    )
+                } else {
+                    null
+                },
+            hasNext = hasNext,
+        )
+    }
+
+    /** 상품 통계 배치 조회 */
+    fun getStatsByProductIds(productIds: List<Long>): Map<Long, ProductStats> =
+        productStatsRepository.findAllByProductIds(productIds).associateBy { it.productId }
+
+    /** 카테고리 필터는 중분류(depth 2)까지만 허용 */
+    private fun validateCategoryFilter(categoryId: Long?) {
+        if (categoryId == null) return
+        val category =
+            categoryRepository.findActiveById(categoryId)
+                ?: throw BusinessException(ProductErrorCode.CATEGORY_NOT_FOUND)
+        if (category.depth != MID_CATEGORY_DEPTH) {
+            throw BusinessException(ProductErrorCode.INVALID_CATEGORY_FILTER)
+        }
+    }
+
+    /** 커서의 publicId를 내부 id로 해석 */
+    private fun resolveCursor(
+        raw: String,
+        sort: ProductCatalogSort,
+        categoryId: Long?,
+        now: LocalDateTime,
+    ): CursorAnchor {
+        val decoded = ProductCursorCodec.decode(raw, sort)
+        // 다른 카테고리 필터에서 받은 커서 재사용 차단
+        if (decoded.categoryId != categoryId) {
+            throw BusinessException(CommonErrorCode.INVALID_CURSOR)
+        }
+        decoded.anchorNow?.let {
+            // 미래 시각 커서만 거절
+            if (it.isAfter(now)) {
+                throw BusinessException(CommonErrorCode.INVALID_CURSOR)
+            }
+        }
+        val lastId =
+            productCatalogQueryPort.findIdByPublicId(decoded.publicId)
+                ?: throw BusinessException(CommonErrorCode.INVALID_CURSOR)
+        return CursorAnchor(lastId = lastId, lastPrice = decoded.lastPrice, anchorNow = decoded.anchorNow)
+    }
+
+    private data class CursorAnchor(
+        val lastId: Long,
+        val lastPrice: Long?,
+        val anchorNow: LocalDateTime?,
+    )
+
+    companion object {
+        private const val MID_CATEGORY_DEPTH = 2
+    }
 }
