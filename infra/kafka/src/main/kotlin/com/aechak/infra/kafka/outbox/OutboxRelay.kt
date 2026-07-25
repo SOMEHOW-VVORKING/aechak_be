@@ -76,7 +76,7 @@ class OutboxRelay(
     }
 
     /**
-     * 동기적으로 send
+     * 동기적으로 send. 행마다 응답을 기다리므로 linger 배칭은 이득이 없음(파이프라이닝 도입 시 재검토).
      */
     private fun send(row: OutboxRow) {
         val record =
