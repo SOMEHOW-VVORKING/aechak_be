@@ -7,7 +7,7 @@ data class UpdateDeliveryAddressCommand(
     val contactNumber: String,
     val zipCode: String,
     val baseAddress: String,
-    val detailedAddress: String?,
+    val detailAddress: String?,
     val deliveryMemo: String?,
     val label: String?,
     val isDefault: Boolean,

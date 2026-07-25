@@ -9,7 +9,7 @@ data class DeliveryAddressResponse(
     val contactNumber: String,
     val zipCode: String,
     val baseAddress: String,
-    val detailedAddress: String?,
+    val detailAddress: String?,
     val deliveryMemo: String?,
     val label: String?,
     // is-로 시작하는 필드는 JSON에서 'default'로 새서 이름을 못박는다.
@@ -24,7 +24,7 @@ data class DeliveryAddressResponse(
                 contactNumber = result.contactNumber,
                 zipCode = result.zipCode,
                 baseAddress = result.baseAddress,
-                detailedAddress = result.detailedAddress,
+                detailAddress = result.detailAddress,
                 deliveryMemo = result.deliveryMemo,
                 label = result.label,
                 isDefault = result.isDefault,

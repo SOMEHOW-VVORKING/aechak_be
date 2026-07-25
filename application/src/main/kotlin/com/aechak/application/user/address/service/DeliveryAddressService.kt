@@ -40,7 +40,7 @@ class DeliveryAddressService(
             contactNumber = encodeContact(command.contactNumber),
             zipCode = command.zipCode,
             baseAddress = command.baseAddress,
-            detailAddress = command.detailedAddress,
+            detailAddress = command.detailAddress,
             deliveryMemo = command.deliveryMemo,
             label = command.label,
         )

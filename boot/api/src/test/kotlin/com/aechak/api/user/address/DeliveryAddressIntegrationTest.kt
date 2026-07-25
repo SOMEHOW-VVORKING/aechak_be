@@ -120,7 +120,7 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
     @Test
     fun `상세 주소가 비어 있으면 400과 INVALID_REQUEST를 반환한다`() {
         mockMvc
-            .perform(postDeliveryAddress(ownerToken, addressJson(detailedAddress = "")))
+            .perform(postDeliveryAddress(ownerToken, addressJson(detailAddress = "")))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
     }
@@ -401,7 +401,7 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
         contactNumber: String = "010-1234-5678",
         zipCode: String = "06236",
         baseAddress: String = "서울시 강남구 테헤란로 152",
-        detailedAddress: String? = "101동 1001호",
+        detailAddress: String? = "101동 1001호",
         deliveryMemo: String? = "부재 시 문 앞",
         label: String? = "집",
         isDefault: Boolean = false,
@@ -412,7 +412,7 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
           "contactNumber": "$contactNumber",
           "zipCode": "$zipCode",
           "baseAddress": "$baseAddress",
-          "detailedAddress": ${jsonStr(detailedAddress)},
+          "detailAddress": ${jsonStr(detailAddress)},
           "deliveryMemo": ${jsonStr(deliveryMemo)},
           "label": ${jsonStr(label)},
           "isDefault": $isDefault
