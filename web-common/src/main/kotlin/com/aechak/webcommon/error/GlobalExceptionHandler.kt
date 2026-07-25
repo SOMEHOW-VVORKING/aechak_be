@@ -5,6 +5,7 @@ import com.aechak.common.error.CommonErrorCode
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -16,6 +17,8 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  *
  * - BusinessException: errorCode.status(int) → HttpStatus 변환. 여기가 유일한 변환 지점.
  * - @Valid 형식 검증 실패: 90002(INVALID_REQUEST)로 매핑하되 message에 필드별 사유를 싣는다(분기는 errorCode 고정).
+ * - 본문 파싱 실패(필수 필드 누락·타입 오류·깨진 JSON): 400. 이 핸들러가 없으면 아래 catch-all이 먼저 잡아
+ *   클라이언트 버그가 5xx 알람으로 둔갑한다. 파싱 예외 메시지는 페이로드 조각(PII)을 물고 올 수 있어 싣지 않는다.
  * - 그 외 Exception: 최후 방어선. 90001로 감싸고 스택트레이스는 로그로만 남긴다.
  *   (즉석 문자열 코드("C500" 등) 생성 금지 — errorCode 분기 일관성 유지)
  *
@@ -36,6 +39,12 @@ class GlobalExceptionHandler {
             .status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse(CommonErrorCode.INVALID_REQUEST.code, detail))
     }
+
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleUnreadableBody(e: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> =
+        ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(CommonErrorCode.INVALID_REQUEST.code, "요청 본문을 읽을 수 없습니다."))
 
     @ExceptionHandler(MissingServletRequestParameterException::class)
     fun handleMissingParameter(e: MissingServletRequestParameterException): ResponseEntity<ErrorResponse> =

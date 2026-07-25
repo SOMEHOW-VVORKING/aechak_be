@@ -137,6 +137,21 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `본문이 깨졌거나 필수 필드가 없으면 400을 반환한다`() {
+        // 전역 핸들러가 없으면 catch-all이 잡아 500이 나간다 — 클라이언트 버그가 5xx 알람이 되는 걸 막는다.
+        listOf(
+            """{"receiverName":"홍길동","zipCode":"06236","baseAddress":"서울","detailAddress":"101호"}""",
+            """{"receiverName":"홍길동","contactNumber":"01012345678","zipCode":"06236","baseAddress":"서울","detailAddress":"101호","isDefault":"yes"}""",
+            """{"receiverName":"홍길동",""",
+        ).forEach { body ->
+            mockMvc
+                .perform(postDeliveryAddress(ownerToken, body))
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
+        }
+    }
+
+    @Test
     fun `기본 배송지로 추가하면 기존 기본은 해제된다`() {
         val first = addDeliveryAddress(ownerToken, addressJson(label = "first", isDefault = true))
         val second = addDeliveryAddress(ownerToken, addressJson(label = "second", isDefault = true))
