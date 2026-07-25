@@ -8,6 +8,7 @@ import com.aechak.websecurity.filter.UserStatusFilter
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
@@ -64,6 +65,8 @@ class SecurityConfig {
                     ).permitAll()
                     .requestMatchers("/actuator/health")
                     .permitAll()
+                    .requestMatchers(HttpMethod.GET, "$basePath/products")
+                    .permitAll()
                     .anyRequest()
                     .authenticated()
             }.oauth2ResourceServer { resourceServer ->
@@ -89,6 +92,7 @@ class SecurityConfig {
             "$basePath/users/nickname/check",
             "$basePath/terms",
             "$basePath/breeds",
+            "$basePath/products",
             "$basePath/auth/logout",
             "$basePath/auth/web/refresh",   // PENDING 유저가 Authorization을 붙여 불러도 세션 유지·이탈은 허용
             "$basePath/auth/web/logout",
