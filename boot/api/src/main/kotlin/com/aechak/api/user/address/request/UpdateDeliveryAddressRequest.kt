@@ -18,7 +18,7 @@ data class UpdateDeliveryAddressRequest(
         regexp = DeliveryAddressPatterns.CONTACT_NUMBER,
         message = "연락처 형식이 올바르지 않습니다.",
     )
-    val contactNumber: String,
+    var contactNumber: String,
     @field:NotBlank(message = "우편번호는 필수입니다.")
     @field:Size(max = 10, message = "우편번호는 {max}자를 넘을 수 없습니다.")
     @field:Pattern(regexp = DeliveryAddressPatterns.ZIP_CODE, message = "우편번호는 5자리 숫자여야 합니다.")
@@ -37,6 +37,10 @@ data class UpdateDeliveryAddressRequest(
     @get:JsonProperty("isDefault")
     val isDefault: Boolean? = null,
 ) {
+    init {
+        contactNumber = DeliveryAddressPatterns.normalizeContactNumber(contactNumber)
+    }
+
     fun toCommand(
         userId: Long,
         addressId: Long,

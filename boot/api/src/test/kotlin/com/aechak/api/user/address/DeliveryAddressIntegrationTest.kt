@@ -83,7 +83,18 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
         assertEquals(1, JsonPath.read<Int>(body, "$.data.totalCount"))
         assertEquals(1, (JsonPath.read(body, "$.data.addresses") as List<*>).size, "타인 배송지는 보이지 않아야 한다")
         assertEquals("홍길동", JsonPath.read<String>(body, "$.data.addresses[0].receiverName"))
-        assertEquals("010-1234-5678", JsonPath.read<String>(body, "$.data.addresses[0].contactNumber"))
+        assertEquals("01012345678", JsonPath.read<String>(body, "$.data.addresses[0].contactNumber"), "연락처는 숫자만 저장된다")
+    }
+
+    @Test
+    fun `연락처는 하이픈을 어떻게 찍든 숫자만 저장된다`() {
+        // 표기 차이로 같은 번호가 여러 형태로 쌓이지 않게 정규화한다. 표시용 하이픈은 클라이언트가 조립한다.
+        listOf("010-1234-5678", "01012345678", "010-12345678").forEach { raw ->
+            val id = addDeliveryAddress(ownerToken, addressJson(contactNumber = raw))
+            val stored = JsonPath.read<List<String>>(listBody(ownerToken), "$.data.addresses[*].contactNumber")
+            assertEquals("01012345678", stored.first(), "입력 '$raw'도 숫자만으로 저장돼야 한다")
+            mockMvc.perform(delete("/api/v1/delivery-addresses/$id").bearer(ownerToken)).andExpect(status().isOk)
+        }
     }
 
     @Test
