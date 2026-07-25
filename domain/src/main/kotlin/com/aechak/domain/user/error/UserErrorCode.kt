@@ -16,4 +16,9 @@ enum class UserErrorCode(
     INVALID_PET_WEIGHT(30006, "체중은 0보다 커야 합니다.", 400),
     SELF_REPORT_NOT_ALLOWED(30007, "자기 자신은 신고할 수 없습니다.", 400),
     REPORT_REASON_REQUIRED(30008, "기타 사유 신고는 상세 사유가 필요합니다.", 400),
+    REQUIRED_CONSENT_MISSING(30009, "필수 약관에 동의해 주세요.", 403),
+    INVALID_TERM(30010, "유효하지 않은 약관입니다.", 400),
+
+    // 30011~30012는 펫 CRUD 몫으로 예약
+    ONBOARDING_ALREADY_COMPLETED(30013, "이미 온보딩을 완료한 계정입니다.", 409),
 }
