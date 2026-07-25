@@ -5,6 +5,7 @@ import com.aechak.common.error.CommonErrorCode
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -36,6 +37,13 @@ class GlobalExceptionHandler {
             .status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse(CommonErrorCode.INVALID_REQUEST.code, detail))
     }
+
+    /** 본문 파싱 실패(JSON 문법 오류·필수 필드 누락 등) — 사유는 다양하지만 클라이언트 분기는 90002 하나로 고정. */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleUnreadableBody(e: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> =
+        ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse.of(CommonErrorCode.INVALID_REQUEST))
 
     @ExceptionHandler(MissingServletRequestParameterException::class)
     fun handleMissingParameter(e: MissingServletRequestParameterException): ResponseEntity<ErrorResponse> =
