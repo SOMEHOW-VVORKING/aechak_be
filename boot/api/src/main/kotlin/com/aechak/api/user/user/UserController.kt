@@ -1,8 +1,8 @@
-package com.aechak.api.user.controller
+package com.aechak.api.user.user
 
-import com.aechak.api.user.request.RegisterUserRequest
-import com.aechak.api.user.response.UserResponse
-import com.aechak.application.user.usecase.UserUseCase
+import com.aechak.api.user.user.request.RegisterUserRequest
+import com.aechak.api.user.user.response.UserResponse
+import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.webcommon.response.ApiResponse
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus

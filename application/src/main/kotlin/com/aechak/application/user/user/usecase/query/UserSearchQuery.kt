@@ -1,4 +1,4 @@
-package com.aechak.application.user.usecase.query
+package com.aechak.application.user.user.usecase.query
 
 /**
  * 복잡 조회 입력 — Query 객체 승격 기준을 보여주는 템플릿.

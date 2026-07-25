@@ -1,6 +1,6 @@
-package com.aechak.api.user.response
+package com.aechak.api.user.user.response
 
-import com.aechak.application.user.usecase.result.UserResult
+import com.aechak.application.user.user.usecase.result.UserResult
 
 /**
  * HTTP 응답 dto. Result → Response 변환은 companion의 from()으로 —

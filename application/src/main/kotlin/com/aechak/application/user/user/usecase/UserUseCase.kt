@@ -1,9 +1,9 @@
-package com.aechak.application.user.usecase
+package com.aechak.application.user.user.usecase
 
-import com.aechak.application.user.usecase.command.RegisterUserCommand
-import com.aechak.application.user.usecase.query.UserSearchQuery
-import com.aechak.application.user.usecase.result.UserResult
-import com.aechak.application.user.usecase.result.UserSummaryResult
+import com.aechak.application.user.user.usecase.command.RegisterUserCommand
+import com.aechak.application.user.user.usecase.query.UserSearchQuery
+import com.aechak.application.user.user.usecase.result.UserResult
+import com.aechak.application.user.user.usecase.result.UserSummaryResult
 
 /**
  * user 도메인의 유일한 진입점 계약 — 각 도메인이 따라갈 UseCase 템플릿.
