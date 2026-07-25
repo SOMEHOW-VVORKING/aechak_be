@@ -69,6 +69,8 @@ class OutboxRelay(
                     .update()
             } catch (e: Exception) {
                 markFailed(row, e)
+                // 만약 브로커가 아예 못 받는 상황이면 남은 행도 똑같이 실패함. 사이클을 끝내 락, 커넥션을 반납 후 다음 주기로 전달.
+                break
             }
         }
     }
