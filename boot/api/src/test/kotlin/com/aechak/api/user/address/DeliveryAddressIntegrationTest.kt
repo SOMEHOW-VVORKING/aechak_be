@@ -137,6 +137,22 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `수정도 연락처를 숫자만으로 저장한다`() {
+        // 등록 경로와 수정 경로가 각자 정규화를 들고 있어, 한쪽만 빠져도 저장 형식이 갈린다.
+        val id = addDeliveryAddress(ownerToken, addressJson(contactNumber = "01011112222"))
+
+        mockMvc
+            .perform(patchDeliveryAddress(ownerToken, id, addressJson(contactNumber = "010-9999-8888")))
+            .andExpect(status().isOk)
+
+        assertEquals(
+            "01099998888",
+            JsonPath.read<String>(listBody(ownerToken), "$.data.addresses[0].contactNumber"),
+            "수정 경로도 구분자를 걷어내고 저장해야 한다",
+        )
+    }
+
+    @Test
     fun `본문이 깨졌거나 필수 필드가 없으면 400을 반환한다`() {
         // 전역 핸들러가 없으면 catch-all이 잡아 500이 나간다 — 클라이언트 버그가 5xx 알람이 되는 걸 막는다.
         listOf(
@@ -153,12 +169,15 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `기본 배송지로 추가하면 기존 기본은 해제된다`() {
+        val othersDefault = addDeliveryAddress(otherToken, addressJson(label = "타인기본", isDefault = true))
         val first = addDeliveryAddress(ownerToken, addressJson(label = "first", isDefault = true))
         val second = addDeliveryAddress(ownerToken, addressJson(label = "second", isDefault = true))
 
         val defaults = activeDefaultIds(ownerId)
         assertEquals(listOf(second), defaults, "가장 최근에 기본으로 추가한 것만 기본이어야 한다")
         assertFalse(first in defaults)
+        // 해제 범위에서 userId 조건이 빠지면 전 사용자의 기본이 함께 날아간다 — 그 회귀를 여기서 잡는다.
+        assertEquals(listOf(othersDefault), activeDefaultIds(otherId), "타 사용자의 기본은 건드리지 않는다")
     }
 
     @Test
