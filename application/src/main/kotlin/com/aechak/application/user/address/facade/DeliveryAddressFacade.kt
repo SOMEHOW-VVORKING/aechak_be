@@ -19,24 +19,27 @@ class DeliveryAddressFacade(
 ) : DeliveryAddressUseCase {
     @Transactional(readOnly = true)
     override fun getDeliveryAddresses(userId: Long): DeliveryAddressListResult {
-        val addresses = deliveryAddressService.getActiveDeliveryAddresses(userId)
-        val results =
-            addresses.map {
+        val deliveryAddresses = deliveryAddressService.getActiveDeliveryAddresses(userId)
+        val deliveryAddressResults =
+            deliveryAddresses.map {
                 DeliveryAddressResult.from(it, deliveryAddressService.decodeContact(it.contactNumber))
             }
-        return DeliveryAddressListResult(results, addresses.size)
+        return DeliveryAddressListResult(deliveryAddressResults, deliveryAddresses.size)
     }
 
     @Transactional
     override fun addDeliveryAddress(command: AddDeliveryAddressCommand): AddDeliveryAddressResult {
-        val saved = deliveryAddressService.add(command)
-        return AddDeliveryAddressResult.from(saved, deliveryAddressService.countActive(command.userId).toInt())
+        val savedDeliveryAddress = deliveryAddressService.add(command)
+        return AddDeliveryAddressResult.from(
+            savedDeliveryAddress,
+            deliveryAddressService.countActive(command.userId).toInt(),
+        )
     }
 
     @Transactional
     override fun updateDeliveryAddress(command: UpdateDeliveryAddressCommand): UpdateDeliveryAddressResult {
-        val saved = deliveryAddressService.update(command)
-        return UpdateDeliveryAddressResult.from(saved)
+        val savedDeliveryAddress = deliveryAddressService.update(command)
+        return UpdateDeliveryAddressResult.from(savedDeliveryAddress)
     }
 
     @Transactional
@@ -50,7 +53,7 @@ class DeliveryAddressFacade(
         userId: Long,
         addressId: Long,
     ): SetDefaultDeliveryAddressResult {
-        val saved = deliveryAddressService.setDefault(userId, addressId)
-        return SetDefaultDeliveryAddressResult.from(saved)
+        val savedDeliveryAddress = deliveryAddressService.setDefault(userId, addressId)
+        return SetDefaultDeliveryAddressResult.from(savedDeliveryAddress)
     }
 }
