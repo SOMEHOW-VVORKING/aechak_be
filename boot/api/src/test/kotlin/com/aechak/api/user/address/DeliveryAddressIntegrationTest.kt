@@ -74,7 +74,7 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
             .perform(postDeliveryAddress(ownerToken, addressJson(receiverName = "홍길동")))
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.data.addressId").exists())
-            .andExpect(jsonPath("$.data.isDefault").value(false))
+            .andExpect(jsonPath("$.data.isDefault").value(true))
             .andExpect(jsonPath("$.data.totalCount").value(1))
 
         addDeliveryAddress(otherToken, addressJson(receiverName = "타인"))
@@ -165,6 +165,21 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
                 .andExpect(status().isBadRequest)
                 .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
         }
+    }
+
+    @Test
+    fun `첫 배송지는 체크하지 않아도 기본이 된다`() {
+        val id = addDeliveryAddress(ownerToken, addressJson(isDefault = false))
+
+        assertEquals(listOf(id), activeDefaultIds(ownerId), "활성 배송지가 없던 사용자의 첫 등록은 기본이어야 한다")
+    }
+
+    @Test
+    fun `두 번째부터는 체크하지 않으면 기본이 아니다`() {
+        val first = addDeliveryAddress(ownerToken, addressJson(label = "first", isDefault = false))
+        addDeliveryAddress(ownerToken, addressJson(label = "second", isDefault = false))
+
+        assertEquals(listOf(first), activeDefaultIds(ownerId), "두 번째 등록은 기본을 가져가지 않는다")
     }
 
     @Test

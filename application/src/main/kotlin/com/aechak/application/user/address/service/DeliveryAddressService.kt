@@ -21,16 +21,19 @@ class DeliveryAddressService(
 
     fun add(command: AddDeliveryAddressCommand): DeliveryAddress {
         // 완벽한 보장은 안됨. 문제 시 비관적 락.
-        if (deliveryAddressRepository.countActiveByUserId(command.userId) >= MAX_ACTIVE_DELIVERY_ADDRESSES) {
+        val activeCount = deliveryAddressRepository.countActiveByUserId(command.userId)
+        if (activeCount >= MAX_ACTIVE_DELIVERY_ADDRESSES) {
             throw BusinessException(UserErrorCode.DELIVERY_ADDRESS_LIMIT_EXCEEDED)
         }
         val user = userService.getById(command.userId)
         if (command.isDefault) {
             releaseOtherDefaults(command.userId, exceptId = null)
         }
-        return deliveryAddressRepository.save(
-            command.toEntity(user, encodeContact(command.contactNumber)),
-        )
+        val deliveryAddress = command.toEntity(user, encodeContact(command.contactNumber))
+        if (activeCount == 0L) {
+            deliveryAddress.markAsDefault()
+        }
+        return deliveryAddressRepository.save(deliveryAddress)
     }
 
     fun update(command: UpdateDeliveryAddressCommand): DeliveryAddress {
