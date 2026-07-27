@@ -33,4 +33,18 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# TODO: 도메인 확정 시 — ACM 인증서 + 443 리스너 + 80은 redirect로 전환
+# ssl_policy를 생략하면 TLS 1.0까지 받는 2016-08이 붙는다. Res는 CBC 계열을 뺀 것
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09"
+  certificate_arn   = local.alb_cert_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
+}
+
+# TODO: https 검증되면 위 http 리스너를 443 redirect로 전환
