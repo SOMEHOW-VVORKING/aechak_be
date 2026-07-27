@@ -27,9 +27,15 @@ resource "aws_lb_listener" "http" {
   port              = 80
   protocol          = "HTTP"
 
+  # host·path·query는 생략하면 원래 값이 유지된다 (/actuator/health가 그대로 따라감)
   default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.app.arn
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
   }
 }
 
@@ -46,5 +52,3 @@ resource "aws_lb_listener" "https" {
     target_group_arn = aws_lb_target_group.app.arn
   }
 }
-
-# TODO: https 검증되면 위 http 리스너를 443 redirect로 전환
