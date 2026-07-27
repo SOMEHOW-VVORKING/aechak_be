@@ -25,6 +25,7 @@ class DeliveryAddress protected constructor(
     baseAddress: String,
     detailAddress: String?,
     deliveryMemo: String?,
+    label: String?,
     isDefault: Boolean,
 ) : BaseEntity() {
     @Id
@@ -59,6 +60,10 @@ class DeliveryAddress protected constructor(
     var deliveryMemo: String? = deliveryMemo
         protected set
 
+    @Column(length = 100)
+    var label: String? = label
+        protected set
+
     @Column(nullable = false)
     var isDefault: Boolean = isDefault
         protected set
@@ -68,8 +73,36 @@ class DeliveryAddress protected constructor(
     var status: DeliveryAddressStatus = DeliveryAddressStatus.ACTIVE
         protected set
 
+    /** 필드 전체 갈아끼움. 소유권 검증·기본 처리는 서비스 몫. */
+    fun update(
+        receiverName: String,
+        contactNumber: ByteArray,
+        zipCode: String,
+        baseAddress: String,
+        detailAddress: String?,
+        deliveryMemo: String?,
+        label: String?,
+    ) {
+        this.receiverName = receiverName
+        this.contactNumber = contactNumber
+        this.zipCode = zipCode
+        this.baseAddress = baseAddress
+        this.detailAddress = detailAddress
+        this.deliveryMemo = deliveryMemo
+        this.label = label
+    }
+
+    fun markAsDefault() {
+        isDefault = true
+    }
+
+    fun releaseDefault() {
+        isDefault = false
+    }
+
     fun delete() {
         status = DeliveryAddressStatus.DELETED
+        isDefault = false // 남겨두면 복원 시 기본이 2개될 수 있음
     }
 
     companion object {
@@ -81,6 +114,7 @@ class DeliveryAddress protected constructor(
             baseAddress: String,
             detailAddress: String? = null,
             deliveryMemo: String? = null,
+            label: String? = null,
             isDefault: Boolean = false,
         ): DeliveryAddress =
             DeliveryAddress(
@@ -91,6 +125,7 @@ class DeliveryAddress protected constructor(
                 baseAddress,
                 detailAddress,
                 deliveryMemo,
+                label,
                 isDefault,
             )
     }
