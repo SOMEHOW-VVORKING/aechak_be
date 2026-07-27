@@ -2,6 +2,9 @@
 # resource로 소유하면 destroy 한 번에 도메인 전체가 끊긴다.
 data "aws_route53_zone" "root" {
   name = "aechak.co.kr."
+
+  # 같은 이름의 private zone이 생기면 조회 결과가 둘이 되어 plan 전체가 실패한다
+  private_zone = false
 }
 
 locals {
@@ -12,9 +15,9 @@ locals {
 
   # 서브도메인이 평평한 이유: 인증서 SAN이 aechak.co.kr + *.aechak.co.kr 뿐이고
   # 와일드카드는 한 레이블만 매칭한다. api.dev.aechak.co.kr은 이 인증서로 못 덮는다.
-  # 규칙은 {서비스}-{env}, prod만 env 생략.
-  api_domain   = "api-${var.env}.aechak.co.kr"
-  media_domain = "media-${var.env}.aechak.co.kr"
+  # prod만 env를 뺀다 — 사용자에게 노출되는 이름이라. 이것도 같은 인증서가 덮는다.
+  api_domain   = var.env == "prod" ? "api.aechak.co.kr" : "api-${var.env}.aechak.co.kr"
+  media_domain = var.env == "prod" ? "media.aechak.co.kr" : "media-${var.env}.aechak.co.kr"
 }
 
 resource "aws_route53_record" "api" {
