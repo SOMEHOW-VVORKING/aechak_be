@@ -17,6 +17,9 @@ interface FileStorage {
         tmpKey: String,
         purpose: UploadPurpose,
     ): String
+
+    /** 저장된 key → 표시용 공개 URL(CDN) — 응답 조립 시 사용. */
+    fun publicUrlOf(key: String): String
 }
 
 data class IssueFileUrl(
