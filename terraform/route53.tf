@@ -10,8 +10,8 @@ data "aws_route53_zone" "root" {
 locals {
   # 콘솔 발급, 갱신은 ACM 관리형(리소스에 붙어 있는 동안만 자동 갱신된다).
   # CloudFront는 us-east-1 인증서만 받음.
-  alb_cert_arn = "arn:aws:acm:ap-northeast-2:334455667515:certificate/2f2eeeca-3151-42a5-a35d-3fb403e0ba54"
-  cf_cert_arn  = "arn:aws:acm:us-east-1:334455667515:certificate/a798e84c-ef83-4273-bce8-9e55d70849dc"
+  alb_cert_arn = "arn:aws:acm:ap-northeast-2:447170313132:certificate/666f3585-2b77-4dcf-8558-64b0a7779cbd"
+  cf_cert_arn  = "arn:aws:acm:us-east-1:447170313132:certificate/28ef64ca-2022-4fa3-b409-3b8901e2d2b9"
 
   # 서브도메인이 평평한 이유: 인증서 SAN이 aechak.co.kr + *.aechak.co.kr 뿐이고
   # 와일드카드는 한 레이블만 매칭한다. api.dev.aechak.co.kr은 이 인증서로 못 덮는다.
