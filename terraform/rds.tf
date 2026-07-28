@@ -37,8 +37,9 @@ resource "aws_db_instance" "main" {
   engine_version = "8.4"
   instance_class = var.db_instance_class
 
+  # username에 하이픈은 못 쓴다 — 문자·숫자·언더스코어 16자까지가 RDS 제약
   db_name  = var.project
-  username = "app"
+  username = "aechak_app"
   password = random_password.db.result
 
   allocated_storage     = 20
