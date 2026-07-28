@@ -2,7 +2,7 @@ package com.aechak.application.user.address.service
 
 import com.aechak.application.user.address.usecase.command.AddDeliveryAddressCommand
 import com.aechak.application.user.address.usecase.command.UpdateDeliveryAddressCommand
-import com.aechak.application.user.service.UserService
+import com.aechak.application.user.user.service.UserService
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.address.DeliveryAddress
 import com.aechak.domain.user.address.repository.DeliveryAddressRepository
