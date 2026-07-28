@@ -10,6 +10,7 @@ dependencies {
     implementation(project(":s3-client"))               // presigned URL 발급·승격 어댑터
     implementation(kotlin("reflect"))                   // Spring(Data)의 Kotlin 리플렉션 지원에 런타임 필수
     implementation(libs.spring.boot.starter.web)
+    implementation(libs.jackson.module.kotlin)          // Kotlin DTO 필드명 보존(is-접두 등) — Boot이 감지해 자동 등록, 없으면 계약과 다른 이름으로 직렬화된다
     implementation(libs.spring.boot.starter.validation) // Request dto의 @Valid 형식 검증
     implementation(libs.spring.boot.starter.data.jpa)   // JPA 자동 구성 — persistence 모듈의 리포지토리 활성화
     implementation(libs.spring.boot.starter.oauth2.resource.server) // 자체 RS256 토큰 검증 필터 + JwtEncoder/Decoder

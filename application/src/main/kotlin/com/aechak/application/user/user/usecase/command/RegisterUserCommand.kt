@@ -1,4 +1,4 @@
-package com.aechak.application.user.usecase.command
+package com.aechak.application.user.user.usecase.command
 
 /**
  * 쓰기 유스케이스 입력 — 인자 개수와 무관하게 항상 Command 객체로 받는다

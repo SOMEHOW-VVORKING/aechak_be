@@ -1,6 +1,6 @@
-package com.aechak.api.user.request
+package com.aechak.api.user.user.request
 
-import com.aechak.application.user.usecase.command.RegisterUserCommand
+import com.aechak.application.user.user.usecase.command.RegisterUserCommand
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 
