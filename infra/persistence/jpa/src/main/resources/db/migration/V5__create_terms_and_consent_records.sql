@@ -16,6 +16,23 @@ CREATE TABLE IF NOT EXISTS terms
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_0900_ai_ci;
 
+-- 약관 동의 이력(append-only). prod는 ddl-auto가 none(부트 디폴트)이라 엔티티 @Index가 DDL로 반영되지 않는다 — 스키마는 여기서 보장.
+-- FK(users·terms)는 걸지 않는다: users가 아직 Flyway 관리 밖(ddl-auto 생성)이라 실행 순서상 불가, 전체 DDL 이관 때 일괄 정의.
+CREATE TABLE IF NOT EXISTS consent_records
+(
+    id         BIGINT      NOT NULL AUTO_INCREMENT,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    user_id    BIGINT      NOT NULL,
+    term_id    BIGINT      NOT NULL,
+    is_agreed  BIT         NOT NULL,
+    PRIMARY KEY (id),
+    -- 유효 동의 = (user, term) 최신 행(MAX(id)) 판정용 커버링 인덱스
+    INDEX ix_consent_records_user_term_id (user_id, term_id, id)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci;
+
 -- 시드: 테이블이 비어있을 때만 전체 삽입
 -- 본문은 MVP 임시 문안 — 정책 확정 시 새 버전 행으로 교체(약관은 append-only, UPDATE 금지)
 INSERT INTO terms (type, is_required, version, title, body, effective_at, is_active, created_at, updated_at)
