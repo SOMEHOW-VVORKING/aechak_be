@@ -12,6 +12,8 @@ interface SocialIdentityJpaRepository : JpaRepository<SocialIdentity, Long> {
         provider: SocialProvider,
         providerId: String,
     ): SocialIdentity?
+
+    fun findFirstByUserIdOrderByIdAsc(userId: Long): SocialIdentity?
 }
 
 @Repository
@@ -24,4 +26,6 @@ class SocialIdentityRepositoryAdapter(
     ): SocialIdentity? = jpaRepository.findByProviderAndProviderId(provider, providerId)
 
     override fun save(identity: SocialIdentity): SocialIdentity = jpaRepository.save(identity)
+
+    override fun findByUserId(userId: Long): SocialIdentity? = jpaRepository.findFirstByUserIdOrderByIdAsc(userId)
 }

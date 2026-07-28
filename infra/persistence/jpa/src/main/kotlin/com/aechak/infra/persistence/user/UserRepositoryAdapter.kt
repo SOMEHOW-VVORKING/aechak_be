@@ -16,6 +16,13 @@ interface UserJpaRepository : JpaRepository<User, Long> {
     fun findStatusById(
         @Param("id") id: Long,
     ): UserStatus?
+
+    /** 닉네임 선점 검사 — 비교는 nickname 컬럼 collation(utf8mb4 ci)을 그대로 탄다. */
+    @Query("select count(p) > 0 from UserProfile p where p.nickname = :nickname and p.userId <> :excludeUserId")
+    fun existsNickname(
+        @Param("nickname") nickname: String,
+        @Param("excludeUserId") excludeUserId: Long,
+    ): Boolean
 }
 
 /**
@@ -29,4 +36,9 @@ class UserRepositoryAdapter(
     override fun findById(id: Long): User? = jpaRepository.findByIdOrNull(id)
 
     override fun save(user: User): User = jpaRepository.save(user)
+
+    override fun isNicknameTaken(
+        nickname: String,
+        excludeUserId: Long,
+    ): Boolean = jpaRepository.existsNickname(nickname, excludeUserId)
 }
