@@ -21,4 +21,9 @@ enum class UserErrorCode(
 
     // 30011~30012는 펫 CRUD 몫으로 예약
     ONBOARDING_ALREADY_COMPLETED(30013, "이미 온보딩을 완료한 계정입니다.", 409),
+
+    // 배송지 서브대역(30120~) — 주문 대역이 아니라 여기인 이유: 배송지는 User 애그리거트 소속(BC 기준).
+    DELIVERY_ADDRESS_LIMIT_EXCEEDED(30120, "배송지는 최대 10개까지만 등록할 수 있습니다.", 422),
+    DELIVERY_ADDRESS_NOT_FOUND(30121, "배송지를 찾을 수 없습니다.", 404),
+    DELIVERY_ADDRESS_ACCESS_DENIED(30122, "본인의 배송지만 접근할 수 있습니다.", 403),
 }
