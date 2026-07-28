@@ -24,6 +24,23 @@ class ConsentService(
 ) {
     fun getActiveTerms(): List<Term> = termRepository.findAllActiveOrderedById()
 
+    /** 온보딩 전이 게이트 — 활성 필수 약관 각각의 최신 행이 전부 isAgreed=true인가. */
+    fun hasAllRequiredConsents(userId: Long): Boolean {
+        val requiredTermIds =
+            termRepository
+                .findAllActiveOrderedById()
+                .filter { it.isRequired }
+                .map { it.id }
+        if (requiredTermIds.isEmpty()) return true
+
+        val latestByTermId =
+            consentRecordRepository
+                .findAllByUserAndTerms(userId, requiredTermIds)
+                .groupBy { it.term.id }
+                .mapValues { (_, rows) -> rows.maxBy { it.id } }
+        return requiredTermIds.all { latestByTermId[it]?.isAgreed == true }
+    }
+
     fun submit(
         user: User,
         items: List<SubmitConsentsCommand.ConsentItem>,
