@@ -1,4 +1,4 @@
-package com.aechak.infra.persistence.user
+package com.aechak.infra.persistence.user.social
 
 import com.aechak.domain.user.social.SocialIdentity
 import com.aechak.domain.user.social.enums.SocialProvider
