@@ -18,6 +18,10 @@ locals {
   # prod만 env를 뺀다 — 사용자에게 노출되는 이름이라. 이것도 같은 인증서가 덮는다.
   api_domain   = var.env == "prod" ? "api.aechak.co.kr" : "api-${var.env}.aechak.co.kr"
   media_domain = var.env == "prod" ? "media.aechak.co.kr" : "media-${var.env}.aechak.co.kr"
+
+  # 프론트는 서비스 얼굴이라 서비스명을 빼고 env만 쓴다.
+  # prod는 apex가 되는데 CNAME을 못 걸어서 그때 방식을 다시 정해야 한다.
+  web_domain = var.env == "prod" ? "aechak.co.kr" : "${var.env}.aechak.co.kr"
 }
 
 resource "aws_route53_record" "api" {
@@ -46,4 +50,14 @@ resource "aws_route53_record" "media" {
     zone_id                = aws_cloudfront_distribution.media.hosted_zone_id
     evaluate_target_health = false
   }
+}
+
+# Cloudflare Pages는 대시보드 등록이 선행돼야 이 레코드가 동작한다.
+# 별칭이 아닌 CNAME인 이유는 대상이 AWS 리소스가 아니라서.
+resource "aws_route53_record" "web" {
+  zone_id = data.aws_route53_zone.root.zone_id
+  name    = local.web_domain
+  type    = "CNAME"
+  ttl     = 300
+  records = ["aechak-fe.pages.dev"]
 }
