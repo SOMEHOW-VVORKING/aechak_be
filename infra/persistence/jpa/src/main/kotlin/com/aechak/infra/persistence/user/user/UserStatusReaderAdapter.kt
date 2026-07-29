@@ -1,4 +1,4 @@
-package com.aechak.infra.persistence.user
+package com.aechak.infra.persistence.user.user
 
 import com.aechak.application.auth.port.UserStatusReader
 import com.aechak.domain.user.user.enums.UserStatus
