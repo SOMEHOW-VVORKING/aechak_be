@@ -1,6 +1,5 @@
-package com.aechak.api.product
+package com.aechak.api.product.controller
 
-import com.aechak.api.product.controller.ProductController
 import com.aechak.application.product.port.ProductCatalogSort
 import com.aechak.application.product.usecase.ProductUseCase
 import com.aechak.application.product.usecase.query.ProductSearchQuery
