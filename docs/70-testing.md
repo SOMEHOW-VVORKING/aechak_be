@@ -50,7 +50,7 @@
 
 ### 3.1 컨트롤러 통합
 
-MockMvc로 HTTP 계층까지 검증한다. `@AutoConfigureMockMvc`는 개별 클래스가 아니라 베이스에 붙인다(캐시 키 참여). `webEnvironment=RANDOM_PORT`는 쓰지 않는다.
+현재 컨트롤러 통합 테스트는 도입하지 않았다. 착수 시점에 방식(standalone MockMvc vs `@AutoConfigureMockMvc`를 베이스에 붙이는 통합)을 §9 기준으로 결정한다. 통합으로 가면 `@AutoConfigureMockMvc`는 개별 클래스가 아니라 베이스에 붙이고(캐시 키 참여), `webEnvironment=RANDOM_PORT`는 쓰지 않는다.
 
 ### 3.2 부팅 스모크
 
