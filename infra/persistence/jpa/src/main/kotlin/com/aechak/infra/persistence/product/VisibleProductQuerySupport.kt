@@ -29,7 +29,7 @@ internal fun <T> visibleProductQuery(
         .from(product)
         .join(seller)
         .on(seller.userId.eq(product.sellerId).and(seller.status.eq(SellerStatus.ACTIVE)))
-        .leftJoin(product.category, category)
+        .join(product.category, category)
         .leftJoin(category.parent, parent)
         .leftJoin(parent.parent, grandParent)
         .where(visible(), categoryActive())
