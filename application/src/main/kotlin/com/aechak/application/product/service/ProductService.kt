@@ -5,10 +5,10 @@ import com.aechak.application.product.port.ProductCatalogQueryPort
 import com.aechak.application.product.port.ProductCatalogSort
 import com.aechak.application.product.port.ProductDetailQueryPort
 import com.aechak.application.product.port.ProductOptionsQueryPort
-import com.aechak.application.product.port.result.ProductCatalogDetailView
-import com.aechak.application.product.port.result.ProductCatalogView
-import com.aechak.application.product.port.result.ProductImageView
-import com.aechak.application.product.port.result.ProductOptionsView
+import com.aechak.application.product.port.view.ProductCatalogDetailView
+import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.port.view.ProductImageView
+import com.aechak.application.product.port.view.ProductOptionsView
 import com.aechak.application.product.support.ProductCursorCodec
 import com.aechak.application.product.usecase.query.ProductSearchQuery
 import com.aechak.application.support.CursorPageResult

@@ -1,7 +1,7 @@
 package com.aechak.infra.persistence.product
 
 import com.aechak.application.product.port.ProductOptionsQueryPort
-import com.aechak.application.product.port.result.ProductOptionsView
+import com.aechak.application.product.port.view.ProductOptionsView
 import com.aechak.domain.product.option.QOptionCombination
 import com.aechak.domain.product.option.QOptionCombinationValue
 import com.aechak.domain.product.option.QOptionGroup

@@ -1,7 +1,7 @@
 package com.aechak.application.product.usecase.result
 
-import com.aechak.application.product.port.result.ProductCatalogDetailView
-import com.aechak.application.product.port.result.ProductImageView
+import com.aechak.application.product.port.view.ProductCatalogDetailView
+import com.aechak.application.product.port.view.ProductImageView
 import com.aechak.domain.product.product.enums.ProductImageType
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.product.stats.ProductStats

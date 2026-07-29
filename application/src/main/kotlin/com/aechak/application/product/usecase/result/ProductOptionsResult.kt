@@ -1,6 +1,6 @@
 package com.aechak.application.product.usecase.result
 
-import com.aechak.application.product.port.result.ProductOptionsView
+import com.aechak.application.product.port.view.ProductOptionsView
 import com.aechak.domain.product.option.OptionCombination
 
 /** 공개 상품 옵션 결과 */

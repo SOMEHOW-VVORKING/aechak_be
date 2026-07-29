@@ -3,7 +3,7 @@ package com.aechak.infra.persistence.product
 import com.aechak.application.product.port.ProductCatalogCondition
 import com.aechak.application.product.port.ProductCatalogQueryPort
 import com.aechak.application.product.port.ProductCatalogSort
-import com.aechak.application.product.port.result.ProductCatalogView
+import com.aechak.application.product.port.view.ProductCatalogView
 import com.querydsl.core.types.Expression
 import com.querydsl.core.types.OrderSpecifier
 import com.querydsl.core.types.Predicate

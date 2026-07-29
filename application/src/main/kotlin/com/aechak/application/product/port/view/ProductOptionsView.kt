@@ -1,4 +1,4 @@
-package com.aechak.application.product.port.result
+package com.aechak.application.product.port.view
 
 /** 상품 옵션 조회의 읽기 모델(활성 그룹/값/조합만, 그룹/값은 sortOrder 순, 조합은 id 순으로 정렬) */
 data class ProductOptionsView(

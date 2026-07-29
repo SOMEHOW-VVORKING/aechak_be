@@ -1,4 +1,4 @@
-package com.aechak.application.product.port.result
+package com.aechak.application.product.port.view
 
 import com.aechak.domain.product.product.enums.ProductImageType
 
