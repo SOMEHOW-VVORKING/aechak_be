@@ -152,12 +152,18 @@ package com.aechak.application.order.usecase.command
  *   (요구사항 추가 시 시그니처가 아니라 필드가 늘어난다 → 호출부 전파 최소화)
  * - 필드는 "이 유스케이스 수행에 필요한 전부이자 최소" — request의 안 쓰는 필드를 실어 나르지 않는다.
  * - 형식 검증 어노테이션 금지. 형식은 boot(@Valid)에서 끝났다는 것이 이 객체의 계약이다.
+ * - Command 필드 → 엔티티 생성 매핑은 Command의 toEntity가 소유한다 — 서비스에서 팩토리 인자를
+ *   직접 나열하지 않는다. toEntity는 "필드 옮겨 담기"만 하고(생성 규칙·불변식은 도메인 팩토리 소유),
+ *   서비스가 계산·조회한 값(엔티티 참조, 인코딩·정규화 결과)은 파라미터로 받는다.
+ *   Result.from(entity)의 쓰기 방향 대칭이다. 선례: AddDeliveryAddressCommand.toEntity(user, encodedContact).
  */
 data class PlaceOrderCommand(
     val buyerId: Long,
     val lines: List<OrderLineCommand>,
     // TODO
-)
+) {
+    fun toEntity(buyer: User): Order = Order.place(buyer = buyer, lines = TODO())
+}
 ```
 
 ```kotlin
