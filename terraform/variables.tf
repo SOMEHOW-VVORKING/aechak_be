@@ -65,8 +65,8 @@ variable "db_instance_class" {
 
 variable "aws_account_id" {
   type        = string
-  description = "애착 AWS 계정 (somehowworking) — 가드레일용"
-  default     = "334455667515"
+  description = "애착 AWS 계정 (마에스트로 Innovation Sandbox 리스 계정 ISB-56) — 가드레일용"
+  default     = "447170313132"
 }
 
 variable "github_repo" {
