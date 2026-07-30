@@ -15,4 +15,6 @@ class FileFacade(
     override fun issuePresignedUrl(command: IssuePresignedUrlCommand): IssuePresignedUrlResult = fileService.issuePresignedUrl(command)
 
     override fun promote(command: PromoteFileCommand): PromoteFileResult = fileService.promote(command)
+
+    override fun resolveMediaUrl(key: String?): String? = fileService.resolveMediaUrl(key)
 }

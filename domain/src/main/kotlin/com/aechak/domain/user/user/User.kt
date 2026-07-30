@@ -83,13 +83,17 @@ class User protected constructor() : AggregateRoot() {
         withdrawnAt = LocalDateTime.now()
     }
 
-    companion object {
-        fun register(nickname: String): User {
-            val user = User()
-            user._profile = UserProfile.of(user, nickname)
-            return user
-        }
+    /**
+     * 온보딩 완료 — 프로필(닉네임) 생성과 ACTIVE 전이는 반드시 함께 일어난다.
+     * 필수 동의 검증은 호출자(application)의 책임 — "ACTIVE ⇒ 필수 동의 존재" 게이트를 통과한 뒤에만 부른다.
+     */
+    fun completeOnboarding(nickname: String) {
+        check(status == UserStatus.PENDING_ONBOARDING) { "온보딩 완료 전이는 PENDING 상태에서만 가능합니다 (userId=$id)" }
+        _profile = UserProfile.of(this, nickname)
+        status = UserStatus.ACTIVE
+    }
 
+    companion object {
         /** 소셜 가입 진입점 — PENDING_ONBOARDING으로 시작하고 프로필(닉네임)은 온보딩에서 생성한다. */
         fun preRegister(): User = User()
     }

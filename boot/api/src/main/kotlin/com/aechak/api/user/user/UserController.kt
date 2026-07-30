@@ -1,21 +1,22 @@
 package com.aechak.api.user.user
 
-import com.aechak.api.user.user.request.RegisterUserRequest
+import com.aechak.api.user.user.request.NicknameRequest
 import com.aechak.api.user.user.request.SubmitConsentsRequest
-import com.aechak.api.user.user.response.UserResponse
+import com.aechak.api.user.user.response.NicknameCheckResponse
+import com.aechak.api.user.user.response.UserMeResponse
 import com.aechak.application.user.term.usecase.ConsentUseCase
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
-import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
-import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 /**
@@ -32,18 +33,32 @@ class UserController(
     private val userUseCase: UserUseCase,
     private val consentUseCase: ConsentUseCase,
 ) {
-    @PostMapping
-    fun register(
-        @Valid @RequestBody request: RegisterUserRequest,
-    ): ResponseEntity<ApiResponse<UserResponse>> {
-        val result = userUseCase.register(request.toCommand())
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.of(UserResponse.from(result)))
-    }
+    /** 닉네임 사용 가능 검사 — UX 보조(예약 아님, 최종 판정은 PUT의 DB UNIQUE). 본인 현재 닉네임은 available=true. */
+    @GetMapping("/nickname/check")
+    fun checkNickname(
+        @RequestParam nickname: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<NicknameCheckResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(NicknameCheckResponse(available = userUseCase.checkNickname(principal.userId, nickname))),
+        )
 
-    @GetMapping("/{userId}")
-    fun getUser(
-        @PathVariable userId: Long,
-    ): ResponseEntity<ApiResponse<UserResponse>> = ResponseEntity.ok(ApiResponse.of(UserResponse.from(userUseCase.getUser(userId))))
+    /** 닉네임 설정 — PENDING이면 온보딩 완료 전이 트리거. 응답은 변경 후 내 정보(FE는 status로 홈 라우팅). */
+    @PutMapping("/me/nickname")
+    fun setNickname(
+        @RequestBody request: NicknameRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<UserMeResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(UserMeResponse.from(userUseCase.setNickname(request.toCommand(principal.userId)))),
+        )
+
+    /** 내 정보 — 마이 허브·온보딩 재시작 라우팅·프로필 수정 초기값. */
+    @GetMapping("/me")
+    fun getMe(
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<UserMeResponse>> =
+        ResponseEntity.ok(ApiResponse.of(UserMeResponse.from(userUseCase.getMe(principal.userId))))
 
     /** 약관 동의 제출 — 온보딩 전용(PENDING). */
     @PostMapping("/me/consents")
