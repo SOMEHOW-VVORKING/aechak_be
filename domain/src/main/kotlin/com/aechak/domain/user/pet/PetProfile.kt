@@ -82,9 +82,38 @@ class PetProfile protected constructor(
 
     fun delete() {
         status = PetStatus.DELETED
+        isDefault = false
+    }
+
+    fun releaseDefault() {
+        isDefault = false
+    }
+
+    fun markAsDefault() {
+        isDefault = true
     }
 
     companion object {
+        private val MIN_WEIGHT = BigDecimal("0.1")
+        private val MAX_WEIGHT = BigDecimal("100.0")
+
+        private fun validateWeight(weight: BigDecimal?) {
+            if (weight != null && (weight < MIN_WEIGHT || weight > MAX_WEIGHT)) {
+                throw BusinessException(UserErrorCode.INVALID_PET_WEIGHT)
+            }
+        }
+
+        fun validate(
+            breed: Breed,
+            species: Species,
+            weight: BigDecimal?,
+        ) {
+            if (breed.species != species) {
+                throw BusinessException(UserErrorCode.INVALID_BREED)
+            }
+            validateWeight(weight)
+        }
+
         fun register(
             user: User,
             breed: Breed,
@@ -95,9 +124,7 @@ class PetProfile protected constructor(
             profileImageKey: String? = null,
             isDefault: Boolean = false,
         ): PetProfile {
-            if (weight != null && weight <= BigDecimal.ZERO) {
-                throw BusinessException(UserErrorCode.INVALID_PET_WEIGHT)
-            }
+            validate(breed, species, weight)
             return PetProfile(user, breed, species, name, birthYearMonth, weight, profileImageKey, isDefault)
         }
     }
