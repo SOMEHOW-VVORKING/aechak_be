@@ -13,7 +13,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket       = "aechak-tfstate-334455667515"
+    bucket       = "aechak-tfstate-447170313132"
     key          = "main/terraform.tfstate"
     region       = "ap-northeast-2"
     encrypt      = true
