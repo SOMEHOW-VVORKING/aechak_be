@@ -113,6 +113,8 @@ class FileServiceTest {
             tmpKey: String,
             purpose: UploadPurpose,
         ): String = PROMOTED_SENTINEL
+
+        override fun publicUrlOf(key: String): String = "https://fake-cdn/$key"
     }
 
     companion object {

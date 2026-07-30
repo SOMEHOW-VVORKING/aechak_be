@@ -4,12 +4,13 @@ import com.aechak.application.user.term.usecase.ConsentUseCase
 import com.aechak.application.user.term.usecase.command.SubmitConsentsCommand
 import com.aechak.application.user.term.usecase.result.TermResult
 import com.aechak.application.user.user.usecase.UserUseCase
-import com.aechak.application.user.user.usecase.command.RegisterUserCommand
+import com.aechak.application.user.user.usecase.command.SetNicknameCommand
 import com.aechak.application.user.user.usecase.query.UserSearchQuery
-import com.aechak.application.user.user.usecase.result.UserResult
+import com.aechak.application.user.user.usecase.result.UserMeResult
 import com.aechak.application.user.user.usecase.result.UserSummaryResult
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.user.enums.UserRole
+import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.webcommon.error.GlobalExceptionHandler
 import com.aechak.websecurity.authentication.AuthPrincipal
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -18,7 +19,9 @@ import org.springframework.core.MethodParameter
 import org.springframework.http.MediaType
 import org.springframework.http.converter.json.JacksonJsonHttpMessageConverter
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
@@ -30,22 +33,51 @@ import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.kotlinModule
 
 class UserControllerTest {
-    private var captured: SubmitConsentsCommand? = null
+    private var capturedConsents: SubmitConsentsCommand? = null
+    private var capturedNickname: SetNicknameCommand? = null
+
+    private val activeMe =
+        UserMeResult(
+            status = UserStatus.ACTIVE,
+            nickname = "코코집사",
+            profileImageUrl = "https://cdn.aechak.com/users/profile/abc.webp",
+            bio = "코코와 삽니다",
+            email = "coco@kakao.com",
+            phoneNumber = null,
+            isPhoneVerified = false,
+        )
 
     private val fakeConsentUseCase =
         object : ConsentUseCase {
             override fun getActiveTerms(): List<TermResult> = error("not used")
 
             override fun submitConsents(command: SubmitConsentsCommand) {
-                captured = command
+                capturedConsents = command
             }
         }
 
     private val fakeUserUseCase =
         object : UserUseCase {
-            override fun register(command: RegisterUserCommand): UserResult = error("not used")
+            override fun checkNickname(
+                userId: Long,
+                nickname: String,
+            ): Boolean = nickname != "선점됨"
 
-            override fun getUser(userId: Long): UserResult = error("not used")
+            override fun setNickname(command: SetNicknameCommand): UserMeResult {
+                capturedNickname = command
+                return activeMe
+            }
+
+            override fun getMe(userId: Long): UserMeResult =
+                UserMeResult(
+                    status = UserStatus.PENDING_ONBOARDING,
+                    nickname = null,
+                    profileImageUrl = null,
+                    bio = null,
+                    email = null,
+                    phoneNumber = null,
+                    isPhoneVerified = false,
+                )
 
             override fun searchUsers(query: UserSearchQuery): List<UserSummaryResult> = error("not used")
 
@@ -69,10 +101,59 @@ class UserControllerTest {
         MockMvcBuilders
             .standaloneSetup(UserController(fakeUserUseCase, fakeConsentUseCase))
             .setCustomArgumentResolvers(principalResolver)
-            // 런타임(Boot)과 동일하게 Kotlin 모듈 매퍼 사용 — 필수 필드 누락을 파싱 단계에서 거른다
+            // 런타임(Boot)과 동일하게 Kotlin 모듈 매퍼 사용 — is-접두 필드명 보존·필수 필드 누락을 파싱 단계에서 거른다
             .setMessageConverters(JacksonJsonHttpMessageConverter(JsonMapper.builder().addModule(kotlinModule()).build()))
             .setControllerAdvice(GlobalExceptionHandler())
             .build()
+
+    @Test
+    fun `닉네임 검사는 200과 available을 반환한다`() {
+        mockMvc
+            .perform(get("/users/nickname/check").param("nickname", "코코집사"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.available").value(true))
+
+        mockMvc
+            .perform(get("/users/nickname/check").param("nickname", "선점됨"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.available").value(false))
+    }
+
+    @Test
+    fun `nickname 파라미터가 누락되면 400과 INVALID_REQUEST 코드로 응답한다`() {
+        mockMvc
+            .perform(get("/users/nickname/check"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
+    }
+
+    @Test
+    fun `닉네임을 설정하면 200과 변경 후 내 정보를 반환하고 인증 주체의 userId로 위임한다`() {
+        mockMvc
+            .perform(
+                put("/users/me/nickname")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"nickname":"코코집사"}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+            .andExpect(jsonPath("$.data.nickname").value("코코집사"))
+            .andExpect(jsonPath("$.data.isPhoneVerified").value(false))
+
+        val command = requireNotNull(capturedNickname)
+        assertEquals(7L, command.userId, "본문이 아닌 인증 주체에서 userId를 얻는다")
+        assertEquals("코코집사", command.nickname)
+    }
+
+    @Test
+    fun `내 정보 조회는 200과 PENDING이면 프로필 계열 null을 반환한다`() {
+        mockMvc
+            .perform(get("/users/me"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.status").value("PENDING_ONBOARDING"))
+            .andExpect(jsonPath("$.data.nickname").value(null))
+            .andExpect(jsonPath("$.data.profileImageUrl").value(null))
+            .andExpect(jsonPath("$.data.email").value(null))
+    }
 
     @Test
     fun `동의를 제출하면 204 무본문으로 응답하고 인증 주체의 userId로 위임한다`() {
@@ -83,7 +164,7 @@ class UserControllerTest {
                     .content("""{"items":[{"termId":1,"isAgreed":true},{"termId":4,"isAgreed":false}]}"""),
             ).andExpect(status().isNoContent)
 
-        val command = requireNotNull(captured)
+        val command = requireNotNull(capturedConsents)
         assertEquals(7L, command.userId, "본문이 아닌 인증 주체에서 userId를 얻는다")
         assertEquals(listOf(1L to true, 4L to false), command.items.map { it.termId to it.isAgreed })
     }
