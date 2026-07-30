@@ -43,6 +43,7 @@ class UserControllerTest {
             profileImageUrl = "https://cdn.aechak.com/users/profile/abc.webp",
             bio = "코코와 삽니다",
             email = "coco@kakao.com",
+            phoneNumber = null,
             isPhoneVerified = false,
         )
 
@@ -74,6 +75,7 @@ class UserControllerTest {
                     profileImageUrl = null,
                     bio = null,
                     email = null,
+                    phoneNumber = null,
                     isPhoneVerified = false,
                 )
 

@@ -9,6 +9,7 @@ data class UserMeResponse(
     val profileImageUrl: String?,
     val bio: String?,
     val email: String?,
+    val phoneNumber: String?,
     val isPhoneVerified: Boolean,
 ) {
     companion object {
@@ -19,6 +20,7 @@ data class UserMeResponse(
                 profileImageUrl = result.profileImageUrl,
                 bio = result.bio,
                 email = result.email,
+                phoneNumber = result.phoneNumber,
                 isPhoneVerified = result.isPhoneVerified,
             )
     }

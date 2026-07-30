@@ -110,6 +110,8 @@ class UserFacade(
             profileImageUrl = fileUseCase.resolveMediaUrl(profile?.profileImageKey),
             bio = profile?.bio,
             email = userService.findEmail(userId),
+            // 휴대폰 인증(ACC-03) 전까지 수집 경로 없음 — 복호화·마스킹 정책과 함께 그때 채운다
+            phoneNumber = null,
             isPhoneVerified = user.isPhoneVerified,
         )
     }

@@ -242,6 +242,7 @@ class UserUseCaseTest : IntegrationTestBase() {
         assertNull(me.nickname)
         assertNull(me.profileImageUrl)
         assertNull(me.bio)
+        assertNull(me.phoneNumber, "휴대폰 인증 전까지 항상 null")
         assertFalse(me.isPhoneVerified)
     }
 
