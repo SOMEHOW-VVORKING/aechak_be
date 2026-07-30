@@ -30,7 +30,7 @@ class PetProfile protected constructor(
     birthYearMonth: String?,
     weight: BigDecimal?,
     profileImageKey: String?,
-    isPrimary: Boolean,
+    isDefault: Boolean,
 ) : BaseEntity() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -72,7 +72,7 @@ class PetProfile protected constructor(
         protected set
 
     @Column(nullable = false)
-    var isPrimary: Boolean = isPrimary
+    var isDefault: Boolean = isDefault
         protected set
 
     @Version
@@ -93,12 +93,12 @@ class PetProfile protected constructor(
             birthYearMonth: String? = null,
             weight: BigDecimal? = null,
             profileImageKey: String? = null,
-            isPrimary: Boolean = false,
+            isDefault: Boolean = false,
         ): PetProfile {
             if (weight != null && weight <= BigDecimal.ZERO) {
                 throw BusinessException(UserErrorCode.INVALID_PET_WEIGHT)
             }
-            return PetProfile(user, breed, species, name, birthYearMonth, weight, profileImageKey, isPrimary)
+            return PetProfile(user, breed, species, name, birthYearMonth, weight, profileImageKey, isDefault)
         }
     }
 }
