@@ -3,9 +3,6 @@ package com.aechak.api.search
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.domain.search.keyword.RecommendedKeyword
 import com.aechak.domain.search.recent.RecentSearch
-import com.aechak.domain.user.user.User
-import com.aechak.domain.user.user.enums.UserStatus
-import com.aechak.websecurity.config.JwtConfig
 import com.jayway.jsonpath.JsonPath
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -14,9 +11,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
-import org.springframework.security.oauth2.jwt.JwtClaimsSet
-import org.springframework.security.oauth2.jwt.JwtEncoder
-import org.springframework.security.oauth2.jwt.JwtEncoderParameters
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -24,7 +18,6 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
-import java.time.Instant
 import java.time.LocalDateTime
 
 /**
@@ -36,9 +29,6 @@ class SearchKeywordIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var securityFilterChain: FilterChainProxy
-
-    @Autowired
-    private lateinit var jwtEncoder: JwtEncoder
 
     private lateinit var mockMvc: MockMvc
     private var ownerId = 0L
@@ -212,31 +202,5 @@ class SearchKeywordIntegrationTest : IntegrationTestBase() {
             em.persist(RecommendedKeyword.register(keyword, sortOrder, isActive))
             em.flush()
         }
-    }
-
-    private fun createActiveUser(): Long =
-        tx.execute {
-            val user = User.preRegister()
-            em.persist(user)
-            em.flush()
-            em
-                .createQuery("update User u set u.status = :st where u.id = :id")
-                .setParameter("st", UserStatus.ACTIVE)
-                .setParameter("id", user.id)
-                .executeUpdate()
-            user.id
-        }!!
-
-    private fun mintAccessToken(userId: Long): String {
-        val now = Instant.now()
-        val claims =
-            JwtClaimsSet
-                .builder()
-                .subject(userId.toString())
-                .issuedAt(now)
-                .expiresAt(now.plusSeconds(3600))
-                .claim(JwtConfig.ROLE_CLAIM, "GENERAL")
-                .build()
-        return jwtEncoder.encode(JwtEncoderParameters.from(claims)).tokenValue
     }
 }
