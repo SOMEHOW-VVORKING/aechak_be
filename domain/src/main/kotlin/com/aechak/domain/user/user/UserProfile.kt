@@ -54,6 +54,17 @@ class UserProfile protected constructor(
         this.nickname = validateNickname(nickname)
     }
 
+    /** 프로필 전체 교체(PUT) — 닉네임·자기소개·이미지 key를 항상 셋 다 받는다. nullable은 null=제거. */
+    fun updateProfile(
+        nickname: String,
+        bio: String?,
+        profileImageKey: String?,
+    ) {
+        this.nickname = validateNickname(nickname)
+        this.bio = bio
+        this.profileImageKey = profileImageKey
+    }
+
     companion object {
         /** 닉네임 UNIQUE 제약명 — @Table 선언과 커밋 시점 예외 번역(제약명 분기)이 공유한다. */
         const val UK_NICKNAME = "uk_user_profiles_nickname"
