@@ -1,6 +1,6 @@
 package com.aechak.application.product.usecase.result
 
-import com.aechak.application.product.port.result.ProductCatalogView
+import com.aechak.application.product.port.view.ProductCatalogView
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.product.stats.ProductStats
 import java.math.BigDecimal

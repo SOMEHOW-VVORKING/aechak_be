@@ -54,6 +54,15 @@ class Category protected constructor(
         protected set
 
     companion object {
+        /** 대분류 깊이 */
+        const val ROOT_DEPTH = 1
+
+        /** 중분류 깊이 */
+        const val MID_DEPTH = 2
+
+        /** 소분류(리프) 깊이 */
+        const val LEAF_DEPTH = 3
+
         fun create(
             parent: Category?,
             depth: Int,
@@ -61,10 +70,10 @@ class Category protected constructor(
             iconUrl: String?,
             sortOrder: Int,
         ): Category {
-            if (depth !in 1..3) {
+            if (depth !in ROOT_DEPTH..LEAF_DEPTH) {
                 throw BusinessException(ProductErrorCode.INVALID_CATEGORY_DEPTH)
             }
-            val rootLevel = depth == 1
+            val rootLevel = depth == ROOT_DEPTH
             if (rootLevel != (parent == null)) {
                 throw BusinessException(ProductErrorCode.INVALID_CATEGORY_DEPTH)
             }
