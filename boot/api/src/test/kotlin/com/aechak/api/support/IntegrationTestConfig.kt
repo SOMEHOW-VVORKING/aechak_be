@@ -3,6 +3,7 @@ package com.aechak.api.support
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.core.JdbcTemplate
 import org.testcontainers.mysql.MySQLContainer
 
@@ -26,4 +27,9 @@ class IntegrationTestConfig {
 
     @Bean
     fun databaseCleaner(jdbcTemplate: JdbcTemplate) = DatabaseCleaner(jdbcTemplate)
+
+    /** 실제 S3 어댑터(@Component) 대신 주입되도록 @Primary — 통합 테스트는 외부 스토리지에 나가지 않는다. */
+    @Bean
+    @Primary
+    fun fakeFileStorage(): FakeFileStorage = FakeFileStorage()
 }

@@ -1,10 +1,13 @@
 package com.aechak.api.user.user
 
+import com.aechak.api.support.FakeFileStorage
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.application.file.error.FileErrorCode
 import com.aechak.application.user.term.usecase.ConsentUseCase
 import com.aechak.application.user.term.usecase.command.SubmitConsentsCommand
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.application.user.user.usecase.command.SetNicknameCommand
+import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.social.SocialIdentity
@@ -18,6 +21,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
@@ -30,6 +34,12 @@ class UserUseCaseTest : IntegrationTestBase() {
 
     @Autowired
     lateinit var consentUseCase: ConsentUseCase
+
+    @Autowired
+    lateinit var fakeFileStorage: FakeFileStorage
+
+    @BeforeEach
+    fun resetFakes() = fakeFileStorage.reset()
 
     private fun seedTerm(
         type: TermType,
@@ -85,6 +95,30 @@ class UserUseCaseTest : IntegrationTestBase() {
         nickname: String,
     ) = userUseCase.setNickname(SetNicknameCommand(userId, nickname))
 
+    /** 온보딩을 완주한 ACTIVE 유저 — 필수 약관은 호출부가 미리 시드해 termId를 넘긴다. */
+    private fun newActiveUser(
+        termId: Long,
+        nickname: String = "코코집사",
+    ): Long {
+        val userId = newPendingUser()
+        consentAll(userId, termId)
+        setNickname(userId, nickname)
+        return userId
+    }
+
+    private fun updateProfile(
+        userId: Long,
+        nickname: String,
+        bio: String?,
+        profileImageKey: String?,
+    ) = userUseCase.updateProfile(UpdateProfileCommand(userId, nickname, bio, profileImageKey))
+
+    /** 본인 소유·USER_PROFILE 용도의 tmp 키 — 발급 규약(FileKey)과 동일한 형태. */
+    private fun tmpKeyOf(
+        userId: Long,
+        fileName: String,
+    ): String = "tmp/$userId/users/profile/$fileName"
+
     private fun statusInDb(userId: Long): UserStatus =
         em
             .createQuery("select u.status from User u where u.id = :id", UserStatus::class.java)
@@ -132,28 +166,14 @@ class UserUseCaseTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `같은 값 재설정은 멱등으로 성공한다`() {
+    fun `온보딩 완료 후 setNickname 재호출은 ONBOARDING_ALREADY_COMPLETED로 거부한다`() {
         val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
-        val userId = newPendingUser()
-        consentAll(userId, serviceId)
-        setNickname(userId, "코코집사")
+        val userId = newActiveUser(serviceId)
 
-        val me = setNickname(userId, "코코집사")
+        val e = assertThrows<BusinessException> { setNickname(userId, "새로운집사") }
 
-        assertEquals("코코집사", me.nickname)
-        assertEquals(UserStatus.ACTIVE, me.status)
-    }
-
-    @Test
-    fun `ACTIVE 계정은 닉네임을 재변경할 수 있다`() {
-        val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
-        val userId = newPendingUser()
-        consentAll(userId, serviceId)
-        setNickname(userId, "코코집사")
-
-        val me = setNickname(userId, "새로운집사")
-
-        assertEquals("새로운집사", me.nickname)
+        assertEquals(UserErrorCode.ONBOARDING_ALREADY_COMPLETED, e.errorCode, "온보딩 전용 EP — ACTIVE 재변경은 updateProfile로")
+        assertEquals("코코집사", userUseCase.getMe(userId).nickname, "거부 시 닉네임 불변")
     }
 
     @Test
@@ -233,6 +253,91 @@ class UserUseCaseTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `프로필 전체 교체 - 닉네임과 자기소개가 저장되고 새 tmp key는 승격된다`() {
+        val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
+        val userId = newActiveUser(serviceId)
+        val tmpKey = tmpKeyOf(userId, "new.webp")
+
+        val me = updateProfile(userId, "새닉네임", "코코와 삽니다", tmpKey)
+
+        assertEquals("새닉네임", me.nickname)
+        assertEquals("코코와 삽니다", me.bio)
+        assertEquals(listOf(tmpKey), fakeFileStorage.promotedTmpKeys, "tmp 키는 승격을 거친다")
+        assertEquals("users/profile/new.webp", me.profileImageKey, "저장은 승격된 정식 key")
+        assertEquals("https://cdn.test/users/profile/new.webp", me.profileImageUrl)
+    }
+
+    @Test
+    fun `프로필 수정 - null은 제거로 반영된다`() {
+        val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
+        val userId = newActiveUser(serviceId)
+        updateProfile(userId, "코코집사", "지울 소개", tmpKeyOf(userId, "old.webp"))
+
+        val me = updateProfile(userId, "코코집사", null, null)
+
+        assertNull(me.bio)
+        assertNull(me.profileImageKey)
+        assertNull(me.profileImageUrl)
+    }
+
+    @Test
+    fun `프로필 수정 - 기존과 같은 key 재전송은 승격을 건너뛰고 이미지를 유지한다`() {
+        val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
+        val userId = newActiveUser(serviceId)
+        val promotedKey = updateProfile(userId, "코코집사", null, tmpKeyOf(userId, "keep.webp")).profileImageKey!!
+        fakeFileStorage.reset()
+
+        val me = updateProfile(userId, "코코집사", "자기소개만 변경", promotedKey)
+
+        assertTrue(fakeFileStorage.promotedTmpKeys.isEmpty(), "정식 key 재전송은 승격 대상이 아니다 — 스킵은 필수")
+        assertEquals(promotedKey, me.profileImageKey, "이미지 유지")
+        assertEquals("자기소개만 변경", me.bio)
+    }
+
+    @Test
+    fun `프로필 수정 - 타인이 발급받은 tmp key는 FILE_ACCESS_DENIED로 거부한다`() {
+        val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
+        val userId = newActiveUser(serviceId)
+
+        val e = assertThrows<BusinessException> { updateProfile(userId, "코코집사", null, tmpKeyOf(userId + 1, "steal.webp")) }
+
+        assertEquals(FileErrorCode.FILE_ACCESS_DENIED, e.errorCode)
+    }
+
+    @Test
+    fun `프로필 수정 - 타 유저 닉네임은 DUPLICATE_NICKNAME으로 거부한다`() {
+        val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
+        newActiveUser(serviceId, "선점집사")
+        val userId = newActiveUser(serviceId, "코코집사")
+
+        val e = assertThrows<BusinessException> { updateProfile(userId, "선점집사", null, null) }
+
+        assertEquals(UserErrorCode.DUPLICATE_NICKNAME, e.errorCode, "커밋 시점 UNIQUE 위반을 30002로 번역")
+        assertEquals("코코집사", userUseCase.getMe(userId).nickname, "실패 시 롤백")
+    }
+
+    @Test
+    fun `프로필 수정 - 형식 위반 닉네임은 INVALID_NICKNAME으로 거부한다`() {
+        val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
+        val userId = newActiveUser(serviceId)
+
+        val e = assertThrows<BusinessException> { updateProfile(userId, "공백 포함", null, null) }
+
+        assertEquals(UserErrorCode.INVALID_NICKNAME, e.errorCode)
+    }
+
+    @Test
+    fun `프로필 수정 - 본인 현재 닉네임 그대로면 멱등으로 성공한다`() {
+        val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
+        val userId = newActiveUser(serviceId)
+
+        val me = updateProfile(userId, "코코집사", "자기소개만 바꾼다", null)
+
+        assertEquals("코코집사", me.nickname, "같은 값 재설정은 UNIQUE 비발화 — 멱등")
+        assertEquals("자기소개만 바꾼다", me.bio)
+    }
+
+    @Test
     fun `내 정보 - PENDING은 status만 있고 프로필 계열은 null이다`() {
         val userId = newPendingUser()
 
@@ -241,6 +346,7 @@ class UserUseCaseTest : IntegrationTestBase() {
         assertEquals(UserStatus.PENDING_ONBOARDING, me.status)
         assertNull(me.nickname)
         assertNull(me.profileImageUrl)
+        assertNull(me.profileImageKey)
         assertNull(me.bio)
         assertNull(me.phoneNumber, "휴대폰 인증 전까지 항상 null")
         assertFalse(me.isPhoneVerified)
