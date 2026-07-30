@@ -37,8 +37,9 @@ resource "aws_db_instance" "main" {
   engine_version = "8.4"
   instance_class = var.db_instance_class
 
+  # username에 하이픈은 못 쓴다 — 문자·숫자·언더스코어 16자까지가 RDS 제약
   db_name  = var.project
-  username = "app"
+  username = "aechak_app"
   password = random_password.db.result
 
   allocated_storage     = 20
@@ -59,23 +60,4 @@ resource "aws_db_instance" "main" {
   backup_retention_period   = 7
 
   tags = { Name = "${var.project}-${var.env}" }
-}
-
-# 앱이 부팅 시 직접 읽는 설정 — 앱이 부팅 시 import로 읽어 yml의 ${SPRING_DATASOURCE_*} 플레이스홀더로 매핑
-resource "aws_ssm_parameter" "db_url" {
-  name  = "/${var.project}/${var.env}/api/SPRING_DATASOURCE_URL"
-  type  = "String"
-  value = "jdbc:mysql://${aws_db_instance.main.address}:3306/${var.project}"
-}
-
-resource "aws_ssm_parameter" "db_username" {
-  name  = "/${var.project}/${var.env}/api/SPRING_DATASOURCE_USERNAME"
-  type  = "String"
-  value = "app"
-}
-
-resource "aws_ssm_parameter" "db_password" {
-  name  = "/${var.project}/${var.env}/api/SPRING_DATASOURCE_PASSWORD"
-  type  = "SecureString"
-  value = random_password.db.result
 }

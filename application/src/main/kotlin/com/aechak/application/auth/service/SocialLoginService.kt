@@ -4,7 +4,7 @@ import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.port.SocialTokenVerifier
 import com.aechak.application.auth.usecase.command.SocialLoginCommand
 import com.aechak.application.auth.usecase.result.SocialLoginResult
-import com.aechak.application.user.usecase.UserUseCase
+import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.social.SocialIdentity

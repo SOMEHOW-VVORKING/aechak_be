@@ -12,7 +12,15 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # TODO: ACM 인증서 붙일 때 443 활성화
+  # 443 리스너보다 먼저(또는 같은 apply에) 열려야 한다. 리스너만 먼저 붙으면
+  # 연결이 에러 없이 타임아웃만 나서 원인 찾는 데 시간이 든다.
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
