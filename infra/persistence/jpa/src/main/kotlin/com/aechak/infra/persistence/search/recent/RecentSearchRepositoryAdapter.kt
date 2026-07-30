@@ -5,6 +5,9 @@ import com.aechak.domain.search.recent.repository.RecentSearchRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 
 interface RecentSearchJpaRepository : JpaRepository<RecentSearch, Long> {
@@ -12,6 +15,19 @@ interface RecentSearchJpaRepository : JpaRepository<RecentSearch, Long> {
         userId: Long,
         pageable: Pageable,
     ): List<RecentSearch>
+
+    @Modifying
+    @Query("delete from RecentSearch r where r.id = :id and r.userId = :userId")
+    fun deleteByIdAndUserId(
+        @Param("id") id: Long,
+        @Param("userId") userId: Long,
+    ): Int
+
+    @Modifying
+    @Query("delete from RecentSearch r where r.userId = :userId")
+    fun deleteAllByUserId(
+        @Param("userId") userId: Long,
+    ): Int
 }
 
 @Repository
@@ -22,4 +38,15 @@ class RecentSearchRepositoryAdapter(
         userId: Long,
         limit: Int,
     ): List<RecentSearch> = jpaRepository.findByUserIdOrderBySearchedAtDescIdDesc(userId, PageRequest.of(0, limit))
+
+    override fun deleteRecent(
+        userId: Long,
+        id: Long,
+    ) {
+        jpaRepository.deleteByIdAndUserId(id, userId)
+    }
+
+    override fun deleteAllRecent(userId: Long) {
+        jpaRepository.deleteAllByUserId(userId)
+    }
 }

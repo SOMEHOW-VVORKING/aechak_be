@@ -18,4 +18,13 @@ class SearchKeywordFacade(
         val recommendedKeywords = searchKeywordService.getRecommendedKeywords().map(RecommendedKeywordResult::from)
         return SearchKeywordsResult(recentKeywords, recommendedKeywords)
     }
+
+    @Transactional
+    override fun deleteRecentKeyword(
+        userId: Long,
+        id: Long,
+    ) = searchKeywordService.deleteRecentKeyword(userId, id)
+
+    @Transactional
+    override fun deleteAllRecentKeywords(userId: Long) = searchKeywordService.deleteAllRecentKeywords(userId)
 }

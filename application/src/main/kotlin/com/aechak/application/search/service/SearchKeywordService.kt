@@ -15,6 +15,13 @@ class SearchKeywordService(
 
     fun getRecommendedKeywords(): List<RecommendedKeyword> = recommendedKeywordRepository.findActiveOrderBySortOrder()
 
+    fun deleteRecentKeyword(
+        userId: Long,
+        id: Long,
+    ) = recentSearchRepository.deleteRecent(userId, id)
+
+    fun deleteAllRecentKeywords(userId: Long) = recentSearchRepository.deleteAllRecent(userId)
+
     companion object {
         const val MAX_RECENT_KEYWORDS = 10
     }
