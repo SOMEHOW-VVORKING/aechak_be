@@ -1,8 +1,10 @@
 package com.aechak.api.support
 
+import com.aechak.application.file.port.FileStorage
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.core.JdbcTemplate
 import org.testcontainers.mysql.MySQLContainer
 
@@ -26,4 +28,9 @@ class IntegrationTestConfig {
 
     @Bean
     fun databaseCleaner(jdbcTemplate: JdbcTemplate) = DatabaseCleaner(jdbcTemplate)
+
+    /** 실 어댑터면 펫 사진 승격이 자격증명 없이 AWS로 나감 */
+    @Bean
+    @Primary
+    fun fakeFileStorage(): FileStorage = FakeFileStorage()
 }
