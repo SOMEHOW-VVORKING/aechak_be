@@ -24,21 +24,23 @@ class ConsentService(
 ) {
     fun getActiveTerms(): List<Term> = termRepository.findAllActiveOrderedById()
 
-    /** 온보딩 전이 게이트 — 활성 필수 약관 각각의 최신 행이 전부 isAgreed=true인가. */
-    fun hasAllRequiredConsents(userId: Long): Boolean {
+    /** 온보딩 전이 게이트 — 활성 필수 약관 각각의 최신 행이 전부 isAgreed=true가 아니면 30009(화면 순서 우회 차단). */
+    fun verifyRequiredConsents(userId: Long) {
         val requiredTermIds =
             termRepository
                 .findAllActiveOrderedById()
                 .filter { it.isRequired }
                 .map { it.id }
-        if (requiredTermIds.isEmpty()) return true
+        if (requiredTermIds.isEmpty()) return
 
         val latestByTermId =
             consentRecordRepository
                 .findAllByUserAndTerms(userId, requiredTermIds)
                 .groupBy { it.term.id }
                 .mapValues { (_, rows) -> rows.maxBy { it.id } }
-        return requiredTermIds.all { latestByTermId[it]?.isAgreed == true }
+        if (!requiredTermIds.all { latestByTermId[it]?.isAgreed == true }) {
+            throw BusinessException(UserErrorCode.REQUIRED_CONSENT_MISSING)
+        }
     }
 
     fun submit(

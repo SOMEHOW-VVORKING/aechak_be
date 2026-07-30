@@ -18,7 +18,7 @@ import java.text.Normalizer
 @Entity
 @Table(
     name = "user_profiles",
-    uniqueConstraints = [UniqueConstraint(name = "uk_user_profiles_nickname", columnNames = ["nickname"])],
+    uniqueConstraints = [UniqueConstraint(name = UserProfile.UK_NICKNAME, columnNames = ["nickname"])],
 )
 class UserProfile protected constructor(
     user: User,
@@ -55,6 +55,12 @@ class UserProfile protected constructor(
     }
 
     companion object {
+        /** 닉네임 UNIQUE 제약명 — @Table 선언과 커밋 시점 예외 번역(제약명 분기)이 공유한다. */
+        const val UK_NICKNAME = "uk_user_profiles_nickname"
+
+        /** MySQL 중복 키 메시지의 PK 식별자 — 더블탭(같은 유저 동시 생성) 충돌 판별용. */
+        const val PK_CONFLICT_MARKER = "user_profiles.PRIMARY"
+
         /** 한글(완성형)·영문·숫자 2~12자 — 공백·이모지·자모 불가. */
         private val NICKNAME_PATTERN = Regex("^[가-힣a-zA-Z0-9]{2,12}$")
 
