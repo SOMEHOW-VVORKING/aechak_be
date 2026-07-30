@@ -9,6 +9,9 @@ resource "aws_cloudfront_distribution" "media" {
   enabled     = true
   price_class = "PriceClass_200" # 아시아 포함, 전대륙 제외
 
+  # 엣지 서버가 Host 헤더로 배포를 찾는다. 여기 없는 호스트명은 DNS가 맞아도 거부된다
+  aliases = [local.media_domain]
+
   origin {
     domain_name              = aws_s3_bucket.media.bucket_regional_domain_name
     origin_id                = "media-s3"
@@ -27,8 +30,12 @@ resource "aws_cloudfront_distribution" "media" {
     geo_restriction { restriction_type = "none" }
   }
 
+  # acm_certificate_arn을 쓰면 나머지 둘도 필수다(빠지면 apply 실패).
+  # sni-only 대신 vip를 쓰면 전용 IP 방식이라 인증서당 월 $600이 붙는다.
   viewer_certificate {
-    cloudfront_default_certificate = true # TODO: 커스텀 도메인 시 ACM
+    acm_certificate_arn      = local.cf_cert_arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 }
 

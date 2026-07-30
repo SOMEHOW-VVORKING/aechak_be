@@ -95,9 +95,11 @@ flowchart TB
 ### 최초 1회 (새 팀원 셋업)
 
 ```bash
-# 1. 본인 IAM 유저 액세스 키로 프로파일 등록 (키는 계정 관리자에게 발급 요청 — 1인 1유저, 공유 금지)
-aws configure --profile aechak
-aws sts get-caller-identity --profile aechak   # Account가 334455667515인지 확인
+# 1. AWS access portal(SSO)에서 받은 임시 크리덴셜로 프로파일 등록
+#    ⚠️ IAM 유저 액세스 키 방식은 불가 — 이 계정은 Innovation Sandbox 리스 계정이고
+#       SCP가 iam:CreateUser를 차단한다. 접속은 SSO(myisb_IsbUsersPS)로만.
+aws configure sso --profile aechak    # 또는 포털의 "Access keys" 임시 키를 aws configure로 등록
+aws sts get-caller-identity --profile aechak   # Account가 447170313132인지 확인
 
 # 2. Terraform 초기화 (S3의 공유 state에 자동 연결)
 brew install hashicorp/tap/terraform
@@ -170,6 +172,15 @@ CI/CD     = 내용물: 앱을 그릇에 배포한다      ← develop 푸시가 
 
 ## 부록: 최초 bootstrap 기록 (완료됨 — 재실행 불필요)
 
-state 버킷 `aechak-tfstate-334455667515`는 2026-07-13 수동 생성됨 (닭-달걀 예외, 유일한 콘솔 작업).
-버저닝·암호화·퍼블릭 차단 적용. 새 환경에서 처음부터 다시 만들 일이 있을 때만 이 패턴 반복:
-버킷 생성 → `versions.tf` backend 설정 → `terraform init`.
+state 버킷은 닭-달걀 예외라 콘솔에서 수동 생성한다 (버저닝·암호화·퍼블릭 차단).
+패턴: 버킷 생성 → `versions.tf` backend 설정 → `terraform init`.
+
+- 1차(구계정 334455667515): `aechak-tfstate-334455667515`, 2026-07-13 생성 — 계정 정리로 폐기
+- 2차(현 계정 447170313132, ISB 리스): `aechak-tfstate-447170313132`, 2026-07-27 생성
+
+계정 이전 시 함께 갈아끼워야 하는 값은 3곳뿐이다:
+`versions.tf` backend bucket / `variables.tf` aws_account_id / `route53.tf` 인증서 ARN 2개.
+나머지(버킷명·SSM 경로·역할 ARN)는 `data.aws_caller_identity`로 파생된다.
+
+⚠️ ISB 리스 계정은 리스 만료·예산 초과 시 AWS Nuke로 **state 버킷 포함 전 리소스가 삭제**된다.
+리스 종료 전 `terraform destroy`로 정리하거나, state를 계정 밖으로 백업해 둘 것.
