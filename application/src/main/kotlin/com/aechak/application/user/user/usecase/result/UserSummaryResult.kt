@@ -1,4 +1,4 @@
-package com.aechak.application.user.usecase.result
+package com.aechak.application.user.user.usecase.result
 
 import com.aechak.domain.user.user.User
 

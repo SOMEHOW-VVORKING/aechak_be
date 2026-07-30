@@ -1,4 +1,4 @@
-package com.aechak.application.user.service
+package com.aechak.application.user.user.service
 
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.error.UserErrorCode

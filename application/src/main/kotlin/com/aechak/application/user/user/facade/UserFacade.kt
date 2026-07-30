@@ -1,11 +1,11 @@
-package com.aechak.application.user.facade
+package com.aechak.application.user.user.facade
 
-import com.aechak.application.user.service.UserService
-import com.aechak.application.user.usecase.UserUseCase
-import com.aechak.application.user.usecase.command.RegisterUserCommand
-import com.aechak.application.user.usecase.query.UserSearchQuery
-import com.aechak.application.user.usecase.result.UserResult
-import com.aechak.application.user.usecase.result.UserSummaryResult
+import com.aechak.application.user.user.service.UserService
+import com.aechak.application.user.user.usecase.UserUseCase
+import com.aechak.application.user.user.usecase.command.RegisterUserCommand
+import com.aechak.application.user.user.usecase.query.UserSearchQuery
+import com.aechak.application.user.user.usecase.result.UserResult
+import com.aechak.application.user.user.usecase.result.UserSummaryResult
 import com.aechak.domain.user.user.User
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
