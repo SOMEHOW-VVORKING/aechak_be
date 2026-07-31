@@ -17,7 +17,7 @@ class ProcessedMessageAdapter(
             db
                 .sql(
                     """
-                    INSERT INTO processed_message (consumer, event_id) VALUES (:consumer, UUID_TO_BIN(:eventId))
+                    INSERT INTO processed_message (consumer, event_id) VALUES (:consumer, :eventId)
                     """.trimIndent(),
                 ).param("consumer", consumer)
                 .param("eventId", eventId)
