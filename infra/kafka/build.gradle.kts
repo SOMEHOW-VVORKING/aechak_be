@@ -9,4 +9,5 @@ dependencies {
     implementation(libs.jackson.databind)     // tools.jackson (Jackson 3) — 기존 카탈로그 항목 재사용
     implementation(libs.jackson.module.kotlin)
     implementation(libs.slf4j.api)            // MDC(traceId) + 로그
+    testRuntimeOnly(libs.logback.classic)     // 바인딩이 없으면 MDC가 no-op이라 traceId 테스트가 무의미해짐
 }
