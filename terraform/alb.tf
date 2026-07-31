@@ -27,10 +27,28 @@ resource "aws_lb_listener" "http" {
   port              = 80
   protocol          = "HTTP"
 
+  # host·path·query는 생략하면 원래 값이 유지된다 (/actuator/health가 그대로 따라감)
+  default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+# ssl_policy를 생략하면 TLS 1.0까지 받는 2016-08이 붙는다. Res는 CBC 계열을 뺀 것
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09"
+  certificate_arn   = local.alb_cert_arn
+
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app.arn
   }
 }
-
-# TODO: 도메인 확정 시 — ACM 인증서 + 443 리스너 + 80은 redirect로 전환

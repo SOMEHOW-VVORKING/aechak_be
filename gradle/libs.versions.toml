@@ -46,6 +46,7 @@ spring-boot-starter-oauth2-resource-server = { module = "org.springframework.boo
 spring-security-oauth2-jose = { module = "org.springframework.security:spring-security-oauth2-jose" }
 spring-boot = { module = "org.springframework.boot:spring-boot" }    # @ConfigurationProperties — infra 어댑터의 설정 바인딩용
 jackson-databind = { module = "tools.jackson.core:jackson-databind" } # web-security 필터가 에러 응답(ErrorResponse)을 JSON으로 쓸 때 사용 — Boot 4 = Jackson 3, 버전은 BOM이 해석
+jackson-module-kotlin = { module = "tools.jackson.module:jackson-module-kotlin" } # Kotlin data class 직렬화 정합 — is-접두 프로퍼티 이름 보존(isRequired 등), 없으면 계약과 다른 필드명으로 나간다
 
 # --- infra:redis: refresh token 저장소 ---
 spring-boot-starter-data-redis = { module = "org.springframework.boot:spring-boot-starter-data-redis" }
@@ -57,8 +58,7 @@ spring-cloud-aws-starter-s3 = { module = "io.awspring.cloud:spring-cloud-aws-sta
 # --- infra:kafka ---
 spring-kafka = { module = "org.springframework.kafka:spring-kafka" }   # Boot BOM 버전
 spring-jdbc = { module = "org.springframework:spring-jdbc" }  # 아웃박스 JdbcClient
-# jackson-databind는 위에서 사용 중
-jackson-module-kotlin = { module = "tools.jackson.module:jackson-module-kotlin" }  # Jackson 3 Kotlin 모듈, 버전은 BOM
+# jackson-databind·jackson-module-kotlin은 위 인증 절에서 선언한 것을 함께 사용
 
 # --- api 통합 테스트: 이벤트 백본 ---
 spring-kafka-test = { module = "org.springframework.kafka:spring-kafka-test" }   # EmbeddedKafka

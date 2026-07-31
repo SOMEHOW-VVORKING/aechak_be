@@ -40,4 +40,6 @@ class FileService(
         val promotedKey = fileStorage.promote(command.tmpKey, command.purpose)
         return PromoteFileResult(key = promotedKey)
     }
+
+    fun resolveMediaUrl(key: String?): String? = key?.let(fileStorage::publicUrlOf)
 }

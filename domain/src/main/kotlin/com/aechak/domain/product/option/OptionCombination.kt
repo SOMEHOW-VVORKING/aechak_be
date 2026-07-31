@@ -59,6 +59,9 @@ class OptionCombination protected constructor(
     }
 
     companion object {
+        /** 재고가 해당 개수 이하면 노출(임계치) */
+        const val STOCK_DISPLAY_THRESHOLD = 20
+
         fun create(
             product: Product,
             name: String,

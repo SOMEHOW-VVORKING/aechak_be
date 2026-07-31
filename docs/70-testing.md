@@ -61,11 +61,11 @@ application·boot의 코드도 스프링 없이 검증 가능하면 순수 단�
 
 ### 2.1 테스트 패키지 — 미러링이 기본
 
-**규칙**: 테스트는 대상 코드와 **같은 모듈, 같은 패키지**에 둔다(`com.aechak.infra.kafka.outbox`의 클래스 → `infra/kafka/src/test/.../infra/kafka/outbox/`).
+**규칙**: 테스트는 대상 코드와 **같은 모듈, 같은 패키지**에 둔다(`com.aechak.api.product.controller`의 `ProductController` → `boot/api/src/test/.../api/product/controller/`, `com.aechak.infra.kafka.outbox`의 클래스 → `infra/kafka/src/test/.../infra/kafka/outbox/`).
 
-**근거**: 대상을 찾는 경로가 하나로 고정된다. `internal` 가시성도 같은 모듈이라야 열리므로 미러링이 곧 컴파일 조건이기도 하다.
+**근거**: IDE·커버리지 도구의 짝 매칭과 탐색성. 그리고 `internal` 가시성은 같은 모듈이라야 열리므로 미러링이 곧 컴파일 조건이기도 하다.
 
-**예외**: 대상이 여러 모듈에 걸쳐 있어 미러링할 단일 패키지가 없는 통합 테스트는 실행 모듈(boot/api)에 **주제 패키지**를 만들어 모은다. 현재 실물은 둘뿐이다 — `eventbackbone`(message·infra/kafka·boot/api를 관통하는 발행·소비 흐름), `support`(테스트 인프라). 주제 패키지를 새로 만드는 것은 이 조건을 만족할 때만이고, 그 커밋에서 여기 목록에 추가한다.
+**예외**: 특정 클래스를 겨냥하지 않는 통합 테스트는 미러링할 짝이 없다. 한 모듈 안의 흐름이면 상위 패키지에 평평하게 두고, 대상이 여러 모듈에 걸쳐 있으면 실행 모듈(boot/api)에 **주제 패키지**를 만들어 모은다. 주제 패키지의 현재 실물은 둘뿐이다 — `eventbackbone`(message·infra/kafka·boot/api를 관통하는 발행·소비 흐름), `support`(테스트 인프라). 새로 만드는 것은 이 조건을 만족할 때만이고, 그 커밋에서 여기 목록에 추가한다.
 
 ## 3. 통합 테스트 (boot)
 
@@ -91,7 +91,7 @@ application·boot의 코드도 스프링 없이 검증 가능하면 순수 단�
 
 ### 3.1 컨트롤러 통합
 
-MockMvc로 HTTP 계층까지 검증한다. `@AutoConfigureMockMvc`는 개별 클래스가 아니라 베이스에 붙인다(캐시 키 참여). `webEnvironment=RANDOM_PORT`는 쓰지 않는다.
+현재 컨트롤러 통합 테스트는 도입하지 않았다. 착수 시점에 방식(standalone MockMvc vs `@AutoConfigureMockMvc`를 베이스에 붙이는 통합)을 §9 기준으로 결정한다. 통합으로 가면 `@AutoConfigureMockMvc`는 개별 클래스가 아니라 베이스에 붙이고(캐시 키 참여), `webEnvironment=RANDOM_PORT`는 쓰지 않는다.
 
 ### 3.2 부팅 스모크
 

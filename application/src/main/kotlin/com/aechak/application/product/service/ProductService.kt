@@ -3,14 +3,21 @@ package com.aechak.application.product.service
 import com.aechak.application.product.port.ProductCatalogCondition
 import com.aechak.application.product.port.ProductCatalogQueryPort
 import com.aechak.application.product.port.ProductCatalogSort
-import com.aechak.application.product.port.result.ProductCatalogView
+import com.aechak.application.product.port.ProductDetailQueryPort
+import com.aechak.application.product.port.ProductOptionsQueryPort
+import com.aechak.application.product.port.view.ProductCatalogDetailView
+import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.port.view.ProductImageView
+import com.aechak.application.product.port.view.ProductOptionsView
 import com.aechak.application.product.support.ProductCursorCodec
 import com.aechak.application.product.usecase.query.ProductSearchQuery
 import com.aechak.application.support.CursorPageResult
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
+import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.repository.CategoryRepository
 import com.aechak.domain.product.error.ProductErrorCode
+import com.aechak.domain.product.like.repository.ProductLikeRepository
 import com.aechak.domain.product.stats.ProductStats
 import com.aechak.domain.product.stats.repository.ProductStatsRepository
 import org.springframework.stereotype.Service
@@ -19,8 +26,11 @@ import java.time.LocalDateTime
 @Service
 class ProductService(
     private val productCatalogQueryPort: ProductCatalogQueryPort,
+    private val productDetailQueryPort: ProductDetailQueryPort,
+    private val productOptionsQueryPort: ProductOptionsQueryPort,
     private val categoryRepository: CategoryRepository,
     private val productStatsRepository: ProductStatsRepository,
+    private val productLikeRepository: ProductLikeRepository,
 ) {
     fun getVisiblePage(
         query: ProductSearchQuery,
@@ -70,13 +80,30 @@ class ProductService(
     fun getStatsByProductIds(productIds: List<Long>): Map<Long, ProductStats> =
         productStatsRepository.findAllByProductIds(productIds).associateBy { it.productId }
 
+    /** 노출 조건을 통과한 상세 조회 */
+    fun getVisibleDetail(publicId: String): ProductCatalogDetailView =
+        productDetailQueryPort.findVisibleDetail(publicId)
+            ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND) // 보안을 위해 미존재, 미노출 무관하게 모두 404 반환
+
+    fun getImages(productId: Long): List<ProductImageView> = productDetailQueryPort.findImagesByProductId(productId)
+
+    /** 노출 조건을 통과한 옵션 조회 */
+    fun getVisibleOptions(publicId: String): ProductOptionsView =
+        productOptionsQueryPort.findVisibleOptions(publicId)
+            ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND) // 보안을 위해 미존재, 미노출 무관하게 모두 404 반환
+
+    fun isLiked(
+        productId: Long,
+        userId: Long,
+    ): Boolean = productLikeRepository.existsByProductIdAndUserId(productId, userId)
+
     /** 카테고리 필터는 중분류(depth 2)까지만 허용 */
     private fun validateCategoryFilter(categoryId: Long?) {
         if (categoryId == null) return
         val category =
             categoryRepository.findActiveById(categoryId)
                 ?: throw BusinessException(ProductErrorCode.CATEGORY_NOT_FOUND)
-        if (category.depth != MID_CATEGORY_DEPTH) {
+        if (category.depth != Category.MID_DEPTH) {
             throw BusinessException(ProductErrorCode.INVALID_CATEGORY_FILTER)
         }
     }
@@ -110,8 +137,4 @@ class ProductService(
         val lastPrice: Long?,
         val anchorNow: LocalDateTime?,
     )
-
-    companion object {
-        private const val MID_CATEGORY_DEPTH = 2
-    }
 }

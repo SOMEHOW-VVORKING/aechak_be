@@ -1,6 +1,6 @@
 # application 모듈 (20-application)
 
-> 성격: 유스케이스 조율 계층. 트랜잭션 경계, 도메인 간 조합, 입출력 계약(Command/Result)의 소유자.
+> 성격: 유스케이스 조율 계층. 트랜잭션 경계, 도메인 간 조합, 입출력 계약(Command/Result/View)의 소유자.
 > 허용 의존: common, domain, spring-context, spring-tx.
 > A-1 결정(L2): 리포지토리는 domain의 포트를 주입받는다 — 이 모듈에 Spring Data 없음 (§5).
 > 금지: web-common, spring-web, infra/*. — HTTP도 기술 구현도 모른다.
@@ -16,9 +16,13 @@ application/src/main/kotlin/com/aechak/application/
     │   ├── OrderUseCase.kt      # 인터페이스 — 이 도메인의 유일한 진입점
     │   ├── command/             # 쓰기 입력 (계약의 일부)
     │   ├── query/               # 복잡 조회 입력
-    │   └── result/              # 출력
+    │   └── result/              # 출력 (Result — 유스케이스 최종 출력 DTO)
+    ├── port/                    # (복잡 조회를 위임할 때만) 조회 포트 계약
+    │   ├── {대상}QueryPort.kt   # 읽기 전용 포트 인터페이스 — 구현은 infra/persistence
+    │   └── view/                # 포트가 돌려주는 읽기 모델 (View, §4-1)
+    ├── facade/                  # UseCase 구현 — 외부에서 import 금지
+    │   └── OrderFacade.kt       # UseCase의 유일한 구현체. @Transactional 경계
     ├── service/                 # 구현 — 외부에서 import 금지
-    │   ├── OrderFacade.kt       # UseCase의 유일한 구현체. @Transactional 경계
     │   └── OrderService.kt      # 비즈니스 로직 보관함 (인터페이스 없음, 필요 시 세분화)
     └── listener/                # "다른 도메인" 이벤트를 수신하는 리스너
 ```
@@ -134,7 +138,8 @@ class OrderEventListener( /* notificationUseCase 등 */ ) {
 | --- | --- | --- |
 | 쓰기 입력 | **항상 Command — 인자 1개여도.** 쓰기는 필드가 자라므로 시그니처 변경 대신 필드 추가로 흡수 | `{동사}{대상}Command` |
 | 조회 입력 | 스칼라 1~2개 → 그냥 함수 인자. 조건 3개 이상 / 페이징 / 옵셔널 필터 → Query 객체 | `{대상}SearchQuery` |
-| 출력 | **항상 Result. 엔티티 반환 금지.** 존재 여부 등은 Boolean 허용 | `{대상}Result` / `{대상}SummaryResult` |
+| 출력(유스케이스) | **유스케이스 반환은 항상 Result. 엔티티 반환 금지.** 존재 여부 등은 Boolean 허용 | `{대상}Result` / `{대상}SummaryResult` |
+| 출력(조회 포트) | 복잡 조회를 조회 포트에 위임할 때 **포트가 돌려주는 읽기 모델은 View** (§4-1). Result와 혼동 금지 | `{대상}View` |
 | 매핑 | boot 소유 (Request.toCommand / Response.from). application에는 매핑 코드 없음 | — |
 | 검증 | Command에는 검증 어노테이션 없음. **"Command가 생성됐다 = 형식 검증(@Valid)은 boot에서 통과했다"** | — |
 
@@ -191,6 +196,36 @@ data class OrderResult(
     }
 }
 ```
+
+### 4-1. 읽기 모델 (`port/view`) vs 결과 DTO (`usecase/result`)
+
+> 복잡 조회는 유스케이스가 엔티티를 직접 다루지 않고 조회 포트(`{도메인}/port/`)에 위임한다.
+> 이때 등장하는 두 타입은 계층도 역할도 다르므로 이름으로 구분한다.
+
+| 타입 | 사는 곳 | 역할 | 채우는 주체 |
+| --- | --- | --- | --- |
+| `~View` | `{도메인}/port/view/` | 조회 포트가 돌려주는 **읽기 모델(projection)**. DB 조회 형태에 가깝다 | infra/persistence (SQL 결과) |
+| `~Result` | `{도메인}/usecase/result/` | 유스케이스가 `View`를 가공해 최종적으로 내보내는 **출력 DTO** | 유스케이스 |
+
+```kotlin
+package com.aechak.application.product.port.view
+
+/**
+ * [읽기 모델(View) 규칙]
+ * - 조회 포트(port/*QueryPort)의 반환 타입. infra/persistence가 SQL 결과로 채워 반환한다.
+ * - Facade는 이 View를 재료로 Result를 조립한다. View → Result 변환은 Result의 companion from(view)에
+ *   둔다 (§4 Result 규칙 "엔티티 → Result 변환은 companion from"과 같은 방식 — 재료가 엔티티 대신 View일 뿐).
+ * - 이름은 접미사 View로 통일 — 패키지 view와 접미사가 1:1로 맞아 usecase/result와 폴더로 구분된다.
+ */
+data class ProductCatalogView(
+    val id: Long,
+    val sortPriceAtAnchor: Long,   // SQL이 조회 기준 시각으로 계산한 정렬·커서 경계용 값
+    // ...
+)
+```
+
+> 둘 다 예전엔 `result`였으나 패키지 이름을 클래스 접미사(`View`)에 맞춰 `port/view`로 분리했다.
+> 폴더 이름만으로 읽기 모델과 결과 DTO가 갈린다.
 
 ## 5. 리포지토리 위치 — A-1 결정(L2)
 

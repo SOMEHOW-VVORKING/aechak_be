@@ -66,6 +66,8 @@ aws:
     # local은 .env로 dev 버킷을 지정한다. 비면 부팅은 되고 발급 시 실패 — dev/prod는 프로파일 yml이 fail-fast
     media-bucket: ${AWS_S3_MEDIA_BUCKET:}
     docs-bucket: ${AWS_S3_DOCS_BUCKET:}
+    # media 앞단(CDN) 공개 도메인 — 표시용 URL(key→URL) 조립. 비면 상대경로(/key)로 내려간다(이미지 미노출 수준, 부팅 무영향)
+    media-public-base-url: ${AWS_S3_MEDIA_PUBLIC_BASE_URL:}
 
 auth:
   token:
