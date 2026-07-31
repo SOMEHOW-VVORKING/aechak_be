@@ -50,17 +50,45 @@ PII(전화번호·계좌번호 등)의 저장 암호화(AES-256) 방식은 아�
 ## 2. infra/kafka
 
 ```
-infra/kafka/{모듈}/src/main/kotlin/com/aechak/infra/kafka/
-├── config/                      # producer/consumer factory, 직렬화 설정
+infra/kafka/src/main/kotlin/com/aechak/infra/kafka/
+├── config/                         # MessagingJacksonConfig 등 직렬화 설정
+├── consumer/                       # TraceIdRecordInterceptor, DLT 에러 핸들러
 ├── outbox/
-│   └── OutboxRelay.kt           # outbox 테이블 폴링 → message 모듈 클래스로 발행
+│   ├── OutboxSweeper.kt            # PENDING 잔여분 재발행(50행 청크). 구동 스케줄은 boot/batch 소유
+│   └── OutboxStatus.kt             # PENDING/PUBLISHED/DEAD/HOLD. 전이는 PENDING에서만
 └── publisher/
-    └── KafkaMessagePublisher.kt # application이 정의한 발행 포트의 어댑터
+    ├── MessagePublisherAdapter.kt  # 발행 포트의 유일 구현. 마커 타입으로 경로 선택
+    ├── OutboxMessagePublisher.kt   # 유실 불가 레인: 같은 tx에 outbox 기록 + 커밋 직후 즉시 발행
+    ├── DirectMessagePublisher.kt   # 유실 가능 레인: 브로커 직행 fire-and-forget
+    ├── EnvelopeFactory.kt
+    └── KafkaSender.kt              # 토픽 조립·파티션 키·헤더 규칙의 단일 지점
 ```
 
 - **발행(프로듀서)은 여기, 소비(컨슈머)는 boot 소속** (30 문서 §4). 이 모듈은 리스너 컨테이너 설정만 제공.
 - 페이로드는 message 모듈 클래스만 사용. 도메인 이벤트 클래스 직렬화 금지.
-- Outbox/Inbox 상세(스키마, 폴링 주기, DLT 정책)는 별도 문서로. // TODO: EDA 구현 착수 시
+
+### 2-1. 이벤트 발행·소비 사용법
+
+이벤트는 message 모듈에 선언하고 레인 마커를 고른다 — 유실이 사고면 `GuaranteedMessage`, 놓쳐도 되면 `BestEffortMessage`.
+
+```kotlin
+data class OrderPlacedMessage(
+    val orderId: Long,
+    override val aggregateId: String,                        // 파티션 키 = 순서 단위
+    override val occurredAt: Instant = Instant.now(),
+) : GuaranteedMessage {
+    override val aggregateType = "order"                     // 토픽 라우팅
+    override val eventId get() = "order-$orderId:placed"     // 자연 멱등키. 없으면 생성자 프로퍼티 UUID
+    override val allowedDelay = 30.minutes                   // 생략 시 INFINITE(만료 없음)
+}
+```
+
+발행은 트랜잭션 안에서 포트로: `messagePublisher.publish(OrderPlacedMessage(...))`.
+유실 불가 레인은 비즈니스 커밋과 원자로 기록되고 커밋 직후 즉시 발행되며, 실패분은 batch 스위퍼가 재발행한다.
+allowedDelay를 넘기면 HOLD로 전이돼 수동 재개를 기다린다(재개: `status=PENDING` 복귀 + `expired_at` 해제·연장).
+
+소비는 핸들러 시작에서 `processedMessages.markProcessed(컨슈머명, eventId)`가 false면 스킵(중복 배달).
+처리와 인박스 기록은 같은 트랜잭션으로 묶는다. 실물: boot/api의 SyntheticConsumer.
 
 ## 3. infra/client
 

@@ -3,13 +3,14 @@
 > - 테스트 코드를 작성/수정할 때 `00-overview` + 이 문서 + 해당 모듈 문서를 투입한다. 테스트 규칙의 단일 출처이며, 모듈 문서는 테스트 규칙을 중복 서술하지 않는다.
 > - 스택: Spring Boot 4.0.5 / Kotlin 2.2 / JDK 21. 실 DB = MySQL 8.x, 통합 테스트 DB = Testcontainers MySQL — 로컬·CI 모두 Docker
     필요.
-> - 공용 베이스 실물: `boot/api/src/test/kotlin/com/aechak/api/support/` (IntegrationTestBase · IntegrationTestConfig ·
-    DatabaseCleaner). 새 통합 테스트를 짜기 전에 원본을 먼저 읽는다.
+> - boot/api 테스트 베이스 실물: `boot/api/src/test/kotlin/com/aechak/api/support/` (IntegrationTestBase ·
+    KafkaIntegrationTestBase · IntegrationTestConfig · DatabaseCleaner). 새 통합 테스트를 짜기 전에 원본을 먼저 읽는다.
+> - 테스트 소스셋은 모듈 사설이다 — 위 베이스는 boot/api 밖에서 상속할 수 없다(공유 장치 없음, §9).
 
 ## 0. 핵심 요약 — 이것만 기억한다
 
 1. 순수 로직은 스프링 없는 **단위 테스트**(모듈 무관), 스프링 배선(트랜잭션·JPA·이벤트·HTTP)이 필요하면 boot **통합 테스트**.
-2. 통합 테스트는 `IntegrationTestBase` **상속 하나로 통일한다** — 컨텍스트 하나, MySQL 컨테이너 하나를 전원이 공유한다.
+2. 통합 테스트는 **그 모듈의 베이스를 상속한다** — boot/api에는 둘(`IntegrationTestBase`, 내장 Kafka용 `KafkaIntegrationTestBase`)이 있고 MySQL 컨테이너를 공유한다. 베이스는 모듈 밖으로 못 나간다.
 3. 격리는 롤백이 아니라 **커밋 + truncate**.
 4. 더블은 **mock보다 Fake 우선** — 외부 경계만 가짜로 바꾸고, 검증은 호출 횟수가 아니라 결과로 한다.
 5. 금지: **H2 · `@DirtiesContext` · 클래스별 properties/`@MockitoBean` · 자체 `@Testcontainers` · 이벤트 테스트에 `@Transactional` ·
@@ -31,7 +32,7 @@ mock으로 검증이 불가능하다. 트레이드오프(느린 CI, 실패 국�
 |-----------------|-----------------------------------|---------------------------|-----------------------|
 | 순수 단위           | 불변식·계산·상태 전이·포트 Fake 유스케이스·어댑터 로직 | 대상 코드가 있는 모듈의 `src/test`  | `kotlin.test`, 스프링 없음 |
 | 유스케이스·매핑·이벤트 통합 | 실 배선 검증                           | `boot/api/src/test`       | JUnit5 + 공용 베이스       |
-| 부팅 스모크          | 매핑·컨텍스트 안전망                       | `boot/*/src/test`         | 공용 베이스(contextLoads)  |
+| 부팅 스모크          | 매핑·컨텍스트 안전망                       | `boot/*/src/test`         | 그 모듈의 베이스(contextLoads) |
 | 외부 클라이언트        | 계약 검증                             | `infra/client/*/src/test` | stub 허용(§5)           |
 
 ### 1.1 비관 시나리오 — 성공 경로만 고정하지 마라
@@ -40,9 +41,9 @@ mock으로 검증이 불가능하다. 트레이드오프(느린 CI, 실패 국�
 
 1. **보장의 반대면** — 성공을 보장하는 장치가 실패했을 때도 성립하나. 예: 멱등 "스킵"의 반대면 = 처리 실패 시 인박스 기록도 롤백돼야 한다 — 아니면 재전달이 헛스킵되어 유실.
 2. **크래시 지점별 재현** — 작업 도중 아무 지점에서 죽으면? DB 상태를 그 지점으로 되돌려 재현한다. 예: 발행 완료 기록 직전 크래시 → 재발행돼도 컨슈머 효과는 1회.
-3. **불변식의 반대 조작** — 지키려는 조건을 일부러 깨보고 방어되는지 본다. 예: DEAD 앞 행이 같은 애그리거트 뒷 행을 계속 막는가 — "DEAD는 건너뛰자"는 선의의 수정이 순서를 깨는 걸 이 테스트가 막는다.
+3. **불변식의 반대 조작** — 지키려는 조건을 일부러 깨보고 방어되는지 본다. 예: 스위퍼가 종결·보류 행(PUBLISHED·DEAD·HOLD)을 다시 집지 않는가 — "PENDING 조건쯤 없어도 되겠지"라는 선의의 수정이 매 주기 전량 재발행을 만드는 걸 이 테스트가 막는다.
 4. **진화 호환** — 상대가 먼저 바뀌었을 때 내가 사나. 예: 모르는 필드가 든 엔벨로프도 소비된다(관용 리더 고정).
-5. **시간·재시도** — 재시도가 실제로 미뤄지는지(핫루프 방지), 경계 횟수에서 정확히 전이하는지. 예: 백오프 후 next_attempt가 미래로 이동 + 9번째가 아닌 10번째에 DEAD.
+5. **시간·재시도** — 재시도가 실제로 미뤄지는지(핫루프 방지), 경계에서 정확히 전이하는지. 예: 만료 경계에서 발행 대신 HOLD로 전이 + 다시 보내도 실패할 행은 DEAD로 격리해 뒤 행이 계속 나간다(한 행이 큐 전체를 막지 않는가).
 
 **근거**: 낙관 스위트는 리팩터링 안전망이 못 된다 — 위험한 회귀는 성공 경로가 아니라 실패 처리·경계·복구 코드로 들어온다.
 
@@ -58,10 +59,20 @@ application·boot의 코드도 스프링 없이 검증 가능하면 순수 단�
 
 역방향도 금지다: 순수 계산을 `@SpringBootTest`로 검증하지 않는다(부팅 비용 낭비 + 실패 국소화 저하).
 
+### 2.1 테스트 패키지 — 미러링이 기본
+
+**규칙**: 테스트는 대상 코드와 **같은 모듈, 같은 패키지**에 둔다(`com.aechak.infra.kafka.outbox`의 클래스 → `infra/kafka/src/test/.../infra/kafka/outbox/`).
+
+**근거**: 대상을 찾는 경로가 하나로 고정된다. `internal` 가시성도 같은 모듈이라야 열리므로 미러링이 곧 컴파일 조건이기도 하다.
+
+**예외**: 대상이 여러 모듈에 걸쳐 있어 미러링할 단일 패키지가 없는 통합 테스트는 실행 모듈(boot/api)에 **주제 패키지**를 만들어 모은다. 현재 실물은 둘뿐이다 — `eventbackbone`(message·infra/kafka·boot/api를 관통하는 발행·소비 흐름), `support`(테스트 인프라). 주제 패키지를 새로 만드는 것은 이 조건을 만족할 때만이고, 그 커밋에서 여기 목록에 추가한다.
+
 ## 3. 통합 테스트 (boot)
 
-**규칙**: 모든 통합 테스트는 `IntegrationTestBase`를 상속한다. 현재 프로젝트는 이 단일 베이스 방식을 표준으로 채택한다. 개별 테스트 클래스에서
+**규칙**: 모든 통합 테스트는 **자기 모듈의 베이스**를 상속한다. boot/api에서는 `IntegrationTestBase`, 내장 Kafka가 필요하면 `KafkaIntegrationTestBase`(§3.0). 개별 테스트 클래스에서
 `@SpringBootTest(properties=...)`·`@MockitoBean`·`@DirtiesContext`·자체 `@Testcontainers`/`@Container`를 선언하지 않는다.
+
+**모듈 경계 주의**: 테스트 소스셋은 모듈 사설이라 baseline을 다른 모듈에서 상속할 수 없다(현재 `java-test-fixtures` 등 공유 장치 없음). 다른 실행 모듈에 첫 통합 테스트를 넣는 커밋에서는 **그 모듈의 베이스를 함께 만들거나** 공유 방식을 먼저 결정한다(§9). 베이스 수는 모듈당 최소로 유지한다.
 
 **근거**: Spring 테스트 컨텍스트 캐시는 프로퍼티·bean override·`@AutoConfigure*` 등 설정 전부를 캐시 키에 넣는다. 클래스마다 설정이 조금이라도 다르면 컨텍스트가 갈라져 부팅이
 반복된다(실행 시간 증가 + 같은 DB에 스키마 생성 중복). 전원이 같은 베이스를 상속하면 부팅은 JVM당 1회로 상수화된다. 캐시 논리 설명은 이 절에만 둔다 — 다른 절의 금지 규칙들은 전부 여기로 귀결된다.
@@ -74,7 +85,8 @@ application·boot의 코드도 스프링 없이 검증 가능하면 순수 단�
 내장 Kafka 브로커·flyway 스키마가 필요한 테스트는 `KafkaIntegrationTestBase`를 상속한다
 브로커 왕복 검증은 EmbeddedKafka로 결정했고, 비동기 대기는 Awaitility(카탈로그 배선 완료)를 쓴다.
 아웃박스 계약 검증의 필수 단언: 성공 시 도메인 변경 + outbox 행 동반 커밋, 실패 주입 시 둘 다 롤백(유령 이벤트 차단),
-컨슈머 멱등(같은 eventId 2회 → 효과 1회), DLT 격리 후 파이프 지속, 애그리거트별 발행 순서 가드, 재시도 소진 시 DEAD 전환.
+컨슈머 멱등(같은 eventId 2회 → 효과 1회), DLT 격리 후 파이프 지속, 즉시 발행 격리(스위퍼 개입 없이 PUBLISHED),
+스위퍼 재발행·다시 보내도 실패할 행의 DEAD 격리(뒤 행은 계속 발행), 만료 시 HOLD 전이(종결·보류 상태 불가침 포함).
 실물: `EventBackboneIntegrationTest`. MySQL 컨테이너는 두 베이스가 공유하며 빈 수명에서 분리(수동 start)돼 있다.
 
 ### 3.1 컨트롤러 통합
@@ -129,7 +141,7 @@ AFTER_COMMIT 리스너가 발화하지 않고, 이벤트/outbox 흐름이 조용
 
 - 이미지 태그는 운영 DB 버전으로 고정한다(`latest` 금지). 현재 태그 값은 코드가 들고 있다.
 - 스키마는 지금 `ddl-auto=create`로 만든다(ERD 확정 전 과도기).
-- 알려진 예외: `boot/batch`는 ERD 확정 전까지 임시로 H2를 쓴다. batch에 테스트가 착수되는 커밋에서 제거하고 같은 패턴으로 정렬한다 — 그 전까지 batch 테스트 작성 금지.
+- 알려진 예외: `boot/batch`는 아웃박스 스위퍼가 실 outbox 테이블을 읽어야 해서 런타임 DB가 MySQL이다(H2 제거 완료, SCRUM-143). 테스트는 아직 착수하지 않았다 — 착수하는 커밋에서 재사용 가능한 베이스(§3 예외)부터 만들고 같은 패턴으로 정렬한다. 그 전까지 batch 테스트 작성 금지.
 
 ## 7. 스타일
 
@@ -176,12 +188,13 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
 - **MockK**: Fake/`@MockitoBean`으로 안 풀리는 상호작용 검증이 실제로 필요해지면 카탈로그 추가.
 - **MongoDB**: 도입 시 공용 베이스에 `@ServiceConnection` Mongo 컨테이너를 추가한다 — 별도 베이스를 만들지 않는다.
 - **병렬 실행**: 테스트별 스키마/DB 분리로 격리가 강화되면 재검토.
+- **모듈 간 테스트 베이스 공유**: boot/batch·infra에 통합 테스트가 필요해지는 커밋에서 결정한다 — `java-test-fixtures`(또는 test-support 모듈)로 베이스를 공유할지, 모듈마다 자체 베이스를 둘지. 현재는 공유 장치가 없어 boot/api 베이스가 boot/api 안에서만 쓰인다.
 - **운영 MySQL 버전 확정 시**: 컨테이너 태그를 그 버전으로 맞춘다.
 
 ## 10. PR 전 체크리스트
 
 - [ ] 순수 로직은 스프링 없는 단위로, 배선은 boot 통합으로 갔는가
-- [ ] 통합 테스트가 `IntegrationTestBase`를 상속하는가 (개별 properties/@MockitoBean/자체 컨테이너 없음)
+- [ ] 통합 테스트가 그 모듈의 베이스를 상속하는가 (boot/api면 `IntegrationTestBase` / `KafkaIntegrationTestBase`. 개별 properties/@MockitoBean/자체 컨테이너 없음)
 - [ ] 이벤트/커밋 side-effect 테스트에 `@Transactional`을 붙이지 않았는가
 - [ ] 저장 검증을 별도 트랜잭션 재조회로 했는가
 - [ ] KDoc 첫 줄 정체 표기·한글 백틱 이름·단언 메시지가 있는가
