@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component
 import java.util.UUID
 
 /**
- * 릴레이(OutboxRelay.send)가 발행 시점의 traceId를 레코드 헤더에 실어 보내는데, 리스너 스레드의 MDC는 비어 있어서 복원이 필요함.
+ * 발행 측(KafkaSender)이 발행 시점의 traceId를 레코드 헤더에 실어 보내는데, 리스너 스레드의 MDC는 비어 있어서 복원이 필요함.
  * 컨슈머가 후속 이벤트를 발행할 때 traceId를 통해 이벤트 체이닝의 로깅을 하기 위함.
  *
  * 헤더가 없는 레코드(외부 시스템 발행 등)는 새 traceId를 만들어 줌.
@@ -37,7 +37,7 @@ class TraceIdRecordInterceptor : RecordInterceptor<Any, Any> {
     }
 
     companion object {
-        /** 릴레이가 사용하는 레코드 헤더 이름 */
+        /** 발행 측(KafkaSender)이 traceId를 싣는 레코드 헤더 이름 */
         const val TRACE_ID_HEADER = "trace_id"
 
         /**
