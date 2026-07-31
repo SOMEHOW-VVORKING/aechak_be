@@ -1,11 +1,7 @@
 package com.aechak.application.messaging
 
-import com.aechak.domain.support.DomainEvent
+import com.aechak.message.IntegrationMessage
 
 interface MessagePublisher {
-    fun publish(
-        aggregateType: String,
-        aggregateId: String,
-        event: DomainEvent,
-    )
+    fun publish(message: IntegrationMessage)
 }

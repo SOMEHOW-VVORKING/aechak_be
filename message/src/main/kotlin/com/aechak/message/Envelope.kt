@@ -8,7 +8,6 @@ import java.time.Instant
 data class Envelope(
     val eventId: String,
     val eventType: String,
-    val eventVersion: Int, // 스키마 버전
     val occurredAt: Instant,
     val aggregateType: String,
     val aggregateId: String,
