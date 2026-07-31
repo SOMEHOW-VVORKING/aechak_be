@@ -1,4 +1,4 @@
-package com.aechak.api.config
+package com.aechak.batch.config
 
 import org.springframework.context.annotation.Configuration
 import org.springframework.scheduling.annotation.EnableScheduling
