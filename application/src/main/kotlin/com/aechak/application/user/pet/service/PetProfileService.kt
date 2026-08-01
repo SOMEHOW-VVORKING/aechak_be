@@ -96,6 +96,15 @@ class PetProfileService(
         return promoted.id
     }
 
+    fun setDefault(
+        userId: Long,
+        petId: Long,
+    ): PetProfile {
+        val pet = loadOwnedActive(userId, petId)
+        promoteToDefault(userId, pet)
+        return petProfileRepository.save(pet)
+    }
+
     private fun loadOwnedActive(
         userId: Long,
         petId: Long,

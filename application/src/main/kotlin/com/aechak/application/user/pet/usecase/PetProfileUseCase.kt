@@ -6,6 +6,7 @@ import com.aechak.application.user.pet.usecase.result.DeletePetProfileResult
 import com.aechak.application.user.pet.usecase.result.PetProfileListResult
 import com.aechak.application.user.pet.usecase.result.PetProfileResult
 import com.aechak.application.user.pet.usecase.result.RegisterPetProfileResult
+import com.aechak.application.user.pet.usecase.result.SetDefaultPetResult
 
 interface PetProfileUseCase {
     fun registerPet(command: RegisterPetProfileCommand): RegisterPetProfileResult
@@ -18,4 +19,9 @@ interface PetProfileUseCase {
         userId: Long,
         petId: Long,
     ): DeletePetProfileResult
+
+    fun setDefaultPet(
+        userId: Long,
+        petId: Long,
+    ): SetDefaultPetResult
 }

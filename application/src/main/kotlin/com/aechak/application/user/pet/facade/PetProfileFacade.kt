@@ -9,6 +9,7 @@ import com.aechak.application.user.pet.usecase.result.DeletePetProfileResult
 import com.aechak.application.user.pet.usecase.result.PetProfileListResult
 import com.aechak.application.user.pet.usecase.result.PetProfileResult
 import com.aechak.application.user.pet.usecase.result.RegisterPetProfileResult
+import com.aechak.application.user.pet.usecase.result.SetDefaultPetResult
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -42,4 +43,10 @@ class PetProfileFacade(
         userId: Long,
         petId: Long,
     ): DeletePetProfileResult = DeletePetProfileResult(petProfileService.delete(userId, petId))
+
+    @Transactional
+    override fun setDefaultPet(
+        userId: Long,
+        petId: Long,
+    ): SetDefaultPetResult = SetDefaultPetResult.from(petProfileService.setDefault(userId, petId))
 }

@@ -6,6 +6,7 @@ import com.aechak.api.user.pet.response.DeletePetProfileResponse
 import com.aechak.api.user.pet.response.PetProfileListResponse
 import com.aechak.api.user.pet.response.PetProfileResponse
 import com.aechak.api.user.pet.response.RegisterPetProfileResponse
+import com.aechak.api.user.pet.response.SetDefaultPetResponse
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
@@ -15,6 +16,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -59,5 +61,14 @@ class PetProfileController(
     ): ResponseEntity<ApiResponse<DeletePetProfileResponse>> {
         val result = petProfileUseCase.deletePet(principal.userId, petId)
         return ResponseEntity.ok(ApiResponse.of(DeletePetProfileResponse.from(result)))
+    }
+
+    @PatchMapping("/{petId}/default")
+    fun setDefaultPet(
+        @PathVariable petId: Long,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<SetDefaultPetResponse>> {
+        val result = petProfileUseCase.setDefaultPet(principal.userId, petId)
+        return ResponseEntity.ok(ApiResponse.of(SetDefaultPetResponse.from(result)))
     }
 }
