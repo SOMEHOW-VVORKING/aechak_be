@@ -16,5 +16,7 @@ class FileFacade(
 
     override fun promote(command: PromoteFileCommand): PromoteFileResult = fileService.promote(command)
 
+    override fun promoteIfTmp(command: PromoteFileCommand): PromoteFileResult = fileService.promoteIfTmp(command)
+
     override fun resolveMediaUrl(key: String?): String? = fileService.resolveMediaUrl(key)
 }

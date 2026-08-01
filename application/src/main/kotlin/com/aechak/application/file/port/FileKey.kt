@@ -8,6 +8,8 @@ import com.aechak.application.file.port.enums.UploadPurpose
 object FileKey {
     const val TMP_PREFIX = "tmp"
 
+    fun isTmp(key: String): Boolean = key.startsWith("$TMP_PREFIX/")
+
     /** 이 유저가 발급받은 tmp 키의 공통 접두 — 소유검증(startsWith)에 씀 */
     fun tmpOwnerPrefix(userId: Long): String = "$TMP_PREFIX/$userId/"
 

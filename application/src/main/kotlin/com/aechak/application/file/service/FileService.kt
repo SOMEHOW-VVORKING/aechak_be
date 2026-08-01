@@ -41,5 +41,13 @@ class FileService(
         return PromoteFileResult(key = promotedKey)
     }
 
+    fun promoteIfTmp(command: PromoteFileCommand): PromoteFileResult {
+        if (FileKey.isTmp(command.tmpKey)) return promote(command)
+        if (!command.tmpKey.startsWith("${command.purpose.prefix}/")) {
+            throw BusinessException(FileErrorCode.FILE_PURPOSE_MISMATCH)
+        }
+        return PromoteFileResult(key = command.tmpKey)
+    }
+
     fun resolveMediaUrl(key: String?): String? = key?.let(fileStorage::publicUrlOf)
 }
