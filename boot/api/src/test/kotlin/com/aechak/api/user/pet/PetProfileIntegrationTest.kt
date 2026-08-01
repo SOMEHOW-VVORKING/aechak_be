@@ -40,7 +40,12 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import java.time.Instant
 
-/** 한글 응답은 MockMvc 기본 charset을 피해 UTF-8로 직접 파싱함 */
+/**
+ * 통합 — 펫 API가 실 보안 필터체인·실 MySQL을 통과해 계약대로 동작하는지.
+ * 깨지면 인가가 뚫렸거나 응답 계약이 프론트와 어긋난 것이다.
+ *
+ * 한글 응답은 MockMvc 기본 charset을 피해 UTF-8로 직접 파싱함.
+ */
 class PetProfileIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var context: WebApplicationContext
@@ -329,6 +334,17 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
     @Test
     fun `펫이 없으면 빈 배열이다`() {
         assertEquals(0, (JsonPath.read(listBody(ownerToken), "$.data.pets") as List<*>).size)
+    }
+
+    @Test
+    fun `이름이 비었거나 50자를 넘으면 거절한다`() {
+        mockMvc
+            .perform(postPet(ownerToken, petJson(name = "  ")))
+            .andExpect(status().isBadRequest)
+
+        mockMvc
+            .perform(postPet(ownerToken, petJson(name = "가".repeat(51))))
+            .andExpect(status().isBadRequest)
     }
 
     @Test

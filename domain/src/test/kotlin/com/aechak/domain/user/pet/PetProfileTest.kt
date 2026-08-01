@@ -11,6 +11,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+/**
+ * 계약 — 펫 등록·수정의 도메인 불변식. 깨지면 종이 안 맞는 품종이나 현실 밖 체중이 저장된다.
+ */
 class PetProfileTest {
     private val user = User.preRegister()
     private val dogBreed = Breed.of(Species.DOG, "말티즈")

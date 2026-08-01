@@ -7,6 +7,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
+/**
+ * 계약 — 생년월 입력의 정규화·거절 경계. 깨지면 연도만 보낸 입력이 엉뚱한 달로 저장되거나
+ * 미래 생년월이 통과한다.
+ */
 class BirthYearMonthNormalizerTest {
     private val today = YearMonth.of(2026, 7)
 
