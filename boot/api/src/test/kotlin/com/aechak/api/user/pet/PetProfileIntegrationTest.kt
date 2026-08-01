@@ -443,6 +443,44 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `isDefault를 false로 보내도 기본은 해제되지 않는다`() {
+        // 활성 펫이 있으면 기본은 정확히 1마리라는 불변식을 반대로 조작해본다.
+        // 등록(첫 펫 자동)과 삭제(자동 승격)가 막는 상태를 수정이 만들 수 있으면 안 된다.
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코", isDefault = false)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.isDefault").value(true))
+
+        assertEquals(
+            1,
+            JsonPath.read<List<*>>(listBody(ownerToken), "$.data.pets[?(@.isDefault == true)]").size,
+            "기본 펫이 0마리가 되면 안 된다",
+        )
+    }
+
+    @Test
+    fun `삭제한 펫은 더 이상 삭제할 수 없다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+        mockMvc.perform(deletePet(ownerToken, petId)).andExpect(status().isOk)
+
+        mockMvc
+            .perform(deletePet(ownerToken, petId))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.PET_PROFILE_NOT_FOUND.code))
+    }
+
+    @Test
+    fun `인증 없이는 수정도 삭제도 대표지정도 못 한다`() {
+        mockMvc
+            .perform(put("/api/v1/users/me/pets/1").contentType(MediaType.APPLICATION_JSON).content(updateJson(name = "초코")))
+            .andExpect(status().isUnauthorized)
+        mockMvc.perform(delete("/api/v1/users/me/pets/1")).andExpect(status().isUnauthorized)
+        mockMvc.perform(patch("/api/v1/users/me/pets/1/default")).andExpect(status().isUnauthorized)
+    }
+
+    @Test
     fun `타인의 펫은 수정도 삭제도 대표지정도 못 한다`() {
         val petId = registerPet(ownerToken, petJson(name = "내펫"))
 

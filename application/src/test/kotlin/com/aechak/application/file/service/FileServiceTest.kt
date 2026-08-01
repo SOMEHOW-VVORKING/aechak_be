@@ -15,6 +15,9 @@ import kotlin.test.assertTrue
 
 private const val PROMOTED_SENTINEL = "promoted/sentinel-key"
 
+/**
+ * 계약 — 발급·승격의 보안 경계. 깨지면 남이 발급받은 키나 다른 용도의 키가 S3에 닿는다.
+ */
 class FileServiceTest {
     private val service = FileService(FakeFileStorage())
 

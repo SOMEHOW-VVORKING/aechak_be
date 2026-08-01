@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -103,5 +104,57 @@ class PetProfileTest {
         pet.markAsDefault()
 
         assertTrue(pet.isDefault)
+    }
+
+    @Test
+    fun `수정은 넘어온 값으로 통째로 덮는다`() {
+        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코", "2022-04", BigDecimal("4.5"), "pets/profile/a.png")
+        val other = Breed.of(Species.DOG, "푸들")
+
+        pet.update(other, "초콜릿", null, null, null)
+
+        assertEquals(other, pet.breed)
+        assertEquals("초콜릿", pet.name)
+        assertNull(pet.birthYearMonth, "안 넘긴 값은 지워져야 한다")
+        assertNull(pet.weight, "안 넘긴 값은 지워져야 한다")
+        assertNull(pet.profileImageKey, "안 넘긴 값은 지워져야 한다")
+    }
+
+    @Test
+    fun `수정도 등록과 같은 불변식을 지킨다`() {
+        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코")
+        val catBreed = Breed.of(Species.CAT, "코리안숏헤어")
+
+        assertFailsWith<BusinessException> { pet.update(catBreed, "초코", null, null, null) }
+        assertFailsWith<BusinessException> { pet.update(dogBreed, "초코", null, BigDecimal("100.1"), null) }
+        assertEquals(dogBreed, pet.breed, "거절된 수정은 상태를 남기지 않아야 한다")
+    }
+
+    @Test
+    fun `종은 수정 대상이 아니다`() {
+        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코")
+
+        pet.update(dogBreed, "초콜릿", null, null, null)
+
+        assertEquals(Species.DOG, pet.species, "update 시그니처에 species가 없다는 게 계약이다")
+    }
+
+    @Test
+    fun `버전이 어긋나면 선점으로 판정한다`() {
+        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코")
+
+        pet.requireVersion(0)
+
+        val ex = assertFailsWith<BusinessException> { pet.requireVersion(1) }
+        assertEquals(UserErrorCode.PET_PROFILE_VERSION_CONFLICT, ex.errorCode)
+    }
+
+    @Test
+    fun `기본 해제가 상태에 반영된다`() {
+        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코", isDefault = true)
+
+        pet.releaseDefault()
+
+        assertFalse(pet.isDefault)
     }
 }
