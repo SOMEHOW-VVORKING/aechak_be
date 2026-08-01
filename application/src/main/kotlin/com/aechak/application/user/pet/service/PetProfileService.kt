@@ -4,6 +4,7 @@ import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.user.pet.usecase.command.RegisterPetProfileCommand
+import com.aechak.application.user.pet.usecase.command.UpdatePetProfileCommand
 import com.aechak.application.user.user.service.UserService
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.error.UserErrorCode
@@ -46,6 +47,53 @@ class PetProfileService(
             pet.markAsDefault() // 기본 없는 상태를 안 만들려고 첫 펫은 요청값 무시
         }
         return petProfileRepository.save(pet)
+    }
+
+    fun update(command: UpdatePetProfileCommand): PetProfile {
+        val pet = loadOwnedActive(command.userId, command.petId)
+        command.version?.let(pet::requireVersion)
+
+        val breed = loadBreed(command.breedId)
+        val birthYearMonth = BirthYearMonthNormalizer.normalize(command.birthYearMonth)
+        // 등록과 같은 이유로 승격 전에 검증.
+        PetProfile.validate(breed, command.weight)
+
+        val imageKey =
+            command.profileImageKey?.let {
+                fileUseCase.promoteIfTmp(PromoteFileCommand(it, command.userId, UploadPurpose.PET_PROFILE)).key
+            }
+        pet.update(
+            breed = breed,
+            name = command.name,
+            birthYearMonth = birthYearMonth,
+            weight = command.weight,
+            profileImageKey = imageKey,
+        )
+        if (command.isDefault) {
+            promoteToDefault(command.userId, pet)
+        }
+        return petProfileRepository.save(pet)
+    }
+
+    private fun loadOwnedActive(
+        userId: Long,
+        petId: Long,
+    ): PetProfile {
+        val pet =
+            petProfileRepository.findActiveById(petId)
+                ?: throw BusinessException(UserErrorCode.PET_PROFILE_NOT_FOUND)
+        if (pet.user.id != userId) {
+            throw BusinessException(UserErrorCode.PET_PROFILE_ACCESS_DENIED)
+        }
+        return pet
+    }
+
+    private fun promoteToDefault(
+        userId: Long,
+        pet: PetProfile,
+    ) {
+        releaseOtherDefaults(userId, exceptId = pet.id) // 바로 다시 올릴 대상이라 UPDATE 한 번을 아낌
+        pet.markAsDefault()
     }
 
     /** 완벽한 동시성 방어는 불가능하지만, 불필요하다고 판단함 */

@@ -89,6 +89,28 @@ class PetProfile protected constructor(
         isDefault = true
     }
 
+    /** 전체 객체 전송이라 통째로 덮음. `profileImageKey`가 null이면 사진이 지워짐 */
+    fun update(
+        breed: Breed,
+        name: String,
+        birthYearMonth: String?,
+        weight: BigDecimal?,
+        profileImageKey: String?,
+    ) {
+        validate(breed, species, weight)
+        this.breed = breed
+        this.name = name
+        this.birthYearMonth = birthYearMonth
+        this.weight = weight
+        this.profileImageKey = profileImageKey
+    }
+
+    fun requireVersion(expected: Int) {
+        if (version != expected) {
+            throw BusinessException(UserErrorCode.PET_PROFILE_VERSION_CONFLICT)
+        }
+    }
+
     companion object {
         private val MIN_WEIGHT = BigDecimal("0.1")
         private val MAX_WEIGHT = BigDecimal("200.0")

@@ -35,6 +35,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delet
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
@@ -343,6 +344,114 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
         mockMvc.perform(get("/api/v1/users/me/pets")).andExpect(status().isUnauthorized)
     }
 
+    @Test
+    fun `수정하면 값이 바뀌고 version이 올라간다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코", weight = "4.5"))
+        val before = JsonPath.read<Int>(listBody(ownerToken), "$.data.pets[0].version")
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초콜릿", weight = "5.2")))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.name").value("초콜릿"))
+            .andExpect(jsonPath("$.data.weight").value(5.2))
+
+        assertTrue(
+            JsonPath.read<Int>(listBody(ownerToken), "$.data.pets[0].version") > before,
+            "수정하면 낙관적 락 버전이 올라가야 한다",
+        )
+    }
+
+    @Test
+    fun `전체 객체 전송이라 사진 키를 빼면 사진이 지워진다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코", profileImageKey = "tmp/$ownerId/pets/profile/abc.png"))
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코")))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.profileImageKey").value(null as String?))
+    }
+
+    @Test
+    fun `이미 저장된 정식 키를 다시 보내면 승격하지 않고 그대로 유지한다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코", profileImageKey = "tmp/$ownerId/pets/profile/abc.png"))
+        val storedKey = JsonPath.read<String>(listBody(ownerToken), "$.data.pets[0].profileImageKey")
+        val promotedBefore = promotedKeyCount()
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코", profileImageKey = storedKey)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.profileImageKey").value(storedKey))
+
+        assertEquals(promotedBefore, promotedKeyCount(), "정식 키는 다시 승격하지 않아야 한다")
+    }
+
+    @Test
+    fun `다른 용도의 정식 키는 수정에 쓸 수 없다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코", profileImageKey = "users/profile/abc.png")))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(FileErrorCode.FILE_PURPOSE_MISMATCH.code))
+    }
+
+    @Test
+    fun `수정 응답의 version을 그대로 다시 써도 통한다`() {
+        // 응답을 flush 전 엔티티로 조립하면 옛 version이 실려 클라이언트가 항상 409를 맞음.
+        // 목록 재조회로는 안 잡힘. 응답에 실린 값을 그대로 되먹여야 드러남.
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+        val v0 = versionOf(ownerToken, petId)
+
+        val firstBody =
+            mockMvc
+                .perform(putPet(ownerToken, petId, updateJson(name = "초콜릿", version = v0)))
+                .andExpect(status().isOk)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        val returned = JsonPath.read<Int>(firstBody, "$.data.version")
+
+        assertTrue(returned > v0, "수정 응답은 증가한 version을 실어야 한다 (요청 $v0, 응답 $returned)")
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코", version = returned)))
+            .andExpect(status().isOk)
+    }
+
+    @Test
+    fun `낡은 version으로 수정하면 409다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+        val current = JsonPath.read<Int>(listBody(ownerToken), "$.data.pets[0].version")
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초콜릿", version = current - 1)))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.PET_PROFILE_VERSION_CONFLICT.code))
+    }
+
+    @Test
+    fun `수정으로도 종이 다른 품종을 넣을 수 없다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코", breedId = catBreedId)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.INVALID_BREED.code))
+    }
+
+    @Test
+    fun `수정으로도 미래 생년월은 넣을 수 없다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+        val nextYear =
+            java.time.YearMonth
+                .now()
+                .plusYears(1)
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코", birthYearMonth = nextYear.toString())))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.INVALID_PET_BIRTH_YEAR_MONTH.code))
+    }
+
     /**
      * FE 스키마를 손으로 맞추므로 필드명이 어긋나도 양쪽 테스트가 초록불이고 실서버에서야 드러남.
      * 기대값도 손으로 옮겨 적은 상수라 FE 스키마 자체가 틀린 경우는 못 잡음.
@@ -466,6 +575,15 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
 
     private fun tmpKey(userId: Long): String = "${FileKey.tmpPrefixOf(userId, UploadPurpose.PET_PROFILE)}abc.png"
 
+    /** 필터 표현식은 결과가 배열로 오므로 첫 원소를 꺼냄 */
+    private fun versionOf(
+        token: String,
+        petId: Long,
+    ): Int {
+        val versions = JsonPath.read<List<*>>(listBody(token), "$.data.pets[?(@.petId == $petId)].version")
+        return (versions.first() as Number).toInt()
+    }
+
     private fun postPet(
         token: String,
         body: String,
@@ -473,6 +591,36 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
         .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
         .contentType(MediaType.APPLICATION_JSON)
         .content(body)
+
+    private fun putPet(
+        token: String,
+        petId: Long,
+        body: String,
+    ) = put("/api/v1/users/me/pets/$petId")
+        .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content(body)
+
+    private fun updateJson(
+        name: String,
+        breedId: Long = dogBreedId,
+        birthYearMonth: String? = null,
+        weight: String? = null,
+        profileImageKey: String? = null,
+        isDefault: Boolean? = null,
+        version: Int? = null,
+    ): String =
+        """
+        {
+          "name": "$name",
+          "breedId": $breedId,
+          "birthYearMonth": ${jsonStr(birthYearMonth)},
+          "weight": ${weight ?: "null"},
+          "profileImageKey": ${jsonStr(profileImageKey)},
+          "isDefault": ${isDefault ?: "null"},
+          "version": ${version ?: "null"}
+        }
+        """.trimIndent()
 
     private fun registerPet(
         token: String,
