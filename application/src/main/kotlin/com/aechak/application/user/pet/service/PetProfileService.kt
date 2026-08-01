@@ -75,6 +75,27 @@ class PetProfileService(
         return petProfileRepository.save(pet)
     }
 
+    /** 기본을 지웠으면 남은 펫 하나를 승격하고 그 id를 돌려줌 */
+    fun delete(
+        userId: Long,
+        petId: Long,
+    ): Long? {
+        val pet = loadOwnedActive(userId, petId)
+        val wasDefault = pet.isDefault
+        pet.delete()
+        petProfileRepository.save(pet)
+        if (!wasDefault) return null
+
+        val promoted =
+            petProfileRepository
+                .findAllActiveByUserIdRecentFirst(userId)
+                .firstOrNull { it.id != petId } // flush가 늦어도 방금 지운 건 id로 거른다
+                ?: return null
+        promoted.markAsDefault()
+        petProfileRepository.save(promoted)
+        return promoted.id
+    }
+
     private fun loadOwnedActive(
         userId: Long,
         petId: Long,

@@ -2,6 +2,7 @@ package com.aechak.api.user.pet
 
 import com.aechak.api.user.pet.request.RegisterPetProfileRequest
 import com.aechak.api.user.pet.request.UpdatePetProfileRequest
+import com.aechak.api.user.pet.response.DeletePetProfileResponse
 import com.aechak.api.user.pet.response.PetProfileListResponse
 import com.aechak.api.user.pet.response.PetProfileResponse
 import com.aechak.api.user.pet.response.RegisterPetProfileResponse
@@ -12,6 +13,7 @@ import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -48,5 +50,14 @@ class PetProfileController(
     ): ResponseEntity<ApiResponse<PetProfileResponse>> {
         val result = petProfileUseCase.updatePet(request.toCommand(principal.userId, petId))
         return ResponseEntity.ok(ApiResponse.of(PetProfileResponse.from(result)))
+    }
+
+    @DeleteMapping("/{petId}")
+    fun deletePet(
+        @PathVariable petId: Long,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<DeletePetProfileResponse>> {
+        val result = petProfileUseCase.deletePet(principal.userId, petId)
+        return ResponseEntity.ok(ApiResponse.of(DeletePetProfileResponse.from(result)))
     }
 }

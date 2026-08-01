@@ -5,6 +5,7 @@ import com.aechak.application.user.pet.service.PetProfileService
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.application.user.pet.usecase.command.RegisterPetProfileCommand
 import com.aechak.application.user.pet.usecase.command.UpdatePetProfileCommand
+import com.aechak.application.user.pet.usecase.result.DeletePetProfileResult
 import com.aechak.application.user.pet.usecase.result.PetProfileListResult
 import com.aechak.application.user.pet.usecase.result.PetProfileResult
 import com.aechak.application.user.pet.usecase.result.RegisterPetProfileResult
@@ -35,4 +36,10 @@ class PetProfileFacade(
         val pet = petProfileService.update(command)
         return PetProfileResult.from(pet, fileUseCase.resolveMediaUrl(pet.profileImageKey))
     }
+
+    @Transactional
+    override fun deletePet(
+        userId: Long,
+        petId: Long,
+    ): DeletePetProfileResult = DeletePetProfileResult(petProfileService.delete(userId, petId))
 }

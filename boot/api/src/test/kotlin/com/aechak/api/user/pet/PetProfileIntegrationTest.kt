@@ -429,6 +429,14 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `없는 펫을 건드리면 404다`() {
+        mockMvc
+            .perform(deletePet(ownerToken, 999_999L))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.PET_PROFILE_NOT_FOUND.code))
+    }
+
+    @Test
     fun `수정으로도 종이 다른 품종을 넣을 수 없다`() {
         val petId = registerPet(ownerToken, petJson(name = "초코"))
 
@@ -450,6 +458,65 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
             .perform(putPet(ownerToken, petId, updateJson(name = "초코", birthYearMonth = nextYear.toString())))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(UserErrorCode.INVALID_PET_BIRTH_YEAR_MONTH.code))
+    }
+
+    @Test
+    fun `삭제한 펫은 더 이상 수정할 수 없다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+        mockMvc.perform(deletePet(ownerToken, petId)).andExpect(status().isOk)
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "부활")))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.PET_PROFILE_NOT_FOUND.code))
+    }
+
+    @Test
+    fun `대표 펫을 삭제하면 남은 펫이 승격되고 그 id를 돌려준다`() {
+        val defaultPetId = registerPet(ownerToken, petJson(name = "대표"))
+        val otherPetId = registerPet(ownerToken, petJson(name = "둘째"))
+
+        mockMvc
+            .perform(deletePet(ownerToken, defaultPetId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.promotedDefaultPetId").value(otherPetId))
+
+        val body = listBody(ownerToken)
+        assertEquals(1, (JsonPath.read(body, "$.data.pets") as List<*>).size, "삭제된 펫은 목록에 없어야 한다")
+        assertTrue(JsonPath.read<Boolean>(body, "$.data.pets[0].isDefault"), "남은 펫이 대표여야 한다")
+    }
+
+    @Test
+    fun `비대표를 삭제하면 승격이 없다`() {
+        registerPet(ownerToken, petJson(name = "대표"))
+        val secondId = registerPet(ownerToken, petJson(name = "둘째"))
+
+        mockMvc
+            .perform(deletePet(ownerToken, secondId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.promotedDefaultPetId").value(null as Long?))
+    }
+
+    @Test
+    fun `마지막 펫을 삭제하면 승격 대상이 없다`() {
+        val onlyId = registerPet(ownerToken, petJson(name = "하나뿐"))
+
+        mockMvc
+            .perform(deletePet(ownerToken, onlyId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.promotedDefaultPetId").value(null as Long?))
+
+        assertEquals(0, (JsonPath.read(listBody(ownerToken), "$.data.pets") as List<*>).size)
+    }
+
+    @Test
+    fun `삭제한 펫의 자리는 한도에서 빠진다`() {
+        val ids = (0 until 10).map { registerPet(ownerToken, petJson(name = "펫$it")) }
+        mockMvc.perform(postPet(ownerToken, petJson(name = "열한번째"))).andExpect(status().isUnprocessableEntity)
+
+        mockMvc.perform(deletePet(ownerToken, ids.last())).andExpect(status().isOk)
+
+        mockMvc.perform(postPet(ownerToken, petJson(name = "새펫"))).andExpect(status().isCreated)
     }
 
     /**
@@ -600,6 +667,11 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
         .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
         .contentType(MediaType.APPLICATION_JSON)
         .content(body)
+
+    private fun deletePet(
+        token: String,
+        petId: Long,
+    ) = delete("/api/v1/users/me/pets/$petId").header(HttpHeaders.AUTHORIZATION, "Bearer $token")
 
     private fun updateJson(
         name: String,
