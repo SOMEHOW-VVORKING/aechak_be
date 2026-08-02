@@ -18,9 +18,9 @@ class SearchKeywordService(
     fun deleteRecentKeyword(
         userId: Long,
         id: Long,
-    ) = recentSearchRepository.deleteRecent(userId, id)
+    ) = recentSearchRepository.delete(userId, id)
 
-    fun deleteAllRecentKeywords(userId: Long) = recentSearchRepository.deleteAllRecent(userId)
+    fun deleteAllRecentKeywords(userId: Long) = recentSearchRepository.deleteAll(userId)
 
     companion object {
         const val MAX_RECENT_KEYWORDS = 10

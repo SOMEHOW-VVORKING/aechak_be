@@ -39,14 +39,14 @@ class RecentSearchRepositoryAdapter(
         limit: Int,
     ): List<RecentSearch> = jpaRepository.findByUserIdOrderBySearchedAtDescIdDesc(userId, PageRequest.of(0, limit))
 
-    override fun deleteRecent(
+    override fun delete(
         userId: Long,
         id: Long,
     ) {
         jpaRepository.deleteByIdAndUserId(id, userId)
     }
 
-    override fun deleteAllRecent(userId: Long) {
+    override fun deleteAll(userId: Long) {
         jpaRepository.deleteAllByUserId(userId)
     }
 }

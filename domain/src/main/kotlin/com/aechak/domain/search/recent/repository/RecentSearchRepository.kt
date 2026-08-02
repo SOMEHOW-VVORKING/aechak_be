@@ -10,11 +10,11 @@ interface RecentSearchRepository {
     ): List<RecentSearch>
 
     /** 사용자의 최근 검색어 한 건을 하드 삭제한다. */
-    fun deleteRecent(
+    fun delete(
         userId: Long,
         id: Long,
     )
 
     /** 사용자의 최근 검색어를 전부 하드 삭제한다. */
-    fun deleteAllRecent(userId: Long)
+    fun deleteAll(userId: Long)
 }
