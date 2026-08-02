@@ -48,6 +48,14 @@ resource "aws_ssm_parameter" "docs_bucket" {
   value = aws_s3_bucket.docs.id
 }
 
+# 저장은 key, 응답은 URL이라 앱이 표시용 URL을 조립할 때 쓴다.
+# 없으면 부팅·API는 정상이고 이미지 URL만 도메인 없는 상대경로로 나간다.
+resource "aws_ssm_parameter" "media_public_base_url" {
+  name  = "/${var.project}/${var.env}/api/AWS_S3_MEDIA_PUBLIC_BASE_URL"
+  type  = "String"
+  value = "https://${local.media_domain}"
+}
+
 # ── 웹 연동 ─────────────────────────────────────────────
 # 배포된 프론트 + 로컬 개발 프론트. 로컬에서 dev 백엔드에 붙는 구성을 함께 허용한다.
 locals {
