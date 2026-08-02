@@ -77,7 +77,6 @@ class PetProfileService(
         return petProfileRepository.save(pet)
     }
 
-    /** 기본을 지웠으면 남은 펫 하나를 승격하고 그 id를 돌려줌 */
     fun delete(
         userId: Long,
         petId: Long,
@@ -86,16 +85,7 @@ class PetProfileService(
         val wasDefault = pet.isDefault
         pet.delete()
         petProfileRepository.save(pet)
-        if (!wasDefault) return null
-
-        val promoted =
-            petProfileRepository
-                .findAllActiveByUserIdRecentFirst(userId)
-                .firstOrNull { it.id != petId } // flush가 늦어도 방금 지운 건 id로 거른다
-                ?: return null
-        promoted.markAsDefault()
-        petProfileRepository.save(promoted)
-        return promoted.id
+        return if (wasDefault) promoteNextDefault(userId, excludeId = petId) else null
     }
 
     fun setDefault(
@@ -118,6 +108,20 @@ class PetProfileService(
             throw BusinessException(UserErrorCode.PET_PROFILE_ACCESS_DENIED)
         }
         return pet
+    }
+
+    private fun promoteNextDefault(
+        userId: Long,
+        excludeId: Long,
+    ): Long? {
+        val next =
+            petProfileRepository
+                .findAllActiveByUserIdRecentFirst(userId)
+                .firstOrNull { it.id != excludeId } // flush가 늦어도 방금 지운 건 id로 거른다
+                ?: return null
+        next.markAsDefault() // 해제할 기존 기본이 없는 자리라 promoteToDefault를 안 거침
+        petProfileRepository.save(next)
+        return next.id
     }
 
     private fun promoteToDefault(
