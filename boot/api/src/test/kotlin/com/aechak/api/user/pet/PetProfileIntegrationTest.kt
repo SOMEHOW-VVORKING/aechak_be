@@ -387,13 +387,26 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `다른 용도의 정식 키는 수정에 쓸 수 없다`() {
+    fun `이 펫에 붙어 있지 않은 정식 키는 수정에 쓸 수 없다`() {
         val petId = registerPet(ownerToken, petJson(name = "초코"))
 
         mockMvc
             .perform(putPet(ownerToken, petId, updateJson(name = "초코", profileImageKey = "users/profile/abc.png")))
-            .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.errorCode").value(FileErrorCode.FILE_PURPOSE_MISMATCH.code))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(FileErrorCode.FILE_ACCESS_DENIED.code))
+    }
+
+    @Test
+    fun `타인 펫에 저장된 사진 키를 내 펫에 붙일 수 없다`() {
+        // 목록 응답에 정식 키가 실려 나가므로 도용 경로가 실재함
+        registerPet(otherToken, petJson(name = "남의펫", profileImageKey = tmpKey(otherId)))
+        val stolenKey = JsonPath.read<String>(listBody(otherToken), "$.data.pets[0].profileImageKey")
+        val myPetId = registerPet(ownerToken, petJson(name = "내펫"))
+
+        mockMvc
+            .perform(putPet(ownerToken, myPetId, updateJson(name = "내펫", profileImageKey = stolenKey)))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(FileErrorCode.FILE_ACCESS_DENIED.code))
     }
 
     @Test

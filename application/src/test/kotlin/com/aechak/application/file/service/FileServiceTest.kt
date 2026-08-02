@@ -1,6 +1,7 @@
 package com.aechak.application.file.service
 
 import com.aechak.application.file.error.FileErrorCode
+import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.IssueFileUrl
 import com.aechak.application.file.port.enums.FileType
@@ -89,38 +90,12 @@ class FileServiceTest {
 
     @Test
     fun `본인 tmp 키면 소유검증 통과 후 storage 승격 결과를 그대로 반환한다`() {
-        val command = PromoteFileCommand("tmp/$USER_ID/users/profile/ULID.png", USER_ID, UploadPurpose.USER_PROFILE)
+        val command =
+            PromoteFileCommand("${FileKey.tmpPrefixOf(USER_ID, UploadPurpose.USER_PROFILE)}ULID.png", USER_ID, UploadPurpose.USER_PROFILE)
 
         val result = service.promote(command)
 
         assertEquals(PROMOTED_SENTINEL, result.key, "가드 통과 후 storage가 돌려준 키를 그대로 위임해야 한다")
-    }
-
-    @Test
-    fun `promoteIfTmp - tmp 키면 승격 경로를 그대로 탄다`() {
-        val command = PromoteFileCommand("tmp/$USER_ID/users/profile/ULID.png", USER_ID, UploadPurpose.USER_PROFILE)
-
-        val result = service.promoteIfTmp(command)
-
-        assertEquals(PROMOTED_SENTINEL, result.key, "tmp 키는 promote와 같은 검증·승격을 거쳐야 한다")
-    }
-
-    @Test
-    fun `promoteIfTmp - 용도가 맞는 정식 키는 승격 없이 그대로 돌려준다`() {
-        val stored = "users/profile/ULID.png"
-
-        val result = service.promoteIfTmp(PromoteFileCommand(stored, USER_ID, UploadPurpose.USER_PROFILE))
-
-        assertEquals(stored, result.key, "정식 키는 복사 없이 그대로 유지돼야 한다")
-    }
-
-    @Test
-    fun `promoteIfTmp - 다른 용도의 정식 키는 FILE_PURPOSE_MISMATCH로 거절한다`() {
-        val command = PromoteFileCommand("other/place/ULID.png", USER_ID, UploadPurpose.USER_PROFILE)
-
-        val ex = assertFailsWith<BusinessException> { service.promoteIfTmp(command) }
-
-        assertEquals(FileErrorCode.FILE_PURPOSE_MISMATCH, ex.errorCode, "용도 접두가 다른 정식 키는 거절해야 한다")
     }
 
     private class FakeFileStorage : FileStorage {

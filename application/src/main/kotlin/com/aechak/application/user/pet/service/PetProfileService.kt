@@ -36,7 +36,7 @@ class PetProfileService(
         // 승격보다 먼저. 승격은 S3 복사라 롤백이 안 되고, 정식 접두엔 만료 규칙이 없어 회수 불가.
         PetProfile.validate(breed, command.weight)
 
-        val profileImageKey = promoteImageIfPresent(command.userId, command.profileImageKey)
+        val profileImageKey = command.profileImageKey?.let { promoteImage(command.userId, it) }
 
         if (command.isDefault) {
             releaseOtherDefaults(command.userId, exceptId = null)
@@ -60,7 +60,9 @@ class PetProfileService(
 
         val imageKey =
             command.profileImageKey?.let {
-                fileUseCase.promoteIfTmp(PromoteFileCommand(it, command.userId, UploadPurpose.PET_PROFILE)).key
+                // 승격된 키에는 소유자 정보가 없어 파일 쪽이 소유를 못 가림.
+                // 이 펫에 붙어 있던 값과 같은 것만이 소유 증명이고, 나머지는 전부 새 업로드로 봄.
+                if (it == pet.profileImageKey) it else promoteImage(command.userId, it)
             }
         pet.update(
             breed = breed,
@@ -144,13 +146,10 @@ class PetProfileService(
         breedRepository.findById(breedId)
             ?: throw BusinessException(UserErrorCode.INVALID_BREED)
 
-    private fun promoteImageIfPresent(
+    private fun promoteImage(
         userId: Long,
-        tmpKey: String?,
-    ): String? {
-        if (tmpKey == null) return null
-        return fileUseCase.promote(PromoteFileCommand(tmpKey, userId, UploadPurpose.PET_PROFILE)).key
-    }
+        tmpKey: String,
+    ): String = fileUseCase.promote(PromoteFileCommand(tmpKey, userId, UploadPurpose.PET_PROFILE)).key
 
     companion object {
         const val MAX_ACTIVE_PETS = 10
