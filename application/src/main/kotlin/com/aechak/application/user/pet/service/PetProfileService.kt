@@ -33,7 +33,7 @@ class PetProfileService(
         val breed = loadBreed(command.breedId)
         val birthYearMonth = BirthYearMonthNormalizer.normalize(command.birthYearMonth)
         // 승격보다 먼저. 승격은 S3 복사라 롤백이 안 되고, 정식 접두엔 만료 규칙이 없어 회수 불가.
-        PetProfile.validate(breed, command.species, command.weight)
+        PetProfile.validate(breed, command.weight)
 
         val profileImageKey = promoteImageIfPresent(command.userId, command.profileImageKey)
 

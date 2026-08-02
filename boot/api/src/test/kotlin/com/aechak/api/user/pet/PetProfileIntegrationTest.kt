@@ -100,7 +100,6 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
         val body =
             """
             {
-              "species": "DOG",
               "name": "초코",
               "breedId": $dogBreedId
             }
@@ -119,7 +118,6 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
         val body =
             """
             {
-              "species": "DOG",
               "name": "초코",
               "breedId": $dogBreedId,
               "isDefault": null
@@ -194,14 +192,6 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `품종의 종이 다르면 거절한다`() {
-        mockMvc
-            .perform(postPet(ownerToken, petJson(name = "초코", breedId = catBreedId)))
-            .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.INVALID_BREED.code))
-    }
-
-    @Test
     fun `없는 품종이면 거절한다`() {
         mockMvc
             .perform(postPet(ownerToken, petJson(name = "초코", breedId = 999_999L)))
@@ -222,7 +212,6 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
         val body =
             """
             {
-              "species": "DOG",
               "name": "초코",
               "breedId": $dogBreedId
             }
@@ -281,7 +270,7 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `내 id를 접두로 갖는 다른 유저의 사진 키도 막는다`() {
-        // 소유 검증이 "tmp/{id}/"에서 "tmp/{id}"로 회귀하면 id=1이 id=11의 파일을 씀
+        // 소유 검증에서 후행 슬래시가 빠지면 id=1이 id=11의 파일을 씀
         val lookalike = "tmp/${ownerId}9/pets/profile/abc.png"
 
         mockMvc
@@ -299,7 +288,7 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
             .perform(
                 postPet(
                     ownerToken,
-                    petJson(name = "초코", breedId = catBreedId, profileImageKey = "tmp/$ownerId/pets/profile/abc.png"),
+                    petJson(name = "초코", weight = "100.1", profileImageKey = "tmp/$ownerId/pets/profile/abc.png"),
                 ),
             ).andExpect(status().isBadRequest)
 
@@ -466,7 +455,7 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
                 repeat(count) {
                     val breed = Breed.of(Species.DOG, "품종-${breedSeq++}")
                     em.persist(breed)
-                    em.persist(PetProfile.register(user, breed, Species.DOG, "펫$it"))
+                    em.persist(PetProfile.register(user, breed, "펫$it"))
                 }
                 em.flush()
             }
@@ -511,7 +500,6 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
     private fun petJson(
         name: String,
         breedId: Long = dogBreedId,
-        species: String = "DOG",
         birthYearMonth: String? = null,
         weight: String? = null,
         profileImageKey: String? = null,
@@ -519,7 +507,6 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
     ): String =
         """
         {
-          "species": "$species",
           "name": "$name",
           "breedId": $breedId,
           "birthYearMonth": ${jsonStr(birthYearMonth)},

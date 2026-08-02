@@ -2,13 +2,11 @@ package com.aechak.application.user.pet.usecase.command
 
 import com.aechak.domain.user.pet.Breed
 import com.aechak.domain.user.pet.PetProfile
-import com.aechak.domain.user.pet.enums.Species
 import com.aechak.domain.user.user.User
 import java.math.BigDecimal
 
 data class RegisterPetProfileCommand(
     val userId: Long,
-    val species: Species,
     val name: String,
     val breedId: Long,
     val birthYearMonth: String?,
@@ -25,7 +23,6 @@ data class RegisterPetProfileCommand(
         PetProfile.register(
             user = user,
             breed = breed,
-            species = species,
             name = name,
             birthYearMonth = normalizedBirthYearMonth,
             weight = weight,

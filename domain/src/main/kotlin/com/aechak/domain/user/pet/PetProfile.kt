@@ -25,7 +25,6 @@ import java.math.BigDecimal
 class PetProfile protected constructor(
     user: User,
     breed: Breed,
-    species: Species,
     name: String,
     birthYearMonth: String?,
     weight: BigDecimal?,
@@ -45,10 +44,7 @@ class PetProfile protected constructor(
     var breed: Breed = breed
         protected set
 
-    @Enumerated(EnumType.STRING)
-    @Column(length = 30, nullable = false)
-    var species: Species = species
-        protected set
+    val species: Species get() = breed.species
 
     @Column(length = 50, nullable = false)
     var name: String = name
@@ -105,27 +101,22 @@ class PetProfile protected constructor(
 
         fun validate(
             breed: Breed,
-            species: Species,
             weight: BigDecimal?,
         ) {
-            if (breed.species != species) {
-                throw BusinessException(UserErrorCode.INVALID_BREED)
-            }
             validateWeight(weight)
         }
 
         fun register(
             user: User,
             breed: Breed,
-            species: Species,
             name: String,
             birthYearMonth: String? = null,
             weight: BigDecimal? = null,
             profileImageKey: String? = null,
             isDefault: Boolean = false,
         ): PetProfile {
-            validate(breed, species, weight)
-            return PetProfile(user, breed, species, name, birthYearMonth, weight, profileImageKey, isDefault)
+            validate(breed, weight)
+            return PetProfile(user, breed, name, birthYearMonth, weight, profileImageKey, isDefault)
         }
     }
 }

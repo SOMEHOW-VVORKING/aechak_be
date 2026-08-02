@@ -15,3 +15,19 @@ SET @stmt = IF(
 PREPARE rename_stmt FROM @stmt;
 EXECUTE rename_stmt;
 DEALLOCATE PREPARE rename_stmt;
+
+-- species는 breed_id로 결정되는 값이라 컬럼을 지운다. 두 값이 어긋난 상태를 만들 수 없게 하는 게 목적.
+-- breed_id가 남아 있어 복원 가능하므로 데이터 손실은 없다.
+SET @drop_species = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'pet_profiles'
+          AND COLUMN_NAME = 'species'
+    ),
+    'ALTER TABLE pet_profiles DROP COLUMN species',
+    'SELECT 1'
+);
+PREPARE drop_stmt FROM @drop_species;
+EXECUTE drop_stmt;
+DEALLOCATE PREPARE drop_stmt;

@@ -20,20 +20,20 @@ class PetProfileTest {
     private val catBreed = Breed.of(Species.CAT, "코리안숏헤어")
 
     @Test
-    fun `품종의 종이 펫의 종과 다르면 거절한다`() {
-        val ex =
-            assertFailsWith<BusinessException> {
-                PetProfile.register(user = user, breed = catBreed, species = Species.DOG, name = "초코")
-            }
+    fun `종은 품종에서 파생된다`() {
+        // 컬럼으로 들고 있으면 breed와 어긋난 조합을 저장할 수 있어서 파생으로 둔다.
+        val dog = PetProfile.register(user, dogBreed, "초코")
+        val cat = PetProfile.register(user, catBreed, "나비")
 
-        assertEquals(UserErrorCode.INVALID_BREED, ex.errorCode)
+        assertEquals(Species.DOG, dog.species)
+        assertEquals(Species.CAT, cat.species)
     }
 
     @Test
     fun `체중이 0 이하면 거절한다`() {
         val ex =
             assertFailsWith<BusinessException> {
-                PetProfile.register(user, dogBreed, Species.DOG, "초코", weight = BigDecimal.ZERO)
+                PetProfile.register(user, dogBreed, "초코", weight = BigDecimal.ZERO)
             }
 
         assertEquals(UserErrorCode.INVALID_PET_WEIGHT, ex.errorCode)
@@ -43,7 +43,7 @@ class PetProfileTest {
     fun `체중이 100kg를 넘으면 거절한다`() {
         val ex =
             assertFailsWith<BusinessException> {
-                PetProfile.register(user, dogBreed, Species.DOG, "초코", weight = BigDecimal("100.1"))
+                PetProfile.register(user, dogBreed, "초코", weight = BigDecimal("100.1"))
             }
 
         assertEquals(UserErrorCode.INVALID_PET_WEIGHT, ex.errorCode)
@@ -51,20 +51,20 @@ class PetProfileTest {
 
     @Test
     fun `경계값 0_1과 100_0은 허용한다`() {
-        PetProfile.register(user, dogBreed, Species.DOG, "초코", weight = BigDecimal("0.1"))
-        PetProfile.register(user, dogBreed, Species.DOG, "초코", weight = BigDecimal("100.0"))
+        PetProfile.register(user, dogBreed, "초코", weight = BigDecimal("0.1"))
+        PetProfile.register(user, dogBreed, "초코", weight = BigDecimal("100.0"))
     }
 
     @Test
     fun `체중을 안 주면 검증을 건너뛴다`() {
-        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코")
+        val pet = PetProfile.register(user, dogBreed, "초코")
 
         assertEquals(null, pet.weight)
     }
 
     @Test
     fun `삭제하면 대표 플래그도 내려간다`() {
-        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코")
+        val pet = PetProfile.register(user, dogBreed, "초코")
         pet.markAsDefault()
 
         pet.delete()
@@ -78,7 +78,6 @@ class PetProfileTest {
             PetProfile.register(
                 user = user,
                 breed = dogBreed,
-                species = Species.DOG,
                 name = "초코",
                 profileImageKey = "pets/profile/abc.png",
             )
@@ -90,18 +89,15 @@ class PetProfileTest {
     fun `validate는 register와 같은 규칙을 미리 돌려본다`() {
         val ex =
             assertFailsWith<BusinessException> {
-                PetProfile.validate(catBreed, Species.DOG, null)
+                PetProfile.validate(dogBreed, BigDecimal("100.1"))
             }
-        assertEquals(UserErrorCode.INVALID_BREED, ex.errorCode)
 
-        assertFailsWith<BusinessException> {
-            PetProfile.validate(dogBreed, Species.DOG, BigDecimal("100.1"))
-        }
+        assertEquals(UserErrorCode.INVALID_PET_WEIGHT, ex.errorCode)
     }
 
     @Test
     fun `대표 지정이 상태에 반영된다`() {
-        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코")
+        val pet = PetProfile.register(user, dogBreed, "초코")
         assertFalse(pet.isDefault, "기본값은 비대표여야 한다")
 
         pet.markAsDefault()

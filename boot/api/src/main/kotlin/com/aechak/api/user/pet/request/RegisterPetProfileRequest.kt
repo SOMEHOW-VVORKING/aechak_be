@@ -1,7 +1,6 @@
 package com.aechak.api.user.pet.request
 
 import com.aechak.application.user.pet.usecase.command.RegisterPetProfileCommand
-import com.aechak.domain.user.pet.enums.Species
 import com.fasterxml.jackson.annotation.JsonProperty
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.DecimalMax
@@ -13,7 +12,6 @@ import jakarta.validation.constraints.Size
 import java.math.BigDecimal
 
 data class RegisterPetProfileRequest(
-    val species: Species,
     @field:NotBlank(message = "이름은 필수입니다.")
     @field:Size(max = 50, message = "이름은 {max}자를 넘을 수 없습니다.")
     val name: String,
@@ -37,7 +35,6 @@ data class RegisterPetProfileRequest(
     fun toCommand(userId: Long): RegisterPetProfileCommand =
         RegisterPetProfileCommand(
             userId = userId,
-            species = species,
             name = name,
             breedId = breedId,
             birthYearMonth = birthYearMonth,
