@@ -1,6 +1,7 @@
 package com.aechak.domain.user.pet
 
 import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.support.BaseEntity
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.pet.enums.PetStatus
@@ -111,7 +112,7 @@ class PetProfile protected constructor(
 
     fun requireVersion(expected: Int) {
         if (version != expected) {
-            throw BusinessException(UserErrorCode.PET_PROFILE_VERSION_CONFLICT)
+            throw BusinessException(CommonErrorCode.CONCURRENT_MODIFICATION)
         }
     }
 

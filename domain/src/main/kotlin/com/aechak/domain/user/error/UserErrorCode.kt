@@ -35,5 +35,4 @@ enum class UserErrorCode(
     // 미존재와 종 불일치를 한 코드로 묶음. 클라이언트가 할 일이 같음
     INVALID_BREED(30134, "선택한 품종이 올바르지 않습니다.", 400),
     INVALID_PET_BIRTH_YEAR_MONTH(30135, "생년월은 이번 달보다 미래일 수 없습니다.", 400),
-    PET_PROFILE_VERSION_CONFLICT(30136, "다른 곳에서 먼저 수정되었습니다. 새로고침 후 다시 시도해 주세요.", 409),
 }

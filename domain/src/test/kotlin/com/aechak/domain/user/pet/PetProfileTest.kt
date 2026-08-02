@@ -1,6 +1,7 @@
 package com.aechak.domain.user.pet
 
 import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.pet.enums.Species
 import com.aechak.domain.user.user.User
@@ -146,7 +147,7 @@ class PetProfileTest {
         pet.requireVersion(0)
 
         val ex = assertFailsWith<BusinessException> { pet.requireVersion(1) }
-        assertEquals(UserErrorCode.PET_PROFILE_VERSION_CONFLICT, ex.errorCode)
+        assertEquals(CommonErrorCode.CONCURRENT_MODIFICATION, ex.errorCode)
     }
 
     @Test

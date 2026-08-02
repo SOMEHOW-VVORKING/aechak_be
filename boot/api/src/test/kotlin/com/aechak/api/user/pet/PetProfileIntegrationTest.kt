@@ -7,6 +7,7 @@ import com.aechak.application.file.error.FileErrorCode
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.enums.UploadPurpose
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.pet.Breed
 import com.aechak.domain.user.pet.PetProfile
@@ -425,7 +426,7 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
         mockMvc
             .perform(putPet(ownerToken, petId, updateJson(name = "초콜릿", version = current - 1)))
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.PET_PROFILE_VERSION_CONFLICT.code))
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.CONCURRENT_MODIFICATION.code))
     }
 
     @Test
@@ -633,7 +634,7 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
         mockMvc
             .perform(putPet(ownerToken, firstId, updateJson(name = "첫째", isDefault = true, version = staleVersion)))
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.PET_PROFILE_VERSION_CONFLICT.code))
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.CONCURRENT_MODIFICATION.code))
     }
 
     /**
