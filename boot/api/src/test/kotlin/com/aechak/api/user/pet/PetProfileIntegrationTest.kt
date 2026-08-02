@@ -12,8 +12,6 @@ import com.aechak.domain.user.pet.Breed
 import com.aechak.domain.user.pet.PetProfile
 import com.aechak.domain.user.pet.enums.Species
 import com.aechak.domain.user.user.User
-import com.aechak.domain.user.user.enums.UserStatus
-import com.aechak.websecurity.config.JwtConfig
 import com.jayway.jsonpath.JsonPath
 import org.hibernate.SessionFactory
 import org.hibernate.stat.Statistics
@@ -26,9 +24,6 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
-import org.springframework.security.oauth2.jwt.JwtClaimsSet
-import org.springframework.security.oauth2.jwt.JwtEncoder
-import org.springframework.security.oauth2.jwt.JwtEncoderParameters
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
@@ -38,7 +33,6 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
-import java.time.Instant
 
 /**
  * 통합 — 펫 API가 실 보안 필터체인·실 MySQL을 통과해 계약대로 동작하는지.
@@ -52,9 +46,6 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var securityFilterChain: FilterChainProxy
-
-    @Autowired
-    private lateinit var jwtEncoder: JwtEncoder
 
     @Autowired
     private lateinit var fileStorage: FileStorage
@@ -546,19 +537,6 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
         }
     }
 
-    private fun createActiveUser(): Long =
-        tx.execute {
-            val user = User.preRegister()
-            em.persist(user)
-            em.flush()
-            em
-                .createQuery("update User u set u.status = :st where u.id = :id")
-                .setParameter("st", UserStatus.ACTIVE)
-                .setParameter("id", user.id)
-                .executeUpdate()
-            user.id
-        }!!
-
     private fun createPendingUser(): Long =
         tx.execute {
             val user = User.preRegister()
@@ -566,19 +544,6 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
             em.flush()
             user.id
         }!!
-
-    private fun mintAccessToken(userId: Long): String {
-        val now = Instant.now()
-        val claims =
-            JwtClaimsSet
-                .builder()
-                .subject(userId.toString())
-                .issuedAt(now)
-                .expiresAt(now.plusSeconds(3600))
-                .claim(JwtConfig.ROLE_CLAIM, "GENERAL")
-                .build()
-        return jwtEncoder.encode(JwtEncoderParameters.from(claims)).tokenValue
-    }
 
     companion object {
         // FE 스키마의 등록 응답과 1:1 (userId는 등록 응답에만)
