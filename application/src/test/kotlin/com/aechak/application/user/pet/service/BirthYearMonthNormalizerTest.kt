@@ -13,6 +13,9 @@ import kotlin.test.assertNull
  */
 class BirthYearMonthNormalizerTest {
     private val today = YearMonth.of(2026, 7)
+    private val thisMonth = today.toString()
+    private val nextMonth = today.plusMonths(1).toString()
+    private val nextYear = today.plusYears(1).year.toString()
 
     @Test
     fun `연월을 주면 그대로 쓴다`() {
@@ -31,16 +34,16 @@ class BirthYearMonthNormalizerTest {
 
     @Test
     fun `미래 생년월은 거절한다`() {
-        assertFailsWith<BusinessException> { BirthYearMonthNormalizer.normalize("2026-08", today) }
+        assertFailsWith<BusinessException> { BirthYearMonthNormalizer.normalize(nextMonth, today) }
     }
 
     @Test
     fun `이번 달은 허용한다`() {
-        assertEquals("2026-07", BirthYearMonthNormalizer.normalize("2026-07", today))
+        assertEquals(thisMonth, BirthYearMonthNormalizer.normalize(thisMonth, today))
     }
 
     @Test
     fun `연도만 준 미래도 거절한다`() {
-        assertFailsWith<BusinessException> { BirthYearMonthNormalizer.normalize("2027", today) }
+        assertFailsWith<BusinessException> { BirthYearMonthNormalizer.normalize(nextYear, today) }
     }
 }

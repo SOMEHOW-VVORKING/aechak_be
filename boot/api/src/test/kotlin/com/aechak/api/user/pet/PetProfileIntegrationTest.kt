@@ -4,7 +4,9 @@ import com.aechak.api.support.FakeFileStorage
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.file.error.FileErrorCode
+import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.FileStorage
+import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.pet.Breed
 import com.aechak.domain.user.pet.PetProfile
@@ -240,7 +242,7 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `사진 키는 정식 위치로 승격되어 저장된다`() {
-        registerPet(ownerToken, petJson(name = "초코", profileImageKey = "tmp/$ownerId/pets/profile/abc.png"))
+        registerPet(ownerToken, petJson(name = "초코", profileImageKey = tmpKey(ownerId)))
 
         val body = listBody(ownerToken)
         val key = JsonPath.read<String>(body, "$.data.pets[0].profileImageKey")
@@ -263,7 +265,7 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
     @Test
     fun `타인이 발급받은 사진 키는 등록에 쓸 수 없다`() {
         mockMvc
-            .perform(postPet(ownerToken, petJson(name = "초코", profileImageKey = "tmp/$otherId/pets/profile/abc.png")))
+            .perform(postPet(ownerToken, petJson(name = "초코", profileImageKey = tmpKey(otherId))))
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.errorCode").value(FileErrorCode.FILE_ACCESS_DENIED.code))
     }
@@ -271,7 +273,7 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
     @Test
     fun `내 id를 접두로 갖는 다른 유저의 사진 키도 막는다`() {
         // 소유 검증에서 후행 슬래시가 빠지면 id=1이 id=11의 파일을 씀
-        val lookalike = "tmp/${ownerId}9/pets/profile/abc.png"
+        val lookalike = tmpKey("${ownerId}9".toLong())
 
         mockMvc
             .perform(postPet(ownerToken, petJson(name = "초코", profileImageKey = lookalike)))
@@ -288,7 +290,7 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
             .perform(
                 postPet(
                     ownerToken,
-                    petJson(name = "초코", weight = "200.1", profileImageKey = "tmp/$ownerId/pets/profile/abc.png"),
+                    petJson(name = "초코", weight = "200.1", profileImageKey = tmpKey(ownerId)),
                 ),
             ).andExpect(status().isBadRequest)
 
@@ -461,6 +463,8 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
             }
         }
     }
+
+    private fun tmpKey(userId: Long): String = "${FileKey.tmpPrefixOf(userId, UploadPurpose.PET_PROFILE)}abc.png"
 
     private fun postPet(
         token: String,

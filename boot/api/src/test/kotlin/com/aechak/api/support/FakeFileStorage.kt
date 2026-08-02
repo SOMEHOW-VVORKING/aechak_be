@@ -1,5 +1,6 @@
 package com.aechak.api.support
 
+import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.IssueFileUrl
 import com.aechak.application.file.port.enums.FileType
@@ -22,7 +23,7 @@ class FakeFileStorage : FileStorage {
         fileType: FileType,
         userId: Long,
     ): IssueFileUrl {
-        val key = "tmp/$userId/${purpose.prefix}/${Ulid.generate()}.${fileType.extension}"
+        val key = "${FileKey.tmpPrefixOf(userId, purpose)}${Ulid.generate()}.${fileType.extension}"
         return IssueFileUrl("https://fake-presigned.local/$key", key)
     }
 
