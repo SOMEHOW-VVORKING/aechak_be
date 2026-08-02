@@ -1,6 +1,6 @@
 package com.aechak.api.user.pet.request
 
-import com.aechak.application.user.pet.usecase.command.RegisterPetProfileCommand
+import com.aechak.application.user.pet.usecase.command.UpdatePetProfileCommand
 import com.fasterxml.jackson.annotation.JsonProperty
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.DecimalMax
@@ -11,7 +11,8 @@ import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 import java.math.BigDecimal
 
-data class RegisterPetProfileRequest(
+/** 전체 객체 전송이라 유지할 값도 실어 보내야 함. `profileImageKey`를 빼면 기존 사진이 지워짐. */
+data class UpdatePetProfileRequest(
     @field:NotBlank(message = "이름은 필수입니다.")
     @field:Size(max = PetProfileConstraints.NAME_MAX, message = "이름은 {max}자를 넘을 수 없습니다.")
     val name: String,
@@ -31,19 +32,28 @@ data class RegisterPetProfileRequest(
     )
     val weight: BigDecimal? = null,
     @field:Size(max = PetProfileConstraints.IMAGE_KEY_MAX, message = "이미지 키는 {max}자를 넘을 수 없습니다.")
+    @field:Schema(description = "새로 올린 tmp 키 또는 유지할 기존 키. 빼면 사진이 지워진다")
     val profileImageKey: String? = null,
-    // Boolean?인 이유: Boolean+기본값이면 명시적 null에서 Jackson 파싱이 깨짐. 생략=false.
+    // 생략=변경 없음. 대표 해제는 다른 펫 지정으로만 됨.
+    // Boolean?인 이유: Boolean+기본값이면 명시적 null에서 Jackson 파싱이 깨짐.
     @get:JsonProperty("isDefault")
     val isDefault: Boolean? = null,
+    @field:Schema(description = "목록·수정 응답에서 받은 값. 보내면 그 사이 누가 먼저 고쳤는지 검사한다")
+    val version: Int? = null,
 ) {
-    fun toCommand(userId: Long): RegisterPetProfileCommand =
-        RegisterPetProfileCommand(
+    fun toCommand(
+        userId: Long,
+        petId: Long,
+    ): UpdatePetProfileCommand =
+        UpdatePetProfileCommand(
             userId = userId,
+            petId = petId,
             name = name,
             breedId = breedId,
             birthYearMonth = birthYearMonth,
             weight = weight,
             profileImageKey = profileImageKey,
             isDefault = isDefault ?: false,
+            version = version,
         )
 }

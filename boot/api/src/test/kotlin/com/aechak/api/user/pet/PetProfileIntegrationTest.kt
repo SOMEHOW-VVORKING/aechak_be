@@ -7,6 +7,7 @@ import com.aechak.application.file.error.FileErrorCode
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.enums.UploadPurpose
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.pet.Breed
 import com.aechak.domain.user.pet.PetProfile
@@ -26,8 +27,11 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
@@ -332,6 +336,311 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
         mockMvc.perform(get("/api/v1/users/me/pets")).andExpect(status().isUnauthorized)
     }
 
+    @Test
+    fun `수정하면 값이 바뀌고 version이 올라간다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코", weight = "4.5"))
+        val before = JsonPath.read<Int>(listBody(ownerToken), "$.data.pets[0].version")
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초콜릿", weight = "5.2")))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.name").value("초콜릿"))
+            .andExpect(jsonPath("$.data.weight").value(5.2))
+
+        assertTrue(
+            JsonPath.read<Int>(listBody(ownerToken), "$.data.pets[0].version") > before,
+            "수정하면 낙관적 락 버전이 올라가야 한다",
+        )
+    }
+
+    @Test
+    fun `전체 객체 전송이라 사진 키를 빼면 사진이 지워진다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코", profileImageKey = "tmp/$ownerId/pets/profile/abc.png"))
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코")))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.profileImageKey").value(null as String?))
+    }
+
+    @Test
+    fun `이미 저장된 정식 키를 다시 보내면 승격하지 않고 그대로 유지한다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코", profileImageKey = "tmp/$ownerId/pets/profile/abc.png"))
+        val storedKey = JsonPath.read<String>(listBody(ownerToken), "$.data.pets[0].profileImageKey")
+        val promotedBefore = promotedKeyCount()
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코", profileImageKey = storedKey)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.profileImageKey").value(storedKey))
+
+        assertEquals(promotedBefore, promotedKeyCount(), "정식 키는 다시 승격하지 않아야 한다")
+    }
+
+    @Test
+    fun `이 펫에 붙어 있지 않은 정식 키는 수정에 쓸 수 없다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코", profileImageKey = "users/profile/abc.png")))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(FileErrorCode.FILE_ACCESS_DENIED.code))
+    }
+
+    @Test
+    fun `타인 펫에 저장된 사진 키를 내 펫에 붙일 수 없다`() {
+        // 목록 응답에 정식 키가 실려 나가므로 도용 경로가 실재함
+        registerPet(otherToken, petJson(name = "남의펫", profileImageKey = tmpKey(otherId)))
+        val stolenKey = JsonPath.read<String>(listBody(otherToken), "$.data.pets[0].profileImageKey")
+        val myPetId = registerPet(ownerToken, petJson(name = "내펫"))
+
+        mockMvc
+            .perform(putPet(ownerToken, myPetId, updateJson(name = "내펫", profileImageKey = stolenKey)))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(FileErrorCode.FILE_ACCESS_DENIED.code))
+    }
+
+    @Test
+    fun `수정 응답의 version을 그대로 다시 써도 통한다`() {
+        // 응답을 flush 전 엔티티로 조립하면 옛 version이 실려 클라이언트가 항상 409를 맞음.
+        // 목록 재조회로는 안 잡힘. 응답에 실린 값을 그대로 되먹여야 드러남.
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+        val v0 = versionOf(ownerToken, petId)
+
+        val firstBody =
+            mockMvc
+                .perform(putPet(ownerToken, petId, updateJson(name = "초콜릿", version = v0)))
+                .andExpect(status().isOk)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        val returned = JsonPath.read<Int>(firstBody, "$.data.version")
+
+        assertTrue(returned > v0, "수정 응답은 증가한 version을 실어야 한다 (요청 $v0, 응답 $returned)")
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코", version = returned)))
+            .andExpect(status().isOk)
+    }
+
+    @Test
+    fun `낡은 version으로 수정하면 409다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+        val current = JsonPath.read<Int>(listBody(ownerToken), "$.data.pets[0].version")
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초콜릿", version = current - 1)))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.CONCURRENT_MODIFICATION.code))
+    }
+
+    @Test
+    fun `이미 기본인 펫을 다시 기본으로 지정해도 성공한다`() {
+        // 더블탭으로 바로 닿는 경로라 멱등이어야 함
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+
+        mockMvc
+            .perform(patchDefault(ownerToken, petId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.isDefault").value(true))
+
+        val body = listBody(ownerToken)
+        assertEquals(1, JsonPath.read<List<*>>(body, "$.data.pets[?(@.isDefault == true)]").size)
+    }
+
+    @Test
+    fun `isDefault를 false로 보내도 기본은 해제되지 않는다`() {
+        // 활성 펫이 있으면 기본은 정확히 1마리라는 불변식을 반대로 조작해본다.
+        // 등록(첫 펫 자동)과 삭제(자동 승격)가 막는 상태를 수정이 만들 수 있으면 안 된다.
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코", isDefault = false)))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.isDefault").value(true))
+
+        assertEquals(
+            1,
+            JsonPath.read<List<*>>(listBody(ownerToken), "$.data.pets[?(@.isDefault == true)]").size,
+            "기본 펫이 0마리가 되면 안 된다",
+        )
+    }
+
+    @Test
+    fun `삭제한 펫은 더 이상 삭제할 수 없다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+        mockMvc.perform(deletePet(ownerToken, petId)).andExpect(status().isOk)
+
+        mockMvc
+            .perform(deletePet(ownerToken, petId))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.PET_PROFILE_NOT_FOUND.code))
+    }
+
+    @Test
+    fun `인증 없이는 수정도 삭제도 대표지정도 못 한다`() {
+        mockMvc
+            .perform(put("/api/v1/users/me/pets/1").contentType(MediaType.APPLICATION_JSON).content(updateJson(name = "초코")))
+            .andExpect(status().isUnauthorized)
+        mockMvc.perform(delete("/api/v1/users/me/pets/1")).andExpect(status().isUnauthorized)
+        mockMvc.perform(patch("/api/v1/users/me/pets/1/default")).andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `타인의 펫은 수정도 삭제도 대표지정도 못 한다`() {
+        val petId = registerPet(ownerToken, petJson(name = "내펫"))
+
+        mockMvc
+            .perform(putPet(otherToken, petId, updateJson(name = "탈취")))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.PET_PROFILE_ACCESS_DENIED.code))
+
+        mockMvc
+            .perform(deletePet(otherToken, petId))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.PET_PROFILE_ACCESS_DENIED.code))
+
+        mockMvc
+            .perform(patchDefault(otherToken, petId))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.PET_PROFILE_ACCESS_DENIED.code))
+    }
+
+    @Test
+    fun `없는 펫을 건드리면 404다`() {
+        mockMvc
+            .perform(deletePet(ownerToken, 999_999L))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.PET_PROFILE_NOT_FOUND.code))
+    }
+
+    @Test
+    fun `수정으로도 종이 다른 품종을 넣을 수 없다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코", breedId = catBreedId)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.INVALID_BREED.code))
+    }
+
+    @Test
+    fun `수정으로도 미래 생년월은 넣을 수 없다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+        val nextYear =
+            java.time.YearMonth
+                .now()
+                .plusYears(1)
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "초코", birthYearMonth = nextYear.toString())))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.INVALID_PET_BIRTH_YEAR_MONTH.code))
+    }
+
+    @Test
+    fun `삭제한 펫은 더 이상 수정할 수 없다`() {
+        val petId = registerPet(ownerToken, petJson(name = "초코"))
+        mockMvc.perform(deletePet(ownerToken, petId)).andExpect(status().isOk)
+
+        mockMvc
+            .perform(putPet(ownerToken, petId, updateJson(name = "부활")))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.PET_PROFILE_NOT_FOUND.code))
+    }
+
+    @Test
+    fun `대표 펫을 삭제하면 남은 펫이 승격되고 그 id를 돌려준다`() {
+        val defaultPetId = registerPet(ownerToken, petJson(name = "대표"))
+        val otherPetId = registerPet(ownerToken, petJson(name = "둘째"))
+
+        mockMvc
+            .perform(deletePet(ownerToken, defaultPetId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.promotedDefaultPetId").value(otherPetId))
+
+        val body = listBody(ownerToken)
+        assertEquals(1, (JsonPath.read(body, "$.data.pets") as List<*>).size, "삭제된 펫은 목록에 없어야 한다")
+        assertTrue(JsonPath.read<Boolean>(body, "$.data.pets[0].isDefault"), "남은 펫이 대표여야 한다")
+    }
+
+    @Test
+    fun `비대표를 삭제하면 승격이 없다`() {
+        registerPet(ownerToken, petJson(name = "대표"))
+        val secondId = registerPet(ownerToken, petJson(name = "둘째"))
+
+        mockMvc
+            .perform(deletePet(ownerToken, secondId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.promotedDefaultPetId").value(null as Long?))
+    }
+
+    @Test
+    fun `마지막 펫을 삭제하면 승격 대상이 없다`() {
+        val onlyId = registerPet(ownerToken, petJson(name = "하나뿐"))
+
+        mockMvc
+            .perform(deletePet(ownerToken, onlyId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.promotedDefaultPetId").value(null as Long?))
+
+        assertEquals(0, (JsonPath.read(listBody(ownerToken), "$.data.pets") as List<*>).size)
+    }
+
+    @Test
+    fun `삭제한 펫의 자리는 한도에서 빠진다`() {
+        val ids = (0 until 10).map { registerPet(ownerToken, petJson(name = "펫$it")) }
+        mockMvc.perform(postPet(ownerToken, petJson(name = "열한번째"))).andExpect(status().isUnprocessableEntity)
+
+        mockMvc.perform(deletePet(ownerToken, ids.last())).andExpect(status().isOk)
+
+        mockMvc.perform(postPet(ownerToken, petJson(name = "새펫"))).andExpect(status().isCreated)
+    }
+
+    @Test
+    fun `대표를 전환하면 이전 대표가 풀리고 목록 최상단이 바뀐다`() {
+        registerPet(ownerToken, petJson(name = "첫째"))
+        val secondId = registerPet(ownerToken, petJson(name = "둘째"))
+
+        mockMvc
+            .perform(patchDefault(ownerToken, secondId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.petId").value(secondId))
+            .andExpect(jsonPath("$.data.isDefault").value(true))
+
+        val body = listBody(ownerToken)
+        assertEquals(1, JsonPath.read<List<*>>(body, "$.data.pets[?(@.isDefault == true)]").size)
+        assertEquals("둘째", JsonPath.read<String>(body, "$.data.pets[0].name"))
+    }
+
+    @Test
+    fun `대표에서 풀린 펫도 version이 올라간다`() {
+        // 안 올라가면 낡은 화면이 수정 요청으로 기본 펫을 되찾아옴.
+        val firstId = registerPet(ownerToken, petJson(name = "첫째"))
+        val secondId = registerPet(ownerToken, petJson(name = "둘째"))
+        val versionBefore = versionOf(ownerToken, firstId)
+
+        mockMvc.perform(patchDefault(ownerToken, secondId)).andExpect(status().isOk)
+
+        assertTrue(
+            versionOf(ownerToken, firstId) > versionBefore,
+            "대표에서 풀린 펫의 version이 올라가야 한다",
+        )
+    }
+
+    @Test
+    fun `대표를 잃은 뒤 낡은 version으로 수정하면 409다`() {
+        val firstId = registerPet(ownerToken, petJson(name = "첫째"))
+        val secondId = registerPet(ownerToken, petJson(name = "둘째"))
+        val staleVersion = versionOf(ownerToken, firstId) // 화면이 이 값을 들고 있는 상태
+
+        mockMvc.perform(patchDefault(ownerToken, secondId)).andExpect(status().isOk)
+
+        mockMvc
+            .perform(putPet(ownerToken, firstId, updateJson(name = "첫째", isDefault = true, version = staleVersion)))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.CONCURRENT_MODIFICATION.code))
+    }
+
     /**
      * FE 스키마를 손으로 맞추므로 필드명이 어긋나도 양쪽 테스트가 초록불이고 실서버에서야 드러남.
      * 기대값도 손으로 옮겨 적은 상수라 FE 스키마 자체가 틀린 경우는 못 잡음.
@@ -455,6 +764,15 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
 
     private fun tmpKey(userId: Long): String = "${FileKey.tmpPrefixOf(userId, UploadPurpose.PET_PROFILE)}abc.png"
 
+    /** 필터 표현식은 결과가 배열로 오므로 첫 원소를 꺼냄 */
+    private fun versionOf(
+        token: String,
+        petId: Long,
+    ): Int {
+        val versions = JsonPath.read<List<*>>(listBody(token), "$.data.pets[?(@.petId == $petId)].version")
+        return (versions.first() as Number).toInt()
+    }
+
     private fun postPet(
         token: String,
         body: String,
@@ -462,6 +780,46 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
         .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
         .contentType(MediaType.APPLICATION_JSON)
         .content(body)
+
+    private fun putPet(
+        token: String,
+        petId: Long,
+        body: String,
+    ) = put("/api/v1/users/me/pets/$petId")
+        .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content(body)
+
+    private fun deletePet(
+        token: String,
+        petId: Long,
+    ) = delete("/api/v1/users/me/pets/$petId").header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+
+    private fun patchDefault(
+        token: String,
+        petId: Long,
+    ) = patch("/api/v1/users/me/pets/$petId/default").header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+
+    private fun updateJson(
+        name: String,
+        breedId: Long = dogBreedId,
+        birthYearMonth: String? = null,
+        weight: String? = null,
+        profileImageKey: String? = null,
+        isDefault: Boolean? = null,
+        version: Int? = null,
+    ): String =
+        """
+        {
+          "name": "$name",
+          "breedId": $breedId,
+          "birthYearMonth": ${jsonStr(birthYearMonth)},
+          "weight": ${weight ?: "null"},
+          "profileImageKey": ${jsonStr(profileImageKey)},
+          "isDefault": ${isDefault ?: "null"},
+          "version": ${version ?: "null"}
+        }
+        """.trimIndent()
 
     private fun registerPet(
         token: String,

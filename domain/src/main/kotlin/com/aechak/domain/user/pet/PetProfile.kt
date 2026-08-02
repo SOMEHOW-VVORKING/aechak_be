@@ -1,6 +1,7 @@
 package com.aechak.domain.user.pet
 
 import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.support.BaseEntity
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.pet.enums.PetStatus
@@ -46,7 +47,7 @@ class PetProfile protected constructor(
 
     val species: Species get() = breed.species
 
-    @Column(length = 50, nullable = false)
+    @Column(length = NAME_MAX, nullable = false)
     var name: String = name
         protected set
 
@@ -89,9 +90,40 @@ class PetProfile protected constructor(
         isDefault = true
     }
 
+    /** 전체 객체 전송이라 통째로 덮음. `profileImageKey`가 null이면 사진이 지워짐 */
+    fun update(
+        breed: Breed,
+        name: String,
+        birthYearMonth: String?,
+        weight: BigDecimal?,
+        profileImageKey: String?,
+    ) {
+        // 종은 등록 시 확정이다. 파생 이후로는 품종을 바꾸면 종까지 따라 바뀌므로 여기서 막는다.
+        if (breed.species != species) {
+            throw BusinessException(UserErrorCode.INVALID_BREED)
+        }
+        validate(breed, weight)
+        this.breed = breed
+        this.name = name
+        this.birthYearMonth = birthYearMonth
+        this.weight = weight
+        this.profileImageKey = profileImageKey
+    }
+
+    fun requireVersion(expected: Int) {
+        if (version != expected) {
+            throw BusinessException(CommonErrorCode.CONCURRENT_MODIFICATION)
+        }
+    }
+
     companion object {
-        private val MIN_WEIGHT = BigDecimal("0.1")
-        private val MAX_WEIGHT = BigDecimal("200.0")
+        // 요청 DTO의 제약 어노테이션이 이 값들을 참조해야 두 계층이 안 어긋남
+        const val NAME_MAX = 50
+        const val WEIGHT_MIN = "0.1"
+        const val WEIGHT_MAX = "200.0"
+
+        private val MIN_WEIGHT = BigDecimal(WEIGHT_MIN)
+        private val MAX_WEIGHT = BigDecimal(WEIGHT_MAX)
 
         private fun validateWeight(weight: BigDecimal?) {
             if (weight != null && (weight < MIN_WEIGHT || weight > MAX_WEIGHT)) {

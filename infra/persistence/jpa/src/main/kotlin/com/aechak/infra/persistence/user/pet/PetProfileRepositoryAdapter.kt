@@ -20,6 +20,11 @@ interface PetProfileJpaRepository : JpaRepository<PetProfile, Long> {
         @Param("status") status: PetStatus,
     ): List<PetProfile>
 
+    fun findByIdAndStatus(
+        id: Long,
+        status: PetStatus,
+    ): PetProfile?
+
     fun findAllByUserIdAndStatusOrderByUpdatedAtDescIdDesc(
         userId: Long,
         status: PetStatus,
@@ -38,6 +43,8 @@ class PetProfileRepositoryAdapter(
     // @Version은 flush 시점에 오름. save만 하면 응답에 옛 version이 실려
     // 클라이언트가 그 값으로 다음 수정을 하면 무조건 409.
     override fun save(pet: PetProfile): PetProfile = jpaRepository.saveAndFlush(pet)
+
+    override fun findActiveById(id: Long): PetProfile? = jpaRepository.findByIdAndStatus(id, PetStatus.ACTIVE)
 
     override fun findAllActiveByUserIdDefaultFirst(userId: Long): List<PetProfile> =
         jpaRepository.findActiveByUserIdDefaultFirst(userId, PetStatus.ACTIVE)
