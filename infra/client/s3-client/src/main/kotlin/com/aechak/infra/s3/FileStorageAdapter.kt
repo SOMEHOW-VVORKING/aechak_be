@@ -43,6 +43,8 @@ class FileStorageAdapter(
         return IssueFileUrl(presigned.url().toString(), key)
     }
 
+    override fun publicUrlOf(key: String): String = "${s3Properties.mediaPublicBaseUrl.trimEnd('/')}/${key.trimStart('/')}"
+
     private fun bucketOf(category: StorageCategory): String =
         when (category) {
             StorageCategory.MEDIA -> s3Properties.mediaBucket

@@ -40,7 +40,7 @@ class AuthFacade(
     WebLoginUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    private val loginTx = TransactionTemplate(transactionManager)
+    private val tx = TransactionTemplate(transactionManager)
 
     override fun login(command: SocialLoginCommand): SocialLoginResult = loginWithRetry(command)
 
@@ -83,9 +83,9 @@ class AuthFacade(
 
     private fun loginWithRetry(command: SocialLoginCommand): SocialLoginResult =
         try {
-            loginTx.execute { socialLoginService.login(command) }!!
+            tx.execute { socialLoginService.login(command) }!!
         } catch (e: DataIntegrityViolationException) {
             // 동시 가입 race — 승자의 identity를 새 트랜잭션에서 재조회(폴백)
-            loginTx.execute { socialLoginService.login(command) }!!
+            tx.execute { socialLoginService.login(command) }!!
         }
 }
