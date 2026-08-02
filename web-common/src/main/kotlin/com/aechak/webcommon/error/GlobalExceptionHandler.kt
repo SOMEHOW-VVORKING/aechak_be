@@ -3,6 +3,7 @@ package com.aechak.webcommon.error
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import org.slf4j.LoggerFactory
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
@@ -64,6 +65,15 @@ class GlobalExceptionHandler {
         return ResponseEntity
             .status(HttpStatus.valueOf(e.errorCode.status))
             .body(ErrorResponse.of(e.errorCode))
+    }
+
+    // @Version 엔티티는 flush 시점에 터져 서비스 코드로는 못 잡음. 안 걸러주면 500으로 샘.
+    @ExceptionHandler(OptimisticLockingFailureException::class)
+    fun handleConcurrentModification(e: OptimisticLockingFailureException): ResponseEntity<ErrorResponse> {
+        log.warn("낙관적 락 충돌", e)
+        return ResponseEntity
+            .status(HttpStatus.CONFLICT)
+            .body(ErrorResponse.of(CommonErrorCode.CONCURRENT_MODIFICATION))
     }
 
     @ExceptionHandler(Exception::class)

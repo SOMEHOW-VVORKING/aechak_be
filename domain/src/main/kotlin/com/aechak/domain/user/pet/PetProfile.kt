@@ -25,12 +25,11 @@ import java.math.BigDecimal
 class PetProfile protected constructor(
     user: User,
     breed: Breed,
-    species: Species,
     name: String,
     birthYearMonth: String?,
     weight: BigDecimal?,
     profileImageKey: String?,
-    isPrimary: Boolean,
+    isDefault: Boolean,
 ) : BaseEntity() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -45,10 +44,7 @@ class PetProfile protected constructor(
     var breed: Breed = breed
         protected set
 
-    @Enumerated(EnumType.STRING)
-    @Column(length = 30, nullable = false)
-    var species: Species = species
-        protected set
+    val species: Species get() = breed.species
 
     @Column(length = 50, nullable = false)
     var name: String = name
@@ -72,7 +68,7 @@ class PetProfile protected constructor(
         protected set
 
     @Column(nullable = false)
-    var isPrimary: Boolean = isPrimary
+    var isDefault: Boolean = isDefault
         protected set
 
     @Version
@@ -82,23 +78,45 @@ class PetProfile protected constructor(
 
     fun delete() {
         status = PetStatus.DELETED
+        isDefault = false
+    }
+
+    fun releaseDefault() {
+        isDefault = false
+    }
+
+    fun markAsDefault() {
+        isDefault = true
     }
 
     companion object {
+        private val MIN_WEIGHT = BigDecimal("0.1")
+        private val MAX_WEIGHT = BigDecimal("200.0")
+
+        private fun validateWeight(weight: BigDecimal?) {
+            if (weight != null && (weight < MIN_WEIGHT || weight > MAX_WEIGHT)) {
+                throw BusinessException(UserErrorCode.INVALID_PET_WEIGHT)
+            }
+        }
+
+        fun validate(
+            breed: Breed,
+            weight: BigDecimal?,
+        ) {
+            validateWeight(weight)
+        }
+
         fun register(
             user: User,
             breed: Breed,
-            species: Species,
             name: String,
             birthYearMonth: String? = null,
             weight: BigDecimal? = null,
             profileImageKey: String? = null,
-            isPrimary: Boolean = false,
+            isDefault: Boolean = false,
         ): PetProfile {
-            if (weight != null && weight <= BigDecimal.ZERO) {
-                throw BusinessException(UserErrorCode.INVALID_PET_WEIGHT)
-            }
-            return PetProfile(user, breed, species, name, birthYearMonth, weight, profileImageKey, isPrimary)
+            validate(breed, weight)
+            return PetProfile(user, breed, name, birthYearMonth, weight, profileImageKey, isDefault)
         }
     }
 }
