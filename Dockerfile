@@ -8,6 +8,8 @@ RUN --mount=type=cache,target=/root/.gradle ./gradlew :api:bootJar -x test --no-
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
+
+ENV TZ=Asia/Seoul
 # bootJar 산출물은 api.jar 고정(api-plain.jar는 실행 불가한 라이브러리 jar라 제외)
 COPY --from=builder /workspace/boot/api/build/libs/api.jar app.jar
 EXPOSE 8080

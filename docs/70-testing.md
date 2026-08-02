@@ -36,6 +36,8 @@
 
 **패키지 배치**: 모듈 안에서는 대상 프로덕션 클래스와 같은 패키지에 둔다(예: `com.aechak.api.product.controller`의 `ProductController` → 테스트도 `...product.controller`). IDE·커버리지 도구의 짝 매칭과 탐색성을 위해서다. 다만 특정 클래스를 겨냥하지 않는 통합 테스트(`IntegrationTestBase` 기반 등)는 미러링할 짝이 없으므로 상위 패키지에 평평하게 둔다.
 
+**파일명**: 대상 프로덕션 **파일 기준으로 짓는다** — `PetProfile.kt` → `PetProfileTest.kt`. 시나리오명(`PetProfileRegistrationTest` 등)으로 짓지 않는다. 패키지 미러링과 같은 근거이고(짝 매칭·탐색성), 한 프로덕션 파일의 테스트가 여러 곳에 흩어지는 것도 막는다. 한 파일의 테스트가 커지면 파일을 쪼개지 말고 `@Nested`로 묶는다. 통합 테스트는 짝이 없으므로 대상 기능명 + `IntegrationTest`(예: `PetProfileIntegrationTest`).
+
 **예외**: 실 레포지토리·트랜잭션·커밋 관찰이 필요해지면 단위 대상이 아니다 — 통합으로 올린다. Fake 단위는 남용하지 않는다 — 배선 검증을 대체하지 못한다.
 
 역방향도 금지다: 순수 계산을 `@SpringBootTest`로 검증하지 않는다(부팅 비용 낭비 + 실패 국소화 저하).

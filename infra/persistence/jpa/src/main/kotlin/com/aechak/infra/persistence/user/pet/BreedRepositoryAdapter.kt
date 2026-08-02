@@ -4,6 +4,7 @@ import com.aechak.domain.user.pet.Breed
 import com.aechak.domain.user.pet.enums.Species
 import com.aechak.domain.user.pet.repository.BreedRepository
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.stereotype.Repository
 
 interface BreedJpaRepository : JpaRepository<Breed, Long> {
@@ -15,4 +16,6 @@ class BreedRepositoryAdapter(
     private val jpaRepository: BreedJpaRepository,
 ) : BreedRepository {
     override fun findAllBySpeciesOrderedById(species: Species): List<Breed> = jpaRepository.findAllBySpeciesOrderByIdAsc(species)
+
+    override fun findById(breedId: Long): Breed? = jpaRepository.findByIdOrNull(breedId)
 }
