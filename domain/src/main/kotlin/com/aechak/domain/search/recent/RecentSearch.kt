@@ -13,7 +13,8 @@ import java.time.LocalDateTime
 /**
  * 최근 검색어
  *
- * (user_id, normalized_keyword) 유일 제약으로 같은 키워드는 한 행만 유지
+ * (user_id, keyword) 유일 제약으로 같은 키워드는 한 행만 유지
+ * keyword는 대소문자 구분(as_cs 콜레이션)
  * 사용자가 지우면 흔적을 남기지 않는 로그성 데이터이므로 하드 삭제
  */
 @Entity
@@ -21,15 +22,14 @@ import java.time.LocalDateTime
     name = "recent_searches",
     uniqueConstraints = [
         UniqueConstraint(
-            name = "uk_recent_searches_user_normalized",
-            columnNames = ["user_id", "normalized_keyword"],
+            name = "uk_recent_searches_user_keyword",
+            columnNames = ["user_id", "keyword"],
         ),
     ],
 )
 class RecentSearch protected constructor(
     userId: Long,
-    normalizedKeyword: String,
-    displayKeyword: String,
+    keyword: String,
     searchedAt: LocalDateTime,
 ) : BaseEntity() {
     @Id
@@ -39,11 +39,9 @@ class RecentSearch protected constructor(
     @Column(nullable = false)
     val userId: Long = userId
 
-    @Column(length = 255, nullable = false)
-    val normalizedKeyword: String = normalizedKeyword
-
-    @Column(length = 255, nullable = false)
-    val displayKeyword: String = displayKeyword
+    // 대소문자와 악센트 구분 UNIQUE하게 처리하여 사용자가 친 표기를 각각 보존
+    @Column(columnDefinition = "varchar(255) collate utf8mb4_0900_as_cs not null")
+    val keyword: String = keyword
 
     @Column(nullable = false)
     val searchedAt: LocalDateTime = searchedAt
@@ -51,9 +49,8 @@ class RecentSearch protected constructor(
     companion object {
         fun record(
             userId: Long,
-            normalizedKeyword: String,
-            displayKeyword: String,
+            keyword: String,
             searchedAt: LocalDateTime = LocalDateTime.now(),
-        ): RecentSearch = RecentSearch(userId, normalizedKeyword, displayKeyword, searchedAt)
+        ): RecentSearch = RecentSearch(userId, keyword, searchedAt)
     }
 }
