@@ -47,7 +47,7 @@ class PetProfile protected constructor(
 
     val species: Species get() = breed.species
 
-    @Column(length = 50, nullable = false)
+    @Column(length = NAME_MAX, nullable = false)
     var name: String = name
         protected set
 
@@ -117,8 +117,13 @@ class PetProfile protected constructor(
     }
 
     companion object {
-        private val MIN_WEIGHT = BigDecimal("0.1")
-        private val MAX_WEIGHT = BigDecimal("200.0")
+        // 요청 DTO의 제약 어노테이션이 이 값들을 참조해야 두 계층이 안 어긋남
+        const val NAME_MAX = 50
+        const val WEIGHT_MIN = "0.1"
+        const val WEIGHT_MAX = "200.0"
+
+        private val MIN_WEIGHT = BigDecimal(WEIGHT_MIN)
+        private val MAX_WEIGHT = BigDecimal(WEIGHT_MAX)
 
         private fun validateWeight(weight: BigDecimal?) {
             if (weight != null && (weight < MIN_WEIGHT || weight > MAX_WEIGHT)) {

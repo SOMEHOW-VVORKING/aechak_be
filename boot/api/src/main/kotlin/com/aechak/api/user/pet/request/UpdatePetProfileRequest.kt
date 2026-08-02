@@ -14,20 +14,24 @@ import java.math.BigDecimal
 /** 전체 객체 전송이라 유지할 값도 실어 보내야 함. `profileImageKey`를 빼면 기존 사진이 지워짐. */
 data class UpdatePetProfileRequest(
     @field:NotBlank(message = "이름은 필수입니다.")
-    @field:Size(max = 50, message = "이름은 {max}자를 넘을 수 없습니다.")
+    @field:Size(max = PetProfileConstraints.NAME_MAX, message = "이름은 {max}자를 넘을 수 없습니다.")
     val name: String,
     val breedId: Long,
     @field:Pattern(
-        regexp = "^\\d{4}(-(0[1-9]|1[0-2]))?$",
+        regexp = PetProfileConstraints.BIRTH_YEAR_MONTH_PATTERN,
         message = "생년월은 YYYY 또는 YYYY-MM 형식이어야 합니다.",
     )
     @field:Schema(description = "생년월. 연도만 보내면 서버가 1월로 채워 저장", example = "2022-04")
     val birthYearMonth: String? = null,
-    @field:DecimalMin(value = "0.1", message = "체중은 {value}kg 이상이어야 합니다.")
-    @field:DecimalMax(value = "100.0", message = "체중은 {value}kg 이하여야 합니다.")
-    @field:Digits(integer = 3, fraction = 1, message = "체중은 소수점 첫째자리까지만 입력할 수 있습니다.")
+    @field:DecimalMin(value = PetProfileConstraints.WEIGHT_MIN, message = "체중은 {value}kg 이상이어야 합니다.")
+    @field:DecimalMax(value = PetProfileConstraints.WEIGHT_MAX, message = "체중은 {value}kg 이하여야 합니다.")
+    @field:Digits(
+        integer = PetProfileConstraints.WEIGHT_INTEGER_DIGITS,
+        fraction = PetProfileConstraints.WEIGHT_FRACTION_DIGITS,
+        message = "체중은 소수점 첫째자리까지만 입력할 수 있습니다.",
+    )
     val weight: BigDecimal? = null,
-    @field:Size(max = 1024, message = "이미지 키는 {max}자를 넘을 수 없습니다.")
+    @field:Size(max = PetProfileConstraints.IMAGE_KEY_MAX, message = "이미지 키는 {max}자를 넘을 수 없습니다.")
     @field:Schema(description = "새로 올린 tmp 키 또는 유지할 기존 키. 빼면 사진이 지워진다")
     val profileImageKey: String? = null,
     // 생략=변경 없음. 대표 해제는 다른 펫 지정으로만 됨.
