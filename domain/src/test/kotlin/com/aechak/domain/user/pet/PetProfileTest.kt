@@ -108,7 +108,7 @@ class PetProfileTest {
 
     @Test
     fun `수정은 넘어온 값으로 통째로 덮는다`() {
-        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코", "2022-04", BigDecimal("4.5"), "pets/profile/a.png")
+        val pet = PetProfile.register(user, dogBreed, "초코", "2022-04", BigDecimal("4.5"), "pets/profile/a.png")
         val other = Breed.of(Species.DOG, "푸들")
 
         pet.update(other, "초콜릿", null, null, null)
@@ -122,26 +122,26 @@ class PetProfileTest {
 
     @Test
     fun `수정도 등록과 같은 불변식을 지킨다`() {
-        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코")
-        val catBreed = Breed.of(Species.CAT, "코리안숏헤어")
+        val pet = PetProfile.register(user, dogBreed, "초코")
 
-        assertFailsWith<BusinessException> { pet.update(catBreed, "초코", null, null, null) }
-        assertFailsWith<BusinessException> { pet.update(dogBreed, "초코", null, BigDecimal("100.1"), null) }
+        assertFailsWith<BusinessException> { pet.update(dogBreed, "초코", null, BigDecimal("200.1"), null) }
         assertEquals(dogBreed, pet.breed, "거절된 수정은 상태를 남기지 않아야 한다")
     }
 
     @Test
-    fun `종은 수정 대상이 아니다`() {
-        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코")
+    fun `종이 바뀌는 품종으로는 수정할 수 없다`() {
+        // 파생이라 품종을 바꾸면 종이 따라 바뀐다. 종은 등록 시 확정이라 그 경로를 막는다.
+        val pet = PetProfile.register(user, dogBreed, "초코")
 
-        pet.update(dogBreed, "초콜릿", null, null, null)
+        val ex = assertFailsWith<BusinessException> { pet.update(catBreed, "초코", null, null, null) }
 
-        assertEquals(Species.DOG, pet.species, "update 시그니처에 species가 없다는 게 계약이다")
+        assertEquals(UserErrorCode.INVALID_BREED, ex.errorCode)
+        assertEquals(Species.DOG, pet.species, "거절된 수정은 종을 남기지 않아야 한다")
     }
 
     @Test
     fun `버전이 어긋나면 선점으로 판정한다`() {
-        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코")
+        val pet = PetProfile.register(user, dogBreed, "초코")
 
         pet.requireVersion(0)
 
@@ -151,7 +151,7 @@ class PetProfileTest {
 
     @Test
     fun `기본 해제가 상태에 반영된다`() {
-        val pet = PetProfile.register(user, dogBreed, Species.DOG, "초코", isDefault = true)
+        val pet = PetProfile.register(user, dogBreed, "초코", isDefault = true)
 
         pet.releaseDefault()
 

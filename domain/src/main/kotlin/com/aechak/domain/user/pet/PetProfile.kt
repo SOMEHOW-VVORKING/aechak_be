@@ -97,7 +97,11 @@ class PetProfile protected constructor(
         weight: BigDecimal?,
         profileImageKey: String?,
     ) {
-        validate(breed, species, weight)
+        // 종은 등록 시 확정이다. 파생 이후로는 품종을 바꾸면 종까지 따라 바뀌므로 여기서 막는다.
+        if (breed.species != species) {
+            throw BusinessException(UserErrorCode.INVALID_BREED)
+        }
+        validate(breed, weight)
         this.breed = breed
         this.name = name
         this.birthYearMonth = birthYearMonth
