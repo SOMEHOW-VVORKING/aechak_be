@@ -41,9 +41,7 @@ class RecentSearchRepositoryAdapter(
     override fun delete(
         userId: Long,
         id: Long,
-    ) {
-        jpaRepository.deleteByIdAndUserId(id, userId)
-    }
+    ): Int = jpaRepository.deleteByIdAndUserId(id, userId)
 
     override fun deleteAll(userId: Long) {
         jpaRepository.deleteAllByUserId(userId)
