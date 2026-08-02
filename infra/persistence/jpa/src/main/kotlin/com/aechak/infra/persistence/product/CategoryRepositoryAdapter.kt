@@ -11,6 +11,8 @@ interface CategoryJpaRepository : JpaRepository<Category, Long> {
         id: Long,
         status: CategoryStatus,
     ): Category?
+
+    fun findAllByStatusOrderBySortOrderAscIdAsc(status: CategoryStatus): List<Category>
 }
 
 @Repository
@@ -18,4 +20,7 @@ class CategoryRepositoryAdapter(
     private val jpaRepository: CategoryJpaRepository,
 ) : CategoryRepository {
     override fun findActiveById(id: Long): Category? = jpaRepository.findByIdAndStatus(id, CategoryStatus.ACTIVE)
+
+    override fun findAllActiveOrderedBySortOrder(): List<Category> =
+        jpaRepository.findAllByStatusOrderBySortOrderAscIdAsc(CategoryStatus.ACTIVE)
 }
