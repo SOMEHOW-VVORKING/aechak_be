@@ -2,7 +2,6 @@ package com.aechak.api.user.pet
 
 import com.aechak.api.user.pet.request.RegisterPetProfileRequest
 import com.aechak.api.user.pet.response.PetProfileListResponse
-import com.aechak.api.user.pet.response.PetProfileResponse
 import com.aechak.api.user.pet.response.RegisterPetProfileResponse
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.webcommon.response.ApiResponse
