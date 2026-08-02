@@ -23,7 +23,7 @@ data class RegisterPetProfileRequest(
     @field:Schema(description = "생년월. 연도만 보내면 서버가 1월로 채워 저장", example = "2022-04")
     val birthYearMonth: String? = null,
     @field:DecimalMin(value = "0.1", message = "체중은 {value}kg 이상이어야 합니다.")
-    @field:DecimalMax(value = "100.0", message = "체중은 {value}kg 이하여야 합니다.")
+    @field:DecimalMax(value = "200.0", message = "체중은 {value}kg 이하여야 합니다.")
     @field:Digits(integer = 3, fraction = 1, message = "체중은 소수점 첫째자리까지만 입력할 수 있습니다.")
     val weight: BigDecimal? = null,
     @field:Size(max = 1024, message = "이미지 키는 {max}자를 넘을 수 없습니다.")

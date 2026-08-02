@@ -91,7 +91,7 @@ class PetProfile protected constructor(
 
     companion object {
         private val MIN_WEIGHT = BigDecimal("0.1")
-        private val MAX_WEIGHT = BigDecimal("100.0")
+        private val MAX_WEIGHT = BigDecimal("200.0")
 
         private fun validateWeight(weight: BigDecimal?) {
             if (weight != null && (weight < MIN_WEIGHT || weight > MAX_WEIGHT)) {

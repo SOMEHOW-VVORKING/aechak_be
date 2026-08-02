@@ -30,9 +30,9 @@ enum class UserErrorCode(
     PET_PROFILE_LIMIT_EXCEEDED(30130, "펫은 최대 10마리까지 등록할 수 있습니다.", 422),
     PET_PROFILE_NOT_FOUND(30131, "펫 프로필을 찾을 수 없습니다.", 404),
     PET_PROFILE_ACCESS_DENIED(30132, "본인의 펫만 접근할 수 있습니다.", 403),
-    INVALID_PET_WEIGHT(30133, "체중은 0.1~100.0kg 범위여야 합니다.", 400),
+    INVALID_PET_WEIGHT(30133, "체중은 0.1~200.0kg 범위여야 합니다.", 400),
 
     // 미존재와 종 불일치를 한 코드로 묶음. 클라이언트가 할 일이 같음
     INVALID_BREED(30134, "선택한 품종이 올바르지 않습니다.", 400),
-    INVALID_PET_BIRTH_YEAR_MONTH(30135, "생년월은 오늘 이전이어야 합니다.", 400),
+    INVALID_PET_BIRTH_YEAR_MONTH(30135, "생년월은 이번 달보다 미래일 수 없습니다.", 400),
 }

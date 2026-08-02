@@ -40,19 +40,19 @@ class PetProfileTest {
     }
 
     @Test
-    fun `체중이 100kg를 넘으면 거절한다`() {
+    fun `체중이 200kg를 넘으면 거절한다`() {
         val ex =
             assertFailsWith<BusinessException> {
-                PetProfile.register(user, dogBreed, "초코", weight = BigDecimal("100.1"))
+                PetProfile.register(user, dogBreed, "초코", weight = BigDecimal("200.1"))
             }
 
         assertEquals(UserErrorCode.INVALID_PET_WEIGHT, ex.errorCode)
     }
 
     @Test
-    fun `경계값 0_1과 100_0은 허용한다`() {
+    fun `경계값 0_1과 200_0은 허용한다`() {
         PetProfile.register(user, dogBreed, "초코", weight = BigDecimal("0.1"))
-        PetProfile.register(user, dogBreed, "초코", weight = BigDecimal("100.0"))
+        PetProfile.register(user, dogBreed, "초코", weight = BigDecimal("200.0"))
     }
 
     @Test
@@ -89,7 +89,7 @@ class PetProfileTest {
     fun `validate는 register와 같은 규칙을 미리 돌려본다`() {
         val ex =
             assertFailsWith<BusinessException> {
-                PetProfile.validate(dogBreed, BigDecimal("100.1"))
+                PetProfile.validate(dogBreed, BigDecimal("200.1"))
             }
 
         assertEquals(UserErrorCode.INVALID_PET_WEIGHT, ex.errorCode)

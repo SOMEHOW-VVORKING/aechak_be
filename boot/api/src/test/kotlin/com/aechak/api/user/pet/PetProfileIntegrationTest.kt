@@ -234,7 +234,7 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
     @Test
     fun `체중이 범위를 벗어나면 거절한다`() {
         mockMvc
-            .perform(postPet(ownerToken, petJson(name = "초코", weight = "100.1")))
+            .perform(postPet(ownerToken, petJson(name = "초코", weight = "200.1")))
             .andExpect(status().isBadRequest)
     }
 
@@ -288,7 +288,7 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
             .perform(
                 postPet(
                     ownerToken,
-                    petJson(name = "초코", weight = "100.1", profileImageKey = "tmp/$ownerId/pets/profile/abc.png"),
+                    petJson(name = "초코", weight = "200.1", profileImageKey = "tmp/$ownerId/pets/profile/abc.png"),
                 ),
             ).andExpect(status().isBadRequest)
 
