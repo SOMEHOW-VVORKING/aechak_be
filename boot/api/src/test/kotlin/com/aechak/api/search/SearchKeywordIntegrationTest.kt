@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
@@ -34,6 +35,7 @@ class SearchKeywordIntegrationTest : IntegrationTestBase() {
     private var ownerId = 0L
     private var otherId = 0L
     private lateinit var ownerToken: String
+    private lateinit var otherToken: String
 
     @BeforeEach
     fun setUp() {
@@ -45,6 +47,7 @@ class SearchKeywordIntegrationTest : IntegrationTestBase() {
         ownerId = createActiveUser()
         otherId = createActiveUser()
         ownerToken = mintAccessToken(ownerId)
+        otherToken = mintAccessToken(otherId)
     }
 
     @Test
@@ -183,7 +186,99 @@ class SearchKeywordIntegrationTest : IntegrationTestBase() {
             .andExpect(status().isUnauthorized)
     }
 
+    @Test
+    fun `개별 삭제는 지정한 검색어만 지우고 나머지는 남긴다`() {
+        val base = LocalDateTime.now()
+        val target = persistRecentReturningId(ownerId, "노트북", base.minusMinutes(1))
+        persistRecentReturningId(ownerId, "키보드", base)
+
+        deleteRecentKeyword(ownerToken, target).andExpect(status().isNoContent)
+
+        // 소유자 검색어를 2건 심고 1건만 지운다. 1건만 심으면 "개별 삭제가 내 전체를 지우는" 버그도 통과하므로 잔존을 함께 검증한다.
+        assertEquals(
+            listOf("키보드"),
+            JsonPath.read<List<String>>(getKeywords(ownerToken), "$.data.recentKeywords[*].keyword"),
+            "지정한 id만 지워지고 나머지 검색어는 남아야 한다",
+        )
+    }
+
+    @Test
+    fun `타인의 최근 검색어 id로 삭제해도 204지만 소유자 행은 그대로 남는다`() {
+        val id = persistRecentReturningId(ownerId, "노트북", LocalDateTime.now())
+
+        deleteRecentKeyword(otherToken, id).andExpect(status().isNoContent)
+
+        assertEquals(
+            listOf("노트북"),
+            JsonPath.read<List<String>>(getKeywords(ownerToken), "$.data.recentKeywords[*].keyword"),
+            "user_id 스코프 삭제라 타인 요청은 소유자 행에 무연산이어야 한다",
+        )
+    }
+
+    @Test
+    fun `없는 id로 삭제해도 204를 반환한다`() {
+        deleteRecentKeyword(ownerToken, 999_999L).andExpect(status().isNoContent)
+    }
+
+    @Test
+    fun `전체 삭제는 10개 캡을 넘겨도 호출자 것을 전부 비우고 타 사용자 것은 유지한다`() {
+        val base = LocalDateTime.now()
+        // 조회는 MAX_RECENT_KEYWORDS=10으로 잘리므로 캡을 넘겨 심는다. "상위 10개만 읽어 지우는" 회귀는 언캡 카운트로만 잡힌다.
+        repeat(12) { i -> persistRecent(ownerId, "kw$i", base.minusMinutes((12 - i).toLong())) }
+        persistRecent(otherId, "남 검색", base)
+
+        deleteAllRecentKeywords(ownerToken).andExpect(status().isNoContent)
+
+        assertEquals(0L, countRecent(ownerId), "캡을 넘긴 행까지 DB에서 모두 삭제돼야 한다")
+        assertEquals(
+            listOf("남 검색"),
+            JsonPath.read<List<String>>(getKeywords(otherToken), "$.data.recentKeywords[*].keyword"),
+            "타 사용자의 최근 검색어는 유지돼야 한다",
+        )
+    }
+
+    @Test
+    fun `최근 검색어가 없어도 전체 삭제는 204를 반환한다`() {
+        deleteAllRecentKeywords(ownerToken).andExpect(status().isNoContent)
+    }
+
+    @Test
+    fun `미인증 삭제 요청은 401을 반환한다`() {
+        mockMvc.perform(delete("/api/v1/search/recent-keywords/1")).andExpect(status().isUnauthorized)
+        mockMvc.perform(delete("/api/v1/search/recent-keywords")).andExpect(status().isUnauthorized)
+    }
+
     // --- helpers ---
+
+    private fun deleteRecentKeyword(
+        token: String,
+        id: Long,
+    ) = mockMvc.perform(delete("/api/v1/search/recent-keywords/$id").header(HttpHeaders.AUTHORIZATION, "Bearer $token"))
+
+    private fun deleteAllRecentKeywords(token: String) =
+        mockMvc.perform(delete("/api/v1/search/recent-keywords").header(HttpHeaders.AUTHORIZATION, "Bearer $token"))
+
+    private fun persistRecentReturningId(
+        userId: Long,
+        keyword: String,
+        searchedAt: LocalDateTime,
+    ): Long =
+        tx.execute {
+            val recentSearch = RecentSearch.record(userId, keyword, searchedAt)
+            em.persist(recentSearch)
+            em.flush()
+            recentSearch.id
+        }!!
+
+    /** 조회 10개 캡과 무관하게 사용자의 최근 검색어 실제 행 수를 센다. */
+    private fun countRecent(userId: Long): Long =
+        tx.execute {
+            em
+                .createQuery("select count(r) from RecentSearch r where r.userId = :uid", java.lang.Long::class.java)
+                .setParameter("uid", userId)
+                .singleResult
+                .toLong()
+        }!!
 
     private fun getKeywords(token: String): String =
         mockMvc
