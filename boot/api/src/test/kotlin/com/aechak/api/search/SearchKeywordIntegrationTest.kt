@@ -50,9 +50,9 @@ class SearchKeywordIntegrationTest : IntegrationTestBase() {
     @Test
     fun `최근 검색어는 최신순, 추천 검색어는 sort_order 순으로 반환된다`() {
         val base = LocalDateTime.now()
-        persistRecent(ownerId, "아이폰케이스", "아이폰 케이스", base.minusMinutes(5))
-        persistRecent(ownerId, "노트북", "노트북", base.minusMinutes(1))
-        persistRecent(ownerId, "키보드", "키보드", base.minusMinutes(3))
+        persistRecent(ownerId, "아이폰 케이스", base.minusMinutes(5))
+        persistRecent(ownerId, "노트북", base.minusMinutes(1))
+        persistRecent(ownerId, "키보드", base.minusMinutes(3))
         // 삽입 순서(자동급식기·사료·간식)와 sort_order(3·1·2)를 어긋나게 둔다.
         // 기대값 [사료·간식·자동급식기]는 sort_order asc로만 나오는 순서라 id asc/desc·삽입순 회귀를 모두 가른다.
         persistRecommended("자동급식기", sortOrder = 3, isActive = true)
@@ -74,8 +74,8 @@ class SearchKeywordIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `최근 검색어는 표시용 원본(display_keyword)과 검색 시각을 반환한다`() {
-        persistRecent(ownerId, "the north face", "The North Face", LocalDateTime.now())
+    fun `최근 검색어는 입력 원본 표기와 검색 시각을 반환한다`() {
+        persistRecent(ownerId, "The North Face", LocalDateTime.now())
 
         val body = getKeywords(ownerToken)
 
@@ -106,8 +106,8 @@ class SearchKeywordIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `본인 최근 검색어만 반환한다`() {
-        persistRecent(ownerId, "내검색", "내 검색", LocalDateTime.now())
-        persistRecent(otherId, "남검색", "남 검색", LocalDateTime.now())
+        persistRecent(ownerId, "내 검색", LocalDateTime.now())
+        persistRecent(otherId, "남 검색", LocalDateTime.now())
 
         val body = getKeywords(ownerToken)
 
@@ -131,7 +131,7 @@ class SearchKeywordIntegrationTest : IntegrationTestBase() {
     @Test
     fun `최근 검색어는 최신 10개까지만 반환한다`() {
         val base = LocalDateTime.now()
-        repeat(15) { i -> persistRecent(ownerId, "kw$i", "kw$i", base.minusMinutes((15 - i).toLong())) }
+        repeat(15) { i -> persistRecent(ownerId, "kw$i", base.minusMinutes((15 - i).toLong())) }
 
         val body = getKeywords(ownerToken)
         val keywords = JsonPath.read<List<String>>(body, "$.data.recentKeywords[*].keyword")
@@ -142,25 +142,37 @@ class SearchKeywordIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `같은 사용자에 같은 정규화 키워드는 유일 제약으로 두 번 저장되지 않는다`() {
-        persistRecent(ownerId, "노트북", "노트북", LocalDateTime.now())
+    fun `같은 사용자에 같은 키워드는 유일 제약으로 두 번 저장되지 않는다`() {
+        persistRecent(ownerId, "노트북", LocalDateTime.now())
 
         assertThrows(Exception::class.java) {
-            persistRecent(ownerId, "노트북", "노트북 케이스", LocalDateTime.now())
+            persistRecent(ownerId, "노트북", LocalDateTime.now())
         }
 
-        // 두 번째 삽입이 막힌 뒤에도 첫 원본이 한 행으로 살아있어야 한다(덮어쓰기·중복 없음).
+        // 두 번째 삽입이 막힌 뒤에도 첫 행이 한 행으로 살아있어야 한다(덮어쓰기·중복 없음).
         val body = getKeywords(ownerToken)
         assertEquals(1, JsonPath.read<List<*>>(body, "$.data.recentKeywords").size, "유일 제약으로 한 행만 남는다")
-        assertEquals("노트북", JsonPath.read<String>(body, "$.data.recentKeywords[0].keyword"), "첫 원본이 보존된다")
+        assertEquals("노트북", JsonPath.read<String>(body, "$.data.recentKeywords[0].keyword"), "첫 행이 보존된다")
     }
 
     @Test
-    fun `서로 다른 사용자는 같은 정규화 키워드를 각자 가질 수 있다`() {
-        persistRecent(ownerId, "노트북", "노트북", LocalDateTime.now())
-        persistRecent(otherId, "노트북", "노트북", LocalDateTime.now())
+    fun `서로 다른 사용자는 같은 키워드를 각자 가질 수 있다`() {
+        persistRecent(ownerId, "노트북", LocalDateTime.now())
+        persistRecent(otherId, "노트북", LocalDateTime.now())
 
         assertEquals(1, JsonPath.read<List<*>>(getKeywords(ownerToken), "$.data.recentKeywords").size)
+    }
+
+    @Test
+    fun `대소문자가 다른 키워드는 서로 다른 최근 검색어로 저장된다`() {
+        val base = LocalDateTime.now()
+        persistRecent(ownerId, "iPhone", base)
+        persistRecent(ownerId, "iphone", base.minusMinutes(1))
+
+        val keywords = JsonPath.read<List<String>>(getKeywords(ownerToken), "$.data.recentKeywords[*].keyword")
+
+        assertEquals(2, keywords.size, "as_cs 콜레이션이라 대소문자가 다르면 각각 저장된다")
+        assertTrue(keywords.containsAll(listOf("iPhone", "iphone")), "친 대소문자가 각각 보존된다")
     }
 
     @Test
@@ -183,12 +195,11 @@ class SearchKeywordIntegrationTest : IntegrationTestBase() {
 
     private fun persistRecent(
         userId: Long,
-        normalizedKeyword: String,
-        displayKeyword: String,
+        keyword: String,
         searchedAt: LocalDateTime,
     ) {
         tx.execute {
-            em.persist(RecentSearch.record(userId, normalizedKeyword, displayKeyword, searchedAt))
+            em.persist(RecentSearch.record(userId, keyword, searchedAt))
             em.flush()
         }
     }

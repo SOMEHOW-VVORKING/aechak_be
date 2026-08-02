@@ -12,7 +12,7 @@ data class RecentKeywordResult(
         fun from(recentSearch: RecentSearch): RecentKeywordResult =
             RecentKeywordResult(
                 id = recentSearch.id,
-                keyword = recentSearch.displayKeyword,
+                keyword = recentSearch.keyword,
                 searchedAt = recentSearch.searchedAt,
             )
     }
