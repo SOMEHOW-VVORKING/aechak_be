@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotBlank
 
 /** 네이티브 SDK 전용 — SDK가 받은 id_token을 그대로 제출한다. 웹은 서버 콜백 채널(WebAuthController)을 쓴다. */
 data class KakaoLoginRequest(
-    @field:NotBlank val idToken: String,
+    @field:NotBlank(message = "idToken은 필수입니다") val idToken: String,
 ) {
     fun toCommand() =
         SocialLoginCommand(

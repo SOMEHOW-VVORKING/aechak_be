@@ -9,7 +9,7 @@ import jakarta.validation.constraints.Size
  */
 data class UpdateProfileRequest(
     val nickname: String,
-    @field:Size(max = 150)
+    @field:Size(max = 150, message = "자기소개는 {max}자를 넘을 수 없습니다.")
     val bio: String?,
     // S3 key 상한(1024B)·DB 컬럼(varchar 1024)과 동일 — 초과분은 S3 SDK 예외(500) 전에 여기서 400으로 자른다
     @field:Size(max = 1024, message = "이미지 키는 {max}자를 넘을 수 없습니다.")
