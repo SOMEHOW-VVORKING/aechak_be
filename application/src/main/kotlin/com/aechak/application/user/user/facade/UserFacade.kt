@@ -112,8 +112,7 @@ class UserFacade(
             )
         try {
             tx.execute {
-                // PENDING은 UserStatusFilter가 차단했으므로 프로필 존재 전제
-                userService.getById(command.userId).profile.updateProfile(command.nickname, command.bio, finalKey)
+                userService.getById(command.userId).updateProfile(command.nickname, command.bio, finalKey)
             }
         } catch (e: DataIntegrityViolationException) {
             translateNicknameConflict(e)
