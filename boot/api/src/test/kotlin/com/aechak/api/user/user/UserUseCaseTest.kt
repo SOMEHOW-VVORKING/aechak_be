@@ -3,6 +3,7 @@ package com.aechak.api.user.user
 import com.aechak.api.support.FakeFileStorage
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.file.error.FileErrorCode
+import com.aechak.application.file.port.FileStorage
 import com.aechak.application.user.term.usecase.ConsentUseCase
 import com.aechak.application.user.term.usecase.command.SubmitConsentsCommand
 import com.aechak.application.user.user.usecase.UserUseCase
@@ -36,10 +37,10 @@ class UserUseCaseTest : IntegrationTestBase() {
     lateinit var consentUseCase: ConsentUseCase
 
     @Autowired
-    lateinit var fakeFileStorage: FakeFileStorage
+    lateinit var fileStorage: FileStorage
 
     @BeforeEach
-    fun resetFakes() = fakeFileStorage.reset()
+    fun resetFakes() = (fileStorage as FakeFileStorage).clearPromoted()
 
     private fun seedTerm(
         type: TermType,
@@ -262,9 +263,9 @@ class UserUseCaseTest : IntegrationTestBase() {
 
         assertEquals("새닉네임", me.nickname)
         assertEquals("코코와 삽니다", me.bio)
-        assertEquals(listOf(tmpKey), fakeFileStorage.promotedTmpKeys, "tmp 키는 승격을 거친다")
+        assertEquals(listOf("users/profile/new.webp"), (fileStorage as FakeFileStorage).promotedKeys, "tmp 키는 승격을 거친다")
         assertEquals("users/profile/new.webp", me.profileImageKey, "저장은 승격된 정식 key")
-        assertEquals("https://cdn.test/users/profile/new.webp", me.profileImageUrl)
+        assertEquals("https://fake-cdn.local/users/profile/new.webp", me.profileImageUrl)
     }
 
     @Test
@@ -285,11 +286,11 @@ class UserUseCaseTest : IntegrationTestBase() {
         val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
         val userId = newActiveUser(serviceId)
         val promotedKey = updateProfile(userId, "코코집사", null, tmpKeyOf(userId, "keep.webp")).profileImageKey!!
-        fakeFileStorage.reset()
+        (fileStorage as FakeFileStorage).clearPromoted()
 
         val me = updateProfile(userId, "코코집사", "자기소개만 변경", promotedKey)
 
-        assertTrue(fakeFileStorage.promotedTmpKeys.isEmpty(), "정식 key 재전송은 승격 대상이 아니다 — 스킵은 필수")
+        assertTrue((fileStorage as FakeFileStorage).promotedKeys.isEmpty(), "정식 key 재전송은 승격 대상이 아니다 — 스킵은 필수")
         assertEquals(promotedKey, me.profileImageKey, "이미지 유지")
         assertEquals("자기소개만 변경", me.bio)
     }

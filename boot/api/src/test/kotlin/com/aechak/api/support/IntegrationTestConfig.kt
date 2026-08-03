@@ -1,5 +1,6 @@
 package com.aechak.api.support
 
+import com.aechak.application.file.port.FileStorage
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection
 import org.springframework.context.annotation.Bean
@@ -28,8 +29,8 @@ class IntegrationTestConfig {
     @Bean
     fun databaseCleaner(jdbcTemplate: JdbcTemplate) = DatabaseCleaner(jdbcTemplate)
 
-    /** 실제 S3 어댑터(@Component) 대신 주입되도록 @Primary — 통합 테스트는 외부 스토리지에 나가지 않는다. */
+    /** 실 어댑터면 펫 사진 승격이 자격증명 없이 AWS로 나감 */
     @Bean
     @Primary
-    fun fakeFileStorage(): FakeFileStorage = FakeFileStorage()
+    fun fakeFileStorage(): FileStorage = FakeFileStorage()
 }

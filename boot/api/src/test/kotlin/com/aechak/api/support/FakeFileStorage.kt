@@ -5,32 +5,36 @@ import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.IssueFileUrl
 import com.aechak.application.file.port.enums.FileType
 import com.aechak.application.file.port.enums.UploadPurpose
+import com.aechak.domain.support.Ulid
 
 /**
- * S3 어댑터 대역 — 통합 테스트에서 외부 호출 없이 승격 흐름을 검증한다.
- * 승격 호출을 기록해 "호출됨/스킵"을 단언할 수 있게 하고, 키 변환 규칙은 실제 어댑터와 동일하게 유지한다.
+ * 실 S3 대신 키 규칙만 흉내냄.
+ * promotedKeys는 거절된 요청이 스토리지에 복사본을 남기지 않는지 보려고 기록함.
  */
 class FakeFileStorage : FileStorage {
-    val promotedTmpKeys = mutableListOf<String>()
+    private val promoted = mutableListOf<String>()
+
+    val promotedKeys: List<String> get() = promoted.toList()
+
+    fun clearPromoted() = promoted.clear()
 
     override fun issueUploadUrl(
         purpose: UploadPurpose,
         fileType: FileType,
         userId: Long,
     ): IssueFileUrl {
-        val key = "${FileKey.tmpPrefixOf(userId, purpose)}fake.${fileType.extension}"
-        return IssueFileUrl(url = "https://fake.upload/$key", key = key)
+        val key = "${FileKey.tmpPrefixOf(userId, purpose)}${Ulid.generate()}.${fileType.extension}"
+        return IssueFileUrl("https://fake-presigned.local/$key", key)
     }
 
     override fun promote(
         tmpKey: String,
         purpose: UploadPurpose,
     ): String {
-        promotedTmpKeys += tmpKey
-        return "${purpose.prefix}/${tmpKey.substringAfterLast('/')}"
+        val key = "${purpose.prefix}/${tmpKey.substringAfterLast('/')}"
+        promoted += key
+        return key
     }
 
-    override fun publicUrlOf(key: String): String = "https://cdn.test/$key"
-
-    fun reset() = promotedTmpKeys.clear()
+    override fun publicUrlOf(key: String): String = "https://fake-cdn.local/$key"
 }
