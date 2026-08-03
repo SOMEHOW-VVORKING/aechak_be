@@ -5,4 +5,6 @@ import com.aechak.domain.user.pet.enums.Species
 
 interface BreedRepository {
     fun findAllBySpeciesOrderedById(species: Species): List<Breed>
+
+    fun findById(breedId: Long): Breed?
 }
