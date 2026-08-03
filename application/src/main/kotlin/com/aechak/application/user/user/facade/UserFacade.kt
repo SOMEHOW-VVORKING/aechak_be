@@ -1,10 +1,13 @@
 package com.aechak.application.user.user.facade
 
+import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
+import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.user.term.service.ConsentService
 import com.aechak.application.user.user.service.UserService
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.application.user.user.usecase.command.SetNicknameCommand
+import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
 import com.aechak.application.user.user.usecase.query.UserSearchQuery
 import com.aechak.application.user.user.usecase.result.UserMeResult
 import com.aechak.application.user.user.usecase.result.UserSummaryResult
@@ -27,9 +30,10 @@ import org.springframework.transaction.support.TransactionTemplate
  * - 도메인이 수집한 이벤트(aggregate.events)는 커밋 전 발행하고 clearEvents() 한다.
  * - 타 도메인 협력이 필요하면 그쪽 UseCase를 주입받는다(→ FileUseCase). 순환 의존이 생기면 이벤트 전환을 검토한다.
  *
- * setNickname만 @Transactional 대신 TransactionTemplate(프로그램적 경계)을 쓴다:
+ * setNickname·updateProfile은 @Transactional 대신 TransactionTemplate(프로그램적 경계)을 쓴다:
  * 닉네임 UNIQUE 위반은 커밋 시점 flush에서 터져 선언적 경계 안의 catch로는 잡을 수 없다 —
  * execute 밖 캐치에서 제약명을 보고 30002/멱등으로 번역한다(AuthFacade 선례 — 거긴 재시도, 여긴 번역).
+ * updateProfile은 추가로 승격(S3 외부 호출)을 트랜잭션 밖에 두기 위해서이기도 하다.
  */
 @Service
 class UserFacade(
@@ -53,7 +57,8 @@ class UserFacade(
                 when (user.status) {
                     UserStatus.PENDING_ONBOARDING -> completeOnboarding(user, command.nickname)
 
-                    UserStatus.ACTIVE -> renameNickname(user, command.nickname)
+                    // 온보딩 전용 EP — ACTIVE의 닉네임 변경은 updateProfile이 유일 경로다
+                    UserStatus.ACTIVE -> throw BusinessException(UserErrorCode.ONBOARDING_ALREADY_COMPLETED)
 
                     // UserStatusFilter(20006)가 걸렀어야 할 상태 — 도달 자체가 방어선 이상이라 500이 맞다
                     else -> error("차단됐어야 할 상태의 닉네임 변경 시도 (userId=${user.id}, status=${user.status})")
@@ -89,13 +94,32 @@ class UserFacade(
         user.completeOnboarding(nickname)
     }
 
-    /** ACTIVE 재변경 경로 — 전이·동의 검증 없음, 같은 값이면 멱등. 프로필 수정 화면의 닉네임 저장도 이 경로다. */
-    private fun renameNickname(
-        user: User,
-        nickname: String,
-    ) {
-        user.profile.rename(nickname)
+    /**
+     * 프로필 전체 교체 — 승격(S3 외부 호출)은 트랜잭션 밖에서 먼저 하고 저장은 짧은 tx로 커밋한다
+     * (DB 커넥션을 잡은 채 외부 I/O를 기다리지 않는다). 실패 잔여물(교체된 옛 key·승격 후 커밋 실패분)은
+     * S3 고아로 남는다 — MVP 수용, 정리 배치는 후속.
+     */
+    override fun updateProfile(command: UpdateProfileCommand): UserMeResult {
+        val currentKey = userService.getById(command.userId).profile.profileImageKey
+        // null=제거 / 저장값과 같으면 유지(저장값 대조가 곧 소유 증명) / 그 외는 전부 새 업로드로 보고 승격
+        val finalKey =
+            command.profileImageKey?.let {
+                if (it == currentKey) it else promoteImage(command.userId, it)
+            }
+        try {
+            tx.execute {
+                userService.getById(command.userId).updateProfile(command.nickname, command.bio, finalKey)
+            }
+        } catch (e: DataIntegrityViolationException) {
+            translateNicknameConflict(e)
+        }
+        return loadMe(command.userId)
     }
+
+    private fun promoteImage(
+        userId: Long,
+        tmpKey: String,
+    ): String = fileUseCase.promote(PromoteFileCommand(tmpKey, userId, UploadPurpose.USER_PROFILE)).key
 
     @Transactional(readOnly = true)
     override fun getMe(userId: Long): UserMeResult = loadMe(userId)
@@ -108,6 +132,7 @@ class UserFacade(
             status = user.status,
             nickname = profile?.nickname,
             profileImageUrl = fileUseCase.resolveMediaUrl(profile?.profileImageKey),
+            profileImageKey = profile?.profileImageKey,
             bio = profile?.bio,
             email = userService.findEmail(userId),
             // 휴대폰 인증(ACC-03) 전까지 수집 경로 없음 — 복호화·마스킹 정책과 함께 그때 채운다
