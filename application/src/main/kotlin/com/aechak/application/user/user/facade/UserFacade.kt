@@ -2,7 +2,7 @@ package com.aechak.application.user.user.facade
 
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
-import com.aechak.application.file.usecase.command.ResolveMediaKeyCommand
+import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.user.term.service.ConsentService
 import com.aechak.application.user.user.service.UserService
 import com.aechak.application.user.user.usecase.UserUseCase
@@ -100,16 +100,12 @@ class UserFacade(
      * S3 고아로 남는다 — MVP 수용, 정리 배치는 후속.
      */
     override fun updateProfile(command: UpdateProfileCommand): UserMeResult {
-        // 판정·승격은 file 도메인 소관 — 현재 key만 이 도메인이 읽어 값으로 넘긴다
+        val currentKey = userService.getById(command.userId).profile.profileImageKey
+        // null=제거 / 저장값과 같으면 유지(저장값 대조가 곧 소유 증명) / 그 외는 전부 새 업로드로 보고 승격
         val finalKey =
-            fileUseCase.resolveMediaKey(
-                ResolveMediaKeyCommand(
-                    currentKey = userService.getById(command.userId).profile.profileImageKey,
-                    requestedKey = command.profileImageKey,
-                    userId = command.userId,
-                    purpose = UploadPurpose.USER_PROFILE,
-                ),
-            )
+            command.profileImageKey?.let {
+                if (it == currentKey) it else promoteImage(command.userId, it)
+            }
         try {
             tx.execute {
                 userService.getById(command.userId).updateProfile(command.nickname, command.bio, finalKey)
@@ -119,6 +115,11 @@ class UserFacade(
         }
         return loadMe(command.userId)
     }
+
+    private fun promoteImage(
+        userId: Long,
+        tmpKey: String,
+    ): String = fileUseCase.promote(PromoteFileCommand(tmpKey, userId, UploadPurpose.USER_PROFILE)).key
 
     @Transactional(readOnly = true)
     override fun getMe(userId: Long): UserMeResult = loadMe(userId)

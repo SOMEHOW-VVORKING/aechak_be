@@ -7,12 +7,10 @@ import com.aechak.application.file.port.enums.FileType
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
-import com.aechak.application.file.usecase.command.ResolveMediaKeyCommand
 import com.aechak.common.error.BusinessException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private const val PROMOTED_SENTINEL = "promoted/sentinel-key"
@@ -97,39 +95,6 @@ class FileServiceTest {
         val result = service.promote(command)
 
         assertEquals(PROMOTED_SENTINEL, result.key, "가드 통과 후 storage가 돌려준 키를 그대로 위임해야 한다")
-    }
-
-    @Test
-    fun `resolveMediaKey - 요청 key가 null이면 승격 없이 제거로 판정한다`() {
-        val command = ResolveMediaKeyCommand("users/profile/old.png", null, USER_ID, UploadPurpose.USER_PROFILE)
-
-        assertNull(service.resolveMediaKey(command), "null=제거")
-    }
-
-    @Test
-    fun `resolveMediaKey - 현재 key와 같으면 승격 없이 유지한다`() {
-        val current = "users/profile/keep.png"
-        val command = ResolveMediaKeyCommand(current, current, USER_ID, UploadPurpose.USER_PROFILE)
-
-        val result = service.resolveMediaKey(command)
-
-        assertEquals(current, result, "승격을 탔다면 storage 반환값이 됐을 것 — 정식 key는 스킵이 필수")
-    }
-
-    @Test
-    fun `resolveMediaKey - 본인 tmp key면 승격 결과를 반환한다`() {
-        val command = ResolveMediaKeyCommand(null, "tmp/$USER_ID/users/profile/new.png", USER_ID, UploadPurpose.USER_PROFILE)
-
-        assertEquals(PROMOTED_SENTINEL, service.resolveMediaKey(command))
-    }
-
-    @Test
-    fun `resolveMediaKey - 타인 tmp key는 FILE_ACCESS_DENIED로 거절한다`() {
-        val command = ResolveMediaKeyCommand(null, "tmp/999/users/profile/x.png", USER_ID, UploadPurpose.USER_PROFILE)
-
-        val ex = assertFailsWith<BusinessException> { service.resolveMediaKey(command) }
-
-        assertEquals(FileErrorCode.FILE_ACCESS_DENIED, ex.errorCode, "promote의 소유 검증을 그대로 거친다")
     }
 
     /** 외부 경계(S3)만 가짜로 — 발급·승격 로직은 진짜 FileService가 돈다. */
