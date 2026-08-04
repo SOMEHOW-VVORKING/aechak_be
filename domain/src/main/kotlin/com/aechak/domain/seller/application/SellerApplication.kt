@@ -15,15 +15,24 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToMany
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 import jakarta.persistence.Version
 import java.time.LocalDateTime
 
 @Entity
-@Table(name = "seller_applications")
+@Table(
+    name = "seller_applications",
+    indexes = [
+        Index(name = "ix_seller_applications_status_submitted_at", columnList = "status, submitted_at"),
+        Index(name = "ix_seller_applications_business_reg_no", columnList = "business_reg_no"),
+    ],
+    uniqueConstraints = [UniqueConstraint(name = "uk_seller_applications_user_id", columnNames = ["user_id"])],
+)
 class SellerApplication protected constructor(
     userId: Long?,
     businessType: BusinessType,

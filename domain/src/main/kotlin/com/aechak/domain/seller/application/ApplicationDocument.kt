@@ -7,9 +7,18 @@ import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 
 @Entity
-@Table(name = "application_documents")
+@Table(
+    name = "application_documents",
+    uniqueConstraints = [
+        UniqueConstraint(
+            name = "uk_application_documents_application_id_document_type",
+            columnNames = ["application_id", "document_type"],
+        ),
+    ],
+)
 class ApplicationDocument protected constructor(
     documentType: String,
     storageKey: String,
