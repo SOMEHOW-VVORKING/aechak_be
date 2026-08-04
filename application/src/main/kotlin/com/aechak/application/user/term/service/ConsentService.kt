@@ -24,7 +24,7 @@ class ConsentService(
 ) {
     fun getActiveTerms(): List<Term> = termRepository.findAllActiveOrderedById()
 
-    /** 온보딩 전이 게이트 — 활성 필수 약관 각각의 최신 행이 전부 isAgreed=true가 아니면 30009(화면 순서 우회 차단). */
+    /** 온보딩 전이 게이트 — 활성 필수 약관 각각의 최신 행이 전부 isAgreed=true가 아니면 30300(화면 순서 우회 차단). */
     fun verifyRequiredConsents(userId: Long) {
         val requiredTermIds =
             termRepository

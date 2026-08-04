@@ -46,7 +46,7 @@ class TokenService(
      * 제시 토큰이 스토어에서 어떤 상태냐에 따라 세 갈래 — 각 갈래가 곧 하나의 시나리오다.
      */
     fun rotate(refreshToken: String): TokenResult {
-        // 1차 관문: 우리가 서명했고 아직 만료 전인 refresh인가 (위조·만료·access 오제출 → 20003)
+        // 1차 관문: 우리가 서명했고 아직 만료 전인 refresh인가 (위조·만료·access 오제출 → 20002)
         val claims =
             tokenCodec.decodeRefreshToken(refreshToken)
                 ?: throw BusinessException(AuthErrorCode.INVALID_REFRESH_TOKEN)

@@ -29,7 +29,7 @@ import org.springframework.transaction.support.TransactionTemplate
  *
  * setNickname만 @Transactional 대신 TransactionTemplate(프로그램적 경계)을 쓴다:
  * 닉네임 UNIQUE 위반은 커밋 시점 flush에서 터져 선언적 경계 안의 catch로는 잡을 수 없다 —
- * execute 밖 캐치에서 제약명을 보고 30002/멱등으로 번역한다(AuthFacade 선례 — 거긴 재시도, 여긴 번역).
+ * execute 밖 캐치에서 제약명을 보고 30001/멱등으로 번역한다(AuthFacade 선례 — 거긴 재시도, 여긴 번역).
  */
 @Service
 class UserFacade(
@@ -55,7 +55,7 @@ class UserFacade(
 
                     UserStatus.ACTIVE -> renameNickname(user, command.nickname)
 
-                    // UserStatusFilter(20006)가 걸렀어야 할 상태 — 도달 자체가 방어선 이상이라 500이 맞다
+                    // UserStatusFilter(20005)가 걸렀어야 할 상태 — 도달 자체가 방어선 이상이라 500이 맞다
                     else -> error("차단됐어야 할 상태의 닉네임 변경 시도 (userId=${user.id}, status=${user.status})")
                 }
             } // ← 커밋까지 이 블록 안 — 커밋 시점 UNIQUE 폭발도 아래 catch가 잡는다
@@ -65,7 +65,7 @@ class UserFacade(
         return loadMe(command.userId)
     }
 
-    /** 커밋 시점 무결성 위반의 번역 — 제약명 기반 분기(일괄 30002 번역은 오라벨). */
+    /** 커밋 시점 무결성 위반의 번역 — 제약명 기반 분기(일괄 30001 번역은 오라벨). */
     private fun translateNicknameConflict(e: DataIntegrityViolationException) {
         val cause = e.mostSpecificCause.message.orEmpty()
         when {
@@ -75,12 +75,12 @@ class UserFacade(
             // 더블탭 동시 2건 — 프로필 PK(user_id) 충돌. 선행 커밋 결과를 그대로 응답(멱등)
             UserProfile.PK_CONFLICT_MARKER in cause -> Unit
 
-            // 그 외 무결성 위반을 30002로 오번역하지 않는다
+            // 그 외 무결성 위반을 30001로 오번역하지 않는다
             else -> throw e
         }
     }
 
-    /** 온보딩 완료 경로 — 동의 게이트(30009 판정은 ConsentService 소관) 통과 시에만 프로필 생성+ACTIVE 전이. */
+    /** 온보딩 완료 경로 — 동의 게이트(30300 판정은 ConsentService 소관) 통과 시에만 프로필 생성+ACTIVE 전이. */
     private fun completeOnboarding(
         user: User,
         nickname: String,
