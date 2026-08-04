@@ -26,7 +26,7 @@ class UserService(
     /** 소셜 가입 — 프로필 없는 PENDING_ONBOARDING 계정 생성. */
     fun registerFromSocial(): User = userRepository.save(User.preRegister())
 
-    /** 닉네임 사용 가능 여부 — NFC 정규화(형식 위반 30003) 후 본인 제외 선점 조회(비교는 컬럼 collation 기준). */
+    /** 닉네임 사용 가능 여부 — NFC 정규화(형식 위반 30002) 후 본인 제외 선점 조회(비교는 컬럼 collation 기준). */
     fun isNicknameAvailable(
         nickname: String,
         excludeUserId: Long,

@@ -74,7 +74,7 @@ class TokenServiceTest {
     }
 
     @Test
-    fun `위조 토큰 - 20003으로 거부한다`() {
+    fun `위조 토큰 - 20002로 거부한다`() {
         val exception = assertFailsWith<BusinessException> { service.rotate("garbage") }
 
         assertEquals(AuthErrorCode.INVALID_REFRESH_TOKEN, exception.errorCode)

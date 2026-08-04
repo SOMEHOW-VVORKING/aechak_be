@@ -17,8 +17,8 @@ import tools.jackson.databind.ObjectMapper
  * 인가 상태검증 필터 — BearerTokenAuthenticationFilter 바로 뒤에 배치.
  * JWT엔 상태를 박지 않고 매 요청 users.status를 프로젝션 조회한다 — 정지·탈퇴가 재로그인 없이 즉시 반영.
  *
- * - SUSPENDED / WITHDRAWN / 유저 없음(탈퇴 직후 옛 토큰) → 403(20006)
- * - PENDING_ONBOARDING → 온보딩 허용 목록 외 403(20007)
+ * - SUSPENDED / WITHDRAWN / 유저 없음(탈퇴 직후 옛 토큰) → 403(20005)
+ * - PENDING_ONBOARDING → 온보딩 허용 목록 외 403(20006)
  * - 응답은 직접 쓴다: 이 위치는 ExceptionTranslationFilter보다 앞이라 AccessDeniedHandler가 못 받고,
  *   @RestControllerAdvice 밖이기도 하다 — 401 EntryPoint와 동일 패턴.
  * - @Component가 아닌 이유: Filter 빈은 Boot가 서블릿 체인에도 자동 등록해 이중 실행되므로
