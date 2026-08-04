@@ -59,6 +59,32 @@ class PhoneVerificationService(
         )
     }
 
+    /**
+     * 코드 대조 — 만료·번호 불일치·코드 불일치·시도 초과를 전부 30005 하나로 답한다(구분 비노출: 어느 쪽이
+     * 틀렸는지 알려주면 공격자에게 힌트가 된다). 5회 실패 시 코드를 무효화해 재발송을 강제한다.
+     */
+    fun validateCode(
+        userId: Long,
+        phoneNumber: String,
+        code: String,
+    ) {
+        val issued = codeStore.findCode(userId) ?: throw BusinessException(UserErrorCode.SMS_CODE_INVALID)
+        val attempts = codeStore.incrementAttempts(userId, CODE_TTL)
+        if (attempts > MAX_CONFIRM_ATTEMPTS) {
+            codeStore.removeCode(userId)
+            throw BusinessException(UserErrorCode.SMS_CODE_INVALID)
+        }
+        if (issued.phoneNumber != phoneNumber || issued.code != code) {
+            if (attempts >= MAX_CONFIRM_ATTEMPTS) {
+                codeStore.removeCode(userId)
+            }
+            throw BusinessException(UserErrorCode.SMS_CODE_INVALID)
+        }
+    }
+
+    /** 코드 소각 — 인증이 커밋된 뒤에만 부른다(트랜잭션 실패 시 재시도 여지 보존). */
+    fun consumeCode(userId: Long) = codeStore.removeCode(userId)
+
     private fun kstToday() = clock.instant().atZone(KST).toLocalDate()
 
     companion object {
@@ -68,5 +94,6 @@ class PhoneVerificationService(
         val CODE_TTL: Duration = Duration.ofMinutes(3)
         val RESEND_COOLDOWN: Duration = Duration.ofSeconds(60)
         const val DAILY_SEND_LIMIT = 10
+        const val MAX_CONFIRM_ATTEMPTS = 5
     }
 }

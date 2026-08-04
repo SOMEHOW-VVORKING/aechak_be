@@ -80,6 +80,51 @@ class PhoneVerificationServiceTest {
         assertFalse(store.isInCooldown(USER_ID))
     }
 
+    @Test
+    fun `confirm - 발송된 코드·번호와 일치하면 통과한다`() {
+        service.sendCode(USER_ID, "010-1234-5678")
+
+        service.validateCode(USER_ID, "01012345678", "000000")
+    }
+
+    @Test
+    fun `confirm - 발송 이력이 없으면(만료 포함) 30005`() {
+        val ex = assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "000000") }
+
+        assertEquals(UserErrorCode.SMS_CODE_INVALID, ex.errorCode)
+    }
+
+    @Test
+    fun `confirm - 코드 불일치는 30005`() {
+        service.sendCode(USER_ID, "010-1234-5678")
+
+        val ex = assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "999999") }
+
+        assertEquals(UserErrorCode.SMS_CODE_INVALID, ex.errorCode)
+    }
+
+    @Test
+    fun `confirm - 발송 번호와 다른 번호는 코드가 맞아도 30005`() {
+        service.sendCode(USER_ID, "010-1234-5678")
+
+        val ex = assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01099998888", "000000") }
+
+        assertEquals(UserErrorCode.SMS_CODE_INVALID, ex.errorCode)
+    }
+
+    @Test
+    fun `confirm - 5회 실패하면 코드가 무효화돼 정답도 30005`() {
+        service.sendCode(USER_ID, "010-1234-5678")
+        repeat(5) {
+            assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "999999") }
+        }
+
+        val ex = assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "000000") }
+
+        assertEquals(UserErrorCode.SMS_CODE_INVALID, ex.errorCode)
+        assertNull(store.findCode(USER_ID))
+    }
+
     private class RecordingSmsSender : SmsSender {
         val sentTo = mutableListOf<String>()
         var failing = false
