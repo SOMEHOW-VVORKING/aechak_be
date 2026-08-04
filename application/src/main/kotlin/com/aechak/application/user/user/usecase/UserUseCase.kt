@@ -33,7 +33,7 @@ interface UserUseCase {
 
     /**
      * 닉네임 설정(온보딩 전용) — 동의 게이트 통과 시 닉네임 저장과 온보딩 완료(ACTIVE) 전이를 한 트랜잭션으로.
-     * ACTIVE의 호출은 30013으로 거부 — 온보딩 후 닉네임 변경은 updateProfile이 유일 경로다. 변경 후 내 정보 반환.
+     * ACTIVE의 호출은 30004로 거부 — 온보딩 후 닉네임 변경은 updateProfile이 유일 경로다. 변경 후 내 정보 반환.
      */
     fun setNickname(command: SetNicknameCommand): UserMeResult
 

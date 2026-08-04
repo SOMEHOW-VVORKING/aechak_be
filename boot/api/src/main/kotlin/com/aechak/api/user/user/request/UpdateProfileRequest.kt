@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Size
 
 /**
  * 전체 교체 PUT — 계약상 세 필드 항상 전송(유지할 값도 실어 보냄), nullable은 null=제거.
- * 닉네임 형식 규칙(2~12자·허용 문자)은 도메인이 판정한다(30003) — 여기서 검증하면 90002로 오라벨된다.
+ * 닉네임 형식 규칙(2~12자·허용 문자)은 도메인이 판정한다(30002) — 여기서 검증하면 90001로 오라벨된다.
  */
 data class UpdateProfileRequest(
     val nickname: String,

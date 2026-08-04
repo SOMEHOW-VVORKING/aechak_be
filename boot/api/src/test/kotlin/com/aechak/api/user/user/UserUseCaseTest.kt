@@ -188,7 +188,7 @@ class UserUseCaseTest : IntegrationTestBase() {
 
         val e = assertThrows<BusinessException> { setNickname(userId, "코코집사") }
 
-        assertEquals(UserErrorCode.DUPLICATE_NICKNAME, e.errorCode, "DB UNIQUE가 최종 판정 — 커밋 시점 위반을 30002로 번역")
+        assertEquals(UserErrorCode.DUPLICATE_NICKNAME, e.errorCode, "DB UNIQUE가 최종 판정 — 커밋 시점 위반을 30001로 번역")
         assertEquals(UserStatus.PENDING_ONBOARDING, statusInDb(userId), "실패 시 전이도 롤백")
     }
 
@@ -313,7 +313,7 @@ class UserUseCaseTest : IntegrationTestBase() {
 
         val e = assertThrows<BusinessException> { updateProfile(userId, "선점집사", null, null) }
 
-        assertEquals(UserErrorCode.DUPLICATE_NICKNAME, e.errorCode, "커밋 시점 UNIQUE 위반을 30002로 번역")
+        assertEquals(UserErrorCode.DUPLICATE_NICKNAME, e.errorCode, "커밋 시점 UNIQUE 위반을 30001로 번역")
         assertEquals("코코집사", userUseCase.getMe(userId).nickname, "실패 시 롤백")
     }
 
