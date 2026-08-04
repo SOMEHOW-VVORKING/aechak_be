@@ -15,6 +15,10 @@ enum class UserErrorCode(
     ALREADY_WITHDRAWN(30003, "이미 탈퇴한 계정입니다.", 409),
     ONBOARDING_ALREADY_COMPLETED(30004, "이미 온보딩을 완료한 계정입니다.", 409),
 
+    // 전화 인증 — 인증 코드는 세션류(애그리거트 아님)라 User 루트 대역을 잇는다
+    SMS_RATE_LIMITED(30006, "잠시 후 다시 시도해 주세요.", 429),
+    SMS_SEND_FAILED(30007, "인증번호 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.", 502),
+
     // 적립금
     INVALID_POINT_AMOUNT(30100, "적립금 거래 금액은 0보다 커야 합니다.", 400),
 

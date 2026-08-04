@@ -1,0 +1,72 @@
+package com.aechak.application.user.verification.service
+
+import com.aechak.application.user.verification.port.SmsSender
+import com.aechak.application.user.verification.port.VerificationCodeStore
+import com.aechak.application.user.verification.support.PhoneNumbers
+import com.aechak.application.user.verification.support.VerificationCodeGenerator
+import com.aechak.application.user.verification.usecase.result.PhoneCodeSentResult
+import com.aechak.common.error.BusinessException
+import com.aechak.domain.user.error.UserErrorCode
+import org.springframework.stereotype.Service
+import java.time.Clock
+import java.time.Duration
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+/**
+ * 전화 인증 비즈니스 로직 — 발송 제한·코드 수명 정책의 단일 소유자.
+ * 정책 수치는 응답(PhoneCodeSentResult)으로 FE에 동봉된다 — 여기 바꾸면 FE 타이머도 따라온다.
+ */
+@Service
+class PhoneVerificationService(
+    private val codeStore: VerificationCodeStore,
+    private val codeGenerator: VerificationCodeGenerator,
+    private val smsSender: SmsSender,
+    private val clock: Clock,
+) {
+    fun sendCode(
+        userId: Long,
+        rawPhoneNumber: String,
+    ): PhoneCodeSentResult {
+        val phoneNumber = PhoneNumbers.normalize(rawPhoneNumber)
+        if (codeStore.isInCooldown(userId)) {
+            throw BusinessException(UserErrorCode.SMS_RATE_LIMITED)
+        }
+
+        // 상한 판정은 INCR 반환값으로 — 검사와 증가를 쪼개면 동시 발송이 상한을 뚫는다
+        val dateKey = kstToday().format(DATE_KEY)
+        val expireAt = kstToday().plusDays(1).atStartOfDay(KST).toInstant()
+        val counts = codeStore.incrementDailyCounts(userId, phoneNumber, dateKey, expireAt)
+        if (counts.userCount > DAILY_SEND_LIMIT || counts.phoneCount > DAILY_SEND_LIMIT) {
+            throw BusinessException(UserErrorCode.SMS_RATE_LIMITED)
+        }
+
+        val code = codeGenerator.generate()
+        codeStore.saveCode(userId, phoneNumber, code, CODE_TTL)
+        try {
+            smsSender.send(phoneNumber, "[애착] 인증번호 [$code]를 입력해 주세요.")
+        } catch (e: Exception) {
+            // 실패한 시도는 흔적을 남기지 않는다 — 코드 소각 + 상한 미소모
+            codeStore.removeCode(userId)
+            codeStore.rollbackDailyCounts(userId, phoneNumber, dateKey)
+            throw BusinessException(UserErrorCode.SMS_SEND_FAILED, e)
+        }
+        codeStore.startCooldown(userId, RESEND_COOLDOWN)
+
+        return PhoneCodeSentResult(
+            expiresInSeconds = CODE_TTL.seconds.toInt(),
+            resendCooldownSeconds = RESEND_COOLDOWN.seconds.toInt(),
+        )
+    }
+
+    private fun kstToday() = clock.instant().atZone(KST).toLocalDate()
+
+    companion object {
+        /** 일 상한 버킷은 서버 TZ와 무관하게 KST 자정 기준 — 운영 정책(한국 서비스)의 날짜 감각과 일치시킨다. */
+        private val KST = ZoneId.of("Asia/Seoul")
+        private val DATE_KEY = DateTimeFormatter.BASIC_ISO_DATE
+        val CODE_TTL: Duration = Duration.ofMinutes(3)
+        val RESEND_COOLDOWN: Duration = Duration.ofSeconds(60)
+        const val DAILY_SEND_LIMIT = 10
+    }
+}
