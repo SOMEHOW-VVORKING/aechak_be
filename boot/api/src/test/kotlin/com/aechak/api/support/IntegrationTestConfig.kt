@@ -6,6 +6,7 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.core.JdbcTemplate
+import org.testcontainers.containers.GenericContainer
 import org.testcontainers.mysql.MySQLContainer
 
 /**
@@ -20,11 +21,18 @@ class IntegrationTestConfig {
     companion object {
         // 운영 MySQL 버전 고정 태그
         private val mysql = MySQLContainer("mysql:8.4")
+
+        // 인증 코드·발송 제한 저장소(SLR-01) — 이미지명 기반 ServiceConnection 매칭이라 name 지정 필수
+        private val redis = GenericContainer("redis:7.4").withExposedPorts(6379)
     }
 
     @Bean
     @ServiceConnection
     fun mysqlContainer(): MySQLContainer = mysql
+
+    @Bean
+    @ServiceConnection(name = "redis")
+    fun redisContainer(): GenericContainer<*> = redis
 
     @Bean
     fun databaseCleaner(jdbcTemplate: JdbcTemplate) = DatabaseCleaner(jdbcTemplate)
