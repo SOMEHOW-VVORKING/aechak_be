@@ -50,8 +50,15 @@ class UserProfile protected constructor(
     var version: Int = 0
         protected set
 
-    fun rename(nickname: String) {
+    /** 프로필 전체 교체(PUT) — 닉네임·자기소개·이미지 key를 항상 셋 다 받는다. nullable은 null=제거. 진입점은 User.updateProfile. */
+    fun updateProfile(
+        nickname: String,
+        bio: String?,
+        profileImageKey: String?,
+    ) {
         this.nickname = validateNickname(nickname)
+        this.bio = bio
+        this.profileImageKey = profileImageKey
     }
 
     companion object {

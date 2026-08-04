@@ -93,6 +93,16 @@ class User protected constructor() : AggregateRoot() {
         status = UserStatus.ACTIVE
     }
 
+    /** 프로필 전체 교체 — ACTIVE에서만. 비ACTIVE 도달은 UserStatusFilter가 걸렀어야 할 방어선 이상이라 500이 맞다. */
+    fun updateProfile(
+        nickname: String,
+        bio: String?,
+        profileImageKey: String?,
+    ) {
+        check(status == UserStatus.ACTIVE) { "프로필 수정은 ACTIVE 상태에서만 가능합니다 (userId=$id, status=$status)" }
+        profile.updateProfile(nickname, bio, profileImageKey)
+    }
+
     companion object {
         /** 소셜 가입 진입점 — PENDING_ONBOARDING으로 시작하고 프로필(닉네임)은 온보딩에서 생성한다. */
         fun preRegister(): User = User()

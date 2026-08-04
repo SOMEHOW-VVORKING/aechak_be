@@ -1,6 +1,7 @@
 package com.aechak.application.user.user.usecase
 
 import com.aechak.application.user.user.usecase.command.SetNicknameCommand
+import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
 import com.aechak.application.user.user.usecase.query.UserSearchQuery
 import com.aechak.application.user.user.usecase.result.UserMeResult
 import com.aechak.application.user.user.usecase.result.UserSummaryResult
@@ -30,11 +31,20 @@ interface UserUseCase {
         nickname: String,
     ): Boolean
 
-    /** 닉네임 설정 — PENDING이면 동의 게이트 통과 시 온보딩 완료(ACTIVE) 전이까지 한 트랜잭션. 변경 후 내 정보 반환. */
+    /**
+     * 닉네임 설정(온보딩 전용) — 동의 게이트 통과 시 닉네임 저장과 온보딩 완료(ACTIVE) 전이를 한 트랜잭션으로.
+     * ACTIVE의 호출은 30004로 거부 — 온보딩 후 닉네임 변경은 updateProfile이 유일 경로다. 변경 후 내 정보 반환.
+     */
     fun setNickname(command: SetNicknameCommand): UserMeResult
 
-    /** 내 정보 — PENDING이면 프로필 계열(nickname·profileImageUrl·bio)은 null. */
+    /** 내 정보 — PENDING이면 프로필 계열(nickname·profileImageUrl·profileImageKey·bio)은 null. */
     fun getMe(userId: Long): UserMeResult
+
+    /**
+     * 프로필 수정(닉네임·자기소개·이미지) — 전체 교체 PUT, ACTIVE 전용(PENDING은 필터가 차단).
+     * 온보딩 완료 전이는 setNickname 소관. 변경 후 내 정보 반환.
+     */
+    fun updateProfile(command: UpdateProfileCommand): UserMeResult
 
     fun searchUsers(query: UserSearchQuery): List<UserSummaryResult>
 
