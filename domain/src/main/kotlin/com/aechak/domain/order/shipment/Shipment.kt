@@ -2,7 +2,7 @@ package com.aechak.domain.order.shipment
 
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.claim.Claim
-import com.aechak.domain.order.error.ShipmentErrorCode
+import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.shipment.enums.ShipmentType
 import com.aechak.domain.support.AggregateRoot
@@ -69,7 +69,7 @@ class Shipment protected constructor(
 
     fun markDelivered(at: LocalDateTime = LocalDateTime.now()) {
         if (deliveredAt != null) {
-            throw BusinessException(ShipmentErrorCode.SHIPMENT_ALREADY_DELIVERED)
+            throw BusinessException(OrderErrorCode.SHIPMENT_ALREADY_DELIVERED)
         }
         deliveredAt = at
     }
