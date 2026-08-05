@@ -37,7 +37,6 @@ include(
     "redis",                // 소셜 로그인(ACC-01): id_token 검증 / refresh token 저장
     "s3-client",                             // 오브젝트 스토리지 어댑터
     "kafka",
-    "message",
 )
 
 project(":api").projectDir = file("boot/api")
