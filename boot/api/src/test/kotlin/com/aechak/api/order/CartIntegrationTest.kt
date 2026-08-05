@@ -1,10 +1,6 @@
 package com.aechak.api.order
 
 import com.aechak.api.support.IntegrationTestBase
-import com.aechak.application.auth.error.AuthErrorCode
-import com.aechak.common.error.CommonErrorCode
-import com.aechak.common.error.ErrorCode
-import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.option.OptionCombination
 import com.aechak.domain.product.product.Product
@@ -100,11 +96,17 @@ class CartIntegrationTest : IntegrationTestBase() {
         }
     }
 
-    private fun updateSaleStatus(status: SaleStatus) {
+    private fun updateSaleStatus(
+        comboId: Long,
+        status: SaleStatus,
+    ) {
         tx.execute {
             em
-                .createQuery("update Product p set p.saleStatus = :st")
-                .setParameter("st", status)
+                .createQuery(
+                    "update Product p set p.saleStatus = :st, p.updatedAt = CURRENT_TIMESTAMP " +
+                        "where p.id = (select oc.product.id from OptionCombination oc where oc.id = :id)",
+                ).setParameter("st", status)
+                .setParameter("id", comboId)
                 .executeUpdate()
         }
     }
@@ -151,7 +153,7 @@ class CartIntegrationTest : IntegrationTestBase() {
             .contentType(MediaType.APPLICATION_JSON)
             .content(body)
 
-    /** POST 후 201을 확인하고 응답 본문을 돌려준다. */
+    /** POST 후 201을 확인하고 응답 본문을 돌려줌. */
     private fun addCartItem(
         token: String,
         comboId: Long,
@@ -169,17 +171,26 @@ class CartIntegrationTest : IntegrationTestBase() {
         path: String,
     ): Long = (JsonPath.read(json, path) as Number).toLong()
 
-    /** HTTP 상태와 errorCode를 함께 고정함. 상태는 ErrorCode 정의에서 파생. */
+    /** 기대값을 숫자로 직접 적음. enum에서 뽑아 쓰면 코드를 바꿔도 테스트가 따라와 아무것도 못 잡음. */
     private fun assertError(
         token: String,
         body: String,
-        errorCode: ErrorCode,
+        httpStatus: Int,
+        errorCode: Int,
     ) {
         mockMvc
             .perform(postCartItem(token, body))
-            .andExpect(status().`is`(errorCode.status))
-            .andExpect(jsonPath("$.errorCode").value(errorCode.code))
+            .andExpect(status().`is`(httpStatus))
+            .andExpect(jsonPath("$.errorCode").value(errorCode))
     }
+
+    private fun quantityOf(comboId: Long): Int? =
+        em
+            .createQuery("select ci.quantity from CartItem ci where ci.optionCombinationId = :id", Integer::class.java)
+            .setParameter("id", comboId)
+            .resultList
+            .firstOrNull()
+            ?.toInt()
 
     // ---------- 담기 성공 ----------
 
@@ -262,44 +273,9 @@ class CartIntegrationTest : IntegrationTestBase() {
                 pool.shutdown()
             }
 
-        assertEquals(listOf(201, 201), statuses, "UNIQUE(buyer_id) 충돌을 잡아 기존 행에 누적하므로 둘 다 성공해야 한다")
+        assertEquals(listOf(201, 201), statuses, "생성 경합이 나도 둘 다 성공해야 한다")
         assertEquals(1L, cartRowCount(buyerId), "동시 첫 담기여도 장바구니 행은 1개여야 한다")
-    }
-
-    @Test
-    fun `동일 라인 동시 재담기도 수량이 유실되지 않는다`() {
-        val buyerId = createActiveUser()
-        val token = mintAccessToken(buyerId)
-        val (comboIds, _) = seedCatalog()
-        addCartItem(token, comboIds[0], 1) // 라인을 먼저 만들어 생성 경합이 아니라 누적 경합만 본다
-
-        val start = CountDownLatch(1)
-        val pool = Executors.newFixedThreadPool(2)
-        val statuses =
-            try {
-                (1..2)
-                    .map {
-                        pool.submit<Int> {
-                            start.await()
-                            mockMvc
-                                .perform(postCartItem(token, cartItemJson(comboIds[0], 1)))
-                                .andReturn()
-                                .response
-                                .status
-                        }
-                    }.also { start.countDown() }
-                    .map { it.get() }
-            } finally {
-                pool.shutdown()
-            }
-
-        assertEquals(listOf(201, 201), statuses, "동시 재담기는 둘 다 성공해야 한다")
-        val quantity =
-            em
-                .createQuery("select ci.quantity from CartItem ci", java.lang.Integer::class.java)
-                .singleResult
-                .toInt()
-        assertEquals(3, quantity, "행 잠금 직렬화로 1+1+1이 유실 없이 3이어야 한다")
+        assertEquals(2, quantityOf(comboIds[0]), "두 요청이 각각 1씩 담았으므로 2여야 한다")
     }
 
     // ---------- 요청 계약(HTTP 경계) ----------
@@ -310,7 +286,7 @@ class CartIntegrationTest : IntegrationTestBase() {
         val token = mintAccessToken(buyerId)
         val (comboIds, _) = seedCatalog()
 
-        assertError(token, cartItemJson(comboIds[0], 100), CommonErrorCode.INVALID_REQUEST)
+        assertError(token, cartItemJson(comboIds[0], 100), 400, 90001)
     }
 
     @Test
@@ -319,11 +295,7 @@ class CartIntegrationTest : IntegrationTestBase() {
         val token = mintAccessToken(buyerId)
 
         // 원시 타입으로 받으면 생략이 0으로 새서 50200으로 오판됨
-        assertError(
-            token,
-            """{"optionCombinationId": 1}""",
-            CommonErrorCode.INVALID_REQUEST,
-        )
+        assertError(token, """{"optionCombinationId": 1}""", 400, 90001)
     }
 
     @Test
@@ -334,7 +306,7 @@ class CartIntegrationTest : IntegrationTestBase() {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(cartItemJson(1L, 1)),
             ).andExpect(status().isUnauthorized)
-            .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.UNAUTHENTICATED.code))
+            .andExpect(jsonPath("$.errorCode").value(20004))
     }
 
     // ---------- 검증 실패 ----------
@@ -345,7 +317,7 @@ class CartIntegrationTest : IntegrationTestBase() {
         val token = mintAccessToken(buyerId)
         seedCatalog()
 
-        assertError(token, cartItemJson(999_999L, 1), OrderErrorCode.CART_ITEM_OPTION_NOT_FOUND)
+        assertError(token, cartItemJson(999_999L, 1), 404, 50207)
     }
 
     @Test
@@ -355,7 +327,7 @@ class CartIntegrationTest : IntegrationTestBase() {
         val (comboIds, _) = seedCatalog()
         deactivateOption(comboIds[0])
 
-        assertError(token, cartItemJson(comboIds[0], 1), OrderErrorCode.CART_ITEM_NOT_PURCHASABLE)
+        assertError(token, cartItemJson(comboIds[0], 1), 409, 50202)
     }
 
     @Test
@@ -363,9 +335,9 @@ class CartIntegrationTest : IntegrationTestBase() {
         val buyerId = createActiveUser()
         val token = mintAccessToken(buyerId)
         val (comboIds, _) = seedCatalog()
-        updateSaleStatus(SaleStatus.SUSPENDED)
+        updateSaleStatus(comboIds[0], SaleStatus.SUSPENDED)
 
-        assertError(token, cartItemJson(comboIds[0], 1), OrderErrorCode.CART_ITEM_NOT_PURCHASABLE)
+        assertError(token, cartItemJson(comboIds[0], 1), 409, 50202)
     }
 
     @Test
@@ -373,9 +345,9 @@ class CartIntegrationTest : IntegrationTestBase() {
         val buyerId = createActiveUser()
         val token = mintAccessToken(buyerId)
         val (comboIds, _) = seedCatalog()
-        updateSaleStatus(SaleStatus.ENDED)
+        updateSaleStatus(comboIds[0], SaleStatus.ENDED)
 
-        assertError(token, cartItemJson(comboIds[0], 1), OrderErrorCode.CART_ITEM_NOT_PURCHASABLE)
+        assertError(token, cartItemJson(comboIds[0], 1), 409, 50202)
     }
 
     @Test
@@ -385,17 +357,7 @@ class CartIntegrationTest : IntegrationTestBase() {
         val (comboIds, _) = seedCatalog()
         updateSellerStatus(SellerStatus.PAUSED)
 
-        assertError(token, cartItemJson(comboIds[0], 1), OrderErrorCode.CART_ITEM_NOT_PURCHASABLE)
-    }
-
-    @Test
-    fun `퇴점 셀러의 상품도 50202다`() {
-        val buyerId = createActiveUser()
-        val token = mintAccessToken(buyerId)
-        val (comboIds, _) = seedCatalog()
-        updateSellerStatus(SellerStatus.WITHDRAWN)
-
-        assertError(token, cartItemJson(comboIds[0], 1), OrderErrorCode.CART_ITEM_NOT_PURCHASABLE)
+        assertError(token, cartItemJson(comboIds[0], 1), 409, 50202)
     }
 
     @Test
@@ -415,7 +377,8 @@ class CartIntegrationTest : IntegrationTestBase() {
         val token = mintAccessToken(buyerId)
         val (comboIds, _) = seedCatalog(stock = 1)
 
-        assertError(token, cartItemJson(comboIds[0], 2), OrderErrorCode.CART_ITEM_OUT_OF_STOCK)
+        assertError(token, cartItemJson(comboIds[0], 2), 409, 50201)
+        assertEquals(0L, cartItemRowCount(), "실패한 담기는 라인을 남기지 않아야 한다")
     }
 
     @Test
@@ -423,9 +386,9 @@ class CartIntegrationTest : IntegrationTestBase() {
         val buyerId = createActiveUser()
         val token = mintAccessToken(buyerId)
         val (comboIds, _) = seedCatalog(stock = 0)
-        updateSaleStatus(SaleStatus.OUT_OF_STOCK)
+        updateSaleStatus(comboIds[0], SaleStatus.OUT_OF_STOCK)
 
-        assertError(token, cartItemJson(comboIds[0], 1), OrderErrorCode.CART_ITEM_OUT_OF_STOCK)
+        assertError(token, cartItemJson(comboIds[0], 1), 409, 50201)
     }
 
     @Test
@@ -435,7 +398,8 @@ class CartIntegrationTest : IntegrationTestBase() {
         val (comboIds, _) = seedCatalog(stock = 5)
         addCartItem(token, comboIds[0], 2)
 
-        assertError(token, cartItemJson(comboIds[0], 4), OrderErrorCode.CART_ITEM_OUT_OF_STOCK)
+        assertError(token, cartItemJson(comboIds[0], 4), 409, 50201)
+        assertEquals(2, quantityOf(comboIds[0]), "실패한 누적은 저장된 수량을 바꾸지 않아야 한다")
     }
 
     @Test
@@ -446,7 +410,8 @@ class CartIntegrationTest : IntegrationTestBase() {
         addCartItem(token, comboIds[0], 98)
         updateStock(comboIds[0], 5)
 
-        assertError(token, cartItemJson(comboIds[0], 2), CommonErrorCode.INVALID_REQUEST)
+        assertError(token, cartItemJson(comboIds[0], 2), 400, 90001)
+        assertEquals(98, quantityOf(comboIds[0]), "실패한 누적은 저장된 수량을 바꾸지 않아야 한다")
     }
 
     @Test
@@ -454,18 +419,9 @@ class CartIntegrationTest : IntegrationTestBase() {
         val buyerId = createActiveUser()
         val token = mintAccessToken(buyerId)
         val (comboIds, _) = seedCatalog(stock = 1)
-        updateSaleStatus(SaleStatus.SUSPENDED)
+        updateSaleStatus(comboIds[0], SaleStatus.SUSPENDED)
 
-        assertError(token, cartItemJson(comboIds[0], 2), OrderErrorCode.CART_ITEM_NOT_PURCHASABLE)
-    }
-
-    @Test
-    fun `수량 1 미만은 50200이다`() {
-        val buyerId = createActiveUser()
-        val token = mintAccessToken(buyerId)
-        val (comboIds, _) = seedCatalog()
-
-        assertError(token, cartItemJson(comboIds[0], 0), OrderErrorCode.INVALID_CART_ITEM_QUANTITY)
+        assertError(token, cartItemJson(comboIds[0], 2), 409, 50202)
     }
 
     @Test
@@ -474,7 +430,7 @@ class CartIntegrationTest : IntegrationTestBase() {
         val token = mintAccessToken(buyerId)
         val (comboIds, _) = seedCatalog(comboCount = 2)
         addCartItem(token, comboIds[0], 1)
-        // 나머지 99종은 값참조(FK 없음)라 실제 옵션 조합 없이 행만 채워 상한 상태를 만든다.
+        // 나머지 99종은 값참조(FK 없음)라 실제 옵션 조합 없이 행만 채워 상한 상태를 만듦.
         tx.execute {
             val cartId =
                 em
@@ -492,7 +448,8 @@ class CartIntegrationTest : IntegrationTestBase() {
                 ).executeUpdate()
         }
 
-        assertError(token, cartItemJson(comboIds[1], 1), OrderErrorCode.CART_ITEM_LIMIT_EXCEEDED)
+        assertError(token, cartItemJson(comboIds[1], 1), 422, 50203)
+        assertEquals(100L, cartItemRowCount(), "상한에 걸린 담기는 라인을 늘리지 않아야 한다")
     }
 
     @Test

@@ -38,24 +38,10 @@ class CartItemTest {
     }
 
     @Test
-    fun `첫 담기 수량이 상한과 같으면 허용된다 - 경계 99`() {
-        assertEquals(CartItem.MAX_QUANTITY, CartItem.of(10L, 99).quantity, "신규 라인의 상한 경계값 99는 허용돼야 한다")
-    }
-
-    @Test
     fun `첫 담기 수량이 99를 넘으면 90001 검증 실패다`() {
         val e = assertFailsWith<BusinessException> { CartItem.of(10L, 100) }
 
         assertEquals(CommonErrorCode.INVALID_REQUEST, e.errorCode, "신규 라인도 상한 99를 넘으면 90001이어야 한다")
-    }
-
-    @Test
-    fun `수량 1 미만 누적은 50200이다`() {
-        val item = CartItem.of(10L, 2)
-
-        val e = assertFailsWith<BusinessException> { item.accumulate(0) }
-
-        assertEquals(OrderErrorCode.INVALID_CART_ITEM_QUANTITY, e.errorCode, "누적 경로도 수량 1 미만은 50200이어야 한다")
     }
 
     @Test

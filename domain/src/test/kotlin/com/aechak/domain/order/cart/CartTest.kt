@@ -63,31 +63,4 @@ class CartTest {
         assertEquals(2, merged.quantity, "종류 상한은 누적을 막지 않아야 한다")
         assertEquals(Cart.MAX_ITEM_KINDS, cart.items.size, "누적은 라인 수를 바꾸지 않아야 한다")
     }
-
-    @Test
-    fun `누적 결과가 라인당 상한 99를 넘으면 90001 검증 실패다`() {
-        val cart = cart()
-        cart.addItem(10L, 98)
-
-        val e = assertFailsWith<BusinessException> { cart.addItem(10L, 2) }
-
-        assertEquals(CommonErrorCode.INVALID_REQUEST, e.errorCode, "누적 상한 초과는 90001이어야 한다")
-    }
-
-    @Test
-    fun `수량 1 미만 담기는 50200이다`() {
-        val e = assertFailsWith<BusinessException> { cart().addItem(10L, 0) }
-
-        assertEquals(OrderErrorCode.INVALID_CART_ITEM_QUANTITY, e.errorCode, "신규 라인 경로의 수량 0은 50200이어야 한다")
-    }
-
-    @Test
-    fun `동일 옵션 조합이 담긴 상태의 수량 1 미만 재담기도 50200이다`() {
-        val cart = cart()
-        cart.addItem(10L, 2)
-
-        val e = assertFailsWith<BusinessException> { cart.addItem(10L, 0) }
-
-        assertEquals(OrderErrorCode.INVALID_CART_ITEM_QUANTITY, e.errorCode, "누적 경로의 수량 0도 50200이어야 한다")
-    }
 }

@@ -2,16 +2,29 @@ package com.aechak.api.order
 
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.domain.order.cart.Cart
+import com.aechak.domain.order.cart.repository.CartRepository
 import jakarta.persistence.PersistenceException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.support.TransactionTemplate
+import java.util.concurrent.CountDownLatch
+import kotlin.concurrent.thread
 
 /**
  * 영속 계약 통합 테스트. 깨지면 JPA 매핑이나 ddl-auto가 만든 UNIQUE 제약이 무너진 것임.
  * 동일 조합 1행과 회원당 장바구니 1개는 애플리케이션 로직이 아니라 이 두 제약이 바닥에서 받침.
  */
 class CartPersistenceIntegrationTest : IntegrationTestBase() {
+    @Autowired
+    private lateinit var cartRepository: CartRepository
+
+    @Autowired
+    private lateinit var transactionManager: PlatformTransactionManager
+
     @Test
     fun `장바구니 저장 후 재조회하면 담긴 품목이 복원된다`() {
         val cartId =
@@ -55,5 +68,55 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
         assertThrows<PersistenceException>("같은 buyer_id 두 번째 장바구니는 UNIQUE 제약에 걸려야 한다") {
             tx.execute { em.persist(Cart.create(buyerId = 1L)) }
         }
+    }
+
+    /**
+     * 담기 격리 수준의 회귀 방어. 스레드 두 개를 래치로 세워 순서를 강제하므로 스케줄링 운에 기대지 않음.
+     * 뒤 트랜잭션이 먼저 스냅샷을 잡고, 그 뒤에 앞 트랜잭션이 수량을 올리고 커밋함.
+     * REPEATABLE READ면 뒤 트랜잭션이 낡은 1을 읽어 2로 덮어써 결과가 2가 되고 READ COMMITTED면 3이 됨.
+     */
+    @Test
+    fun `앞 트랜잭션이 커밋한 수량을 뒤 트랜잭션이 보고 누적한다`() {
+        val buyerId = 42L
+        val comboId = 10L
+        tx.execute {
+            val cart = Cart.create(buyerId)
+            cart.addItem(comboId, 1)
+            em.persist(cart)
+        }
+
+        val readCommitted =
+            TransactionTemplate(transactionManager).apply {
+                isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
+            }
+        val snapshotTaken = CountDownLatch(1)
+        val firstCommitted = CountDownLatch(1)
+
+        val second =
+            thread {
+                readCommitted.execute {
+                    cartRepository.existsByBuyerId(buyerId) // 이 읽기로 스냅샷이 잡힘
+                    snapshotTaken.countDown()
+                    firstCommitted.await()
+
+                    cartRepository.findByBuyerIdForUpdate(buyerId)!!.addItem(comboId, 1)
+                    cartRepository.flush()
+                }
+            }
+
+        snapshotTaken.await()
+        readCommitted.execute {
+            cartRepository.findByBuyerIdForUpdate(buyerId)!!.addItem(comboId, 1)
+            cartRepository.flush()
+        }
+        firstCommitted.countDown()
+        second.join()
+
+        val quantity =
+            em
+                .createQuery("select ci.quantity from CartItem ci", java.lang.Integer::class.java)
+                .singleResult
+                .toInt()
+        assertEquals(3, quantity, "1에 1씩 두 번 더했으므로 3이어야 한다. 2면 뒤 트랜잭션이 낡은 값을 덮어쓴 것")
     }
 }
