@@ -5,6 +5,7 @@ import com.aechak.application.order.cart.port.view.CartCatalogItemView
 import com.aechak.domain.product.option.QOptionCombination
 import com.aechak.domain.product.product.QProduct
 import com.aechak.domain.seller.seller.QSeller
+import com.querydsl.core.types.Projections
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.springframework.stereotype.Repository
 
@@ -21,30 +22,22 @@ private val seller = QSeller.seller
 class CartCatalogQueryAdapter(
     private val queryFactory: JPAQueryFactory,
 ) : CartCatalogQueryPort {
-    override fun findItem(optionCombinationId: Long): CartCatalogItemView? {
-        val row =
-            queryFactory
-                .select(
+    override fun findItem(optionCombinationId: Long): CartCatalogItemView? =
+        queryFactory
+            .select(
+                Projections.constructor(
+                    CartCatalogItemView::class.java,
                     optionCombination.id,
                     product.publicId,
                     optionCombination.stockQuantity,
                     optionCombination.isActive,
                     product.saleStatus,
                     seller.status,
-                ).from(optionCombination)
-                .join(optionCombination.product, product)
-                .join(seller)
-                .on(seller.userId.eq(product.sellerId))
-                .where(optionCombination.id.eq(optionCombinationId))
-                .fetchOne() ?: return null
-
-        return CartCatalogItemView(
-            optionCombinationId = row.get(optionCombination.id)!!,
-            productPublicId = row.get(product.publicId)!!,
-            stockQuantity = row.get(optionCombination.stockQuantity)!!,
-            optionActive = row.get(optionCombination.isActive)!!,
-            saleStatus = row.get(product.saleStatus)!!,
-            sellerStatus = row.get(seller.status)!!,
-        )
-    }
+                ),
+            ).from(optionCombination)
+            .join(optionCombination.product, product)
+            .join(seller)
+            .on(seller.userId.eq(product.sellerId))
+            .where(optionCombination.id.eq(optionCombinationId))
+            .fetchOne()
 }
