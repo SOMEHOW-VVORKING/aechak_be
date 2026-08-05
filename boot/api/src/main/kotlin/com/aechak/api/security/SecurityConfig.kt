@@ -67,6 +67,8 @@ class SecurityConfig {
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "$basePath/products")
                     .permitAll()
+                    .requestMatchers(HttpMethod.GET, "$basePath/search/products") // 게스트도 상품 검색 허용
+                    .permitAll()
                     .anyRequest()
                     .authenticated()
             }.oauth2ResourceServer { resourceServer ->
