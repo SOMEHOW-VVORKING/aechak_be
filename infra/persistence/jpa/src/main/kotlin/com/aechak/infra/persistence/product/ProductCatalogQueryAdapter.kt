@@ -4,15 +4,11 @@ import com.aechak.application.product.port.ProductCatalogCondition
 import com.aechak.application.product.port.ProductCatalogQueryPort
 import com.aechak.application.product.port.ProductCatalogSort
 import com.aechak.application.product.port.view.ProductCatalogView
-import com.querydsl.core.types.Expression
 import com.querydsl.core.types.OrderSpecifier
 import com.querydsl.core.types.Predicate
-import com.querydsl.core.types.Projections
-import com.querydsl.core.types.dsl.CaseBuilder
 import com.querydsl.core.types.dsl.NumberExpression
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.springframework.stereotype.Repository
-import java.time.LocalDateTime
 
 /**
  * application이 요청한 공개 상품 카탈로그 목록 조회를 QueryDSL로 수행한다.
@@ -31,7 +27,7 @@ class ProductCatalogQueryAdapter(
      */
     override fun findVisiblePage(condition: ProductCatalogCondition): List<ProductCatalogView> {
         val effectivePrice = effectivePrice(condition.now)
-        return visibleProductQuery(queryFactory, pageProjection(effectivePrice))
+        return visibleProductQuery(queryFactory, catalogViewProjection(effectivePrice))
             .where(categoryFilter(condition.categoryId), keyset(condition, effectivePrice))
             .orderBy(*orderBy(condition.sort, effectivePrice))
             .limit(condition.limit.toLong())
@@ -59,36 +55,6 @@ class ProductCatalogQueryAdapter(
             .from(product)
             .where(product.publicId.eq(publicId))
             .fetchOne()
-
-    /** 커서 경계용 유효가격(sortPriceAtAnchor)을 포함한 목록 카드 projection */
-    private fun pageProjection(effectivePrice: NumberExpression<Long>): Expression<ProductCatalogView> =
-        Projections.constructor(
-            ProductCatalogView::class.java,
-            product.id,
-            product.publicId,
-            product.name,
-            seller.storeName,
-            product.representativeImageKey,
-            product.regularPrice,
-            product.discountPrice,
-            product.discountStartAt,
-            product.discountEndAt,
-            effectivePrice,
-            product.saleStatus,
-        )
-
-    /**
-     * 주어진 시각의 유효가격을 계산하는 SQL 표현식을 반환한다.
-     * 할인 시작, 종료 경계를 포함한 할인 기간이면 할인가, 그 외에는 정가를 선택한다.
-     */
-    private fun effectivePrice(now: LocalDateTime): NumberExpression<Long> =
-        CaseBuilder()
-            .`when`(
-                product.discountPrice.isNotNull
-                    .and(product.discountStartAt.isNull.or(product.discountStartAt.loe(now)))
-                    .and(product.discountEndAt.isNull.or(product.discountEndAt.goe(now))),
-            ).then(product.discountPrice)
-            .otherwise(product.regularPrice)
 
     /**
      * 중분류 필터가 있으면 해당 중분류와 그 아래 소분류의 상품만 조회하는 조건을 반환한다.
