@@ -61,6 +61,10 @@ class CartItem protected constructor(
             if (addedQuantity < 1) {
                 throw BusinessException(OrderErrorCode.INVALID_CART_ITEM_QUANTITY)
             }
+            // 담을 수량 자체를 먼저 막지 않으면 합계가 Int 범위를 넘겨 음수가 되고 상한 검사를 통과함
+            if (addedQuantity > MAX_QUANTITY) {
+                throw BusinessException(CommonErrorCode.INVALID_REQUEST)
+            }
             val total = currentQuantity + addedQuantity
             if (total > MAX_QUANTITY) {
                 throw BusinessException(CommonErrorCode.INVALID_REQUEST)
