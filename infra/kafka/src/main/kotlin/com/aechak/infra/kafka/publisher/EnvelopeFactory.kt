@@ -24,7 +24,7 @@ internal class EnvelopeFactory(
         val aggregateId = message.aggregateId
         return Envelope(
             eventId = eventId,
-            eventType = message::class.simpleName!!, // 컨슈머 라우팅 기준은 계약 클래스명. 도메인 이벤트명 아님
+            eventType = message::class.simpleName!!, // 컨슈머 라우팅 기준은 계약 클래스명. 도메인 이벤트명 아님. 리네임하면 기존 컨슈머가 못 알아봄
             occurredAt = occurredAt,
             aggregateType = aggregateType,
             aggregateId = aggregateId,
