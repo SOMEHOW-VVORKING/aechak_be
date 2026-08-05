@@ -20,10 +20,12 @@ enum class OrderErrorCode(
     CART_ITEM_OUT_OF_STOCK(50201, "재고가 부족합니다.", 409),
     CART_ITEM_NOT_PURCHASABLE(50202, "상품 상태가 변경되었습니다.", 409),
     CART_ITEM_LIMIT_EXCEEDED(50203, "장바구니에 담을 수 있는 품목 수를 초과했습니다.", 422),
+    CART_RATE_LIMIT_EXCEEDED(50204, "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.", 429),
+    CART_ITEM_NOT_FOUND(50205, "장바구니 항목을 찾을 수 없습니다.", 404),
+    CART_ITEM_ACCESS_DENIED(50206, "본인의 장바구니 항목만 접근할 수 있습니다.", 403),
 
     // product지만, BC 침범 방지를 위해..
     CART_ITEM_OPTION_NOT_FOUND(50207, "상품을 찾을 수 없습니다.", 404),
-    CART_NOT_FOUND(50208, "장바구니를 찾을 수 없습니다.", 404),
 
     // 배송
     SHIPMENT_NOT_FOUND(50300, "배송 정보를 찾을 수 없습니다.", 404),

@@ -15,10 +15,10 @@ data class AddCartItemResult(
     val cartItemCount: Int,
 ) {
     companion object {
-        /** itemStatus가 ACTIVE 고정인 이유는 나머지 상태가 담기 단계에서 전부 막혀 여기까지 못 오기 때문임. */
         fun from(
             cartItem: CartItem,
             catalogItem: CartCatalogItemView,
+            itemStatus: CartItemStatus,
             cartItemCount: Int,
         ): AddCartItemResult =
             AddCartItemResult(
@@ -26,7 +26,7 @@ data class AddCartItemResult(
                 productId = catalogItem.productPublicId,
                 optionCombinationId = cartItem.optionCombinationId,
                 quantity = cartItem.quantity,
-                itemStatus = CartItemStatus.ACTIVE,
+                itemStatus = itemStatus,
                 cartItemCount = cartItemCount,
             )
     }
