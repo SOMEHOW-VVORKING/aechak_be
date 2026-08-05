@@ -26,8 +26,10 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.core.env.Environment
 import org.springframework.kafka.annotation.KafkaListener
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory
 import org.springframework.kafka.core.KafkaTemplate
+import org.springframework.kafka.test.utils.ContainerTestUtils
 import org.springframework.kafka.test.utils.KafkaTestUtils
 import tools.jackson.databind.ObjectMapper
 import java.time.Duration
@@ -55,6 +57,9 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     @Autowired
     lateinit var traceProbe: TraceProbe
+
+    @Autowired
+    lateinit var registry: KafkaListenerEndpointRegistry
 
     @Autowired
     lateinit var environment: Environment
@@ -387,6 +392,9 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     @Test
     fun `유실 가능 메시지도 트랜잭션이 롤백되면 발행하지 않는다`() {
+        // 할당 전에는 관찰 자체가 꺼져 있어서 부재 단언이 무조건 통과함
+        ContainerTestUtils.waitForAssignment(registry.getListenerContainer(TraceProbe.ID)!!, 1)
+
         val traceId = "direct-rollback-${UUID.randomUUID()}"
         MDC.put("traceId", traceId)
         try {
@@ -400,11 +408,15 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
             MDC.remove("traceId")
         }
 
-        // "안 나감"은 기다려 봐야 앎
-        Thread.sleep(1500)
-        assertThat(traceProbe.captured)
-            .`as`("롤백된 트랜잭션의 이벤트가 나가면 일어나지 않은 일을 다른 컨슈머가 실행한다")
-            .doesNotContain(traceId)
+        // 한 시점에 없는 것과 계속 없는 것은 다름. 고정 대기로는 늦게 온 레코드가 통과함
+        await()
+            .during(Duration.ofSeconds(2))
+            .atMost(Duration.ofSeconds(10))
+            .untilAsserted {
+                assertThat(traceProbe.captured)
+                    .`as`("롤백된 트랜잭션의 이벤트가 나가면 일어나지 않은 일을 다른 컨슈머가 실행한다")
+                    .doesNotContain(traceId)
+            }
     }
 
     @Test
@@ -849,9 +861,14 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     class TraceProbe {
         val captured = LinkedBlockingQueue<String>()
 
-        @KafkaListener(topics = [Topics.ORDER], groupId = "trace-probe")
+        @KafkaListener(id = ID, topics = [Topics.ORDER], groupId = ID)
         fun onMessage(value: String) {
             captured.add(MDC.get(TraceIdRecordInterceptor.TRACE_ID_MDC_KEY) ?: "")
+        }
+
+        companion object {
+            // 부재 단언 전에 이 리스너의 파티션 할당을 기다려야 해서 컨테이너를 이름으로 찾음
+            const val ID = "trace-probe"
         }
     }
 
