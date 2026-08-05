@@ -9,7 +9,8 @@ enum class CommonErrorCode(
     override val message: String,
     override val status: Int,
 ) : ErrorCode {
-    INTERNAL_SERVER_ERROR(90001, "서버 오류가 발생했습니다.", 500),
-    INVALID_REQUEST(90002, "잘못된 요청입니다.", 400),
-    INVALID_CURSOR(90003, "유효하지 않은 커서입니다.", 400),
+    INTERNAL_SERVER_ERROR(90000, "서버 오류가 발생했습니다.", 500),
+    INVALID_REQUEST(90001, "잘못된 요청입니다.", 400),
+    INVALID_CURSOR(90002, "유효하지 않은 커서입니다.", 400),
+    CONCURRENT_MODIFICATION(90003, "다른 곳에서 먼저 수정되었습니다. 새로고침 후 다시 시도해 주세요.", 409),
 }

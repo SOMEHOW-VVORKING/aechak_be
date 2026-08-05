@@ -11,7 +11,41 @@
 1. **성공 응답**: `data` 필드로 감싼다. 성공 여부는 HTTP Status(2xx)로만 판별. 본문에 `code`/`message`/`timestamp`/`status` 래퍼 없음.
 2. **실패 응답**: `errorCode`(int) + `message`. 클라이언트는 `errorCode`로 분기한다. `timestamp` 없음.
 3. **추적**: `X-Trace-Id` 응답 헤더. 모든 응답(성공/실패)에 포함. MDC 연동.
-4. **에러 코드 체계**: 도메인별 int 범위 (셀러 10000~, 사용자 20000~, 인증 30000~, 상품 40000~, 주문 50000~, 결제 60000~, 배송 70000~, 채팅 80000~, 서버 공통 90000~, 파일 110000~).
+4. **에러 코드 체계**: 컨텍스트별 int 대역.
+
+   | 대역 | 컨텍스트 | enum 파일 |
+   | --- | --- | --- |
+   | 10000 | seller | `SellerErrorCode` |
+   | 20000 | auth | `AuthErrorCode` |
+   | 30000 | user | `UserErrorCode` |
+   | 40000 | product | `ProductErrorCode` |
+   | 50000 | order (배송 흡수) | `OrderErrorCode` |
+   | 60000 | payment | `PaymentErrorCode` |
+   | 70000 | settlement | `SettlementErrorCode` |
+   | 80000 | search | 대역 예약 — enum 없음 |
+   | 90000 | 서버 공통 | `CommonErrorCode` |
+   | 100000 | file | `FileErrorCode` |
+   | 110000 | review | `ReviewErrorCode` |
+
+   - **애그리거트 100번대**: 대역 안에서 애그리거트 **루트** 하나가 100번대 하나를 받고, 그 안은 00번부터 채운다
+     (`User` 30000~, `PointTransaction` 30100~, `DeliveryAddress` 30500~). 배정 단위는 패키지가 아니라 루트이고,
+     판별 기준은 **자체 리포지토리 포트를 갖는가**다. 한 패키지를 공유하는 애그리거트라도 루트마다 100번대를
+     따로 받는다 — `pet/`의 `PetProfile`(30600~)과 `Breed`(30700~)가 그 예다.
+     배정 순서는 **선점 순** — 먼저 코드가 생긴 루트가 앞 100번대를 갖는다.
+     **코드가 없는 애그리거트에는 번호를 미리 잡아두지 않는다** — 첫 코드가 필요해진 시점에
+     그 대역의 다음 빈 100번대를 준다. enum 파일은 **BC당 하나**이므로 100번대 구분이 파일을 쪼개지는 않는다.
+     소속은 **검증 대상이 어느 애그리거트인가**로 정한다 — `INVALID_BREED`는 펫 등록 중에 던지지만
+     검증 대상이 `Breed`이므로 `Breed`의 100번대다.
+     `auth`·`file`·`common`처럼 애그리거트가 없는 컨텍스트는 나눌 단위가 없으므로 100번대를 쓰지 않고 대역 시작부터 순차로 채운다.
+   - **BC 격리**: 대역을 소유하는 단위는 BC다. 서버를 BC 단위로 분리할 수 있어야 하므로
+     **다른 BC의 에러 코드를 던지거나 응답으로 노출하지 않는다.** 예외는 둘이다.
+     ① 90000번대는 BC가 아니라 플랫폼 소유라 어느 서버가 내든 위반이 아니다.
+     ② `auth`·`file`처럼 애그리거트가 없는 application 전용 컨텍스트는 자기 대역을 갖되 BC 지위는 미확정으로 둔다.
+     이 예외는 **대역을 소유한다**는 데까지만 미친다 — 이 컨텍스트들도 남의 BC 대역을 던지거나 노출하는 것은 위반이다.
+
+     > **현황(시점 의존 — 원칙이 아니라 지금의 코드 상태다)**: 위반이 하나 남아 있다 —
+     > `SocialLoginService`가 소셜 로그인 중 `UserErrorCode`를 던진다.
+     > 던지는 코드를 바꾸면 응답 상태코드가 달라지므로 번호 체계와 분리해 다룬다.
 5. **의존 방향**: `도메인/실행 모듈 → common` 단방향. common은 아무것도 의존하지 않는다.
    - `common`: Spring 의존 **없음** (순수 Kotlin/Java). HTTP 상태는 raw `int`로만 표현.
    - `web-common`: `common` + `spring-web` 의존. HTTP 번역(직렬화, 상태코드 변환, 필터)은 전부 여기.
@@ -40,14 +74,23 @@ project-root/
 │       └── trace/
 │           └── TraceIdFilter.kt             # X-Trace-Id 필터
 │
-└── domain modules (user / order / payment / ...)   # common만 의존
-    └── src/main/kotlin/com/aechak/{domain}/
-        └── error/
-            └── {Domain}ErrorCode.kt         # ErrorCode 구현 enum
+├── domain/                                  # 도메인 BC. common만 의존
+│   └── src/main/kotlin/com/aechak/domain/
+│       └── {bc}/error/
+│           └── {Bc}ErrorCode.kt             # ErrorCode 구현 enum
+│                                            #   seller / user / product / order / payment / settlement / review
+│
+└── application/                             # 유스케이스 조율 계층. domain 의존
+    └── src/main/kotlin/com/aechak/application/
+        ├── auth/error/
+        │   └── AuthErrorCode.kt             # 20000번대 — 애그리거트가 없어 domain이 아닌 여기 소속
+        └── file/error/
+            └── FileErrorCode.kt             # 100000번대 — 위와 같은 이유
 ```
 
-- 도메인 enum은 **각 도메인 모듈이 소유**한다. common에 몰아넣지 않는다 (머지 충돌 핫스팟 방지, 응집도 유지).
-- 90000번대(CommonErrorCode)만 예외적으로 common 소속 — 특정 도메인에 속하지 않고 api/batch 어디서나 필요하므로.
+- BC별 에러 enum은 **그 BC의 패키지가 소유**한다. common에 몰아넣지 않는다 (머지 충돌 핫스팟 방지, 응집도 유지).
+  애그리거트를 갖는 BC는 `domain` 모듈에, 애그리거트가 없는 `auth`·`file`은 `application` 모듈에 둔다.
+- 90000번대(CommonErrorCode)만 예외적으로 common 소속 — 특정 BC에 속하지 않고 api/batch 어디서나 필요하므로.
 
 ---
 
@@ -125,10 +168,10 @@ enum class CommonErrorCode(
     override val message: String,
     override val status: Int,
 ) : ErrorCode {
-
-    INTERNAL_SERVER_ERROR(90001, "서버 오류가 발생했습니다.", 500),
-    INVALID_REQUEST(90002, "잘못된 요청입니다.", 400),
-    // TODO: 90000번대 공통 코드 필요 시 여기에만 추가
+    INTERNAL_SERVER_ERROR(90000, "서버 오류가 발생했습니다.", 500),
+    INVALID_REQUEST(90001, "잘못된 요청입니다.", 400),
+    INVALID_CURSOR(90002, "유효하지 않은 커서입니다.", 400),
+    CONCURRENT_MODIFICATION(90003, "다른 곳에서 먼저 수정되었습니다. 새로고침 후 다시 시도해 주세요.", 409),
 }
 ```
 
@@ -204,11 +247,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  * 웹 계열 실행 모듈(api/admin) 공용 전역 예외 처리기.
  *
  * - BusinessException: errorCode.status(int) → HttpStatus 변환. 여기가 유일한 변환 지점.
- * - 그 외 Exception: 최후 방어선. 90001로 감싸고 스택트레이스는 로그로만 남긴다.
+ * - 그 외 Exception: 최후 방어선. 90000으로 감싸고 스택트레이스는 로그로만 남긴다.
  *   (즉석 문자열 코드("C500" 등) 생성 금지 — errorCode 분기 일관성 유지)
  *
  * 실행 모듈에서 컴포넌트 스캔에 포함시켜 활성화한다.
- * @Valid 검증 실패(MethodArgumentNotValidException)는 90002로 매핑한다.
+ * @Valid 검증 실패(MethodArgumentNotValidException)는 90001로 매핑한다.
  */
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -281,17 +324,18 @@ class TraceIdFilter : OncePerRequestFilter() {
 
 ---
 
-## 5. 도메인 모듈 템플릿 (참고용 — 각 도메인 담당자가 작성)
+## 5. BC 에러 코드 템플릿 (참고용 — 각 BC 담당자가 작성)
 
 ```kotlin
-package com.aechak.user.error   // TODO: 도메인별 패키지
+package com.aechak.domain.user.error   // TODO: BC별 패키지
 
 import com.aechak.common.error.ErrorCode
 
 /**
- * {도메인} 에러 코드. 이 도메인 모듈이 소유한다.
+ * {BC} 에러 코드. 이 BC가 소유하며 파일은 BC당 하나다.
  *
- * 코드 범위: TODO (사용자 20000~20999 / 주문 50000~50999 / 결제 60000~60999 ...)
+ * 코드 대역: TODO (사용자 30000~ / 주문 50000~ / 결제 60000~ — §0-4 대역표)
+ * 대역 안은 애그리거트 루트마다 100번대 하나, 그 안은 00번부터.
  * 새 코드 추가 시 이 파일만 수정 — common/web-common 변경 불필요.
  */
 enum class UserErrorCode(
@@ -300,9 +344,9 @@ enum class UserErrorCode(
     override val status: Int,
 ) : ErrorCode {
 
-    USER_NOT_FOUND(20001, "사용자를 찾을 수 없습니다.", 404),
-    DUPLICATE_NICKNAME(20002, "이미 사용 중인 닉네임입니다.", 409),
-    // TODO: 도메인 기능 구현하며 추가
+    USER_NOT_FOUND(30000, "사용자를 찾을 수 없습니다.", 404),
+    DUPLICATE_NICKNAME(30001, "이미 사용 중인 닉네임입니다.", 409),
+    // TODO: BC 기능 구현하며 추가
 }
 ```
 
@@ -332,11 +376,12 @@ fun signUp(@RequestBody request: SignUpRequest): ResponseEntity<Void> {
 
 ## 6. 운영 컨벤션 (데이터 추가/관리 규칙)
 
-1. **새 에러 코드 추가**: 해당 도메인 모듈의 enum에만 추가한다. code/message/status를 선언부에서 한 번에 정의 (원격 매핑 테이블 없음 → 누락 사고 원천 차단).
-2. **새 도메인 추가**: 코드 범위를 먼저 할당(문서 갱신)하고, 해당 모듈에 `{Domain}ErrorCode` enum 생성.
-3. **90000번대**: CommonErrorCode에만 추가. 도메인 enum에서 90000번대 사용 금지.
-4. **status 값**: 대부분 400. NOT_FOUND 계열 404, 중복 409, 인증 401/403, 외부 연동 실패 502. 배치 등 비HTTP 발신 코드는 500 고정.
-5. **금지 사항**:
+1. **새 에러 코드 추가**: 해당 BC의 enum에만 추가한다. 검증 대상 애그리거트의 100번대에서 다음 번호를 쓴다. code/message/status를 선언부에서 한 번에 정의 (원격 매핑 테이블 없음 → 누락 사고 원천 차단).
+2. **새 애그리거트 루트의 첫 에러 코드**: 배정 시점은 루트를 만드는 때가 아니라 **그 루트의 코드가 처음 필요해진 때**다. 그 시점에 BC 대역의 다음 빈 100번대를 배정하고 00번부터 쓴다. 코드가 없는 루트에는 번호를 미리 잡아두지 않는다. 패키지를 기존 루트와 공유해도 100번대는 따로 받는다. enum 파일은 BC당 하나이므로 늘리지 않는다.
+3. **새 BC 추가**: 대역을 먼저 할당(§0-4 표 갱신)하고, 해당 패키지에 `{BC}ErrorCode` enum 생성.
+4. **90000번대**: CommonErrorCode에만 추가. BC enum에서 90000번대 사용 금지.
+5. **status 값**: 대부분 400. NOT_FOUND 계열 404, 중복 409, 인증 401/403, 외부 연동 실패 502. 배치 등 비HTTP 발신 코드는 500 고정.
+6. **금지 사항**:
    - common에 Spring 의존성 추가 금지
    - 도메인 모듈이 web-common 의존 금지
    - ErrorResponse에 timestamp/status 필드 추가 금지

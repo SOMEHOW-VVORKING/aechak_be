@@ -10,4 +10,9 @@ enum class UploadPurpose(
         StorageCategory.MEDIA,
         setOf(FileType.PNG, FileType.JPEG, FileType.WEBP),
     ),
+    PET_PROFILE(
+        "pets/profile",
+        StorageCategory.MEDIA,
+        setOf(FileType.PNG, FileType.JPEG, FileType.WEBP),
+    ),
 }

@@ -57,6 +57,8 @@ application·boot의 코드도 스프링 없이 검증 가능하면 순수 단�
 
 **함정 — 로깅 바인딩**: 라이브러리 모듈(`infra/*`, `message` 등)은 `slf4j-api`만 의존하는 경우가 많다. 바인딩이 없으면 MDC가 no-op이라 `MDC.get()`이 항상 null을 돌려주고, MDC를 검증하는 테스트가 조용히 무의미해진다(boot 모듈에서는 Boot가 logback을 공급해 통과하다가, 대상 모듈로 옮기는 순간 드러난다). 그런 테스트가 있는 모듈은 `testRuntimeOnly(libs.logback.classic)`을 건다.
 
+**파일명**: 대상 프로덕션 **파일 기준으로 짓는다** — `PetProfile.kt` → `PetProfileTest.kt`. 시나리오명(`PetProfileRegistrationTest` 등)으로 짓지 않는다. 패키지 미러링과 같은 근거이고(짝 매칭·탐색성), 한 프로덕션 파일의 테스트가 여러 곳에 흩어지는 것도 막는다. 한 파일의 테스트가 커지면 파일을 쪼개지 말고 `@Nested`로 묶는다. 통합 테스트는 짝이 없으므로 대상 기능명 + `IntegrationTest`(예: `PetProfileIntegrationTest`).
+
 **예외**: 실 레포지토리·트랜잭션·커밋 관찰이 필요해지면 단위 대상이 아니다 — 통합으로 올린다. Fake 단위는 남용하지 않는다 — 배선 검증을 대체하지 못한다.
 
 역방향도 금지다: 순수 계산을 `@SpringBootTest`로 검증하지 않는다(부팅 비용 낭비 + 실패 국소화 저하).
