@@ -11,12 +11,13 @@ data class ProductKeywordSearchQuery(
     init {
         require(keyword.isNotBlank()) { "검색어는 비어 있을 수 없습니다." }
         require(keyword.length <= MAX_LENGTH) { "검색어는 최대 $MAX_LENGTH 자입니다." }
-        require(size in SIZE_RANGE) { "size는 $SIZE_RANGE 범위 안에 있어야 합니다." }
+        require(size in SIZE_MIN..SIZE_MAX) { "size는 $SIZE_MIN~$SIZE_MAX 범위 안에 있어야 합니다." }
     }
 
     companion object {
         const val DEFAULT_SIZE = 20
         const val MAX_LENGTH = 100
-        val SIZE_RANGE = 1..100
+        const val SIZE_MIN = 1L
+        const val SIZE_MAX = 100L
     }
 }

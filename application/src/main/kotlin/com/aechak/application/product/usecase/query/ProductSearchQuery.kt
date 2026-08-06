@@ -7,13 +7,15 @@ data class ProductSearchQuery(
     val categoryId: Long? = null,
     val sort: ProductCatalogSort = ProductCatalogSort.LATEST,
     val cursor: String? = null,
-    val size: Int = 20,
+    val size: Int = DEFAULT_SIZE,
 ) {
     init {
-        require(size in SIZE_RANGE) { "size는 $SIZE_RANGE 범위 안에 있어야 합니다." }
+        require(size in SIZE_MIN..SIZE_MAX) { "size는 $SIZE_MIN~$SIZE_MAX 범위 안에 있어야 합니다." }
     }
 
     companion object {
-        val SIZE_RANGE = 1..100
+        const val DEFAULT_SIZE = 20
+        const val SIZE_MIN = 1L
+        const val SIZE_MAX = 100L
     }
 }

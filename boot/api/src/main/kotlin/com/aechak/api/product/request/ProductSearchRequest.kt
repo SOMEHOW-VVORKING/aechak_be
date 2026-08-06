@@ -11,8 +11,12 @@ data class ProductSearchRequest(
     val category: Long? = null,
     val sort: String = "latest",
     val cursor: String? = null,
-    @field:Range(min = 1, max = 100, message = "size는 1~100 사이여야 합니다.")
-    val size: Int = 20,
+    @field:Range(
+        min = ProductSearchQuery.SIZE_MIN,
+        max = ProductSearchQuery.SIZE_MAX,
+        message = "size는 {min}~{max} 사이여야 합니다.",
+    )
+    val size: Int = ProductSearchQuery.DEFAULT_SIZE,
 ) {
     fun toQuery() =
         ProductSearchQuery(

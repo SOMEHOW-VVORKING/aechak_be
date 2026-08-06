@@ -11,7 +11,11 @@ data class ProductKeywordSearchRequest(
     @field:Size(max = ProductKeywordSearchQuery.MAX_LENGTH, message = "검색어가 너무 깁니다.")
     val keyword: String = "",
     val cursor: String? = null,
-    @field:Range(min = 1, max = 100, message = "size는 1~100 사이여야 합니다.")
+    @field:Range(
+        min = ProductKeywordSearchQuery.SIZE_MIN,
+        max = ProductKeywordSearchQuery.SIZE_MAX,
+        message = "size는 {min}~{max} 사이여야 합니다.",
+    )
     val size: Int = ProductKeywordSearchQuery.DEFAULT_SIZE,
 ) {
     fun toQuery(): ProductKeywordSearchQuery = ProductKeywordSearchQuery(keyword = keyword, cursor = cursor, size = size)
