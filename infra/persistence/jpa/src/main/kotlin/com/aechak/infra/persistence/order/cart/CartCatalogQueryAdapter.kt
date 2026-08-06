@@ -5,6 +5,7 @@ import com.aechak.application.order.cart.port.view.CartCatalogItemView
 import com.aechak.domain.product.option.QOptionCombination
 import com.aechak.domain.product.product.QProduct
 import com.aechak.domain.seller.seller.QSeller
+import com.querydsl.core.types.Expression
 import com.querydsl.core.types.Projections
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.springframework.stereotype.Repository
@@ -24,20 +25,47 @@ class CartCatalogQueryAdapter(
 ) : CartCatalogQueryPort {
     override fun findItem(optionCombinationId: Long): CartCatalogItemView? =
         queryFactory
-            .select(
-                Projections.constructor(
-                    CartCatalogItemView::class.java,
-                    optionCombination.id,
-                    product.publicId,
-                    optionCombination.stockQuantity,
-                    optionCombination.isActive,
-                    product.saleStatus,
-                    seller.status,
-                ),
-            ).from(optionCombination)
+            .select(itemProjection())
+            .from(optionCombination)
             .join(optionCombination.product, product)
             .join(seller)
             .on(seller.userId.eq(product.sellerId))
             .where(optionCombination.id.eq(optionCombinationId))
             .fetchOne()
+
+    override fun findItems(optionCombinationIds: Collection<Long>): List<CartCatalogItemView> {
+        if (optionCombinationIds.isEmpty()) return emptyList()
+
+        return queryFactory
+            .select(itemProjection())
+            .from(optionCombination)
+            .join(optionCombination.product, product)
+            .join(seller)
+            .on(seller.userId.eq(product.sellerId))
+            .where(optionCombination.id.`in`(optionCombinationIds))
+            .fetch()
+    }
+
+    private fun itemProjection(): Expression<CartCatalogItemView> =
+        Projections.constructor(
+            CartCatalogItemView::class.java,
+            optionCombination.id,
+            product.publicId,
+            optionCombination.stockQuantity,
+            optionCombination.isActive,
+            product.saleStatus,
+            seller.status,
+            optionCombination.name,
+            optionCombination.additionalPrice,
+            product.name,
+            product.representativeImageKey,
+            product.regularPrice,
+            product.discountPrice,
+            product.discountStartAt,
+            product.discountEndAt,
+            seller.userId,
+            seller.storeName,
+            seller.baseShippingFee,
+            seller.freeShippingThreshold,
+        )
 }
