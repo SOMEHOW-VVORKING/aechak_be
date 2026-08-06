@@ -294,7 +294,7 @@ class CartIntegrationTest : IntegrationTestBase() {
         val buyerId = createActiveUser()
         val token = mintAccessToken(buyerId)
 
-        // 원시 타입으로 받으면 생략이 0으로 새서 50200으로 오판됨
+        // 기본값을 주면 생략이 그 값으로 채워져 파싱을 통과함
         assertError(token, """{"optionCombinationId": 1}""", 400, 90001)
     }
 
