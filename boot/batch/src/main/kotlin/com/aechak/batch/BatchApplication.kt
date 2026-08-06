@@ -10,7 +10,10 @@ import org.springframework.boot.runApplication
  * TODO: job/{도메인}/ — Job/Step 정의 (ItemProcessor 등에서 UseCase 호출)
  * TODO: support/BusinessSkipPolicy — BusinessException → errorCode 로깅 + 스킵 판단
  */
-@SpringBootApplication(scanBasePackages = ["com.aechak"])
+@SpringBootApplication(
+    // 전체(com.aechak) 스캔은 어댑터 없는 포트에서 부팅이 깨짐
+    scanBasePackages = ["com.aechak.batch", "com.aechak.infra.kafka"],
+)
 class BatchApplication
 
 fun main(args: Array<String>) {

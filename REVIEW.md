@@ -30,6 +30,7 @@
 - [ ] 타 도메인의 Service/Repository 직접 호출 (동기 호출은 상대 UseCase 인터페이스만)
 - [ ] Controller/Consumer/Batch에 Facade·Service·Repository 주입 (UseCase만 허용)
 - [ ] BC 경계 밖 JPA 연관 또는 DB FK 제약 (Long id 값참조만 허용, `10-domain.md §2-1`)
+- [ ] 다른 BC의 ErrorCode를 던지거나 응답으로 노출 — `CommonErrorCode`(90000번대)와 애그리거트 없는 `auth`·`file` 대역만 예외 (`05 §0-4` BC 격리)
 - [ ] 빌드 파일에 좌표/버전 문자열 하드코딩 (`50-build.md §2·§6` — toml 등록 후 `libs.*`)
 - [ ] `00 §2` 의존 매트릭스에 없는 의존성 추가, 또는 쓰는 코드 없는 의존 선반입(YAGNI)
 
@@ -49,7 +50,7 @@
 - created_at/updated_at은 BaseEntity 상속. Spring Data Auditing 금지, 순수 JPA 콜백 사용 (10 §2-2)
 - 엔티티 재구성 merge 금지 — 항상 load 후 수정 (publicId 재채번 사고) (10 §2-2)
 - 도메인 이벤트: 애그리거트가 `registerEvent` 수집 → **Facade가 발행 후 clearEvents()**. domain에서 ApplicationEventPublisher 금지 (10 §3)
-- 에러 코드는 발생 도메인 패키지가 소유, 대역 준수(seller 10000~ … settlement 100000~ 잠정). 실제 던지는 것만 추가 (05 §5)
+- 에러 코드는 발생 BC 패키지가 소유, 대역 준수(seller 10000 · auth 20000 · user 30000 · product 40000 · order 50000 · payment 60000 · settlement 70000 · search 80000(대역 예약, enum 없음) · 공통 90000 · file 100000 · review 110000). 대역 안은 애그리거트 루트마다 100번대 하나 — 애그리거트가 없는 `auth`·`file`·공통(90000)은 100번대를 쓰지 않고 대역 시작부터 순차로 채운다 (05 §0-4). 새 코드는 실제 던지는 것만 추가 — 던지는 곳 없이 미리 선언하지 말라는 뜻이며, 이미 있는 상수에 던지는 곳이 없다는 것은 반려 사유가 아니다 (05 §6)
 
 ### 연관관계(JPA) — `10-domain.md §2-1`
 - 애그리거트 내부(루트→자식): `@OneToMany(cascade=ALL, orphanRemoval=true) + @JoinColumn` 단방향, 자식에 부모 참조·FK 필드 금지

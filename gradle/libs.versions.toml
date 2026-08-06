@@ -30,6 +30,7 @@ spring-web = { module = "org.springframework:spring-web" }
 jakarta-servlet-api = { module = "jakarta.servlet:jakarta.servlet-api", version.ref = "jakarta-servlet" }
 jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api", version.ref = "jakarta-validation" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+logback-classic = { module = "ch.qos.logback:logback-classic" }  # slf4j 바인딩. 실행 모듈은 Boot가 공급, 라이브러리 모듈은 MDC 테스트에만 필요
 
 # --- application: 유스케이스 조율 계층 ---
 spring-context = { module = "org.springframework:spring-context" }
@@ -56,6 +57,15 @@ spring-data-redis = { module = "org.springframework.data:spring-data-redis" }
 # --- infra:s3-client ---
 spring-cloud-aws-starter-s3 = { module = "io.awspring.cloud:spring-cloud-aws-starter-s3" }
 
+# --- infra:kafka ---
+spring-kafka = { module = "org.springframework.kafka:spring-kafka" }   # Boot BOM 버전
+spring-jdbc = { module = "org.springframework:spring-jdbc" }  # 아웃박스 JdbcClient
+# jackson-databind·jackson-module-kotlin은 위 인증 절에서 선언한 것을 함께 사용
+
+# --- api 통합 테스트: 이벤트 백본 ---
+spring-kafka-test = { module = "org.springframework.kafka:spring-kafka-test" }   # EmbeddedKafka
+awaitility = { module = "org.awaitility:awaitility" }    # 비동기 단언 — 버전은 Boot BOM
+
 # --- 실행 모듈(api·batch) 조립용 ---
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
@@ -70,6 +80,9 @@ springdoc-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc
 # --- api: 부팅 시 SSM Parameter Store에서 설정 로드 (spring.config.import) ---
 spring-cloud-aws-bom = { module = "io.awspring.cloud:spring-cloud-aws-dependencies", version.ref = "spring-cloud-aws" }
 spring-cloud-aws-starter-parameter-store = { module = "io.awspring.cloud:spring-cloud-aws-starter-parameter-store" }  # 버전은 위 BOM이 해석
+
+# --- api: Kafka 구성 ---
+spring-boot-starter-kafka = { module = "org.springframework.boot:spring-boot-starter-kafka" }
 
 # --- domain: 외부 노출 식별자(ULID) — 전이 의존 0·순수 Java. domain 허용 의존(A-1 계보, 10 문서 §2-2) ---
 ulid-creator = { module = "com.github.f4b6a3:ulid-creator", version = "5.2.4" }
