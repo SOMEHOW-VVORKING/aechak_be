@@ -1,13 +1,16 @@
 package com.aechak.application.order.cart.service
 
 import com.aechak.application.order.cart.port.CartCatalogQueryPort
+import com.aechak.application.order.cart.port.view.CartCatalogItemView
 import com.aechak.application.order.cart.usecase.command.AddCartItemCommand
 import com.aechak.application.order.cart.usecase.result.AddCartItemResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.cart.Cart
+import com.aechak.domain.order.cart.CartItem
 import com.aechak.domain.order.cart.enums.CartItemStatus
 import com.aechak.domain.order.cart.repository.CartRepository
 import com.aechak.domain.order.error.OrderErrorCode
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
 @Service
@@ -15,6 +18,8 @@ class CartService(
     private val cartRepository: CartRepository,
     private val cartCatalogQueryPort: CartCatalogQueryPort,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     /**
      * 장바구니 행은 파사드가 확보해 둔 상태.
      * 검증 순서가 계약임. 90001과 50203은 cart.addItem이 던지므로 그 호출이 재고 검사보다 앞이어야 함.
@@ -43,6 +48,26 @@ class CartService(
     }
 
     fun cartExists(buyerId: Long): Boolean = cartRepository.existsByBuyerId(buyerId)
+
+    fun findCartItems(buyerId: Long): List<CartItem> = cartRepository.findByBuyerIdWithItems(buyerId)?.items.orEmpty()
+
+    /**
+     * 카탈로그 행이 없는 항목은 상품명도 가격도 못 채워 화면에 못 그림.
+     * 옵션 조합은 비활성만 하고 지우지 않기로 한 계약이라 실제로는 안 나야 하는 경우임.
+     */
+    fun findDisplayCatalog(items: List<CartItem>): Map<Long, CartCatalogItemView> {
+        if (items.isEmpty()) return emptyMap()
+
+        val catalog =
+            cartCatalogQueryPort
+                .findItems(items.map { it.optionCombinationId })
+                .associateBy { it.optionCombinationId }
+
+        items.filterNot { catalog.containsKey(it.optionCombinationId) }.forEach {
+            log.warn("카탈로그 행이 없어 장바구니 항목을 제외함. cartItemId={}, optionCombinationId={}", it.id, it.optionCombinationId)
+        }
+        return catalog
+    }
 
     /** UNIQUE(buyer_id) 충돌 예외를 그대로 내보냄. 잡는 쪽은 파사드. */
     fun createCart(buyerId: Long) = cartRepository.save(Cart.create(buyerId))
