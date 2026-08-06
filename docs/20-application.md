@@ -24,7 +24,9 @@ application/src/main/kotlin/com/aechak/application/
     │   └── OrderFacade.kt       # UseCase의 유일한 구현체. @Transactional 경계
     ├── service/                 # 구현 — 외부에서 import 금지
     │   └── OrderService.kt      # 비즈니스 로직 보관함 (인터페이스 없음, 필요 시 세분화)
-    └── listener/                # "다른 도메인" 이벤트를 수신하는 리스너
+    ├── listener/                # "다른 도메인" 이벤트를 수신하는 리스너
+    └── error/                   # 에러코드 enum — 애그리거트가 없는 컨텍스트(auth·file)만 갖는다.
+                                 #   도메인 BC의 enum은 domain 소유 (05 §0-4)
 ```
 
 ## 2. UseCase / Facade / Service 역할 계약
@@ -239,28 +241,33 @@ data class ProductCatalogView(
 
 ## 6. 인가 배치 — 자격 게이트 vs 소유권 ★
 
-> 10-domain §133의 "조회/수정 API마다 소유권 검증(BOLA/IDOR 방지) 필수"의 이행 규칙.
+> 10-domain §2-2의 "조회 API마다 소유권 검증(BOLA/IDOR 방지) 필수"의 이행 규칙.
+> 원문이 조회를 들지만 이 절의 적용 범위는 조회에 그치지 않는다 — 수정·삭제처럼 리소스를 식별해
+> 다루는 경로 전부가 대상이다(아래 예제도 수정·삭제 경로에서 쓰인다).
 > 인가를 두 겹으로 나누되, 겹마다 사는 계층이 다르다.
 
 | 겹 | 질문 | 판정 재료 | 위치 |
 | --- | --- | --- | --- |
 | 자격 게이트 | "이 자격이 있는 유저인가?" (활성 셀러·ADMIN 등) | userId만 (리소스 불필요) | **컨트롤러 @PreAuthorize** |
-| 소유권 | "이게 그 유저의 리소스인가?" (내 상품인가) | 리소스 로드 필요 | **서비스 계층** |
+| 소유권 | "이게 그 유저의 리소스인가?" (내 배송지인가) | 리소스 로드 필요 | **서비스 계층** |
 
 - **자격**: `@PreAuthorize("@sellerGuard.isActive(#principal.userId)")` — 리소스가 없어 선언적으로 걸린다. SellerGuard는 `isActive`(sellers 행 ACTIVE) / `isSeller`(존재만) 분리 — 정지 셀러 허용 여부는 API 성격별 선택.
 - **소유권**: 어노테이션에 넣지 않는다. 서비스가 수정 대상을 어차피 `findById`로 꺼내므로, 그 김에 판정하면 조회 1회로 끝난다.
 
 ```kotlin
 // 서비스 — userId를 첫 인자로 받는 시그니처 = 소유권 검증 책임을 진다는 계약
-fun update(userId: Long, productId: Long, command: UpdateProductCommand) {
-    val product = productRepository.findById(productId)
-        ?: throw BusinessException(ProductErrorCode.NOT_FOUND)   // 404
-    if (product.sellerId != userId)
-        throw BusinessException(ProductErrorCode.NOT_OWNER)       // 403 — 남의 리소스
-    product.update(command)
+// 실제 구현: DeliveryAddressService.loadOwnedActive
+private fun loadOwnedActive(userId: Long, addressId: Long): DeliveryAddress {
+    val address =
+        deliveryAddressRepository.findActiveById(addressId)
+            ?: throw BusinessException(UserErrorCode.DELIVERY_ADDRESS_NOT_FOUND)   // 404
+    if (address.user.id != userId) {
+        throw BusinessException(UserErrorCode.DELIVERY_ADDRESS_ACCESS_DENIED)     // 403 — 남의 리소스
+    }
+    return address
 }
 ```
 
-**왜 소유권을 @PreAuthorize에 넣지 않나** — `@productGuard.isOwner(...)`를 어노테이션에 두면 판정용으로 리소스를 한 번 더 조회한다(어노테이션은 불린만 반환 → 꺼낸 리소스를 서비스에 못 넘김). 결과: ① 같은 리소스 2회 조회 ② 소유권 규칙이 어노테이션·서비스 두 곳으로 갈라져 변경 시 어긋남(이중 진실) ③ "없음(404)"을 "권한 없음(403)"으로 뭉갬. 서비스 단일 판정이 조회 1회·단일 출처·정확한 상태코드를 준다.
+**왜 소유권을 @PreAuthorize에 넣지 않나** — `@deliveryAddressGuard.isOwner(...)`를 어노테이션에 두면 판정용으로 리소스를 한 번 더 조회한다(어노테이션은 불린만 반환 → 꺼낸 리소스를 서비스에 못 넘김). 결과: ① 같은 리소스 2회 조회 ② 소유권 규칙이 어노테이션·서비스 두 곳으로 갈라져 변경 시 어긋남(이중 진실) ③ "없음(404)"을 "권한 없음(403)"으로 뭉갬. 서비스 단일 판정이 조회 1회·단일 출처·정확한 상태코드를 준다.
 
 - SELLER를 UserRole enum에 넣지 않는 이유는 domain의 UserRole 주석 참조(셀러는 상태를 가진 애그리거트 → sellers 행으로 판정).

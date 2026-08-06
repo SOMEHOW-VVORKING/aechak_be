@@ -19,7 +19,7 @@ domain/src/main/kotlin/com/aechak/domain/
 │   │   ├── event/              # 이 애그리거트가 "발행"하는 프로세스 내 이벤트
 │   │   └── repository/         # A-1 결정(L2) — 포트 인터페이스 (구현은 infra/persistence)
 │   ├── cart/ · group/ · stock/ · shipment/ · claim/   # 위성 애그리거트(군) — 동일 내부 구조
-│   └── error/                  # error만 BC 레벨 — 에러 대역(50000번대)은 BC 소유 (05 문서 코드 체계)
+│   └── error/                  # error만 BC 레벨 — 대역(50000번대)은 BC 소유, 100번대 구분이 애그리거트 (05 §0-4)
 ├── user/ ...                   # 동일 구조 반복 (user/·social/·pet/·term/·privacy/·report/·point/·address/)
 └── support/
     └── AggregateRoot.kt        # 이벤트 수집 베이스 (아래 §3)
@@ -35,8 +35,10 @@ domain/src/main/kotlin/com/aechak/domain/
      포트는 `repository/`, 이벤트는 `event/`.
   4. 강하게 결합된 소형 애그리거트 묶음은 한 패키지를 공유한다
      (예: `pet/` PetProfile+Breed, `term/` Term+ConsentRecord, `shipment/` Shipment+CourierMaster).
+     패키지 공유와 에러 코드 100번대 배정은 별개다 — 100번대는 애그리거트 루트마다 따로 받는다 (05 §0-4).
   5. `error/`는 BC 레벨 — 에러 코드 대역이 BC 단위 소유라서 애그리거트로 쪼개지 않는다.
-- 에러 코드 enum은 **발생하는 도메인 패키지가 소유**한다 (05 문서 §5 템플릿 참조).
+     enum 파일은 BC당 하나이고, 대역 안의 100번대 하나가 애그리거트 루트 하나에 대응한다 (05 §0-4).
+- 에러 코드 enum은 **발생하는 BC 패키지가 소유**한다 (05 문서 §5 템플릿 참조).
 
 ## 2. Rich Domain Model 규칙
 

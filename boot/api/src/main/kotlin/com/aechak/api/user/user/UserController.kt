@@ -2,6 +2,7 @@ package com.aechak.api.user.user
 
 import com.aechak.api.user.user.request.NicknameRequest
 import com.aechak.api.user.user.request.SubmitConsentsRequest
+import com.aechak.api.user.user.request.UpdateProfileRequest
 import com.aechak.api.user.user.response.NicknameCheckResponse
 import com.aechak.api.user.user.response.UserMeResponse
 import com.aechak.application.user.term.usecase.ConsentUseCase
@@ -43,7 +44,7 @@ class UserController(
             ApiResponse.of(NicknameCheckResponse(available = userUseCase.checkNickname(principal.userId, nickname))),
         )
 
-    /** 닉네임 설정 — PENDING이면 온보딩 완료 전이 트리거. 응답은 변경 후 내 정보(FE는 status로 홈 라우팅). */
+    /** 닉네임 설정(온보딩 전용) — 온보딩 완료 전이 트리거, ACTIVE는 409. 응답은 변경 후 내 정보(FE는 status로 홈 라우팅). */
     @PutMapping("/me/nickname")
     fun setNickname(
         @RequestBody request: NicknameRequest,
@@ -59,6 +60,16 @@ class UserController(
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<UserMeResponse>> =
         ResponseEntity.ok(ApiResponse.of(UserMeResponse.from(userUseCase.getMe(principal.userId))))
+
+    /** 프로필 수정(닉네임·자기소개·이미지) — 전체 교체. 온보딩 완료 전이는 PUT /me/nickname 소관. */
+    @PutMapping("/me/profile")
+    fun updateProfile(
+        @Valid @RequestBody request: UpdateProfileRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<UserMeResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(UserMeResponse.from(userUseCase.updateProfile(request.toCommand(principal.userId)))),
+        )
 
     /** 약관 동의 제출 — 온보딩 전용(PENDING). */
     @PostMapping("/me/consents")
