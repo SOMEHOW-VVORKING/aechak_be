@@ -877,23 +877,29 @@ class CartIntegrationTest : IntegrationTestBase() {
 
     // ---------- 단가와 할인 기간 ----------
 
+    /** 픽스처를 라인 기준(15)과 상품 기준(20)이 갈리는 값으로 잡아 할인율을 두 단가로 다시 내려는 변경이 걸리게 함. */
     @Test
-    fun `할인 기간 안이면 할인가에 옵션 추가금을 더한다`() {
+    fun `할인 기간 안이면 원가와 단가에 옵션 추가금이 함께 붙는다`() {
         val token = mintAccessToken(createActiveUser())
         val (comboIds, _) =
             seedProduct(
-                regularPrice = 19_000L,
-                discountPrice = 17_000L,
+                regularPrice = 30_000L,
+                discountPrice = 24_000L,
                 discountStartAt = LocalDateTime.now().minusDays(1),
                 discountEndAt = LocalDateTime.now().plusDays(1),
-                additionalPrice = 1_000L,
+                additionalPrice = 10_000L,
             )
         addCartItem(token, comboIds[0], 1)
 
         val body = getCart(token)
 
-        assertEquals(18_000, JsonPath.read<Int>(body, firstItem("price")), "할인가 17000에 옵션 추가금 1000을 더한 18000이어야 한다")
-        assertEquals(11, JsonPath.read<Int>(body, firstItem("discountRate")), "19000에서 17000이면 할인율은 11이어야 한다")
+        assertEquals(40_000L, readLong(body, firstItem("originalPrice")), "할인 전 단가는 정가 30000에 옵션 추가금 10000을 더한 40000이어야 한다")
+        assertEquals(34_000L, readLong(body, firstItem("price")), "할인가 24000에 옵션 추가금 10000을 더한 34000이어야 한다")
+        assertEquals(
+            20,
+            JsonPath.read<Int>(body, firstItem("discountRate")),
+            "할인율은 상품 정가 기준 20이어야 한다. 추가금을 섞어 15로 내면 같은 상품이 옵션마다 다른 할인율로 보인다",
+        )
     }
 
     @Test
@@ -912,6 +918,7 @@ class CartIntegrationTest : IntegrationTestBase() {
         val body = getCart(token)
 
         assertEquals(20_000, JsonPath.read<Int>(body, firstItem("price")), "기간이 끝났으면 정가 19000에 추가금 1000을 더해야 한다")
+        assertEquals(20_000, JsonPath.read<Int>(body, firstItem("originalPrice")), "할인이 없으면 원가와 단가가 같아야 한다")
         assertNull(JsonPath.read<Int?>(body, firstItem("discountRate")), "적용 중인 할인이 없으면 discountRate는 null이어야 한다")
     }
 
@@ -1064,6 +1071,7 @@ class CartIntegrationTest : IntegrationTestBase() {
                 "isOrderable",
                 "itemStatus",
                 "optionCombinationId",
+                "originalPrice",
                 "price",
                 "productId",
                 "productName",

@@ -27,9 +27,11 @@ data class CartResult(
         val thumbnail: String?,
         val selectedOptions: String,
         val quantity: Int,
+        val originalPrice: Long,
         val price: Long,
+        /** 상품 정가 기준. 옵션 추가금이 붙은 originalPrice, price와 기준이 다름. */
         val discountRate: Int?,
-        /** 마스킹하지 않은 잔여 재고. 담아둔 수량이 잔여를 넘는지 클라이언트가 판정해야 함. */
+        /** 마스킹하지 않은 정확한 값. 상품 옵션 조회와 다름. */
         val remainingStock: Int,
         val itemStatus: CartItemStatus,
         val isOrderable: Boolean,
@@ -41,7 +43,7 @@ data class CartResult(
             compareByDescending<Pair<CartItem, CartCatalogItemView>> { (item, _) -> item.createdAt }
                 .thenByDescending { (item, _) -> item.id }
 
-        /** 카탈로그에 없는 항목은 뺀 뒤 조립하므로 cartItemCount도 남은 항목만 셈. 안 그러면 뱃지가 화면과 어긋남. */
+        /** 카탈로그에 없는 항목은 뺀 뒤 조립하므로 cartItemCount도 남은 항목만 셈. */
         fun from(
             items: List<CartItem>,
             catalog: Map<Long, CartCatalogItemView>,
@@ -54,7 +56,7 @@ data class CartResult(
                     .sortedWith(newestFirst)
             return CartResult(
                 cartItemCount = rows.sumOf { (item, _) -> item.quantity },
-                // 그룹 순서는 따로 정하지 않고 항목 순서에서 파생함. groupBy가 첫 등장 순서를 지킴
+                // groupBy가 첫 등장 순서를 지켜 그룹 순서가 항목 순서를 따라감
                 sellerGroups =
                     rows
                         .groupBy { (_, view) -> view.sellerId }
@@ -92,6 +94,7 @@ data class CartResult(
                 thumbnail = resolveThumbnail(view.representativeImageKey),
                 selectedOptions = view.optionName,
                 quantity = item.quantity,
+                originalPrice = view.originalPriceAt(),
                 price = view.unitPriceAt(now),
                 discountRate = view.pricing().discountRateAt(now),
                 remainingStock = view.stockQuantity,

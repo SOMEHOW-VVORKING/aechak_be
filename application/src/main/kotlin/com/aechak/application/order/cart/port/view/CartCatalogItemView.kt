@@ -46,5 +46,7 @@ data class CartCatalogItemView(
 
     fun pricing(): ProductPricing = ProductPricing(regularPrice, discountPrice, discountStartAt, discountEndAt)
 
+    fun originalPriceAt(): Long = regularPrice + additionalPrice
+
     fun unitPriceAt(now: LocalDateTime): Long = pricing().sellingPriceAt(now) + additionalPrice
 }
