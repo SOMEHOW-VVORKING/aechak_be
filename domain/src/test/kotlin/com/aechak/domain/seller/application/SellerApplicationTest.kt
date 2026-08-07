@@ -3,6 +3,7 @@ package com.aechak.domain.seller.application
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.seller.application.enums.ApplicationStatus
 import com.aechak.domain.seller.application.enums.BusinessType
+import com.aechak.domain.seller.application.enums.DocumentType
 import com.aechak.domain.seller.error.SellerErrorCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,7 +22,7 @@ class SellerApplicationTest {
             reject(reviewerAdminId = 10L, reason = "서류 미비")
         }
 
-    private fun idCard(storageKey: String = "sellers/docs/id-1.png") = ApplicationDocument.of("ID_CARD", storageKey, "image/png")
+    private fun idCard(storageKey: String = "sellers/docs/id-1.png") = ApplicationDocument.of(DocumentType.ID_CARD, storageKey, "image/png")
 
     @Test
     fun `DRAFT에서 updateDraft로 신청 내용이 수정된다`() {
@@ -121,7 +122,7 @@ class SellerApplicationTest {
         val application = draft()
 
         application.registerDocument(idCard())
-        application.registerDocument(ApplicationDocument.of("BANKBOOK_COPY", "sellers/docs/bank-1.png", "image/png"))
+        application.registerDocument(ApplicationDocument.of(DocumentType.BANKBOOK_COPY, "sellers/docs/bank-1.png", "image/png"))
 
         assertEquals(2, application.documents.size)
     }
