@@ -5,11 +5,10 @@ import com.aechak.domain.product.product.enums.SaleStatus
 import java.time.LocalDateTime
 
 /**
- * 카탈로그 목록 조회의 읽기 모델.
+ * 카탈로그 목록 조회 읽기 모델.
  *
- * - sortPriceAtAnchor: SQL이 조회 기준 시각(now)으로 계산한 정렬·커서 경계용 유효가격
- * - 할인 원본 필드: 응답 생성 시 현재 시각으로 표시가·할인율을 다시 계산([pricing]). sortPriceAtAnchor를 표시가로
- *   그대로 쓰면 커서 순회 2페이지 이후 만료 할인가가 카드에 남으므로 분리.
+ * sortPriceAtAnchor, popularityScore는 SQL이 계산한 정렬 및 커서 경계용 값(표시용 아님).
+ * 표시용 별점, 리뷰 수, 할인가는 Facade와 [pricing]이 응답 시각 기준으로 채움.
  */
 data class ProductCatalogView(
     val id: Long,
@@ -23,7 +22,36 @@ data class ProductCatalogView(
     val discountEndAt: LocalDateTime?,
     val sortPriceAtAnchor: Long,
     val saleStatus: SaleStatus,
+    val popularityScore: Int,
 ) {
+    /** 정렬키가 필요 없는 조회(카탈로그, 상세 등)용 보조 생성자. popularityScore=0 */
+    constructor(
+        id: Long,
+        publicId: String,
+        name: String,
+        sellerName: String,
+        representativeImageKey: String?,
+        regularPrice: Long,
+        discountPrice: Long?,
+        discountStartAt: LocalDateTime?,
+        discountEndAt: LocalDateTime?,
+        sortPriceAtAnchor: Long,
+        saleStatus: SaleStatus,
+    ) : this(
+        id,
+        publicId,
+        name,
+        sellerName,
+        representativeImageKey,
+        regularPrice,
+        discountPrice,
+        discountStartAt,
+        discountEndAt,
+        sortPriceAtAnchor,
+        saleStatus,
+        0,
+    )
+
     fun pricing(): ProductPricing =
         ProductPricing(
             regularPrice = regularPrice,
