@@ -551,6 +551,101 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
             .andExpect(status().isBadRequest)
     }
 
+    // ---------- SCRUM-159 최근 검색어 적재 ----------
+
+    @Test
+    fun `로그인 사용자가 검색하면 최근 검색어로 적재된다`() {
+        val userId = createActiveUser()
+        tx.execute {
+            val mid = persistMidCategory()
+            persistProduct(mid, "강아지 사료")
+        }
+
+        searchAsUser("사료", mintAccessToken(userId))
+
+        assertEquals(listOf("사료"), recentKeywords(userId))
+    }
+
+    @Test
+    fun `게스트 검색은 적재되지 않는다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            persistProduct(mid, "강아지 사료")
+        }
+
+        search("사료")
+
+        assertEquals(0L, countAllRecent(), "비로그인 검색은 recent_searches에 남지 않는다")
+    }
+
+    @Test
+    fun `같은 키워드 재검색은 새 행 없이 최신으로 갱신한다`() {
+        val userId = createActiveUser()
+        val token = mintAccessToken(userId)
+        tx.execute {
+            val mid = persistMidCategory()
+            persistProduct(mid, "강아지 사료")
+        }
+
+        searchAsUser("사료", token)
+        searchAsUser("사료", token)
+
+        assertEquals(1L, countRecent(userId), "원자적 upsert라 중복 행이 생기지 않는다")
+        assertEquals(listOf("사료"), recentKeywords(userId))
+    }
+
+    @Test
+    fun `대소문자가 다른 키워드는 각각 적재된다`() {
+        val userId = createActiveUser()
+        val token = mintAccessToken(userId)
+        tx.execute {
+            val mid = persistMidCategory()
+            persistProduct(mid, "iPhone Case")
+        }
+
+        searchAsUser("iPhone", token)
+        searchAsUser("iphone", token)
+
+        assertEquals(2L, countRecent(userId), "as_cs 콜레이션이라 대소문자가 다르면 각각 저장된다")
+        assertTrue(recentKeywords(userId).containsAll(listOf("iPhone", "iphone")), "친 표기가 각각 보존된다")
+    }
+
+    @Test
+    fun `적재 키워드는 앞뒤와 내부 공백을 접고 원본 대소문자를 보존한다`() {
+        val userId = createActiveUser()
+        val token = mintAccessToken(userId)
+
+        // 전각 공백(U+3000)과 NEL(U+0085)을 내부에 둔 원본. 저장은 trim + 공백 접기 + 대소문자 보존
+        searchAsUser("  아이폰\u0085\u3000케이스  ", token)
+
+        assertEquals(listOf("아이폰 케이스"), recentKeywords(userId))
+    }
+
+    @Test
+    fun `커서 페이지 이동은 최근 검색어로 적재하지 않는다`() {
+        val userId = createActiveUser()
+        val token = mintAccessToken(userId)
+        tx.execute {
+            val mid = persistMidCategory()
+            (1..3).forEach { persistProduct(mid, "커서적재 사료 $it") }
+        }
+
+        // 게스트 첫 페이지로 커서만 얻는다(게스트라 적재되지 않음)
+        val cursor = JsonPath.read<String>(search("커서적재", size = 1), "$.data.nextCursor")
+
+        // 로그인 사용자가 커서로 2페이지 요청 (새 검색이 아니라 미적재 확인)
+        mockMvc
+            .perform(
+                get("/api/v1/search/products")
+                    .param("keyword", "커서적재")
+                    .param("size", "1")
+                    .param("cursor", cursor)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token"),
+            ).andExpect(status().isOk)
+
+        assertEquals(0L, countRecent(userId), "커서 페이지 이동은 적재하지 않는다")
+    }
+
     // --- helpers ---
 
     private fun search(
@@ -583,6 +678,20 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
             .getContentAsString(Charsets.UTF_8)
     }
 
+    private fun searchAsUser(
+        keyword: String,
+        token: String,
+    ): String =
+        mockMvc
+            .perform(
+                get("/api/v1/search/products")
+                    .param("keyword", keyword)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token"),
+            ).andExpect(status().isOk)
+            .andReturn()
+            .response
+            .getContentAsString(Charsets.UTF_8)
+
     private fun filterOf(keyword: String): ProductKeywordFilter =
         ProductKeywordFilter(
             keyword = keyword,
@@ -595,6 +704,30 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
         )
 
     private fun productNames(body: String): List<String> = JsonPath.read(body, "$.data.products[*].name")
+
+    private fun recentKeywords(userId: Long): List<String> =
+        tx.execute {
+            em
+                .createQuery(
+                    "select r.keyword from RecentSearch r where r.userId = :uid order by r.searchedAt desc, r.id desc",
+                    String::class.java,
+                ).setParameter("uid", userId)
+                .resultList
+        }!!
+
+    private fun countRecent(userId: Long): Long =
+        tx.execute {
+            em
+                .createQuery("select count(r) from RecentSearch r where r.userId = :uid", java.lang.Long::class.java)
+                .setParameter("uid", userId)
+                .singleResult
+                .toLong()
+        }!!
+
+    private fun countAllRecent(): Long =
+        tx.execute {
+            em.createQuery("select count(r) from RecentSearch r", java.lang.Long::class.java).singleResult.toLong()
+        }!!
 
     private fun persistSellerWithFee(
         sellerId: Long,
