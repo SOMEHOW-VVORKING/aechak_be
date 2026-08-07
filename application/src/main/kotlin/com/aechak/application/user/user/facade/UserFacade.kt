@@ -3,7 +3,7 @@ package com.aechak.application.user.user.facade
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
-import com.aechak.application.pii.PiiCrypto
+import com.aechak.application.pii.port.PiiCrypto
 import com.aechak.application.user.term.service.ConsentService
 import com.aechak.application.user.user.service.UserService
 import com.aechak.application.user.user.support.PhoneNumberMasker

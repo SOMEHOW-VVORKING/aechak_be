@@ -1,6 +1,6 @@
 package com.aechak.application.user.verification.support
 
-import com.aechak.application.pii.PiiCrypto
+import com.aechak.application.pii.port.PiiCrypto
 import org.springframework.stereotype.Component
 
 /** 전화번호 파생값 3종 — 복원용 암호문(저장)과 검색용 해시 2종(점유 조회·어드민 뒷4 검색). */

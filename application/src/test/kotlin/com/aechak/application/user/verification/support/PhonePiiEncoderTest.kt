@@ -1,6 +1,6 @@
 package com.aechak.application.user.verification.support
 
-import com.aechak.application.pii.PiiCrypto
+import com.aechak.application.pii.port.PiiCrypto
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
