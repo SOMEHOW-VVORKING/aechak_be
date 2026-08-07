@@ -1,6 +1,6 @@
 package com.aechak.infra.persistence.pii
 
-import com.aechak.application.pii.PiiCrypto
+import com.aechak.application.pii.port.PiiCrypto
 
 /** PiiCrypto 포트 구현 — 엔진(AesKeyRing·HmacSupport)에 위임만 한다. 빈 조립은 boot 소관. */
 class PiiCryptoAdapter(

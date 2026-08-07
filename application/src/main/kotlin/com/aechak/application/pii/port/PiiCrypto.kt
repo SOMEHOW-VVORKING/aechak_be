@@ -1,4 +1,4 @@
-package com.aechak.application.pii
+package com.aechak.application.pii.port
 
 /**
  * 민감정보(PII) 암호화 포트 — 저장용 암호문(AES, 복원 가능)과 검색용 해시(HMAC, 결정적·역산 불가)를 만든다.
