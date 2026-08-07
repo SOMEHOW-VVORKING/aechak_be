@@ -234,6 +234,141 @@ class SellerApplicationIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `개인 일반 유형은 신분증·통장 사본이 갖춰지면 제출된다`() {
+        performForBody(saveDraftRequest(token, applicationJson(documents = docs("ID_CARD", "BANKBOOK_COPY"))))
+        mockMvc
+            .perform(submitRequest(token))
+            .andExpect(status().isNoContent)
+        mockMvc
+            .perform(get("/api/v1/seller-applications/me").bearer(token))
+            .andExpect(jsonPath("$.data.status").value("SUBMITTED"))
+    }
+
+    @Test
+    fun `개인사업자 유형은 사업자 정보·서류까지 갖춰야 제출된다`() {
+        performForBody(
+            saveDraftRequest(
+                token,
+                applicationJson(
+                    businessType = "SOLE_PROPRIETORSHIP",
+                    businessName = "애착상회",
+                    businessRegNo = "1234567891",
+                    documents = docs("ID_CARD", "BANKBOOK_COPY", "BUSINESS_REGISTRATION", "TELESALES_REPORT"),
+                ),
+            ),
+        )
+        mockMvc
+            .perform(submitRequest(token))
+            .andExpect(status().isNoContent)
+    }
+
+    @Test
+    fun `법인 유형은 6종 서류와 법인등록번호까지 갖춰야 제출된다`() {
+        performForBody(
+            saveDraftRequest(
+                token,
+                applicationJson(
+                    businessType = "CORPORATE",
+                    businessName = "애착주식회사",
+                    businessRegNo = "1234567891",
+                    corpRegNo = "110111-1234567",
+                    documents =
+                        docs(
+                            "ID_CARD",
+                            "BANKBOOK_COPY",
+                            "BUSINESS_REGISTRATION",
+                            "TELESALES_REPORT",
+                            "CORP_REGISTER",
+                            "CORP_SEAL",
+                        ),
+                ),
+            ),
+        )
+        mockMvc
+            .perform(submitRequest(token))
+            .andExpect(status().isNoContent)
+    }
+
+    @Test
+    fun `필수 서류가 빠지면 10105와 부족 목록을 반환한다`() {
+        performForBody(saveDraftRequest(token, applicationJson(documents = docs("ID_CARD"))))
+        val body =
+            mockMvc
+                .perform(submitRequest(token))
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.errorCode").value(SellerErrorCode.REQUIRED_DOCUMENTS_MISSING.code))
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        assertTrue(body.contains("통장 사본"), "부족 서류 라벨이 메시지에 실려야 한다: $body")
+    }
+
+    @Test
+    fun `법인 필수 정보가 빠지면 10105와 부족 항목을 반환한다`() {
+        performForBody(
+            saveDraftRequest(
+                token,
+                applicationJson(
+                    businessType = "CORPORATE",
+                    businessName = "애착주식회사",
+                    businessRegNo = "1234567891",
+                    documents =
+                        docs(
+                            "ID_CARD",
+                            "BANKBOOK_COPY",
+                            "BUSINESS_REGISTRATION",
+                            "TELESALES_REPORT",
+                            "CORP_REGISTER",
+                            "CORP_SEAL",
+                        ),
+                ),
+            ),
+        )
+        val body =
+            mockMvc
+                .perform(submitRequest(token))
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.errorCode").value(SellerErrorCode.REQUIRED_DOCUMENTS_MISSING.code))
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        assertTrue(body.contains("법인등록번호"), "부족 정보 라벨이 메시지에 실려야 한다: $body")
+    }
+
+    @Test
+    fun `제출할 신청이 없으면 10100을 반환한다`() {
+        mockMvc
+            .perform(submitRequest(token))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(SellerErrorCode.SELLER_APPLICATION_NOT_FOUND.code))
+    }
+
+    @Test
+    fun `반려 후 재작성하면 기존 서류를 유지한 채 재제출된다`() {
+        performForBody(saveDraftRequest(token, applicationJson(documents = docs("ID_CARD", "BANKBOOK_COPY"))))
+        mockMvc.perform(submitRequest(token)).andExpect(status().isNoContent)
+        rejectDirectly(userId, "신분증 불선명")
+        mockMvc
+            .perform(saveDraftRequest(token, applicationJson(representativeName = "재도전")))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.status").value("DRAFT"))
+            .andExpect(jsonPath("$.data.documents.length()").value(2))
+        mockMvc
+            .perform(submitRequest(token))
+            .andExpect(status().isNoContent)
+    }
+
+    @Test
+    fun `SUBMITTED 신청의 재제출은 10101을 반환한다`() {
+        performForBody(saveDraftRequest(token, applicationJson(documents = docs("ID_CARD", "BANKBOOK_COPY"))))
+        mockMvc.perform(submitRequest(token)).andExpect(status().isNoContent)
+        mockMvc
+            .perform(submitRequest(token))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(SellerErrorCode.APPLICATION_STATUS_TRANSITION_NOT_ALLOWED.code))
+    }
+
+    @Test
     fun `사업자등록번호 체크섬이 틀리면 90001로 거절된다`() {
         mockMvc
             .perform(saveDraftRequest(token, applicationJson(businessRegNo = "1234567890")))
@@ -313,6 +448,8 @@ class SellerApplicationIntegrationTest : IntegrationTestBase() {
             .bearer(token)
             .contentType(MediaType.APPLICATION_JSON)
             .content(body)
+
+    private fun submitRequest(token: String): MockHttpServletRequestBuilder = post("/api/v1/seller-applications/me/submit").bearer(token)
 
     private fun performForBody(request: MockHttpServletRequestBuilder): String =
         mockMvc

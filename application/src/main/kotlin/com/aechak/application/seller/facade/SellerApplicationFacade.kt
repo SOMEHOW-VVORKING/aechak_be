@@ -68,6 +68,11 @@ class SellerApplicationFacade(
     @Transactional(readOnly = true)
     override fun getMe(userId: Long): ApplicationResult = ApplicationResult.from(sellerApplicationService.getByUserId(userId))
 
+    @Transactional
+    override fun submit(userId: Long) {
+        sellerApplicationService.submit(userId)
+    }
+
     /** 신청 전제 — 휴대폰 점유 인증. 타 도메인 상태라 UseCase 경유로만 읽는다. */
     private fun requirePhoneVerified(userId: Long) {
         if (!userUseCase.getMe(userId).isPhoneVerified) {

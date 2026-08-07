@@ -18,4 +18,10 @@ interface SellerApplicationUseCase {
 
     /** 내 신청 현황 — 없으면 10100. */
     fun getMe(userId: Long): ApplicationResult
+
+    /**
+     * 신청 제출 — 유형별 필수 정보·서류 세트 검증(미비 10105, 부족 목록 동봉) 후 SUBMITTED로 전환.
+     * 내 신청서가 대상이라 id 불요 — 없으면 10100, DRAFT 아니면 10101.
+     */
+    fun submit(userId: Long)
 }

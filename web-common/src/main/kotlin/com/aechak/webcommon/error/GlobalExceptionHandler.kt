@@ -62,9 +62,10 @@ class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException::class)
     fun handleBusiness(e: BusinessException): ResponseEntity<ErrorResponse> {
         // TODO: 필요 시 warn 레벨 로깅 (traceId는 MDC로 자동 포함)
+        // message는 detail이 실렸으면 그것을(예: 10105 부족 목록), 아니면 errorCode 기본 문구를 따른다 — 분기는 errorCode 고정.
         return ResponseEntity
             .status(HttpStatus.valueOf(e.errorCode.status))
-            .body(ErrorResponse.of(e.errorCode))
+            .body(ErrorResponse(e.errorCode.code, e.message ?: e.errorCode.message))
     }
 
     // @Version 엔티티는 flush 시점에 터져 서비스 코드로는 못 잡음. 안 걸러주면 500으로 샘.

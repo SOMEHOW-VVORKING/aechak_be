@@ -30,6 +30,15 @@ class SellerApplicationController(
             ApiResponse.of(ApplicationResponse.from(sellerApplicationUseCase.saveDraft(request.toCommand(principal.userId)))),
         )
 
+    /** 신청 제출 — 유형별 필수 정보·서류 검증 후 심사 대기로 전환. 이후 수정·서류 잠금. */
+    @PostMapping("/me/submit")
+    fun submit(
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<Void> {
+        sellerApplicationUseCase.submit(principal.userId)
+        return ResponseEntity.noContent().build()
+    }
+
     /** 내 신청 현황 — 심사중/승인/반려 화면 데이터. */
     @GetMapping("/me")
     fun getMe(
