@@ -14,7 +14,10 @@ data class ProductSearchQuery(
     }
 
     companion object {
+        // size: Int 기본값, List.take()/size로 이어져 Int
         const val DEFAULT_SIZE = 20
+
+        // @Range(min, max) 속성이 long이라 Long 유지, Int는 컴파일 불가
         const val SIZE_MIN = 1L
         const val SIZE_MAX = 100L
     }
