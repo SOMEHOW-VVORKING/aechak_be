@@ -90,6 +90,10 @@ ulid-creator = { module = "com.github.f4b6a3:ulid-creator", version = "5.2.4" }
 mysql-connector-j = { module = "com.mysql:mysql-connector-j" }  # 실 DB(RDS MySQL 8.4) 드라이버
 h2 = { module = "com.h2database:h2" }    # 임시 내장 DB
 
+# --- admin(Java 모듈) 전용 ---
+lombok = { module = "org.projectlombok:lombok" }  # 생성자·getter 보일러플레이트 축소 — 버전은 Boot BOM이 해석
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin" }  # Kotlin 모듈(@ConfigurationProperties 등) 리플렉션 지원 — Java 모듈은 kotlin 플러그인이 없어 직접 선언
+
 # --- boot 테스트: Testcontainers MySQL 통합 테스트를 위함. 버전은 Boot BOM이 관리 ---
 spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
 testcontainers-mysql = { module = "org.testcontainers:testcontainers-mysql" }

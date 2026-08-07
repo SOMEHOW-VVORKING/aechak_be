@@ -1,0 +1,25 @@
+# 로컬 개발 — MySQL은 docker compose(api와 공유). 스키마·마이그레이션은 api 모듈 소유.
+# api가 발급한 토큰으로 로컬 어드민을 호출하려면 api와 같은 AUTH_JWT_* 키를 환경변수로 주입한다.
+server:
+  port: 8081   # api(8080)와 동시 기동
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/aechak}
+    username: ${SPRING_DATASOURCE_USERNAME:app}
+    password: ${SPRING_DATASOURCE_PASSWORD:local}
+
+api:
+  cors-allowed-origins: ""   # 어드민 웹 FE 미착수 — dev 포트 확정 시 추가
+
+aws:
+  s3:
+    media-bucket: ${AWS_S3_MEDIA_BUCKET}
+    docs-bucket: ${AWS_S3_DOCS_BUCKET}
+
+# TEST/LOCAL 전용 고정 키 — 실환경 사용 금지. api application-local.yml과 동일 값(같은 로컬 DB를 복호).
+aechak:
+  pii:
+    aes-keys:
+      1: ${PII_AES_KEY_V1:dxeyFW4YgkgYreLe9IX7laeZPHaP3Eada2M9yuBCA+Q=}
+    hmac-key: ${PII_HMAC_KEY:Jtk5KHlAG6nnDtIBDhqoDXIs7FovvRs0kOckZP6cl7k=}
