@@ -4,6 +4,7 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.option.OptionCombination
 import com.aechak.domain.product.product.Product
+import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.seller.seller.enums.SellerStatus
@@ -104,6 +105,21 @@ class CartIntegrationTest : IntegrationTestBase() {
             em
                 .createQuery(
                     "update Product p set p.saleStatus = :st, p.updatedAt = CURRENT_TIMESTAMP " +
+                        "where p.id = (select oc.product.id from OptionCombination oc where oc.id = :id)",
+                ).setParameter("st", status)
+                .setParameter("id", comboId)
+                .executeUpdate()
+        }
+    }
+
+    private fun updateInspectionStatus(
+        comboId: Long,
+        status: InspectionStatus,
+    ) {
+        tx.execute {
+            em
+                .createQuery(
+                    "update Product p set p.inspectionStatus = :st, p.updatedAt = CURRENT_TIMESTAMP " +
                         "where p.id = (select oc.product.id from OptionCombination oc where oc.id = :id)",
                 ).setParameter("st", status)
                 .setParameter("id", comboId)
@@ -318,6 +334,21 @@ class CartIntegrationTest : IntegrationTestBase() {
         seedCatalog()
 
         assertError(token, cartItemJson(999_999L, 1), 404, 50207)
+    }
+
+    @Test
+    fun `검수 승인 상태가 아닌 상품은 50207이다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (comboIds, _) = seedCatalog()
+
+        // 승인 외 상태를 열거하지 않고 전부 도는 이유는 상태가 늘 때 새 값이 자동으로 걸리게 하기 위함
+        InspectionStatus.entries.filterNot { it == InspectionStatus.APPROVED }.forEach { status ->
+            updateInspectionStatus(comboIds[0], status)
+
+            assertError(token, cartItemJson(comboIds[0], 1), 404, 50207)
+        }
+        assertEquals(0L, cartItemRowCount(), "검수 미승인 담기는 라인을 남기지 않아야 한다")
     }
 
     @Test
