@@ -97,3 +97,12 @@ auth:
         issuer: https://appleid.apple.com
         audiences: [ ]        # 채널별 키 병기: iOS 번들 ID + 웹(SIWA JS) Services ID
 # PENDING_ONBOARDING 허용 경로는 SecurityConfig.onboardingAllowedPaths 상수로 관리(인가 규칙이라 설정이 아닌 코드 소유)
+
+# PII 암호화 키 — dev·prod는 SSM(terraform이 생성·등재), local·test는 프로파일 파일의 고정 키가 덮는다.
+# 기본값을 주지 않는다: 미주입이면 부팅 실패(fail-fast). JWT식 임시 키 폴백 금지 — PII 키 분실 = 데이터 영구 복호 불능.
+aechak:
+  pii:
+    active-version: 1        # 암호화에 쓸 키 버전. 로테이션 시 새 버전 키를 aes-keys에 추가하고 이 값을 올린다
+    aes-keys:
+      1: ${PII_AES_KEY_V1}   # base64 32바이트
+    hmac-key: ${PII_HMAC_KEY} # base64 32바이트 — 검색용 해시 키(AES와 분리, 평문 등가 시크릿)
