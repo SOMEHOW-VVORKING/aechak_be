@@ -150,11 +150,19 @@ class SellerApplication protected constructor(
         status = ApplicationStatus.DRAFT
     }
 
-    /** 서류 등록 — 신청서는 서류 종류당 1장. 같은 종류가 있으면 교체한다(기존 행은 orphanRemoval로 삭제). */
+    /**
+     * 서류 등록 — 신청서는 서류 종류당 1장. 같은 종류가 있으면 그 행을 갱신해 교체한다.
+     * 삭제 후 재삽입이 아닌 이유: 한 flush 안에서 INSERT가 DELETE보다 먼저 나가
+     * (application_id, document_type) UNIQUE에 자충한다.
+     */
     fun registerDocument(document: ApplicationDocument) {
         requireDraft()
-        _documents.removeAll { it.documentType == document.documentType }
-        _documents += document
+        val existing = _documents.find { it.documentType == document.documentType }
+        if (existing == null) {
+            _documents += document
+        } else {
+            existing.replaceFile(document.storageKey, document.contentType)
+        }
     }
 
     fun submit() {
