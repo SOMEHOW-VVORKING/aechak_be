@@ -1015,6 +1015,25 @@ class CartIntegrationTest : IntegrationTestBase() {
         assertEquals(2, JsonPath.read<Int>(body, "$.data.cartItemCount"), "뺀 항목의 수량은 뱃지에도 안 잡혀야 화면과 어긋나지 않는다")
     }
 
+    @Test
+    fun `검수가 풀린 상품의 항목은 빼고 나머지를 정상 응답한다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (kept, _) = seedProduct(productName = "강아지 사료 1kg")
+        val (revoked, _) = seedProduct(productName = "고양이 간식")
+        addCartItem(token, kept[0], 2)
+        addCartItem(token, revoked[0], 3)
+        updateInspectionStatus(revoked[0], InspectionStatus.PENDING)
+
+        val body = getCart(token)
+
+        assertEquals(
+            listOf("강아지 사료 1kg"),
+            JsonPath.read<List<String>>(body, "$.data.sellerGroups[*].items[*].productName"),
+            "담기에서 없는 상품으로 다루는 것을 조회에서 ACTIVE로 보여주면 안 된다",
+        )
+        assertEquals(2, JsonPath.read<Int>(body, "$.data.cartItemCount"), "뺀 항목의 수량은 뱃지에도 안 잡혀야 한다")
+    }
+
     // ---------- 응답 필드 집합 ----------
 
     /**

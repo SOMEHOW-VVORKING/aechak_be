@@ -59,6 +59,7 @@ class CartCatalogQueryAdapter(
             optionCombination.isActive,
             product.saleStatus,
             seller.status,
+            product.inspectionStatus,
             optionCombination.name,
             optionCombination.additionalPrice,
             product.name,

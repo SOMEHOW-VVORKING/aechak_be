@@ -51,22 +51,19 @@ class CartService(
 
     fun findCartItems(buyerId: Long): List<CartItem> = cartRepository.findByBuyerIdWithItems(buyerId)?.items.orEmpty()
 
-    /**
-     * 카탈로그 행이 없는 항목은 상품명도 가격도 못 채워 화면에 못 그림.
-     * 옵션 조합은 비활성만 하고 지우지 않기로 한 계약이라 실제로는 안 나야 하는 경우임.
-     */
+    /** 검수 미승인, 카탈로그 행 자체가 없는 것은 제외함. */
     fun findDisplayCatalog(items: List<CartItem>): Map<Long, CartCatalogItemView> {
         if (items.isEmpty()) return emptyMap()
 
-        val catalog =
+        val fetched =
             cartCatalogQueryPort
                 .findItems(items.map { it.optionCombinationId })
                 .associateBy { it.optionCombinationId }
 
-        items.filterNot { catalog.containsKey(it.optionCombinationId) }.forEach {
+        items.filterNot { fetched.containsKey(it.optionCombinationId) }.forEach {
             log.warn("카탈로그 행이 없어 장바구니 항목을 제외함. cartItemId={}, optionCombinationId={}", it.id, it.optionCombinationId)
         }
-        return catalog
+        return fetched.filterValues { it.approved() }
     }
 
     /** UNIQUE(buyer_id) 충돌 예외를 그대로 내보냄. 잡는 쪽은 파사드. */
