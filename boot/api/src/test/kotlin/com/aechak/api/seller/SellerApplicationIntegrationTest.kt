@@ -437,8 +437,7 @@ class SellerApplicationIntegrationTest : IntegrationTestBase() {
     ): String = "${FileKey.tmpPrefixOf(ownerId, UploadPurpose.SELLER_DOCUMENT)}$fileName"
 
     /** 종류별 tmpKey 페어 — 내(userId) 업로드분. */
-    private fun docs(vararg documentTypes: String): List<Pair<String, String>> =
-        documentTypes.map { it to tmpKey(userId, "$it.png") }
+    private fun docs(vararg documentTypes: String): List<Pair<String, String>> = documentTypes.map { it to tmpKey(userId, "$it.png") }
 
     private fun saveDraftRequest(
         token: String,
