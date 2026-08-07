@@ -32,31 +32,47 @@ class PhoneVerificationService(
         if (codeStore.isInCooldown(userId)) {
             throw BusinessException(UserErrorCode.SMS_RATE_LIMITED)
         }
-
-        // 상한 판정은 INCR 반환값으로 — 검사와 증가를 쪼개면 동시 발송이 상한을 뚫는다
         val dateKey = kstToday().format(DATE_KEY)
-        val expireAt = kstToday().plusDays(1).atStartOfDay(KST).toInstant()
-        val counts = codeStore.incrementDailyCounts(userId, phoneNumber, dateKey, expireAt)
-        if (counts.userCount > DAILY_SEND_LIMIT || counts.phoneCount > DAILY_SEND_LIMIT) {
-            throw BusinessException(UserErrorCode.SMS_RATE_LIMITED)
-        }
+        enforceDailyLimit(userId, phoneNumber, dateKey)
 
         val code = codeGenerator.generate()
         codeStore.saveCode(userId, phoneNumber, code, CODE_TTL)
-        try {
-            smsSender.send(phoneNumber, "[애착] 인증번호 [$code]를 입력해 주세요.")
-        } catch (e: Exception) {
-            // 실패한 시도는 흔적을 남기지 않는다 — 코드 소각 + 상한 미소모
-            codeStore.removeCode(userId)
-            codeStore.rollbackDailyCounts(userId, phoneNumber, dateKey)
-            throw BusinessException(UserErrorCode.SMS_SEND_FAILED, e)
-        }
+        dispatchOrRollback(userId, phoneNumber, code, dateKey)
         codeStore.startCooldown(userId, RESEND_COOLDOWN)
 
         return PhoneCodeSentResult(
             expiresInSeconds = CODE_TTL.seconds.toInt(),
             resendCooldownSeconds = RESEND_COOLDOWN.seconds.toInt(),
         )
+    }
+
+    /** 일 상한(유저·번호 이중) — INCR 반환값으로 판정한다(검사와 증가를 쪼개면 동시 발송이 상한을 뚫는다). */
+    private fun enforceDailyLimit(
+        userId: Long,
+        phoneNumber: String,
+        dateKey: String,
+    ) {
+        val expireAt = kstToday().plusDays(1).atStartOfDay(KST).toInstant()
+        val counts = codeStore.incrementDailyCounts(userId, phoneNumber, dateKey, expireAt)
+        if (counts.userCount > DAILY_SEND_LIMIT || counts.phoneCount > DAILY_SEND_LIMIT) {
+            throw BusinessException(UserErrorCode.SMS_RATE_LIMITED)
+        }
+    }
+
+    /** 발송 실패는 흔적을 남기지 않는다 — 코드 소각 + 상한 미소모(발송 때와 같은 dateKey로 롤백해야 자정 경계에서 엉뚱한 버킷을 안 깎는다). */
+    private fun dispatchOrRollback(
+        userId: Long,
+        phoneNumber: String,
+        code: String,
+        dateKey: String,
+    ) {
+        try {
+            smsSender.send(phoneNumber, "[애착] 인증번호 [$code]를 입력해 주세요.")
+        } catch (e: Exception) {
+            codeStore.removeCode(userId)
+            codeStore.rollbackDailyCounts(userId, phoneNumber, dateKey)
+            throw BusinessException(UserErrorCode.SMS_SEND_FAILED, e)
+        }
     }
 
     /**

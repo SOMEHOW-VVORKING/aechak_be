@@ -5,6 +5,7 @@ import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.application.user.user.usecase.result.UserMeResult
 import com.aechak.application.user.verification.service.PhoneVerificationService
 import com.aechak.application.user.verification.support.PhoneNumbers
+import com.aechak.application.user.verification.support.PhonePii
 import com.aechak.application.user.verification.support.PhonePiiEncoder
 import com.aechak.application.user.verification.usecase.PhoneVerificationUseCase
 import com.aechak.application.user.verification.usecase.command.ConfirmPhoneCodeCommand
@@ -43,21 +44,9 @@ class PhoneVerificationFacade(
         val pii = phonePiiEncoder.encode(phoneNumber)
 
         try {
-            tx.execute {
-                val user = userService.getById(command.userId)
-                val occupant = userService.findPhoneOccupant(pii.phoneHmac)
-                if (occupant != null && occupant.id != user.id) {
-                    // 점유 이전 — 해제 UPDATE를 먼저 DB로 밀어야 한다. MySQL은 지연 제약이 없어
-                    // 신규 세팅이 먼저 나가면 정당한 이전이 UNIQUE(phone_hmac)에 자충한다.
-                    occupant.unverifyPhone()
-                    userService.flushChanges()
-                }
-                user.verifyPhone(pii.encrypted, pii.phoneHmac, pii.last4Hmac)
-            }
+            tx.execute { transferAndVerify(command.userId, pii) }
         } catch (e: DataIntegrityViolationException) {
-            if (e.message?.contains(PHONE_HMAC_CONSTRAINT) != true &&
-                e.cause?.message?.contains(PHONE_HMAC_CONSTRAINT) != true
-            ) {
+            if (!isPhoneHmacConflict(e)) {
                 throw e
             }
             // 동시 인증 race — 같은 번호가 방금 다른 계정에 커밋됐다. 계약에 전용 코드가 없어 30005로 수렴.
@@ -67,6 +56,27 @@ class PhoneVerificationFacade(
         verificationService.consumeCode(command.userId)
         return userUseCase.getMe(command.userId)
     }
+
+    /**
+     * 점유 이전 후 인증 — 해제 UPDATE를 먼저 flush로 DB에 밀어야 한다. MySQL은 지연 제약이 없어
+     * 신규 세팅이 먼저 나가면 정당한 이전이 UNIQUE(phone_hmac)에 자충한다.
+     */
+    private fun transferAndVerify(
+        userId: Long,
+        pii: PhonePii,
+    ) {
+        val user = userService.getById(userId)
+        val occupant = userService.findPhoneOccupant(pii.phoneHmac)
+        if (occupant != null && occupant.id != user.id) {
+            occupant.unverifyPhone()
+            userService.flushChanges()
+        }
+        user.verifyPhone(pii.encrypted, pii.phoneHmac, pii.last4Hmac)
+    }
+
+    private fun isPhoneHmacConflict(e: DataIntegrityViolationException): Boolean =
+        e.message?.contains(PHONE_HMAC_CONSTRAINT) == true ||
+            e.cause?.message?.contains(PHONE_HMAC_CONSTRAINT) == true
 
     companion object {
         private const val PHONE_HMAC_CONSTRAINT = "uk_users_phone_hmac"
