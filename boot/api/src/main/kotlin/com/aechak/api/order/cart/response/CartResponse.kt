@@ -1,7 +1,6 @@
 package com.aechak.api.order.cart.response
 
 import com.aechak.application.order.cart.usecase.result.CartResult
-import com.fasterxml.jackson.annotation.JsonProperty
 
 data class CartResponse(
     val cartItemCount: Int,
@@ -38,7 +37,6 @@ data class CartResponse(
         val discountRate: Int?,
         val remainingStock: Int,
         val itemStatus: String,
-        @get:JsonProperty("isOrderable")
         val isOrderable: Boolean,
     ) {
         companion object {
