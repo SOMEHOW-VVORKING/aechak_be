@@ -20,7 +20,7 @@ aechak/                              # A-4 확정: 루트 패키지 com.aechak
 ├── web-common/                      # HTTP 번역 계층 (응답 규격, 전역 핸들러, TraceId) → 05 문서
 ├── domain/                          # 도메인 모델 (단일 모듈, 내부는 도메인별 패키지) → 10 문서
 ├── application/                     # UseCase/Facade/Service, Command/Result → 20 문서
-├── message/                         # ⚠️ PENDING(A-2): Kafka 통합 메시지 계약 모듈
+├── message/                         # Kafka 통합 메시지 계약 모듈 (의존 0 — 순수 계약)
 ├── boot/                            # 그룹핑 디렉토리 (자체는 모듈 아님) → 30 문서
 │   ├── api/                         # 실행 모듈. 컨트롤러 + consumer 패키지 동거
 │   ├── admin/                       # A-5 결정: MVP 제외 — 필요 시점에 생성
@@ -39,7 +39,7 @@ rootProject.name = "aechak"          // A-4 확정
 include(
     "common", "web-common",
     "domain", "application",
-    // "message",                    // PENDING(A-2)
+    "message",                       // 통합 메시지 계약 (의존 0)
     "api", "batch",                  // "admin" — A-5: MVP 제외
     "jpa-persistence", "pg-client",     // A-1 결정(L2). kafka·redis는 어댑터 생길 때 추가
 )
@@ -59,7 +59,7 @@ project(":pg-client").projectDir = file("infra/client/pg-client")
 | common | (없음) | 모든 Spring |
 | web-common | common, spring-web/webmvc, servlet-api, slf4j | domain, application |
 | domain | common, jakarta.persistence-api (불활성 어노테이션 스펙 — A-1 결정) | 모든 Spring, web-common |
-| application | common, domain, spring-context, spring-tx (A-1 결정 L2 — 리포지토리 포트는 domain 소유, 구현은 infra/persistence) | web-common, spring-web, infra/* |
+| application | common, domain, message(순수 계약 — 발행 포트 시그니처), spring-context, spring-tx (A-1 결정 L2 — 리포지토리 포트는 domain 소유, 구현은 infra/persistence) | web-common, spring-web, infra/* |
 | message | (없음 — 순수 DTO) | 전부 |
 | infra/* | common, domain, application, message, 각 기술 스택 | web-common, 다른 infra 모듈, boot |
 | api / admin | web-common, application, domain, infra/* (조립), message | — |
@@ -83,7 +83,7 @@ project(":pg-client").projectDir = file("infra/client/pg-client")
 ### 3-2. 이벤트는 두 벌이다 (혼용 금지)
 | 구분 | 프로세스 내 도메인 이벤트 | Kafka 통합 메시지 |
 | --- | --- | --- |
-| 위치 | `domain/{발행자}/event/` | `message` 모듈 ⚠️ PENDING(A-2) |
+| 위치 | `domain/{발행자}/event/` | `message` 모듈 |
 | 소비 | @TransactionalEventListener | Kafka Consumer (boot 소속) |
 | 변경 자유도 | 도메인 리팩토링 따라 자유 | 스키마 호환성 유지 (컨슈머와의 계약) |
 | 패키징 | 발행자 기준 | 발행자 기준 |

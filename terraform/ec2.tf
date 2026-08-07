@@ -61,3 +61,10 @@ resource "aws_instance" "kafka" {
 
   tags = { Name = "${var.project}-kafka-${var.env}" }
 }
+
+# 앱이 부팅 시 직접 읽는 설정 — yml의 ${SPRING_KAFKA_BOOTSTRAP_SERVERS} 플레이스홀더로 매핑
+resource "aws_ssm_parameter" "kafka_bootstrap" {
+  name  = "/${var.project}/${var.env}/api/SPRING_KAFKA_BOOTSTRAP_SERVERS"
+  type  = "String"
+  value = "${local.kafka_private_ip}:9092"
+}
