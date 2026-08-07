@@ -4,6 +4,7 @@ import com.aechak.application.order.cart.port.CartCatalogQueryPort
 import com.aechak.application.order.cart.port.view.CartCatalogItemView
 import com.aechak.domain.product.option.QOptionCombination
 import com.aechak.domain.product.product.QProduct
+import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.seller.seller.QSeller
 import com.querydsl.core.types.Expression
 import com.querydsl.core.types.Projections
@@ -30,8 +31,11 @@ class CartCatalogQueryAdapter(
             .join(optionCombination.product, product)
             .join(seller)
             .on(seller.userId.eq(product.sellerId))
-            .where(optionCombination.id.eq(optionCombinationId))
-            .fetchOne()
+            .where(
+                optionCombination.id.eq(optionCombinationId),
+                // 상품 조회도 검수 미승인은 없는 것으로 다룸. 담을 수 없는 상태가 아니라 없는 상품이라 상태 파생 전에 거름
+                product.inspectionStatus.eq(InspectionStatus.APPROVED),
+            ).fetchOne()
 
     override fun findItems(optionCombinationIds: Collection<Long>): List<CartCatalogItemView> {
         if (optionCombinationIds.isEmpty()) return emptyList()

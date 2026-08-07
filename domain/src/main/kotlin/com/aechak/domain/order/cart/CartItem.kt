@@ -33,7 +33,7 @@ class CartItem protected constructor(
     @Column(nullable = false)
     val optionCombinationId: Long = optionCombinationId
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "smallint unsigned")
     var quantity: Int = quantity
         protected set
 

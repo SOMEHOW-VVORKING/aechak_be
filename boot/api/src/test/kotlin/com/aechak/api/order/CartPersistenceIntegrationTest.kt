@@ -62,6 +62,26 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `수량 컬럼은 음수 저장을 거부한다`() {
+        val cartId =
+            tx.execute {
+                val cart = Cart.create(buyerId = 1L)
+                em.persist(cart)
+                cart.id
+            }!!
+
+        assertThrows<PersistenceException>("음수 수량은 unsigned 컬럼 타입에 걸려야 한다") {
+            tx.execute {
+                em
+                    .createNativeQuery(
+                        "insert into cart_items (cart_id, option_combination_id, quantity, created_at, updated_at) " +
+                            "values ($cartId, 10, -1, now(), now())",
+                    ).executeUpdate()
+            }
+        }
+    }
+
+    @Test
     fun `한 구매자에 장바구니 행은 하나만 허용된다`() {
         tx.execute { em.persist(Cart.create(buyerId = 1L)) }
 
