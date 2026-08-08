@@ -1136,6 +1136,29 @@ class CartIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(errorCode))
     }
 
+    private fun deleteJson(cartItemIds: List<Long>): String = """{"cartItemIds": ${cartItemIds.joinToString(", ", "[", "]")}}"""
+
+    private fun deleteRequest(
+        token: String,
+        body: String,
+    ): MockHttpServletRequestBuilder =
+        delete("/api/v1/carts/items")
+            .bearer(token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body)
+
+    /** DELETE 후 200을 확인하고 응답 본문을 돌려줌. */
+    private fun deleteCartItems(
+        token: String,
+        cartItemIds: List<Long>,
+    ): String =
+        mockMvc
+            .perform(deleteRequest(token, deleteJson(cartItemIds)))
+            .andExpect(status().isOk)
+            .andReturn()
+            .response
+            .getContentAsString(Charsets.UTF_8)
+
     /** POST 후 생성된 항목 id를 돌려줌. */
     private fun addCartItemId(
         token: String,
@@ -1635,6 +1658,121 @@ class CartIntegrationTest : IntegrationTestBase() {
         assertEquals(comboIds[1], readLong(body, "$.data.optionCombinationId"), "산 조합으로 갈아탄 채 수량이 적용되어야 한다")
     }
 
+    // ---------- 삭제 ----------
+
+    @Test
+    fun `개별 삭제는 그 항목만 지운다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val first = addCartItemId(token, comboIds[0], 1)
+        addCartItemId(token, comboIds[1], 2)
+
+        val body = deleteCartItems(token, listOf(first))
+
+        assertEquals(1, JsonPath.read<Int>(body, "$.data.deletedCount"), "요청한 한 건만 지워야 한다")
+        assertEquals(1L, cartItemRowCount(), "나머지 항목은 남아 있어야 한다")
+    }
+
+    @Test
+    fun `선택 삭제와 전체 삭제를 같은 목록으로 처리한다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2", "옵션 3"))
+        val ids = comboIds.map { addCartItemId(token, it, 1) }
+
+        val selected = deleteCartItems(token, ids.take(2))
+        assertEquals(2, JsonPath.read<Int>(selected, "$.data.deletedCount"), "선택 삭제는 요청한 만큼 지워야 한다")
+
+        val all = deleteCartItems(token, ids.drop(2))
+        assertEquals(1, JsonPath.read<Int>(all, "$.data.deletedCount"), "전체 삭제도 같은 목록으로 처리한다")
+        assertEquals(0L, cartItemRowCount(), "전부 물리 삭제되어야 한다")
+    }
+
+    @Test
+    fun `없는 id는 오류가 아니라 무시하고 deletedCount에서 뺀다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 1)
+
+        val body = deleteCartItems(token, listOf(cartItemId, 999_999L))
+
+        assertEquals(1, JsonPath.read<Int>(body, "$.data.deletedCount"), "없는 id는 세지 않아야 한다")
+    }
+
+    @Test
+    fun `빈 배열은 deletedCount 0으로 성공한다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        addCartItemId(token, comboIds[0], 2)
+
+        val body = deleteCartItems(token, emptyList())
+
+        assertEquals(0, JsonPath.read<Int>(body, "$.data.deletedCount"), "빈 배열은 삭제 0건 성공이다")
+        assertEquals(2, JsonPath.read<Int>(body, "$.data.cartItemCount"), "빈 배열 요청이 장바구니를 건드리면 안 된다")
+    }
+
+    @Test
+    fun `같은 삭제 요청을 두 번 보내도 두 번째는 0건 성공이다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 1)
+
+        assertEquals(1, JsonPath.read<Int>(deleteCartItems(token, listOf(cartItemId)), "$.data.deletedCount"))
+
+        val second = deleteCartItems(token, listOf(cartItemId))
+
+        assertEquals(0, JsonPath.read<Int>(second, "$.data.deletedCount"), "재시도는 오류가 아니라 0건 성공이어야 한다")
+    }
+
+    @Test
+    fun `장바구니가 없어도 삭제는 0건 성공이다`() {
+        val token = mintAccessToken(createActiveUser())
+
+        val body = deleteCartItems(token, listOf(999_999L))
+
+        assertEquals(0, JsonPath.read<Int>(body, "$.data.deletedCount"))
+        assertEquals(0, JsonPath.read<Int>(body, "$.data.cartItemCount"))
+    }
+
+    @Test
+    fun `장바구니가 없어도 남의 항목 삭제는 50206이고 아무것도 지우지 않는다`() {
+        val (comboIds, _) = seedProduct()
+        val ownerItemId = addCartItemId(mintAccessToken(createActiveUser()), comboIds[0], 1)
+        val intruderToken = mintAccessToken(createActiveUser())
+
+        mockMvc
+            .perform(deleteRequest(intruderToken, deleteJson(listOf(ownerItemId))))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(50206))
+
+        assertEquals(1L, cartItemRowCount(), "장바구니가 없는 요청자라도 남의 항목을 지우면 안 된다")
+    }
+
+    @Test
+    fun `남의 항목이 하나라도 섞이면 50206이고 아무것도 지우지 않는다`() {
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val ownerToken = mintAccessToken(createActiveUser())
+        val intruderToken = mintAccessToken(createActiveUser())
+        val ownerItemId = addCartItemId(ownerToken, comboIds[0], 1)
+        val intruderItemId = addCartItemId(intruderToken, comboIds[1], 1)
+
+        mockMvc
+            .perform(deleteRequest(intruderToken, deleteJson(listOf(intruderItemId, ownerItemId))))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(50206))
+
+        assertEquals(2L, cartItemRowCount(), "부분 삭제 없이 전부 실패해야 한다")
+    }
+
+    @Test
+    fun `cartItemIds를 생략하면 90001이다`() {
+        val token = mintAccessToken(createActiveUser())
+
+        mockMvc
+            .perform(deleteRequest(token, "{}"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+    }
+
     // ---------- 수정·삭제 후 cartItemCount ----------
 
     @Test
@@ -1659,6 +1797,19 @@ class CartIntegrationTest : IntegrationTestBase() {
         val body = updateCartItem(token, sourceId, optionCombinationId = comboIds[0])
 
         assertEquals(5, JsonPath.read<Int>(body, "$.data.cartItemCount"), "병합은 수량 합계를 바꾸지 않는다")
+    }
+
+    @Test
+    fun `삭제 응답의 cartItemCount도 남은 수량의 합계다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val first = addCartItemId(token, comboIds[0], 2)
+        addCartItemId(token, comboIds[1], 3)
+
+        val body = deleteCartItems(token, listOf(first))
+
+        assertEquals(1, JsonPath.read<Int>(body, "$.data.deletedCount"), "deletedCount는 수량 합이 아니라 지운 행 수여야 한다. 수량 합이면 2가 된다")
+        assertEquals(3, JsonPath.read<Int>(body, "$.data.cartItemCount"), "남은 항목의 수량 합계여야 한다. 종류 수면 1이 된다")
     }
 
     // ---------- 수정·삭제 후 조회 정렬 ----------
@@ -1702,6 +1853,17 @@ class CartIntegrationTest : IntegrationTestBase() {
         )
     }
 
+    @Test
+    fun `삭제한 항목만 목록에서 빠지고 나머지 순서는 유지된다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2", "옵션 3"))
+        val ids = comboIds.map { addCartItemId(token, it, 1) }
+
+        deleteCartItems(token, listOf(ids[1]))
+
+        assertEquals(listOf(ids[2], ids[0]), cartItemIdsInOrder(token), "가운데 항목만 빠지고 나머지 순서는 그대로여야 한다")
+    }
+
     // ---------- 수정·삭제 인증 ----------
 
     @Test
@@ -1711,6 +1873,17 @@ class CartIntegrationTest : IntegrationTestBase() {
                 patch("/api/v1/carts/items/1")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(updateJson(quantity = 2)),
+            ).andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
+    fun `미로그인 삭제는 401과 20004다`() {
+        mockMvc
+            .perform(
+                delete("/api/v1/carts/items")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(deleteJson(listOf(1L))),
             ).andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.errorCode").value(20004))
     }
