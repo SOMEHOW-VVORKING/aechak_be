@@ -3,8 +3,10 @@ package com.aechak.application.order.cart.service
 import com.aechak.application.order.cart.port.CartCatalogQueryPort
 import com.aechak.application.order.cart.port.view.CartCatalogItemView
 import com.aechak.application.order.cart.usecase.command.AddCartItemCommand
+import com.aechak.application.order.cart.usecase.command.DeleteCartItemsCommand
 import com.aechak.application.order.cart.usecase.command.UpdateCartItemCommand
 import com.aechak.application.order.cart.usecase.result.AddCartItemResult
+import com.aechak.application.order.cart.usecase.result.DeleteCartItemsResult
 import com.aechak.application.order.cart.usecase.result.UpdateCartItemResult
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
@@ -81,6 +83,31 @@ class CartService(
             merged = targetCartItem.id != item.id,
             cartItemCount = cart.items.sumOf { it.quantity },
         )
+    }
+
+    fun deleteItems(command: DeleteCartItemsCommand): DeleteCartItemsResult {
+        val cart = cartRepository.findByBuyerIdForUpdate(command.buyerId)
+        if (cart == null) {
+            if (cartRepository.existsAnyItemById(command.cartItemIds)) {
+                throw BusinessException(OrderErrorCode.CART_ITEM_ACCESS_DENIED)
+            }
+            return DeleteCartItemsResult(deletedCount = 0, cartItemCount = 0)
+        }
+
+        requireAllOwned(command.cartItemIds, cart)
+        val deletedCount = cart.removeItems(command.cartItemIds)
+
+        return DeleteCartItemsResult(deletedCount = deletedCount, cartItemCount = cart.items.sumOf { it.quantity })
+    }
+
+    private fun requireAllOwned(
+        requestDeleteIds: Set<Long>,
+        cart: Cart,
+    ) {
+        val otherIds = requestDeleteIds - cart.getItemIds()
+        if (cartRepository.existsAnyItemById(otherIds)) {
+            throw BusinessException(OrderErrorCode.CART_ITEM_ACCESS_DENIED)
+        }
     }
 
     private fun validatedQuantity(command: UpdateCartItemCommand): Int? {

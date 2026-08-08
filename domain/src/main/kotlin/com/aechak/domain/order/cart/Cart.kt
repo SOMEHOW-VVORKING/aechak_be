@@ -52,6 +52,8 @@ class Cart protected constructor(
         return CartItem.of(optionCombinationId, quantity).also { _items.add(it) }
     }
 
+    fun getItemIds(): Set<Long> = _items.map { it.id }.toSet()
+
     fun findItem(cartItemId: Long): CartItem? = _items.find { it.id == cartItemId }
 
     /**
@@ -72,6 +74,13 @@ class Cart protected constructor(
         destination.accumulate(item.quantity)
         _items.remove(item)
         return destination
+    }
+
+    /** 행을 실제로 지우는 것은 orphanRemoval임. */
+    fun removeItems(cartItemIds: Set<Long>): Int {
+        val before = _items.size
+        _items.removeAll { it.id in cartItemIds }
+        return before - _items.size
     }
 
     companion object {

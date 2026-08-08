@@ -4,9 +4,11 @@ import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.order.cart.service.CartService
 import com.aechak.application.order.cart.usecase.CartUseCase
 import com.aechak.application.order.cart.usecase.command.AddCartItemCommand
+import com.aechak.application.order.cart.usecase.command.DeleteCartItemsCommand
 import com.aechak.application.order.cart.usecase.command.UpdateCartItemCommand
 import com.aechak.application.order.cart.usecase.result.AddCartItemResult
 import com.aechak.application.order.cart.usecase.result.CartResult
+import com.aechak.application.order.cart.usecase.result.DeleteCartItemsResult
 import com.aechak.application.order.cart.usecase.result.UpdateCartItemResult
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessException
@@ -54,6 +56,9 @@ class CartFacade(
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun updateCartItem(command: UpdateCartItemCommand): UpdateCartItemResult = cartService.updateItem(command)
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    override fun deleteCartItems(command: DeleteCartItemsCommand): DeleteCartItemsResult = cartService.deleteItems(command)
 
     /**
      * try가 tx.execute를 감싸야 함. 안에서 잡으면 롤백 전용 마킹 때문에 커밋에서 다시 터짐.
