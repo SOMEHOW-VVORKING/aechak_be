@@ -59,4 +59,63 @@ class CartItemTest {
 
         assertEquals(CommonErrorCode.INVALID_REQUEST, e.errorCode, "수량 1 미만 생성은 90001이어야 한다")
     }
+
+    @Test
+    fun `changeQuantity는 누적이 아니라 대입이다`() {
+        val item = CartItem.of(10L, 3)
+
+        item.changeQuantity(5)
+
+        assertEquals(5, item.quantity, "3에 5를 더한 8이 아니라 5로 갈아치워야 한다")
+    }
+
+    @Test
+    fun `changeQuantity로 수량을 깎을 수 있다`() {
+        val item = CartItem.of(10L, 5)
+
+        item.changeQuantity(2)
+
+        assertEquals(2, item.quantity, "대입이므로 줄이는 방향도 받아야 한다. accumulate는 음수를 막아 이걸 못 함")
+    }
+
+    @Test
+    fun `changeQuantity의 경계 1과 99는 통과한다`() {
+        val item = CartItem.of(10L, 5)
+
+        item.changeQuantity(CartItem.MIN_QUANTITY)
+        assertEquals(1, item.quantity, "하한 경계는 성공이어야 한다")
+
+        item.changeQuantity(CartItem.MAX_QUANTITY)
+        assertEquals(99, item.quantity, "상한 경계는 성공이어야 한다")
+    }
+
+    @Test
+    fun `changeQuantity도 1 미만은 90001이고 수량을 바꾸지 않는다`() {
+        val item = CartItem.of(10L, 3)
+
+        val e = assertFailsWith<BusinessException> { item.changeQuantity(0) }
+
+        assertEquals(CommonErrorCode.INVALID_REQUEST, e.errorCode, "대입도 하한 위반은 90001이어야 한다")
+        assertEquals(3, item.quantity, "실패한 변경은 수량을 바꾸지 않아야 한다")
+    }
+
+    @Test
+    fun `changeQuantity도 99 초과는 90001이고 수량을 바꾸지 않는다`() {
+        val item = CartItem.of(10L, 3)
+
+        val e = assertFailsWith<BusinessException> { item.changeQuantity(CartItem.MAX_QUANTITY + 1) }
+
+        assertEquals(CommonErrorCode.INVALID_REQUEST, e.errorCode, "대입도 상한 위반은 90001이어야 한다")
+        assertEquals(3, item.quantity, "실패한 변경은 수량을 바꾸지 않아야 한다")
+    }
+
+    @Test
+    fun `changeOption은 조합만 갈아끼우고 수량은 건드리지 않는다`() {
+        val item = CartItem.of(10L, 4)
+
+        item.changeOption(11L)
+
+        assertEquals(11L, item.optionCombinationId, "조합이 바뀌어야 한다")
+        assertEquals(4, item.quantity, "옵션 변경은 수량을 건드리지 않아야 한다")
+    }
 }

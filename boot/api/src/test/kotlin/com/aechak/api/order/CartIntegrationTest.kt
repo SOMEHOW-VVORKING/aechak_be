@@ -23,7 +23,9 @@ import org.springframework.http.MediaType
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -35,8 +37,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 
 /**
- * 담기·조회 API 통합. HTTP 경계부터 실 MySQL까지 태워 담기 검증 순서와 조회 응답 계약을 고정함.
- * 깨지면 담기가 막아야 할 것을 통과시켰거나 조회 응답이 프론트와 어긋난 것임.
+ * 담기·조회·수정·삭제 API 통합. HTTP 경계부터 실 MySQL까지 태워 검증 순서와 응답 계약을 고정함.
+ * 깨지면 막아야 할 것을 통과시켰거나 응답이 프론트와 어긋난 것임.
  * Boot 4에는 @AutoConfigureMockMvc 슬라이스가 없어 WebApplicationContext와 실 보안 필터체인으로 MockMvc를 조립함.
  * 엔티티에 상태 세터가 없어 상태 픽스처는 persist 후 JPQL bulk update로 만듦.
  */
@@ -1083,6 +1085,634 @@ class CartIntegrationTest : IntegrationTestBase() {
             keysOf(body, "$.data.sellerGroups[0].items[0]"),
             "항목 필드가 계약과 어긋난다. 파생 필드는 itemStatus와 isOrderable 둘뿐이다",
         )
+    }
+
+    // ---------- 수정·삭제 HTTP 헬퍼 ----------
+
+    /** 생략과 null 명시를 가르려고 키 자체를 안 넣음. */
+    private fun updateJson(
+        quantity: Int? = null,
+        optionCombinationId: Long? = null,
+    ): String =
+        listOfNotNull(
+            quantity?.let { """"quantity": $it""" },
+            optionCombinationId?.let { """"optionCombinationId": $it""" },
+        ).joinToString(", ", "{", "}")
+
+    private fun patchCartItem(
+        token: String,
+        cartItemId: Long,
+        body: String,
+    ): MockHttpServletRequestBuilder =
+        patch("/api/v1/carts/items/$cartItemId")
+            .bearer(token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body)
+
+    /** PATCH 후 200을 확인하고 응답 본문을 돌려줌. */
+    private fun updateCartItem(
+        token: String,
+        cartItemId: Long,
+        quantity: Int? = null,
+        optionCombinationId: Long? = null,
+    ): String =
+        mockMvc
+            .perform(patchCartItem(token, cartItemId, updateJson(quantity, optionCombinationId)))
+            .andExpect(status().isOk)
+            .andReturn()
+            .response
+            .getContentAsString(Charsets.UTF_8)
+
+    private fun assertUpdateError(
+        token: String,
+        cartItemId: Long,
+        body: String,
+        httpStatus: Int,
+        errorCode: Int,
+    ) {
+        mockMvc
+            .perform(patchCartItem(token, cartItemId, body))
+            .andExpect(status().`is`(httpStatus))
+            .andExpect(jsonPath("$.errorCode").value(errorCode))
+    }
+
+    /** POST 후 생성된 항목 id를 돌려줌. */
+    private fun addCartItemId(
+        token: String,
+        comboId: Long,
+        quantity: Int,
+    ): Long = readLong(addCartItem(token, comboId, quantity), "$.data.cartItemId")
+
+    /** 조회 응답에 실린 순서 그대로의 항목 id 목록. 정렬 단언용. */
+    private fun cartItemIdsInOrder(token: String): List<Long> =
+        JsonPath
+            .read<List<Any>>(getCart(token), "$.data.sellerGroups[*].items[*].cartItemId")
+            .map { (it as Number).toLong() }
+
+    private fun optionCombinationIdOf(cartItemId: Long): Long? =
+        em
+            .createQuery("select ci.optionCombinationId from CartItem ci where ci.id = :id", java.lang.Long::class.java)
+            .setParameter("id", cartItemId)
+            .resultList
+            .firstOrNull()
+            ?.toLong()
+
+    // ---------- 수정 성공 ----------
+
+    @Test
+    fun `수량 변경은 누적이 아니라 대입이다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 3)
+
+        val body = updateCartItem(token, cartItemId, quantity = 2)
+
+        assertEquals(2, JsonPath.read<Int>(body, "$.data.quantity"), "담기의 누적과 달리 수량 변경은 요청 값으로 갈아치워야 한다")
+        assertEquals(cartItemId, readLong(body, "$.data.cartItemId"), "병합이 없으면 요청 경로의 id가 그대로 살아남아야 한다")
+        assertEquals(false, JsonPath.read<Boolean>(body, "$.data.merged"), "수량만 바꾸면 병합이 아니다")
+    }
+
+    @Test
+    fun `안 담긴 조합으로 바꾸면 병합 없이 같은 줄이 유지된다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val cartItemId = addCartItemId(token, comboIds[0], 3)
+
+        val body = updateCartItem(token, cartItemId, optionCombinationId = comboIds[1])
+
+        assertEquals(false, JsonPath.read<Boolean>(body, "$.data.merged"), "목적지 줄이 없으면 병합이 아니다")
+        assertEquals(cartItemId, readLong(body, "$.data.cartItemId"), "병합이 아니면 cartItemId가 바뀌면 안 된다")
+        assertEquals(comboIds[1], readLong(body, "$.data.optionCombinationId"), "옵션 조합이 갈아끼워져야 한다")
+        assertEquals(3, JsonPath.read<Int>(body, "$.data.quantity"), "옵션만 바꾸면 수량은 그대로다")
+        assertEquals(comboIds[1], optionCombinationIdOf(cartItemId), "같은 행의 조합이 바뀌어야 한다. 삭제 후 재생성이면 id가 달라진다")
+    }
+
+    @Test
+    fun `현재와 같은 조합 요청은 수량만 적용하고 200이다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 3)
+
+        val body = updateCartItem(token, cartItemId, quantity = 5, optionCombinationId = comboIds[0])
+
+        assertEquals(false, JsonPath.read<Boolean>(body, "$.data.merged"), "자기 자신은 병합 대상에서 빠져야 한다")
+        assertEquals(cartItemId, readLong(body, "$.data.cartItemId"), "자기 줄이 그대로 살아남아야 한다")
+        assertEquals(5, JsonPath.read<Int>(body, "$.data.quantity"), "수량은 적용되어야 한다")
+        assertEquals(1L, cartItemRowCount(), "자기 자신 요청이 라인을 늘리면 안 된다")
+    }
+
+    @Test
+    fun `이미 담긴 조합으로 바꾸면 병합하고 살아남은 줄의 id를 준다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val destinationId = addCartItemId(token, comboIds[0], 2)
+        val sourceId = addCartItemId(token, comboIds[1], 3)
+
+        val body = updateCartItem(token, sourceId, optionCombinationId = comboIds[0])
+
+        assertEquals(true, JsonPath.read<Boolean>(body, "$.data.merged"), "이미 담긴 조합으로 바꾸면 병합이다")
+        assertEquals(destinationId, readLong(body, "$.data.cartItemId"), "응답 id는 요청 경로가 아니라 살아남은 목적지 줄이어야 한다")
+        assertEquals(5, JsonPath.read<Int>(body, "$.data.quantity"), "목적지 수량에 원본 수량이 더해져야 한다")
+        assertEquals(comboIds[0], readLong(body, "$.data.optionCombinationId"), "살아남은 줄의 조합이어야 한다")
+        assertEquals(1L, cartItemRowCount(), "원본 줄이 지워져 라인이 하나로 줄어야 한다")
+        assertNull(optionCombinationIdOf(sourceId), "원본 줄은 물리 삭제되어야 한다")
+    }
+
+    /**
+     * 원본 줄을 목적지 값으로 덮은 뒤 지우면 하이버네이트가 UPDATE를 DELETE보다 먼저 내보내
+     * uk_cart_items_cart_id_option_combination_id에 걸려 500이 난다. 이 테스트가 그 순서를 지킨다.
+     */
+    @Test
+    fun `병합은 UNIQUE 제약에 걸리지 않는다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val destinationId = addCartItemId(token, comboIds[0], 1)
+        val sourceId = addCartItemId(token, comboIds[1], 1)
+
+        updateCartItem(token, sourceId, optionCombinationId = comboIds[0])
+
+        assertEquals(comboIds[0], optionCombinationIdOf(destinationId), "목적지 줄의 조합은 그대로여야 한다")
+        assertEquals(1L, cartItemRowCount(), "병합 뒤 남는 라인은 하나여야 한다")
+    }
+
+    @Test
+    fun `수량과 옵션이 함께 오면 수량을 원본 줄에 먼저 적용한 뒤 병합한다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val destinationId = addCartItemId(token, comboIds[0], 3)
+        val sourceId = addCartItemId(token, comboIds[1], 2)
+
+        val body = updateCartItem(token, sourceId, quantity = 5, optionCombinationId = comboIds[0])
+
+        assertEquals(destinationId, readLong(body, "$.data.cartItemId"), "목적지 줄이 살아남아야 한다")
+        assertEquals(8, JsonPath.read<Int>(body, "$.data.quantity"), "원본에 5를 먼저 대입한 뒤 더해야 8이다. 원본 수량 2로 더하면 5가 된다")
+    }
+
+    @Test
+    fun `서로 다른 두 줄을 같은 조합으로 동시에 바꿔도 둘 다 성공하고 한 줄로 합쳐진다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2", "옵션 3"))
+        val firstId = addCartItemId(token, comboIds[1], 1)
+        val secondId = addCartItemId(token, comboIds[2], 2)
+
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        val statuses =
+            try {
+                listOf(firstId, secondId)
+                    .map { id ->
+                        pool.submit<Int> {
+                            start.await()
+                            mockMvc
+                                .perform(patchCartItem(token, id, updateJson(optionCombinationId = comboIds[0])))
+                                .andReturn()
+                                .response
+                                .status
+                        }
+                    }.also { start.countDown() }
+                    .map { it.get() }
+            } finally {
+                pool.shutdown()
+            }
+
+        assertEquals(listOf(200, 200), statuses, "carts 행 잠금이 직렬화해 둘 다 성공해야 한다")
+        assertEquals(1L, cartItemRowCount(), "무잠금이면 UNIQUE 위반이 나거나 줄이 두 개 남는다")
+        assertEquals(3, quantityOf(comboIds[0]), "두 줄의 수량 1+2가 합산되어야 한다")
+    }
+
+    // ---------- 수정 검증 순서 ----------
+
+    @Test
+    fun `quantity와 optionCombinationId가 둘 다 없으면 90001이다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 1)
+
+        assertUpdateError(token, cartItemId, "{}", 400, 90001)
+    }
+
+    @Test
+    fun `수량이 1 미만이면 90001이다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 1)
+
+        assertUpdateError(token, cartItemId, updateJson(quantity = 0), 400, 90001)
+    }
+
+    @Test
+    fun `수량이 라인당 상한 99를 넘으면 90001이다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(stock = 500)
+        val cartItemId = addCartItemId(token, comboIds[0], 1)
+
+        assertUpdateError(token, cartItemId, updateJson(quantity = 100), 400, 90001)
+    }
+
+    @Test
+    fun `수량 하한 경계인 1은 성공한다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 3)
+
+        val body = updateCartItem(token, cartItemId, quantity = 1)
+
+        assertEquals(1, JsonPath.read<Int>(body, "$.data.quantity"), "하한 경계 1은 90001이 아니라 성공이어야 한다")
+    }
+
+    @Test
+    fun `수량 상한 경계인 99는 성공한다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(stock = 500)
+        val cartItemId = addCartItemId(token, comboIds[0], 1)
+
+        val body = updateCartItem(token, cartItemId, quantity = 99)
+
+        assertEquals(99, JsonPath.read<Int>(body, "$.data.quantity"), "상한 경계 99는 90001이 아니라 성공이어야 한다")
+    }
+
+    @Test
+    fun `요청 형식 위반은 항목 없음보다 먼저다`() {
+        val token = mintAccessToken(createActiveUser())
+
+        assertUpdateError(token, 999_999L, "{}", 400, 90001)
+    }
+
+    @Test
+    fun `수량 하한 위반은 항목 없음보다 먼저다`() {
+        val token = mintAccessToken(createActiveUser())
+
+        assertUpdateError(token, 999_999L, updateJson(quantity = 0), 400, 90001)
+    }
+
+    @Test
+    fun `수량 상한 위반은 본인 것 아님보다 먼저다`() {
+        val (comboIds, _) = seedProduct()
+        val ownerCartItemId = addCartItemId(mintAccessToken(createActiveUser()), comboIds[0], 1)
+        val intruderToken = mintAccessToken(createActiveUser())
+
+        assertUpdateError(intruderToken, ownerCartItemId, updateJson(quantity = 100), 400, 90001)
+    }
+
+    @Test
+    fun `없는 항목을 수정하면 50205다`() {
+        val token = mintAccessToken(createActiveUser())
+
+        assertUpdateError(token, 999_999L, updateJson(quantity = 2), 404, 50205)
+    }
+
+    @Test
+    fun `남의 항목을 수정하면 50206이다`() {
+        val (comboIds, _) = seedProduct()
+        val ownerCartItemId = addCartItemId(mintAccessToken(createActiveUser()), comboIds[0], 1)
+        val intruderToken = mintAccessToken(createActiveUser())
+
+        assertUpdateError(intruderToken, ownerCartItemId, updateJson(quantity = 2), 403, 50206)
+    }
+
+    @Test
+    fun `장바구니를 가진 사용자가 남의 항목을 수정해도 50206이다`() {
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val ownerCartItemId = addCartItemId(mintAccessToken(createActiveUser()), comboIds[0], 1)
+        val intruderToken = mintAccessToken(createActiveUser())
+        addCartItemId(intruderToken, comboIds[1], 1)
+
+        assertUpdateError(intruderToken, ownerCartItemId, updateJson(quantity = 2), 403, 50206)
+    }
+
+    @Test
+    fun `본인 것 아님은 대상 옵션 조합 없음보다 먼저다`() {
+        val (comboIds, _) = seedProduct()
+        val ownerCartItemId = addCartItemId(mintAccessToken(createActiveUser()), comboIds[0], 1)
+        val intruderToken = mintAccessToken(createActiveUser())
+
+        assertUpdateError(intruderToken, ownerCartItemId, updateJson(optionCombinationId = 999_999L), 403, 50206)
+    }
+
+    /** 담기가 50207로 막는 것을 수정으로 우회하지 못해야 함. findItems는 검수를 안 걸러서 포트가 갈림. */
+    @Test
+    fun `검수 승인이 풀린 항목은 수량을 늘릴 수 없다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 2)
+        updateInspectionStatus(comboIds[0], InspectionStatus.PENDING)
+
+        assertUpdateError(token, cartItemId, updateJson(quantity = 5), 404, 50207)
+    }
+
+    @Test
+    fun `검수 승인이 풀린 조합으로는 바꿀 수 없다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val cartItemId = addCartItemId(token, comboIds[0], 2)
+        updateInspectionStatus(comboIds[1], InspectionStatus.PENDING)
+
+        assertUpdateError(token, cartItemId, updateJson(optionCombinationId = comboIds[1]), 404, 50207)
+    }
+
+    @Test
+    fun `검수 승인이 풀려도 수량을 줄이는 것은 막지 않는다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 5)
+        updateInspectionStatus(comboIds[0], InspectionStatus.PENDING)
+
+        val body = updateCartItem(token, cartItemId, quantity = 2)
+
+        assertEquals(2, JsonPath.read<Int>(body, "$.data.quantity"), "깎는 방향은 카탈로그를 아예 안 보므로 검수 상태와 무관하다")
+    }
+
+    @Test
+    fun `없는 옵션 조합으로 바꾸면 50207이다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 1)
+
+        assertUpdateError(token, cartItemId, updateJson(optionCombinationId = 999_999L), 404, 50207)
+    }
+
+    @Test
+    fun `다른 상품의 조합으로 바꾸면 90001이다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val (otherComboIds, _) = seedProduct(productName = "고양이 사료 1kg")
+        val cartItemId = addCartItemId(token, comboIds[0], 1)
+
+        assertUpdateError(token, cartItemId, updateJson(optionCombinationId = otherComboIds[0]), 400, 90001)
+    }
+
+    @Test
+    fun `다른 상품 판정은 판매 불가보다 먼저다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val (otherComboIds, _) = seedProduct(productName = "고양이 사료 1kg")
+        val cartItemId = addCartItemId(token, comboIds[0], 1)
+        updateSaleStatus(otherComboIds[0], SaleStatus.SUSPENDED)
+
+        assertUpdateError(token, cartItemId, updateJson(optionCombinationId = otherComboIds[0]), 400, 90001)
+    }
+
+    @Test
+    fun `살 수 없는 조합으로 바꾸면 50202다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val cartItemId = addCartItemId(token, comboIds[0], 1)
+        deactivateOption(comboIds[1])
+
+        assertUpdateError(token, cartItemId, updateJson(optionCombinationId = comboIds[1]), 409, 50202)
+    }
+
+    @Test
+    fun `살 수 없는 항목의 수량을 늘리면 50202다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 2)
+        updateSaleStatus(comboIds[0], SaleStatus.SUSPENDED)
+
+        assertUpdateError(token, cartItemId, updateJson(quantity = 3), 409, 50202)
+    }
+
+    @Test
+    fun `셀러가 영업중이 아니면 수량 증가도 50202다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 2)
+        updateSellerStatus(SellerStatus.PAUSED)
+
+        assertUpdateError(token, cartItemId, updateJson(quantity = 3), 409, 50202)
+    }
+
+    @Test
+    fun `판매 불가는 병합 합산 99 초과보다 먼저다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(stock = 500, optionNames = listOf("옵션 1", "옵션 2"))
+        addCartItemId(token, comboIds[0], 60)
+        val sourceId = addCartItemId(token, comboIds[1], 50)
+        updateSaleStatus(comboIds[0], SaleStatus.SUSPENDED)
+
+        assertUpdateError(token, sourceId, updateJson(optionCombinationId = comboIds[0]), 409, 50202)
+    }
+
+    @Test
+    fun `병합 합산 수량이 99를 넘으면 90001이고 병합하지 않는다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(stock = 500, optionNames = listOf("옵션 1", "옵션 2"))
+        addCartItemId(token, comboIds[0], 60)
+        val sourceId = addCartItemId(token, comboIds[1], 50)
+
+        assertUpdateError(token, sourceId, updateJson(optionCombinationId = comboIds[0]), 400, 90001)
+        assertEquals(2L, cartItemRowCount(), "차단된 병합은 원본 줄을 지우면 안 된다")
+        assertEquals(comboIds[1], optionCombinationIdOf(sourceId), "차단된 병합은 원본 줄의 조합을 바꾸면 안 된다")
+    }
+
+    @Test
+    fun `병합 합산 99 초과는 재고 부족보다 먼저다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(stock = 100, optionNames = listOf("옵션 1", "옵션 2"))
+        addCartItemId(token, comboIds[0], 60)
+        val sourceId = addCartItemId(token, comboIds[1], 50)
+
+        // 합산 110은 라인 상한 99와 잔여 재고 100을 동시에 넘음
+        assertUpdateError(token, sourceId, updateJson(optionCombinationId = comboIds[0]), 400, 90001)
+    }
+
+    @Test
+    fun `수량을 늘려 잔여 재고를 넘으면 50201이다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(stock = 10)
+        val cartItemId = addCartItemId(token, comboIds[0], 3)
+
+        assertUpdateError(token, cartItemId, updateJson(quantity = 11), 409, 50201)
+    }
+
+    @Test
+    fun `잔여 재고와 같은 수량까지는 늘릴 수 있다 - 경계`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(stock = 10)
+        val cartItemId = addCartItemId(token, comboIds[0], 3)
+
+        val body = updateCartItem(token, cartItemId, quantity = 10)
+
+        assertEquals(10, JsonPath.read<Int>(body, "$.data.quantity"), "재고와 같은 수량은 담기처럼 수정에서도 허용해야 한다")
+    }
+
+    @Test
+    fun `병합 합산이 잔여 재고를 넘으면 50201이고 병합하지 않는다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(stock = 10, optionNames = listOf("옵션 1", "옵션 2"))
+        addCartItemId(token, comboIds[0], 6)
+        val sourceId = addCartItemId(token, comboIds[1], 6)
+
+        assertUpdateError(token, sourceId, updateJson(optionCombinationId = comboIds[0]), 409, 50201)
+        assertEquals(2L, cartItemRowCount(), "차단된 병합은 원본 줄을 지우면 안 된다")
+    }
+
+    @Test
+    fun `병합 재고는 원본 조합이 아니라 목적지 조합의 재고로 판정한다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(stock = 10, optionNames = listOf("옵션 1", "옵션 2"))
+        addCartItemId(token, comboIds[0], 1)
+        val sourceId = addCartItemId(token, comboIds[1], 3)
+        // 합산 4는 목적지 재고 2를 넘고 원본 재고 10은 안 넘음. 원본 재고로 판정하면 통과해 버린다
+        updateStock(comboIds[0], 2)
+
+        assertUpdateError(token, sourceId, updateJson(optionCombinationId = comboIds[0]), 409, 50201)
+        assertEquals(2L, cartItemRowCount(), "차단된 병합은 원본 줄을 지우면 안 된다")
+    }
+
+    // ---------- 수량 감소는 검증하지 않는다 ----------
+
+    @Test
+    fun `수량을 줄이면 잔여 재고보다 많아도 통과한다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(stock = 10)
+        val cartItemId = addCartItemId(token, comboIds[0], 8)
+        updateStock(comboIds[0], 1)
+
+        val body = updateCartItem(token, cartItemId, quantity = 5)
+
+        assertEquals(5, JsonPath.read<Int>(body, "$.data.quantity"), "줄이는 방향은 재고를 보지 않아야 한다")
+    }
+
+    @Test
+    fun `수량을 줄이면 판매 불가 상태여도 통과한다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 5)
+        updateSaleStatus(comboIds[0], SaleStatus.ENDED)
+
+        val body = updateCartItem(token, cartItemId, quantity = 2)
+
+        assertEquals(2, JsonPath.read<Int>(body, "$.data.quantity"), "줄이는 방향은 판매 상태를 보지 않아야 한다")
+    }
+
+    @Test
+    fun `수량을 그대로 두면 판매 불가 상태여도 통과한다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct()
+        val cartItemId = addCartItemId(token, comboIds[0], 5)
+        updateSaleStatus(comboIds[0], SaleStatus.ENDED)
+
+        val body = updateCartItem(token, cartItemId, optionCombinationId = comboIds[0])
+
+        assertEquals(5, JsonPath.read<Int>(body, "$.data.quantity"), "늘리지 않는 요청은 판매 상태를 보지 않아야 한다")
+    }
+
+    @Test
+    fun `수량을 그대로 명시하면 잔여 재고보다 많아도 통과한다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(stock = 10)
+        val cartItemId = addCartItemId(token, comboIds[0], 8)
+        updateStock(comboIds[0], 1)
+
+        val body = updateCartItem(token, cartItemId, quantity = 8)
+
+        assertEquals(8, JsonPath.read<Int>(body, "$.data.quantity"), "같은 값 재전송은 늘리는 요청이 아니라 재고를 보지 않아야 한다")
+    }
+
+    @Test
+    fun `현재 조합이 판매 불가여도 수량 증가 없이 산 조합으로 바꿀 수 있다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val cartItemId = addCartItemId(token, comboIds[0], 3)
+        deactivateOption(comboIds[0])
+
+        val body = updateCartItem(token, cartItemId, optionCombinationId = comboIds[1])
+
+        assertEquals(comboIds[1], readLong(body, "$.data.optionCombinationId"), "판매 가능성 검증 대상은 변경 대상 조합이라 현재 조합이 죽어도 갈아탈 수 있어야 한다")
+    }
+
+    @Test
+    fun `현재 조합이 판매 불가여도 산 조합으로 바꾸면서 수량을 늘릴 수 있다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val cartItemId = addCartItemId(token, comboIds[0], 2)
+        deactivateOption(comboIds[0])
+
+        val body = updateCartItem(token, cartItemId, quantity = 5, optionCombinationId = comboIds[1])
+
+        assertEquals(5, JsonPath.read<Int>(body, "$.data.quantity"), "떠나는 조합의 상태는 수량 증가를 막지 않아야 한다")
+        assertEquals(comboIds[1], readLong(body, "$.data.optionCombinationId"), "산 조합으로 갈아탄 채 수량이 적용되어야 한다")
+    }
+
+    // ---------- 수정·삭제 후 cartItemCount ----------
+
+    @Test
+    fun `수정 응답의 cartItemCount는 품목 종류 수가 아니라 수량 합계다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val cartItemId = addCartItemId(token, comboIds[0], 2)
+        addCartItemId(token, comboIds[1], 3)
+
+        val body = updateCartItem(token, cartItemId, quantity = 4)
+
+        assertEquals(7, JsonPath.read<Int>(body, "$.data.cartItemCount"), "4와 3의 합인 7이어야 한다. 종류 수면 2가 된다")
+    }
+
+    @Test
+    fun `병합 후 cartItemCount는 합쳐진 수량을 그대로 센다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        addCartItemId(token, comboIds[0], 2)
+        val sourceId = addCartItemId(token, comboIds[1], 3)
+
+        val body = updateCartItem(token, sourceId, optionCombinationId = comboIds[0])
+
+        assertEquals(5, JsonPath.read<Int>(body, "$.data.cartItemCount"), "병합은 수량 합계를 바꾸지 않는다")
+    }
+
+    // ---------- 수정·삭제 후 조회 정렬 ----------
+
+    @Test
+    fun `수량만 바꾼 항목은 조회 자리가 그대로다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2", "옵션 3"))
+        val ids = comboIds.map { addCartItemId(token, it, 1) }
+        val before = cartItemIdsInOrder(token)
+
+        updateCartItem(token, ids[0], quantity = 9)
+
+        assertEquals(before, cartItemIdsInOrder(token), "createdAt을 갱신하지 않으므로 자리가 움직이면 안 된다")
+    }
+
+    @Test
+    fun `병합 없이 옵션만 바꾼 항목도 자리가 그대로다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2", "옵션 3", "옵션 4"))
+        val ids = comboIds.take(3).map { addCartItemId(token, it, 1) }
+        val before = cartItemIdsInOrder(token)
+
+        updateCartItem(token, ids[0], optionCombinationId = comboIds[3])
+
+        assertEquals(before, cartItemIdsInOrder(token), "행을 지우고 다시 만들면 자리가 맨 위로 튄다")
+    }
+
+    @Test
+    fun `병합이 일어나면 살아남은 목적지 줄의 자리를 따라간다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2", "옵션 3"))
+        val ids = comboIds.map { addCartItemId(token, it, 1) }
+
+        updateCartItem(token, ids[2], optionCombinationId = comboIds[0])
+
+        assertEquals(
+            listOf(ids[1], ids[0]),
+            cartItemIdsInOrder(token),
+            "가장 최근에 담은 줄이 사라지고 목적지 줄은 원래 자리인 맨 뒤에 남아야 한다",
+        )
+    }
+
+    // ---------- 수정·삭제 인증 ----------
+
+    @Test
+    fun `미로그인 수정은 401과 20004다`() {
+        mockMvc
+            .perform(
+                patch("/api/v1/carts/items/1")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(updateJson(quantity = 2)),
+            ).andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
     }
 
     /**
