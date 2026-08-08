@@ -4,13 +4,16 @@ import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.order.cart.service.CartService
 import com.aechak.application.order.cart.usecase.CartUseCase
 import com.aechak.application.order.cart.usecase.command.AddCartItemCommand
+import com.aechak.application.order.cart.usecase.command.UpdateCartItemCommand
 import com.aechak.application.order.cart.usecase.result.AddCartItemResult
 import com.aechak.application.order.cart.usecase.result.CartResult
+import com.aechak.application.order.cart.usecase.result.UpdateCartItemResult
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDateTime
@@ -48,6 +51,9 @@ class CartFacade(
             resolveThumbnail = fileUseCase::resolveMediaUrl,
         )
     }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    override fun updateCartItem(command: UpdateCartItemCommand): UpdateCartItemResult = cartService.updateItem(command)
 
     /**
      * try가 tx.execute를 감싸야 함. 안에서 잡으면 롤백 전용 마킹 때문에 커밋에서 다시 터짐.

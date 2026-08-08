@@ -52,6 +52,28 @@ class Cart protected constructor(
         return CartItem.of(optionCombinationId, quantity).also { _items.add(it) }
     }
 
+    fun findItem(cartItemId: Long): CartItem? = _items.find { it.id == cartItemId }
+
+    /**
+     * OptionCombinationId B를 기존에 장바구니에 존재하지 않던 OptionCombinationId A로 변경 시 -> 기존 B를 A로 변경
+     * OptionCombinationId B를 기존에 장바구니에 존재하던 OptionCombinationId A로 변경 시 -> A에 수량을 추가하고 B를 삭제
+     */
+    fun changeItemOption(
+        item: CartItem,
+        targetOptionCombinationId: Long,
+    ): CartItem {
+        // id가 아니라 참조로 자기 자신을 거름. 영속 전 엔티티는 id가 전부 0이라 id 비교가 무너짐
+        val destination = _items.find { it !== item && it.optionCombinationId == targetOptionCombinationId }
+        if (destination == null) {
+            item.changeOption(targetOptionCombinationId)
+            return item
+        }
+
+        destination.accumulate(item.quantity)
+        _items.remove(item)
+        return destination
+    }
+
     companion object {
         /** 품목 종류 수 상한. 라인당 수량 상한(99)과 단위가 다름. */
         const val MAX_ITEM_KINDS = 100

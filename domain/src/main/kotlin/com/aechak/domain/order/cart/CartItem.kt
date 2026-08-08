@@ -30,7 +30,8 @@ class CartItem protected constructor(
     val id: Long = 0L
 
     @Column(nullable = false)
-    val optionCombinationId: Long = optionCombinationId
+    var optionCombinationId: Long = optionCombinationId
+        protected set
 
     @Column(nullable = false, columnDefinition = "smallint unsigned")
     var quantity: Int = quantity
@@ -38,6 +39,16 @@ class CartItem protected constructor(
 
     fun accumulate(addedQuantity: Int) {
         quantity = validatedQuantity(currentQuantity = quantity, addedQuantity = addedQuantity)
+    }
+
+    /** 누적이 아니라 대입임. 깎는 방향도 받음. */
+    fun changeQuantity(newQuantity: Int) {
+        quantity = validatedQuantity(currentQuantity = 0, addedQuantity = newQuantity)
+    }
+
+    /** 중복 조합이 생기지 않는지는 애그리거트가 봄. */
+    fun changeOption(newOptionCombinationId: Long) {
+        optionCombinationId = newOptionCombinationId
     }
 
     companion object {
