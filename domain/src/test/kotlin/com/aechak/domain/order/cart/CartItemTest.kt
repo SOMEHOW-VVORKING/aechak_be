@@ -2,7 +2,6 @@ package com.aechak.domain.order.cart
 
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
-import com.aechak.domain.order.error.OrderErrorCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -45,19 +44,19 @@ class CartItemTest {
     }
 
     @Test
-    fun `음수 누적은 50200이다 - 담기로 수량을 깎을 수 없다`() {
+    fun `음수 누적은 90001이다 - 담기로 수량을 깎을 수 없다`() {
         val item = CartItem.of(10L, 2)
 
         val e = assertFailsWith<BusinessException> { item.accumulate(-1) }
 
-        assertEquals(OrderErrorCode.INVALID_CART_ITEM_QUANTITY, e.errorCode, "음수 누적도 수량 1 미만이라 50200이어야 한다")
+        assertEquals(CommonErrorCode.INVALID_REQUEST, e.errorCode, "음수 누적도 수량 1 미만이라 90001이어야 한다")
         assertEquals(2, item.quantity, "실패한 누적은 수량을 바꾸지 않아야 한다")
     }
 
     @Test
-    fun `수량 1 미만으로는 만들 수 없다 - 50200`() {
+    fun `수량 1 미만으로는 만들 수 없다 - 90001`() {
         val e = assertFailsWith<BusinessException> { CartItem.of(10L, 0) }
 
-        assertEquals(OrderErrorCode.INVALID_CART_ITEM_QUANTITY, e.errorCode, "수량 1 미만 생성은 50200이어야 한다")
+        assertEquals(CommonErrorCode.INVALID_REQUEST, e.errorCode, "수량 1 미만 생성은 90001이어야 한다")
     }
 }
