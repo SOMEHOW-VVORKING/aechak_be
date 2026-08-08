@@ -100,7 +100,7 @@ class UserFacade(
      * S3 고아로 남는다 — MVP 수용, 정리 배치는 후속.
      */
     override fun updateProfile(command: UpdateProfileCommand): UserMeResult {
-        val currentKey = userService.getById(command.userId).profileOrNull?.profileImageKey
+        val currentKey = userService.getById(command.userId).profile.profileImageKey
         // null=제거 / 저장값과 같으면 유지(저장값 대조가 곧 소유 증명) / 그 외는 전부 새 업로드로 보고 승격
         val finalKey =
             command.profileImageKey?.let {
@@ -127,7 +127,7 @@ class UserFacade(
     /** 프로필 노출은 ACTIVE에서만 — 그 외 상태는 프로필 계열 null(ACTIVE 아닌 조회는 어드민 모듈 몫), FE 재시작 라우팅은 status만 쓴다. */
     private fun loadMe(userId: Long): UserMeResult {
         val user = userService.getById(userId)
-        val profile = if (user.status != UserStatus.ACTIVE) null else user.profileOrNull
+        val profile = if (user.status != UserStatus.ACTIVE) null else user.profile
         return UserMeResult(
             status = user.status,
             nickname = profile?.nickname,

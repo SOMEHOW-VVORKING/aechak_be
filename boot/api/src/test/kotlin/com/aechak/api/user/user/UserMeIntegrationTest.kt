@@ -1,6 +1,7 @@
 package com.aechak.api.user.user
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.user.User
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -20,10 +21,9 @@ import org.springframework.web.context.WebApplicationContext
 /**
  * 통합 — 내 정보(/users/me) 계열이 실 보안 체인·실 MySQL에서 계약대로 동작하는지.
  *
- * 핵심 회귀 대상: "프로필 행 없는 ACTIVE 유저". 정상 플로우(온보딩 완료 전이)로는 나오지 않지만,
- * status만 직접 UPDATE해 활성화한 계정(createActiveUser 픽스처·dev DB 수동 활성화 계정)이 실존하고,
- * 이 상태에서 User.profile 접근이 IllegalStateException → 500으로 터졌다. 조회는 null 강하,
- * 프로필 수정은 생성(자가 치유)으로 동작해야 한다.
+ * "프로필 행 없는 ACTIVE 유저"는 정상 플로우(온보딩 완료 전이)로는 나올 수 없는 불변식 위반 데이터다
+ * (status만 직접 UPDATE한 계정 — createActiveUser 픽스처·dev DB 수동 활성화). 코드가 아니라 데이터를
+ * 고치는 게 답이므로, 우회(null 강하·자가 치유) 없이 500으로 드러나는 동작을 회귀 대상으로 고정한다.
  */
 class UserMeIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -44,33 +44,25 @@ class UserMeIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `프로필 행 없는 ACTIVE 유저의 내 정보 조회는 500이 아니라 프로필 null로 응답한다`() {
+    fun `프로필 행 없는 ACTIVE 유저의 내 정보 조회는 500으로 드러난다`() {
         val userId = createActiveUser() // status만 강제 전이 — user_profiles 행 없음
         val token = mintAccessToken(userId)
 
         mockMvc
             .perform(getMe(token))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.status").value("ACTIVE"))
-            .andExpect(jsonPath("$.data.nickname").isEmpty)
-            .andExpect(jsonPath("$.data.isPhoneVerified").value(false))
+            .andExpect(status().isInternalServerError)
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INTERNAL_SERVER_ERROR.code))
     }
 
     @Test
-    fun `프로필 행 없는 ACTIVE 유저의 프로필 수정은 프로필을 생성하고 이후 조회에 반영된다`() {
+    fun `프로필 행 없는 ACTIVE 유저의 프로필 수정도 500으로 드러난다`() {
         val userId = createActiveUser()
         val token = mintAccessToken(userId)
 
         mockMvc
-            .perform(putProfile(token, """{"nickname":"코코집사","bio":"자가 치유 확인","profileImageKey":null}"""))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.nickname").value("코코집사"))
-
-        mockMvc
-            .perform(getMe(token))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.nickname").value("코코집사"))
-            .andExpect(jsonPath("$.data.bio").value("자가 치유 확인"))
+            .perform(putProfile(token, """{"nickname":"코코집사","bio":null,"profileImageKey":null}"""))
+            .andExpect(status().isInternalServerError)
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INTERNAL_SERVER_ERROR.code))
     }
 
     @Test
