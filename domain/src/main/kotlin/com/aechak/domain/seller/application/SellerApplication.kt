@@ -96,8 +96,9 @@ class SellerApplication protected constructor(
     var bankCode: String? = null
         protected set
 
-    @Column(length = 64)
-    var accountNumber: String? = null
+    /** 정산 계좌번호 AES 암호문(Base64) — 평문은 저장하지 않는다. 암·복호화는 application 계층(PiiCrypto) 소관. */
+    @Column(length = 256)
+    var accountNumberEnc: String? = null
         protected set
 
     @Column(length = 50)
@@ -127,7 +128,7 @@ class SellerApplication protected constructor(
         representativeName: String?,
         telesalesNumber: String?,
         bankCode: String?,
-        accountNumber: String?,
+        accountNumberEnc: String?,
         accountHolder: String?,
     ) {
         requireDraft()
@@ -138,7 +139,7 @@ class SellerApplication protected constructor(
         this.representativeName = representativeName
         this.telesalesNumber = telesalesNumber
         this.bankCode = bankCode
-        this.accountNumber = accountNumber
+        this.accountNumberEnc = accountNumberEnc
         this.accountHolder = accountHolder
     }
 

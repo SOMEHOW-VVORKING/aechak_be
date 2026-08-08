@@ -83,6 +83,19 @@ class SellerApplicationIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `계좌번호는 DB에 평문이 아닌 암호문으로 저장된다`() {
+        performForBody(saveDraftRequest(token, applicationJson(accountNumber = "110123456789")))
+        val stored =
+            tx.execute {
+                em
+                    .createQuery("select a.accountNumberEnc from SellerApplication a where a.userId = :id", String::class.java)
+                    .setParameter("id", userId)
+                    .singleResult
+            }!!
+        assertTrue("110123456789" !in stored, "DB 저장값에 평문 계좌번호가 남으면 안 된다: $stored")
+    }
+
+    @Test
     fun `유형만 보내도 임시저장된다 - 필수성 검증은 제출로 일원화`() {
         mockMvc
             .perform(saveDraftRequest(token, """{"businessType": "PERSONAL_GENERAL"}"""))

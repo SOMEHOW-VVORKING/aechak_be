@@ -66,7 +66,10 @@ class SellerApplicationFacade(
         }
 
     @Transactional(readOnly = true)
-    override fun getMe(userId: Long): ApplicationResult = ApplicationResult.from(sellerApplicationService.getByUserId(userId))
+    override fun getMe(userId: Long): ApplicationResult {
+        val application = sellerApplicationService.getByUserId(userId)
+        return ApplicationResult.from(application, sellerApplicationService.decryptAccountNumber(application))
+    }
 
     @Transactional
     override fun submit(userId: Long) {

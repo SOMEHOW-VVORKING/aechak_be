@@ -25,7 +25,11 @@ data class ApplicationResult(
     val documents: List<ApplicationDocumentResult>,
 ) {
     companion object {
-        fun from(application: SellerApplication): ApplicationResult =
+        /** accountNumber는 호출부가 복호화해 넘긴 평문 — 여기서 바로 마스킹돼 원문은 결과 모델에 실리지 않는다. */
+        fun from(
+            application: SellerApplication,
+            accountNumber: String?,
+        ): ApplicationResult =
             ApplicationResult(
                 applicationId = application.id,
                 status = application.status,
@@ -36,7 +40,7 @@ data class ApplicationResult(
                 representativeName = application.representativeName,
                 telesalesNumber = application.telesalesNumber,
                 bankCode = application.bankCode,
-                accountNumberMasked = application.accountNumber?.let(::mask),
+                accountNumberMasked = accountNumber?.let(::mask),
                 accountHolder = application.accountHolder,
                 appliedAt = application.createdAt,
                 submittedAt = application.submittedAt,
