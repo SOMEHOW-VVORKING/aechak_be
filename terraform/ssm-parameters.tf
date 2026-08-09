@@ -81,3 +81,23 @@ resource "aws_ssm_parameter" "auth_return_urls" {
   type  = "String"
   value = join(",", [for o in local.web_origins : "${o}/login/complete"])
 }
+
+# ── 문의 통지(SES) ─────────────────────────────────────
+# enabled=true인데 from/recipients가 비면 앱이 fail-fast로 기동에 실패한다 — 셋을 함께 넣는다.
+resource "aws_ssm_parameter" "ses_from" {
+  name  = "/${var.project}/${var.env}/api/AWS_SES_FROM"
+  type  = "String"
+  value = local.ses_from_address
+}
+
+resource "aws_ssm_parameter" "inquiry_ops_recipients" {
+  name  = "/${var.project}/${var.env}/api/INQUIRY_OPS_RECIPIENTS"
+  type  = "String"
+  value = join(",", var.inquiry_ops_recipients)
+}
+
+resource "aws_ssm_parameter" "inquiry_notification_enabled" {
+  name  = "/${var.project}/${var.env}/api/INQUIRY_NOTIFICATION_ENABLED"
+  type  = "String"
+  value = tostring(var.inquiry_notification_enabled)
+}
