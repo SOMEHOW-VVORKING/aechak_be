@@ -36,6 +36,7 @@ include(
     "social-client",
     "redis",                // 소셜 로그인(ACC-01): id_token 검증 / refresh token 저장
     "s3-client",                             // 오브젝트 스토리지 어댑터
+    "ses-client",                            // 이메일 발송 어댑터(SES) — 문의 통지
     "kafka",
 )
 
@@ -45,5 +46,6 @@ project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
 project(":pg-client").projectDir = file("infra/client/pg-client")
 project(":social-client").projectDir = file("infra/client/social-client")
 project(":s3-client").projectDir = file("infra/client/s3-client")
+project(":ses-client").projectDir = file("infra/client/ses-client")
 project(":redis").projectDir = file("infra/redis")
 project(":kafka").projectDir = file("infra/kafka")

@@ -57,6 +57,9 @@ spring-data-redis = { module = "org.springframework.data:spring-data-redis" }
 # --- infra:s3-client ---
 spring-cloud-aws-starter-s3 = { module = "io.awspring.cloud:spring-cloud-aws-starter-s3" }
 
+# --- infra:ses-client ---
+spring-cloud-aws-starter-ses = { module = "io.awspring.cloud:spring-cloud-aws-starter-ses" }  # 버전은 위 spring-cloud-aws-bom이 해석
+
 # --- infra:kafka ---
 spring-kafka = { module = "org.springframework.kafka:spring-kafka" }   # Boot BOM 버전
 spring-jdbc = { module = "org.springframework:spring-jdbc" }  # 아웃박스 JdbcClient
