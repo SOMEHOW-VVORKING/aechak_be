@@ -12,8 +12,10 @@ class DatabaseCleaner(
     fun truncateAll() {
         val tables =
             jdbcTemplate.queryForList(
+                // flyway 이력은 지우지 않는다 — 지우면 다음 컨텍스트 부팅 때 마이그레이션이 재실행된다
                 "SELECT table_name FROM information_schema.tables " +
-                    "WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'",
+                    "WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' " +
+                    "AND table_name <> 'flyway_schema_history'",
                 String::class.java,
             )
 

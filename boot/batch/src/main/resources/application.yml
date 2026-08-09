@@ -1,4 +1,22 @@
 spring:
   application:
     name: aechak-batch
-# TODO: ERD 확정 후 실 DB datasource 설정 — 지금은 내장 H2 자동 구성으로 기동
+  jpa:
+    hibernate:
+      ddl-auto: none   # 스키마 관리는 api(Flyway)만
+
+  # 정책값은 api application.yml과 동일하게 유지. 브로커 주소만 프로파일 yml 소유
+  kafka:
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer   # value = 엔벨로프 JSON 문자열
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+
+logging:
+  pattern:
+    level: "%5p [%X{traceId:-}]"

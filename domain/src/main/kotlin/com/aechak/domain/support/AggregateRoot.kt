@@ -16,10 +16,10 @@ import jakarta.persistence.Transient
 @MappedSuperclass
 abstract class AggregateRoot : BaseEntity() {
     @Transient
-    private val _events = mutableListOf<Any>()
-    val events: List<Any> get() = _events.toList()
+    private val _events = mutableListOf<DomainEvent>()
+    val events: List<DomainEvent> get() = _events.toList()
 
-    protected fun registerEvent(event: Any) {
+    protected fun registerEvent(event: DomainEvent) {
         _events += event
     }
 

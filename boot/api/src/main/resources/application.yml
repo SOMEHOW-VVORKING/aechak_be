@@ -11,6 +11,31 @@ spring:
       region:
         static: ap-northeast-2 # 리전 자동탐지 제거 — CI 러너처럼 AWS 설정 없는 환경에선 탐지 실패로 부팅이 깨짐
 
+  # 브로커 주소(bootstrap-servers)만 프로파일 yml 소유 — local은 compose 기본값,
+  # dev/prod는 datasource처럼 SSM에서 fail-fast 로드(terraform ec2.tf가 파라미터 생성).
+  kafka:
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer   # value = 엔벨로프 JSON 문자열
+      acks: all                        # 단일 브로커에선 acks=1과 사실상 같지만, 브로커 늘리는 날 옳도록 지금 명시
+      properties:
+        enable.idempotence: true       # 전송 재시도로 인한 중복·재정렬 방지 (Kafka 3+ 기본이지만 명시)
+        max.block.ms: 5000             # 브로커 완전 다운 시 send() 호출 자체가 막히는 상한 (기본 60초)
+        request.timeout.ms: 5000       # 요청 1회 응답 대기 (기본 30초)
+        delivery.timeout.ms: 10000     # 내부 재시도 1회 포함 총 상한 (기본 120초)
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest   # 새 그룹은 처음부터 재처리 (이벤트는 건너뛰기보다 재처리가 안전)
+    listener:
+      ack-mode: RECORD              # 레코드 단위 오프셋 커밋 — 크래시 시 재전달 폭 최소
+      concurrency: 1                # 파티션 수 이하로. 스케일은 파티션부터 늘리고 그다음 이 값
+
+# 로그 레벨 옆에 traceId를 찍는다 — TraceIdFilter(HTTP)·TraceIdRecordInterceptor(Kafka)가 MDC에 넣는 값.
+logging:
+  pattern:
+    level: "%5p [%X{traceId:-}]"
+
 # ECS 롤링 시 SIGTERM을 받으면 처리 중 요청까지는 끝내고 종료
 server:
   shutdown: graceful
@@ -66,11 +91,11 @@ auth:
         token-uri: https://kauth.kakao.com/oauth/token           # code → id_token 교환
         client-id: ${KAKAO_CLIENT_ID:}   # 카카오 REST API 키 (비면 웹 로그인·code 채널 비활성)
         client-secret: ${KAKAO_CLIENT_SECRET:}   # 콘솔 보안 탭에서 "사용함"이면 필수 — 없으면 교환이 KOE010으로 거부
-        audiences: []        # 채널별 키 병기: 네이티브 앱 키 + REST 키 (비면 aud 검증 생략)
+        audiences: [ ]        # 채널별 키 병기: 네이티브 앱 키 + REST 키 (비면 aud 검증 생략)
       apple:
         jwks-uri: https://appleid.apple.com/auth/keys
         issuer: https://appleid.apple.com
-        audiences: []        # 채널별 키 병기: iOS 번들 ID + 웹(SIWA JS) Services ID
+        audiences: [ ]        # 채널별 키 병기: iOS 번들 ID + 웹(SIWA JS) Services ID
 # PENDING_ONBOARDING 허용 경로는 SecurityConfig.onboardingAllowedPaths 상수로 관리(인가 규칙이라 설정이 아닌 코드 소유)
 
 # PII 암호화 키 — dev·prod는 SSM(terraform이 생성·등재), local·test는 프로파일 파일의 고정 키가 덮는다.
