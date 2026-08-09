@@ -41,6 +41,24 @@ class PhoneVerificationServiceTest {
     }
 
     @Test
+    fun `저장 수명은 FE에 알린 수명보다 길다 - 벤더 왕복만큼 서버가 먼저 만료되지 않도록`() {
+        service.sendCode(USER_ID, "010-1234-5678")
+
+        assertTrue(
+            store.savedTtl!! > Duration.ofSeconds(180),
+            "저장 TTL(${store.savedTtl})이 응답 수명 180초보다 길어야 한다",
+        )
+    }
+
+    @Test
+    fun `시도 카운터 수명은 코드 저장 수명과 같다 - 먼저 만료되면 5회 제한이 리셋된다`() {
+        service.sendCode(USER_ID, "010-1234-5678")
+        assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "999999") }
+
+        assertEquals(store.savedTtl, store.attemptTtl)
+    }
+
+    @Test
     fun `쿨다운 중 재발송은 30006으로 거부된다`() {
         service.sendCode(USER_ID, "010-1234-5678")
 
@@ -180,6 +198,8 @@ class PhoneVerificationServiceTest {
         private var code: IssuedVerificationCode? = null
         private var attempts = 0L
         var cooldown = false
+        var savedTtl: Duration? = null
+        var attemptTtl: Duration? = null
         var userCount = 0L
         var phoneCount = 0L
 
@@ -190,6 +210,7 @@ class PhoneVerificationServiceTest {
             ttl: Duration,
         ) {
             this.code = IssuedVerificationCode(phoneNumber, code)
+            savedTtl = ttl
             attempts = 0
         }
 
@@ -236,7 +257,10 @@ class PhoneVerificationServiceTest {
         override fun incrementAttempts(
             userId: Long,
             ttl: Duration,
-        ): Long = ++attempts
+        ): Long {
+            attemptTtl = ttl
+            return ++attempts
+        }
     }
 
     companion object {

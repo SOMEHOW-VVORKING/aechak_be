@@ -41,7 +41,7 @@ class PhoneVerificationService(
             enforceDailyLimit(userId, phoneNumber, dateKey)
 
             val code = codeGenerator.generate()
-            codeStore.saveCode(userId, phoneNumber, code, CODE_TTL)
+            codeStore.saveCode(userId, phoneNumber, code, CODE_STORE_TTL)
             dispatchOrRollback(userId, phoneNumber, code, dateKey)
         } catch (e: Exception) {
             codeStore.clearCooldown(userId)
@@ -99,7 +99,7 @@ class PhoneVerificationService(
         code: String,
     ) {
         val issued = codeStore.findCode(userId) ?: throw BusinessException(UserErrorCode.SMS_CODE_EXPIRED)
-        val attempts = codeStore.incrementAttempts(userId, CODE_TTL)
+        val attempts = codeStore.incrementAttempts(userId, CODE_STORE_TTL)
         if (attempts > MAX_CONFIRM_ATTEMPTS) {
             codeStore.removeCode(userId)
             throw BusinessException(UserErrorCode.SMS_ATTEMPTS_EXCEEDED)
@@ -122,7 +122,18 @@ class PhoneVerificationService(
         /** 일 상한 버킷은 서버 TZ와 무관하게 KST 자정 기준 — 운영 정책(한국 서비스)의 날짜 감각과 일치시킨다. */
         private val KST = ZoneId.of("Asia/Seoul")
         private val DATE_KEY = DateTimeFormatter.BASIC_ISO_DATE
+
+        /** FE에 동봉하는 코드 수명 — 화면 타이머의 기준값. */
         val CODE_TTL: Duration = Duration.ofMinutes(3)
+
+        /**
+         * 저장분에만 얹는 여유. FE 타이머는 응답을 받은 뒤 시작하는데 서버 TTL은 저장 시점부터 도니
+         * 벤더 왕복·네트워크 지연만큼 서버가 먼저 만료된다 — 타이머 끝자락의 정상 입력이 튕기지 않게 한다.
+         */
+        private val CODE_TTL_GRACE: Duration = Duration.ofSeconds(5)
+
+        /** 시도 카운터도 같은 수명을 써야 한다 — 코드보다 먼저 만료되면 5회 제한이 리셋된다. */
+        private val CODE_STORE_TTL: Duration = CODE_TTL + CODE_TTL_GRACE
         val RESEND_COOLDOWN: Duration = Duration.ofSeconds(60)
         const val DAILY_SEND_LIMIT = 10
         const val MAX_CONFIRM_ATTEMPTS = 5
