@@ -38,13 +38,14 @@ class VerificationCodeStoreAdapter(
         redisTemplate.delete(listOf(codeKey(userId), attemptKey(userId)))
     }
 
-    override fun isInCooldown(userId: Long): Boolean = redisTemplate.hasKey(cooldownKey(userId))
-
-    override fun startCooldown(
+    /** setIfAbsent = SET key value NX PX — 검사·설정·만료가 한 명령이라 동시 요청 중 하나만 true를 받는다. */
+    override fun tryStartCooldown(
         userId: Long,
         ttl: Duration,
-    ) {
-        redisTemplate.opsForValue().set(cooldownKey(userId), "1", ttl)
+    ): Boolean = redisTemplate.opsForValue().setIfAbsent(cooldownKey(userId), "1", ttl) == true
+
+    override fun clearCooldown(userId: Long) {
+        redisTemplate.delete(cooldownKey(userId))
     }
 
     override fun incrementDailyCounts(

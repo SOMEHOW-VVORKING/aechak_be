@@ -24,21 +24,29 @@ class PhoneVerificationService(
     private val smsSender: SmsSender,
     private val clock: Clock,
 ) {
+    /**
+     * 쿨다운을 맨 앞에서 선점한 뒤 발송한다 — 벤더 호출을 쿨다운 안쪽에 넣어야 동시 요청이 두 통을 못 보낸다.
+     * 선점 후 어떤 이유로든 발송에 실패하면 쿨다운도 되돌린다(문자가 안 나갔으면 흔적을 남기지 않는다).
+     */
     fun sendCode(
         userId: Long,
         rawPhoneNumber: String,
     ): PhoneCodeSentResult {
         val phoneNumber = PhoneNumbers.normalize(rawPhoneNumber)
-        if (codeStore.isInCooldown(userId)) {
+        if (!codeStore.tryStartCooldown(userId, RESEND_COOLDOWN)) {
             throw BusinessException(UserErrorCode.SMS_RESEND_COOLDOWN)
         }
-        val dateKey = kstToday().format(DATE_KEY)
-        enforceDailyLimit(userId, phoneNumber, dateKey)
+        try {
+            val dateKey = kstToday().format(DATE_KEY)
+            enforceDailyLimit(userId, phoneNumber, dateKey)
 
-        val code = codeGenerator.generate()
-        codeStore.saveCode(userId, phoneNumber, code, CODE_TTL)
-        dispatchOrRollback(userId, phoneNumber, code, dateKey)
-        codeStore.startCooldown(userId, RESEND_COOLDOWN)
+            val code = codeGenerator.generate()
+            codeStore.saveCode(userId, phoneNumber, code, CODE_TTL)
+            dispatchOrRollback(userId, phoneNumber, code, dateKey)
+        } catch (e: Exception) {
+            codeStore.clearCooldown(userId)
+            throw e
+        }
 
         return PhoneCodeSentResult(
             expiresInSeconds = CODE_TTL.seconds.toInt(),

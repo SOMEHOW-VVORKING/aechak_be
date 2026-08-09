@@ -92,6 +92,7 @@ class PhoneVerificationUseCaseTest : IntegrationTestBase() {
             }
 
         assertEquals(UserErrorCode.SMS_DAILY_LIMIT_EXCEEDED, ex.errorCode)
+        assertFalse(redisTemplate.hasKey("sms:cooldown:$userId"), "거부된 요청은 쿨다운을 남기지 않는다")
     }
 
     @Test

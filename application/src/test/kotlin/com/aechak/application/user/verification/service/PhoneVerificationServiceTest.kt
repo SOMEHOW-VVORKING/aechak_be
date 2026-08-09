@@ -34,7 +34,7 @@ class PhoneVerificationServiceTest {
         val result = service.sendCode(USER_ID, "010-1234-5678")
 
         assertEquals(IssuedVerificationCode("01012345678", "000000"), store.findCode(USER_ID))
-        assertTrue(store.isInCooldown(USER_ID))
+        assertTrue(store.cooldown)
         assertEquals(listOf("01012345678"), smsSender.sentTo)
         assertEquals(180, result.expiresInSeconds)
         assertEquals(60, result.resendCooldownSeconds)
@@ -47,6 +47,20 @@ class PhoneVerificationServiceTest {
         val ex = assertFailsWith<BusinessException> { service.sendCode(USER_ID, "010-1234-5678") }
 
         assertEquals(UserErrorCode.SMS_RESEND_COOLDOWN, ex.errorCode)
+    }
+
+    @Test
+    fun `쿨다운은 벤더 호출 전에 선점된다 - 발송 도중 들어온 요청도 막힌다`() {
+        // 벤더 호출 시점에 같은 유저의 두 번째 요청이 들어온 상황을 재현한다
+        var concurrent: BusinessException? = null
+        smsSender.onSend = {
+            concurrent = assertFailsWith<BusinessException> { service.sendCode(USER_ID, "010-1234-5678") }
+        }
+
+        service.sendCode(USER_ID, "010-1234-5678")
+
+        assertEquals(UserErrorCode.SMS_RESEND_COOLDOWN, concurrent?.errorCode)
+        assertEquals(1, smsSender.sentTo.size, "문자는 한 통만 나가야 한다")
     }
 
     @Test
@@ -68,7 +82,16 @@ class PhoneVerificationServiceTest {
     }
 
     @Test
-    fun `벤더 발송 실패 - 30007로 번역하고 코드 소각·상한 미소모, 쿨다운도 걸지 않는다`() {
+    fun `일 상한으로 거부되면 선점한 쿨다운도 되돌린다`() {
+        store.userCount = 10
+
+        assertFailsWith<BusinessException> { service.sendCode(USER_ID, "010-1234-5678") }
+
+        assertFalse(store.cooldown)
+    }
+
+    @Test
+    fun `벤더 발송 실패 - 30007로 번역하고 코드 소각·상한 미소모, 쿨다운도 남기지 않는다`() {
         smsSender.failing = true
 
         val ex = assertFailsWith<BusinessException> { service.sendCode(USER_ID, "010-1234-5678") }
@@ -77,7 +100,7 @@ class PhoneVerificationServiceTest {
         assertNull(store.findCode(USER_ID))
         assertEquals(0, store.userCount)
         assertEquals(0, store.phoneCount)
-        assertFalse(store.isInCooldown(USER_ID))
+        assertFalse(store.cooldown)
     }
 
     @Test
@@ -141,20 +164,22 @@ class PhoneVerificationServiceTest {
     private class RecordingSmsSender : SmsSender {
         val sentTo = mutableListOf<String>()
         var failing = false
+        var onSend: (() -> Unit)? = null
 
         override fun send(
             phoneNumber: String,
             message: String,
         ) {
             if (failing) throw IllegalStateException("vendor down")
+            onSend?.invoke()
             sentTo += phoneNumber
         }
     }
 
     private class FakeVerificationCodeStore : VerificationCodeStore {
         private var code: IssuedVerificationCode? = null
-        private var cooldown = false
         private var attempts = 0L
+        var cooldown = false
         var userCount = 0L
         var phoneCount = 0L
 
@@ -175,13 +200,17 @@ class PhoneVerificationServiceTest {
             attempts = 0
         }
 
-        override fun isInCooldown(userId: Long): Boolean = cooldown
-
-        override fun startCooldown(
+        override fun tryStartCooldown(
             userId: Long,
             ttl: Duration,
-        ) {
+        ): Boolean {
+            if (cooldown) return false
             cooldown = true
+            return true
+        }
+
+        override fun clearCooldown(userId: Long) {
+            cooldown = false
         }
 
         override fun incrementDailyCounts(

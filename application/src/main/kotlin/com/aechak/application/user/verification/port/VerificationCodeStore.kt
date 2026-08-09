@@ -33,12 +33,17 @@ interface VerificationCodeStore {
     /** 코드 소각 — 인증 성공·시도 초과·발송 실패 보상이 공용으로 쓴다. 시도 카운터도 함께 지운다. */
     fun removeCode(userId: Long)
 
-    fun isInCooldown(userId: Long): Boolean
-
-    fun startCooldown(
+    /**
+     * 재발송 쿨다운 선점 — 걸려 있지 않을 때만 걸고 성공 여부를 돌려준다(SET NX EX 한 방).
+     * 검사와 설정을 쪼개면 그 사이 벤더 호출 동안 동시 요청이 통과해 문자가 두 통 나가고 코드가 덮어써진다.
+     */
+    fun tryStartCooldown(
         userId: Long,
         ttl: Duration,
-    )
+    ): Boolean
+
+    /** 선점 보상 — 결국 문자를 못 보냈으면 쿨다운도 남기지 않는다. */
+    fun clearCooldown(userId: Long)
 
     /** 일 카운터 원자 증가 — dateKey 버킷별로 유저·번호 둘 다 올리고 증가 후 값을 돌려준다. */
     fun incrementDailyCounts(
