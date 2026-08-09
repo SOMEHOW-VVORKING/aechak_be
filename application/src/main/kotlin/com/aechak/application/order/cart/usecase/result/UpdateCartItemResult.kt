@@ -8,21 +8,17 @@ data class UpdateCartItemResult(
     val quantity: Int,
     val optionCombinationId: Long,
     val merged: Boolean,
-    /** 담긴 수량의 합계. 품목 종류 수가 아님. */
-    val cartItemCount: Int,
 ) {
     companion object {
         fun from(
             survivor: CartItem,
             merged: Boolean,
-            cartItemCount: Int,
         ): UpdateCartItemResult =
             UpdateCartItemResult(
                 cartItemId = survivor.id,
                 quantity = survivor.quantity,
                 optionCombinationId = survivor.optionCombinationId,
                 merged = merged,
-                cartItemCount = cartItemCount,
             )
     }
 }

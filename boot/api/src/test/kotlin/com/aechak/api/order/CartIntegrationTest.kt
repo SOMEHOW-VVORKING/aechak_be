@@ -238,7 +238,6 @@ class CartIntegrationTest : IntegrationTestBase() {
         assertEquals(comboIds[0], readLong(body, "$.data.optionCombinationId"), "담은 옵션 조합 id가 응답에 실려야 한다")
         assertEquals(2, JsonPath.read<Int>(body, "$.data.quantity"), "담은 수량이 응답에 실려야 한다")
         assertEquals("ACTIVE", JsonPath.read<String>(body, "$.data.itemStatus"), "담기 직후 항목 상태는 ACTIVE여야 한다")
-        assertEquals(2, JsonPath.read<Int>(body, "$.data.cartItemCount"), "cartItemCount는 담긴 수량의 합계여야 한다")
         assertEquals(1L, cartRowCount(buyerId), "첫 담기는 장바구니 행을 lazy 생성해 1개여야 한다")
     }
 
@@ -253,23 +252,8 @@ class CartIntegrationTest : IntegrationTestBase() {
 
         assertEquals(firstId, readLong(body, "$.data.cartItemId"), "재담기는 라인을 삭제 후 재생성하지 않고 cartItemId를 유지해야 한다(INV-01)")
         assertEquals(5, JsonPath.read<Int>(body, "$.data.quantity"), "재담기는 기존 수량 2에 3을 누적해 5여야 한다")
-        assertEquals(5, JsonPath.read<Int>(body, "$.data.cartItemCount"), "cartItemCount는 담긴 수량의 합계여야 한다")
         assertEquals(1L, cartItemRowCount(), "재담기는 라인 행을 늘리지 않아야 한다")
         assertEquals(1L, cartRowCount(buyerId), "재담기는 장바구니 행을 늘리지 않아야 한다")
-    }
-
-    @Test
-    fun `cartItemCount는 품목 종류 수가 아니라 담긴 수량의 합계다`() {
-        val buyerId = createActiveUser()
-        val token = mintAccessToken(buyerId)
-        val (comboIds, _) = seedCatalog(comboCount = 2)
-        addCartItem(token, comboIds[0], 2)
-
-        val body = addCartItem(token, comboIds[1], 3)
-
-        assertEquals(3, JsonPath.read<Int>(body, "$.data.quantity"), "새 라인의 수량은 이번에 담은 3이어야 한다")
-        assertEquals(5, JsonPath.read<Int>(body, "$.data.cartItemCount"), "cartItemCount는 2+3=5로 수량 합계여야 한다")
-        assertEquals(2L, cartItemRowCount(), "다른 옵션 조합은 새 라인이어야 한다")
     }
 
     @Test
@@ -502,7 +486,6 @@ class CartIntegrationTest : IntegrationTestBase() {
         val body = addCartItem(mintAccessToken(buyerB), comboIds[0], 3)
 
         assertEquals(3, JsonPath.read<Int>(body, "$.data.quantity"), "B의 담기는 A의 수량과 섞이지 않아야 한다")
-        assertEquals(3, JsonPath.read<Int>(body, "$.data.cartItemCount"), "cartItemCount는 B 장바구니만의 합계여야 한다")
         assertEquals(1L, cartRowCount(buyerA), "A의 장바구니 행은 그대로 1개여야 한다")
         assertEquals(1L, cartRowCount(buyerB), "B의 장바구니 행도 1개여야 한다")
     }
@@ -628,7 +611,6 @@ class CartIntegrationTest : IntegrationTestBase() {
 
         val body = getCart(token)
 
-        assertEquals(0, JsonPath.read<Int>(body, "$.data.cartItemCount"), "빈 장바구니의 cartItemCount는 0이어야 한다")
         assertTrue(JsonPath.read<List<*>>(body, "$.data.sellerGroups").isEmpty(), "빈 장바구니의 sellerGroups는 비어야 한다")
         assertEquals(0L, cartRowCount(buyerId), "조회는 장바구니를 생성하지 않아야 한다. 생성은 담기만의 몫이다")
     }
@@ -651,7 +633,6 @@ class CartIntegrationTest : IntegrationTestBase() {
 
         val body = getCart(mintAccessToken(buyerA))
 
-        assertEquals(2, JsonPath.read<Int>(body, "$.data.cartItemCount"), "A의 조회에 B의 수량이 잡히면 buyerId 조건이 빠진 것이다")
         assertEquals(2, JsonPath.read<Int>(body, firstItem("quantity")), "A의 조회에는 A가 담은 수량만 실려야 한다")
     }
 
@@ -752,18 +733,6 @@ class CartIntegrationTest : IntegrationTestBase() {
             JsonPath.read<List<String>>(body, "$.data.sellerGroups[*].storeName"),
             "나중에 담은 셀러의 그룹이 위여야 한다",
         )
-    }
-
-    @Test
-    fun `조회의 cartItemCount도 품목 종류 수가 아니라 수량 합계다`() {
-        val token = mintAccessToken(createActiveUser())
-        val (comboIds, _) = seedProduct(optionNames = listOf("닭고기 / 1kg", "연어 / 2kg"))
-        addCartItem(token, comboIds[0], 2)
-        addCartItem(token, comboIds[1], 3)
-
-        val body = getCart(token)
-
-        assertEquals(5, JsonPath.read<Int>(body, "$.data.cartItemCount"), "품목 종류는 2지만 수량 합계인 5여야 한다")
     }
 
     // ---------- itemStatus 파생 ----------
@@ -1021,7 +990,6 @@ class CartIntegrationTest : IntegrationTestBase() {
         val body = getCart(token)
 
         assertEquals(1, JsonPath.read<List<*>>(body, "$.data.sellerGroups[0].items").size, "재료가 없는 항목은 빼고 나머지는 그려야 한다")
-        assertEquals(2, JsonPath.read<Int>(body, "$.data.cartItemCount"), "뺀 항목의 수량은 뱃지에도 안 잡혀야 화면과 어긋나지 않는다")
     }
 
     @Test
@@ -1040,7 +1008,6 @@ class CartIntegrationTest : IntegrationTestBase() {
             JsonPath.read<List<String>>(body, "$.data.sellerGroups[*].items[*].productName"),
             "담기에서 없는 상품으로 다루는 것을 조회에서 ACTIVE로 보여주면 안 된다",
         )
-        assertEquals(2, JsonPath.read<Int>(body, "$.data.cartItemCount"), "뺀 항목의 수량은 뱃지에도 안 잡혀야 한다")
     }
 
     // ---------- 응답 필드 집합 ----------
@@ -1060,7 +1027,7 @@ class CartIntegrationTest : IntegrationTestBase() {
 
         val body = getCart(token)
 
-        assertEquals(listOf("cartItemCount", "sellerGroups"), keysOf(body, "$.data"), "최상위에 금액 합계 필드를 만들면 안 된다")
+        assertEquals(listOf("sellerGroups"), keysOf(body, "$.data"), "최상위에 금액 합계나 카운트 필드를 만들면 안 된다")
         assertEquals(
             listOf("baseShippingFee", "freeShippingThreshold", "items", "sellerId", "storeName"),
             keysOf(body, "$.data.sellerGroups[0]"),
@@ -1707,7 +1674,6 @@ class CartIntegrationTest : IntegrationTestBase() {
         val body = deleteCartItems(token, emptyList())
 
         assertEquals(0, JsonPath.read<Int>(body, "$.data.deletedCount"), "빈 배열은 삭제 0건 성공이다")
-        assertEquals(2, JsonPath.read<Int>(body, "$.data.cartItemCount"), "빈 배열 요청이 장바구니를 건드리면 안 된다")
     }
 
     @Test
@@ -1730,7 +1696,6 @@ class CartIntegrationTest : IntegrationTestBase() {
         val body = deleteCartItems(token, listOf(999_999L))
 
         assertEquals(0, JsonPath.read<Int>(body, "$.data.deletedCount"))
-        assertEquals(0, JsonPath.read<Int>(body, "$.data.cartItemCount"))
     }
 
     @Test
@@ -1771,45 +1736,6 @@ class CartIntegrationTest : IntegrationTestBase() {
             .perform(deleteRequest(token, "{}"))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90001))
-    }
-
-    // ---------- 수정·삭제 후 cartItemCount ----------
-
-    @Test
-    fun `수정 응답의 cartItemCount는 품목 종류 수가 아니라 수량 합계다`() {
-        val token = mintAccessToken(createActiveUser())
-        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
-        val cartItemId = addCartItemId(token, comboIds[0], 2)
-        addCartItemId(token, comboIds[1], 3)
-
-        val body = updateCartItem(token, cartItemId, quantity = 4)
-
-        assertEquals(7, JsonPath.read<Int>(body, "$.data.cartItemCount"), "4와 3의 합인 7이어야 한다. 종류 수면 2가 된다")
-    }
-
-    @Test
-    fun `병합 후 cartItemCount는 합쳐진 수량을 그대로 센다`() {
-        val token = mintAccessToken(createActiveUser())
-        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
-        addCartItemId(token, comboIds[0], 2)
-        val sourceId = addCartItemId(token, comboIds[1], 3)
-
-        val body = updateCartItem(token, sourceId, optionCombinationId = comboIds[0])
-
-        assertEquals(5, JsonPath.read<Int>(body, "$.data.cartItemCount"), "병합은 수량 합계를 바꾸지 않는다")
-    }
-
-    @Test
-    fun `삭제 응답의 cartItemCount도 남은 수량의 합계다`() {
-        val token = mintAccessToken(createActiveUser())
-        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
-        val first = addCartItemId(token, comboIds[0], 2)
-        addCartItemId(token, comboIds[1], 3)
-
-        val body = deleteCartItems(token, listOf(first))
-
-        assertEquals(1, JsonPath.read<Int>(body, "$.data.deletedCount"), "deletedCount는 수량 합이 아니라 지운 행 수여야 한다. 수량 합이면 2가 된다")
-        assertEquals(3, JsonPath.read<Int>(body, "$.data.cartItemCount"), "남은 항목의 수량 합계여야 한다. 종류 수면 1이 된다")
     }
 
     // ---------- 수정·삭제 후 조회 정렬 ----------

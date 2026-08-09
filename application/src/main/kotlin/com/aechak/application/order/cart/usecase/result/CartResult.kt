@@ -6,8 +6,6 @@ import com.aechak.domain.order.cart.enums.CartItemStatus
 import java.time.LocalDateTime
 
 data class CartResult(
-    /** 담긴 수량의 합계. 품목 종류 수가 아님. */
-    val cartItemCount: Int,
     val sellerGroups: List<SellerGroupResult>,
 ) {
     data class SellerGroupResult(
@@ -43,7 +41,6 @@ data class CartResult(
             compareByDescending<Pair<CartItem, CartCatalogItemView>> { (item, _) -> item.createdAt }
                 .thenByDescending { (item, _) -> item.id }
 
-        /** 카탈로그에 없는 항목은 뺀 뒤 조립하므로 cartItemCount도 남은 항목만 셈. */
         fun from(
             items: List<CartItem>,
             catalog: Map<Long, CartCatalogItemView>,
@@ -55,7 +52,6 @@ data class CartResult(
                     .mapNotNull { item -> catalog[item.optionCombinationId]?.let { item to it } }
                     .sortedWith(newestFirst)
             return CartResult(
-                cartItemCount = rows.sumOf { (item, _) -> item.quantity },
                 // groupBy가 첫 등장 순서를 지켜 그룹 순서가 항목 순서를 따라감
                 sellerGroups =
                     rows

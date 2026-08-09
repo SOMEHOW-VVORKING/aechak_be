@@ -7,7 +7,6 @@ data class UpdateCartItemResponse(
     val quantity: Int,
     val optionCombinationId: Long,
     val merged: Boolean,
-    val cartItemCount: Int,
 ) {
     companion object {
         fun from(result: UpdateCartItemResult): UpdateCartItemResponse =
@@ -16,7 +15,6 @@ data class UpdateCartItemResponse(
                 quantity = result.quantity,
                 optionCombinationId = result.optionCombinationId,
                 merged = result.merged,
-                cartItemCount = result.cartItemCount,
             )
     }
 }

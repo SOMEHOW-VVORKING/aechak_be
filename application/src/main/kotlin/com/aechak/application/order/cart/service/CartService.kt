@@ -50,7 +50,7 @@ class CartService(
         // 응답에 cartItemId를 실기 위함. id 채번을 위함
         cartRepository.flush()
 
-        return AddCartItemResult.from(cartItem, catalogItem, itemStatus, cart.items.sumOf { it.quantity })
+        return AddCartItemResult.from(cartItem, catalogItem, itemStatus)
     }
 
     /**
@@ -81,7 +81,6 @@ class CartService(
         return UpdateCartItemResult.from(
             survivor = targetCartItem,
             merged = targetCartItem.id != item.id,
-            cartItemCount = cart.items.sumOf { it.quantity },
         )
     }
 
@@ -91,13 +90,13 @@ class CartService(
             if (cartRepository.existsAnyItemById(command.cartItemIds)) {
                 throw BusinessException(OrderErrorCode.CART_ITEM_ACCESS_DENIED)
             }
-            return DeleteCartItemsResult(deletedCount = 0, cartItemCount = 0)
+            return DeleteCartItemsResult(deletedCount = 0)
         }
 
         requireAllOwned(command.cartItemIds, cart)
         val deletedCount = cart.removeItems(command.cartItemIds)
 
-        return DeleteCartItemsResult(deletedCount = deletedCount, cartItemCount = cart.items.sumOf { it.quantity })
+        return DeleteCartItemsResult(deletedCount = deletedCount)
     }
 
     private fun requireAllOwned(
