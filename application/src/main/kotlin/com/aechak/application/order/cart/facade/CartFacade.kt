@@ -11,7 +11,7 @@ import com.aechak.application.order.cart.usecase.result.CartResult
 import com.aechak.application.order.cart.usecase.result.DeleteCartItemsResult
 import com.aechak.application.order.cart.usecase.result.UpdateCartItemResult
 import org.slf4j.LoggerFactory
-import org.springframework.dao.DataAccessException
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
@@ -67,7 +67,7 @@ class CartFacade(
         if (cartService.cartExists(buyerId)) return
         try {
             tx.execute { cartService.createCart(buyerId) }
-        } catch (e: DataAccessException) {
+        } catch (e: DataIntegrityViolationException) {
             if (!cartService.cartExists(buyerId)) throw e
             log.debug("장바구니 생성 경합, 기존 행으로 진행함. buyerId={}", buyerId, e)
         }
