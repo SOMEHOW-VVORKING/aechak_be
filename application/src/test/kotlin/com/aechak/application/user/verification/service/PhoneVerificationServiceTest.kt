@@ -14,6 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -154,14 +155,35 @@ class PhoneVerificationServiceTest {
     }
 
     @Test
-    fun `confirm - 5회째 실패는 30010이고 그 자리에서 코드를 소각한다`() {
+    fun `confirm - 예산 안(5회)의 실패는 30005이고 코드는 살아 있다`() {
         service.sendCode(USER_ID, "010-1234-5678")
-        repeat(4) {
+
+        repeat(MAX_ATTEMPTS) {
             val ex = assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "999999") }
-            assertEquals(UserErrorCode.SMS_CODE_INVALID, ex.errorCode)
+            assertEquals(UserErrorCode.SMS_CODE_INVALID, ex.errorCode, "${it + 1}회째")
         }
 
-        val ex = assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "999999") }
+        assertNotNull(store.findCode(USER_ID))
+    }
+
+    @Test
+    fun `confirm - 예산 안이면 마지막 회차의 정답도 통과한다`() {
+        service.sendCode(USER_ID, "010-1234-5678")
+        repeat(MAX_ATTEMPTS - 1) {
+            assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "999999") }
+        }
+
+        service.validateCode(USER_ID, "01012345678", "000000")
+    }
+
+    @Test
+    fun `confirm - 예산을 넘긴 호출은 30010이고 코드를 소각한다`() {
+        service.sendCode(USER_ID, "010-1234-5678")
+        repeat(MAX_ATTEMPTS) {
+            assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "999999") }
+        }
+
+        val ex = assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "000000") }
 
         assertEquals(UserErrorCode.SMS_ATTEMPTS_EXCEEDED, ex.errorCode)
         assertNull(store.findCode(USER_ID))
@@ -170,7 +192,7 @@ class PhoneVerificationServiceTest {
     @Test
     fun `confirm - 소각된 뒤에는 정답을 넣어도 30009`() {
         service.sendCode(USER_ID, "010-1234-5678")
-        repeat(5) {
+        repeat(MAX_ATTEMPTS + 1) {
             assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "999999") }
         }
 
@@ -265,5 +287,6 @@ class PhoneVerificationServiceTest {
 
     companion object {
         private const val USER_ID = 1L
+        private const val MAX_ATTEMPTS = PhoneVerificationService.MAX_CONFIRM_ATTEMPTS
     }
 }

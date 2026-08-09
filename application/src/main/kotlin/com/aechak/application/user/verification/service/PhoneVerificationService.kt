@@ -91,7 +91,7 @@ class PhoneVerificationService(
      * 코드 대조 — 코드 불일치와 번호 불일치만 30005 하나로 답한다(구분 비노출: "코드는 맞고 번호가
      * 틀렸다"를 알려주면 6자리 정답 여부가 새어나간다). 만료·시도 초과는 호출자가 이미 아는 사실이라
      * 감출 것이 없고, 재입력이 아니라 재발송이 필요하다는 안내가 필요해 별도 코드로 답한다.
-     * 5회째 실패에서 코드를 무효화하며 그 사실을 바로 알린다 — 다음 시도까지 미루면 유저가 정답을 계속 친다.
+     * 예산 판정이 대조보다 앞선다 — MAX회까지는 평가하고(그래서 초과 기준은 >), 그 뒤 호출에서 소각한다.
      */
     fun validateCode(
         userId: Long,
@@ -99,16 +99,11 @@ class PhoneVerificationService(
         code: String,
     ) {
         val issued = codeStore.findCode(userId) ?: throw BusinessException(UserErrorCode.SMS_CODE_EXPIRED)
-        val attempts = codeStore.incrementAttempts(userId, CODE_STORE_TTL)
-        if (attempts > MAX_CONFIRM_ATTEMPTS) {
+        if (codeStore.incrementAttempts(userId, CODE_STORE_TTL) > MAX_CONFIRM_ATTEMPTS) {
             codeStore.removeCode(userId)
             throw BusinessException(UserErrorCode.SMS_ATTEMPTS_EXCEEDED)
         }
         if (issued.phoneNumber != phoneNumber || issued.code != code) {
-            if (attempts >= MAX_CONFIRM_ATTEMPTS) {
-                codeStore.removeCode(userId)
-                throw BusinessException(UserErrorCode.SMS_ATTEMPTS_EXCEEDED)
-            }
             throw BusinessException(UserErrorCode.SMS_CODE_INVALID)
         }
     }

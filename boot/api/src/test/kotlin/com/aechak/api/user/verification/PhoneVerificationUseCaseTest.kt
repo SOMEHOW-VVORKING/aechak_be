@@ -2,6 +2,7 @@ package com.aechak.api.user.verification
 
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.user.user.usecase.UserUseCase
+import com.aechak.application.user.verification.service.PhoneVerificationService
 import com.aechak.application.user.verification.usecase.PhoneVerificationUseCase
 import com.aechak.application.user.verification.usecase.command.ConfirmPhoneCodeCommand
 import com.aechak.application.user.verification.usecase.command.SendPhoneCodeCommand
@@ -127,10 +128,10 @@ class PhoneVerificationUseCaseTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `confirm - 5회째 실패는 30010, 소각된 뒤 정답은 30009`() {
+    fun `confirm - 예산을 넘기면 30010으로 소각되고 그 뒤 정답은 30009`() {
         val userId = createOnboardedUser()
         phoneVerificationUseCase.sendCode(SendPhoneCodeCommand(userId, "010-1234-5678"))
-        repeat(4) {
+        repeat(PhoneVerificationService.MAX_CONFIRM_ATTEMPTS) {
             assertFailsWith<BusinessException> {
                 phoneVerificationUseCase.confirm(ConfirmPhoneCodeCommand(userId, "010-1234-5678", "999999"))
             }
@@ -138,7 +139,7 @@ class PhoneVerificationUseCaseTest : IntegrationTestBase() {
 
         val exceeded =
             assertFailsWith<BusinessException> {
-                phoneVerificationUseCase.confirm(ConfirmPhoneCodeCommand(userId, "010-1234-5678", "999999"))
+                phoneVerificationUseCase.confirm(ConfirmPhoneCodeCommand(userId, "010-1234-5678", "000000"))
             }
         assertEquals(UserErrorCode.SMS_ATTEMPTS_EXCEEDED, exceeded.errorCode)
 
