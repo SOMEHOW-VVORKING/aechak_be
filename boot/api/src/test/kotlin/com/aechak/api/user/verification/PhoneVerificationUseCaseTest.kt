@@ -78,11 +78,11 @@ class PhoneVerificationUseCaseTest : IntegrationTestBase() {
                 phoneVerificationUseCase.sendCode(SendPhoneCodeCommand(userId, "010-1234-5678"))
             }
 
-        assertEquals(UserErrorCode.SMS_RATE_LIMITED, ex.errorCode)
+        assertEquals(UserErrorCode.SMS_RESEND_COOLDOWN, ex.errorCode)
     }
 
     @Test
-    fun `유저 일 상한 초과는 30006`() {
+    fun `유저 일 상한 초과는 30008`() {
         val userId = createOnboardedUser()
         redisTemplate.opsForValue().set("sms:daily:user:$userId:${todayKst()}", "10")
 
@@ -91,11 +91,11 @@ class PhoneVerificationUseCaseTest : IntegrationTestBase() {
                 phoneVerificationUseCase.sendCode(SendPhoneCodeCommand(userId, "010-1234-5678"))
             }
 
-        assertEquals(UserErrorCode.SMS_RATE_LIMITED, ex.errorCode)
+        assertEquals(UserErrorCode.SMS_DAILY_LIMIT_EXCEEDED, ex.errorCode)
     }
 
     @Test
-    fun `번호 일 상한 초과는 유저 상한이 남아 있어도 30006`() {
+    fun `번호 일 상한 초과는 유저 상한이 남아 있어도 30008`() {
         val userId = createOnboardedUser()
         redisTemplate.opsForValue().set("sms:daily:phone:01012345678:${todayKst()}", "10")
 
@@ -104,18 +104,18 @@ class PhoneVerificationUseCaseTest : IntegrationTestBase() {
                 phoneVerificationUseCase.sendCode(SendPhoneCodeCommand(userId, "010-1234-5678"))
             }
 
-        assertEquals(UserErrorCode.SMS_RATE_LIMITED, ex.errorCode)
+        assertEquals(UserErrorCode.SMS_DAILY_LIMIT_EXCEEDED, ex.errorCode)
     }
 
     @Test
-    fun `confirm - 코드 불일치·미발송은 30005`() {
+    fun `confirm - 미발송은 30009, 코드 불일치는 30005`() {
         val userId = createOnboardedUser()
 
         val noCode =
             assertFailsWith<BusinessException> {
                 phoneVerificationUseCase.confirm(ConfirmPhoneCodeCommand(userId, "010-1234-5678", "000000"))
             }
-        assertEquals(UserErrorCode.SMS_CODE_INVALID, noCode.errorCode)
+        assertEquals(UserErrorCode.SMS_CODE_EXPIRED, noCode.errorCode)
 
         phoneVerificationUseCase.sendCode(SendPhoneCodeCommand(userId, "010-1234-5678"))
         val wrongCode =
@@ -126,21 +126,27 @@ class PhoneVerificationUseCaseTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `confirm - 5회 실패하면 코드가 무효화돼 정답도 30005`() {
+    fun `confirm - 5회째 실패는 30010, 소각된 뒤 정답은 30009`() {
         val userId = createOnboardedUser()
         phoneVerificationUseCase.sendCode(SendPhoneCodeCommand(userId, "010-1234-5678"))
-        repeat(5) {
+        repeat(4) {
             assertFailsWith<BusinessException> {
                 phoneVerificationUseCase.confirm(ConfirmPhoneCodeCommand(userId, "010-1234-5678", "999999"))
             }
         }
 
-        val ex =
+        val exceeded =
+            assertFailsWith<BusinessException> {
+                phoneVerificationUseCase.confirm(ConfirmPhoneCodeCommand(userId, "010-1234-5678", "999999"))
+            }
+        assertEquals(UserErrorCode.SMS_ATTEMPTS_EXCEEDED, exceeded.errorCode)
+
+        val afterBurn =
             assertFailsWith<BusinessException> {
                 phoneVerificationUseCase.confirm(ConfirmPhoneCodeCommand(userId, "010-1234-5678", "000000"))
             }
 
-        assertEquals(UserErrorCode.SMS_CODE_INVALID, ex.errorCode)
+        assertEquals(UserErrorCode.SMS_CODE_EXPIRED, afterBurn.errorCode)
     }
 
     @Test

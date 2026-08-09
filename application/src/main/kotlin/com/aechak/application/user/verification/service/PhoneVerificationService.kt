@@ -30,7 +30,7 @@ class PhoneVerificationService(
     ): PhoneCodeSentResult {
         val phoneNumber = PhoneNumbers.normalize(rawPhoneNumber)
         if (codeStore.isInCooldown(userId)) {
-            throw BusinessException(UserErrorCode.SMS_RATE_LIMITED)
+            throw BusinessException(UserErrorCode.SMS_RESEND_COOLDOWN)
         }
         val dateKey = kstToday().format(DATE_KEY)
         enforceDailyLimit(userId, phoneNumber, dateKey)
@@ -46,7 +46,11 @@ class PhoneVerificationService(
         )
     }
 
-    /** 일 상한(유저·번호 이중) — INCR 반환값으로 판정한다(검사와 증가를 쪼개면 동시 발송이 상한을 뚫는다). */
+    /**
+     * 일 상한(유저·번호 이중) — INCR 반환값으로 판정한다(검사와 증가를 쪼개면 동시 발송이 상한을 뚫는다).
+     * 번호 기준 상한은 비용 통제만이 아니라 코드 전수 대입의 상한이기도 하다 — 다계정을 허용하므로
+     * 유저 기준만으로는 같은 번호에 계정 수만큼 발송할 수 있고, 발송 1건마다 대조 5회가 새로 열린다.
+     */
     private fun enforceDailyLimit(
         userId: Long,
         phoneNumber: String,
@@ -55,7 +59,7 @@ class PhoneVerificationService(
         val expireAt = kstToday().plusDays(1).atStartOfDay(KST).toInstant()
         val counts = codeStore.incrementDailyCounts(userId, phoneNumber, dateKey, expireAt)
         if (counts.userCount > DAILY_SEND_LIMIT || counts.phoneCount > DAILY_SEND_LIMIT) {
-            throw BusinessException(UserErrorCode.SMS_RATE_LIMITED)
+            throw BusinessException(UserErrorCode.SMS_DAILY_LIMIT_EXCEEDED)
         }
     }
 
@@ -76,23 +80,26 @@ class PhoneVerificationService(
     }
 
     /**
-     * 코드 대조 — 만료·번호 불일치·코드 불일치·시도 초과를 전부 30005 하나로 답한다(구분 비노출: 어느 쪽이
-     * 틀렸는지 알려주면 공격자에게 힌트가 된다). 5회 실패 시 코드를 무효화해 재발송을 강제한다.
+     * 코드 대조 — 코드 불일치와 번호 불일치만 30005 하나로 답한다(구분 비노출: "코드는 맞고 번호가
+     * 틀렸다"를 알려주면 6자리 정답 여부가 새어나간다). 만료·시도 초과는 호출자가 이미 아는 사실이라
+     * 감출 것이 없고, 재입력이 아니라 재발송이 필요하다는 안내가 필요해 별도 코드로 답한다.
+     * 5회째 실패에서 코드를 무효화하며 그 사실을 바로 알린다 — 다음 시도까지 미루면 유저가 정답을 계속 친다.
      */
     fun validateCode(
         userId: Long,
         phoneNumber: String,
         code: String,
     ) {
-        val issued = codeStore.findCode(userId) ?: throw BusinessException(UserErrorCode.SMS_CODE_INVALID)
+        val issued = codeStore.findCode(userId) ?: throw BusinessException(UserErrorCode.SMS_CODE_EXPIRED)
         val attempts = codeStore.incrementAttempts(userId, CODE_TTL)
         if (attempts > MAX_CONFIRM_ATTEMPTS) {
             codeStore.removeCode(userId)
-            throw BusinessException(UserErrorCode.SMS_CODE_INVALID)
+            throw BusinessException(UserErrorCode.SMS_ATTEMPTS_EXCEEDED)
         }
         if (issued.phoneNumber != phoneNumber || issued.code != code) {
             if (attempts >= MAX_CONFIRM_ATTEMPTS) {
                 codeStore.removeCode(userId)
+                throw BusinessException(UserErrorCode.SMS_ATTEMPTS_EXCEEDED)
             }
             throw BusinessException(UserErrorCode.SMS_CODE_INVALID)
         }

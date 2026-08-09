@@ -46,25 +46,25 @@ class PhoneVerificationServiceTest {
 
         val ex = assertFailsWith<BusinessException> { service.sendCode(USER_ID, "010-1234-5678") }
 
-        assertEquals(UserErrorCode.SMS_RATE_LIMITED, ex.errorCode)
+        assertEquals(UserErrorCode.SMS_RESEND_COOLDOWN, ex.errorCode)
     }
 
     @Test
-    fun `유저 일 상한 초과는 30006으로 거부된다`() {
+    fun `유저 일 상한 초과는 30008로 거부된다`() {
         store.userCount = 10
 
         val ex = assertFailsWith<BusinessException> { service.sendCode(USER_ID, "010-1234-5678") }
 
-        assertEquals(UserErrorCode.SMS_RATE_LIMITED, ex.errorCode)
+        assertEquals(UserErrorCode.SMS_DAILY_LIMIT_EXCEEDED, ex.errorCode)
     }
 
     @Test
-    fun `번호 일 상한 초과는 유저 상한이 남아 있어도 30006으로 거부된다`() {
+    fun `번호 일 상한 초과는 유저 상한이 남아 있어도 30008로 거부된다`() {
         store.phoneCount = 10
 
         val ex = assertFailsWith<BusinessException> { service.sendCode(USER_ID, "010-1234-5678") }
 
-        assertEquals(UserErrorCode.SMS_RATE_LIMITED, ex.errorCode)
+        assertEquals(UserErrorCode.SMS_DAILY_LIMIT_EXCEEDED, ex.errorCode)
     }
 
     @Test
@@ -88,10 +88,10 @@ class PhoneVerificationServiceTest {
     }
 
     @Test
-    fun `confirm - 발송 이력이 없으면(만료 포함) 30005`() {
+    fun `confirm - 발송 이력이 없으면(만료 포함) 30009`() {
         val ex = assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "000000") }
 
-        assertEquals(UserErrorCode.SMS_CODE_INVALID, ex.errorCode)
+        assertEquals(UserErrorCode.SMS_CODE_EXPIRED, ex.errorCode)
     }
 
     @Test
@@ -113,7 +113,21 @@ class PhoneVerificationServiceTest {
     }
 
     @Test
-    fun `confirm - 5회 실패하면 코드가 무효화돼 정답도 30005`() {
+    fun `confirm - 5회째 실패는 30010이고 그 자리에서 코드를 소각한다`() {
+        service.sendCode(USER_ID, "010-1234-5678")
+        repeat(4) {
+            val ex = assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "999999") }
+            assertEquals(UserErrorCode.SMS_CODE_INVALID, ex.errorCode)
+        }
+
+        val ex = assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "999999") }
+
+        assertEquals(UserErrorCode.SMS_ATTEMPTS_EXCEEDED, ex.errorCode)
+        assertNull(store.findCode(USER_ID))
+    }
+
+    @Test
+    fun `confirm - 소각된 뒤에는 정답을 넣어도 30009`() {
         service.sendCode(USER_ID, "010-1234-5678")
         repeat(5) {
             assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "999999") }
@@ -121,8 +135,7 @@ class PhoneVerificationServiceTest {
 
         val ex = assertFailsWith<BusinessException> { service.validateCode(USER_ID, "01012345678", "000000") }
 
-        assertEquals(UserErrorCode.SMS_CODE_INVALID, ex.errorCode)
-        assertNull(store.findCode(USER_ID))
+        assertEquals(UserErrorCode.SMS_CODE_EXPIRED, ex.errorCode)
     }
 
     private class RecordingSmsSender : SmsSender {
