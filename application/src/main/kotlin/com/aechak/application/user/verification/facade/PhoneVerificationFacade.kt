@@ -13,6 +13,7 @@ import com.aechak.application.user.verification.usecase.command.SendPhoneCodeCom
 import com.aechak.application.user.verification.usecase.result.PhoneCodeSentResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.error.UserErrorCode
+import com.aechak.domain.user.user.User
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -75,10 +76,6 @@ class PhoneVerificationFacade(
     }
 
     private fun isPhoneHmacConflict(e: DataIntegrityViolationException): Boolean =
-        e.message?.contains(PHONE_HMAC_CONSTRAINT) == true ||
-            e.cause?.message?.contains(PHONE_HMAC_CONSTRAINT) == true
-
-    companion object {
-        private const val PHONE_HMAC_CONSTRAINT = "uk_users_phone_hmac"
-    }
+        e.message?.contains(User.UK_PHONE_HMAC) == true ||
+            e.cause?.message?.contains(User.UK_PHONE_HMAC) == true
 }

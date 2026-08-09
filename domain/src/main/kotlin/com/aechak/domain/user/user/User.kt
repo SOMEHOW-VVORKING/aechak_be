@@ -22,7 +22,7 @@ import java.time.LocalDateTime
 @Entity
 @Table(
     name = "users",
-    uniqueConstraints = [UniqueConstraint(name = "uk_users_phone_hmac", columnNames = ["phone_hmac"])],
+    uniqueConstraints = [UniqueConstraint(name = User.UK_PHONE_HMAC, columnNames = ["phone_hmac"])],
 )
 class User protected constructor() : AggregateRoot() {
     @Id
@@ -139,6 +139,9 @@ class User protected constructor() : AggregateRoot() {
     }
 
     companion object {
+        /** 전화번호 점유 UNIQUE 제약명 — @Table 선언과 커밋 시점 예외 번역(제약명 분기)이 공유한다. */
+        const val UK_PHONE_HMAC = "uk_users_phone_hmac"
+
         /** 소셜 가입 진입점 — PENDING_ONBOARDING으로 시작하고 프로필(닉네임)은 온보딩에서 생성한다. */
         fun preRegister(): User = User()
     }
