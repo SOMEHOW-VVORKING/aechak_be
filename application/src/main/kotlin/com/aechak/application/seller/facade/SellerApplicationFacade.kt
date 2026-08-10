@@ -47,7 +47,8 @@ class SellerApplicationFacade(
         } catch (e: DataIntegrityViolationException) {
             translateConcurrentApply(e)
         }
-        return getMe(command.userId)
+        // 자기 호출이라 getMe의 @Transactional은 먹지 않는다 — 서류 지연 로딩을 위해 여기서 트랜잭션을 연다(제거 금지)
+        return tx.execute { getMe(command.userId) }!!
     }
 
     private fun promoteDocuments(command: SaveDraftCommand): Map<DocumentType, String> =
@@ -63,6 +64,7 @@ class SellerApplicationFacade(
             document.documentType to promoted.key
         }
 
+    /** 서류 컬렉션이 지연 로딩이라 트랜잭션 안에서만 호출할 수 있다. */
     @Transactional(readOnly = true)
     override fun getMe(userId: Long): ApplicationResult {
         val application = sellerApplicationService.getByUserId(userId)
