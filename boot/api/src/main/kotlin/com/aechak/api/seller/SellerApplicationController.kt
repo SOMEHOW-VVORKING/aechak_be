@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
-/** 입점 신청(신청자 측) API — 전 EP ACTIVE 전용(UserStatusFilter). 유저당 신청서 1건이라 경로에 id가 없다. */
+/** 입점 신청(신청자 측) API — 전 EP ACTIVE 전용(UserStatusFilter). 대상은 항상 인증 주체의 신청서 1건이라 경로에 식별자가 없다. */
 @RestController
 @RequestMapping("/seller-applications")
 class SellerApplicationController(
@@ -31,7 +31,7 @@ class SellerApplicationController(
         )
 
     /** 신청 제출 — 유형별 필수 정보·서류 검증 후 심사 대기로 전환. 이후 수정·서류 잠금. */
-    @PostMapping("/me/submit")
+    @PostMapping("/submit")
     fun submit(
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<Void> {
@@ -40,7 +40,7 @@ class SellerApplicationController(
     }
 
     /** 내 신청 현황 — 심사중/승인/반려 화면 데이터. */
-    @GetMapping("/me")
+    @GetMapping
     fun getMe(
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<ApplicationResponse>> =

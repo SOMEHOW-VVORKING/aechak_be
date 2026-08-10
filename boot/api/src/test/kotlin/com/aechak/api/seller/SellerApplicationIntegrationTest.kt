@@ -165,7 +165,7 @@ class SellerApplicationIntegrationTest : IntegrationTestBase() {
     @Test
     fun `신청 이력이 없으면 현황 조회는 10100을 반환한다`() {
         mockMvc
-            .perform(get("/api/v1/seller-applications/me").bearer(token))
+            .perform(get("/api/v1/seller-applications").bearer(token))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value(SellerErrorCode.SELLER_APPLICATION_NOT_FOUND.code))
     }
@@ -174,7 +174,7 @@ class SellerApplicationIntegrationTest : IntegrationTestBase() {
     fun `현황 조회는 저장된 신청서를 계좌 마스킹과 함께 반환한다`() {
         performForBody(saveDraftRequest(token, applicationJson(accountNumber = "3521234567")))
         mockMvc
-            .perform(get("/api/v1/seller-applications/me").bearer(token))
+            .perform(get("/api/v1/seller-applications").bearer(token))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.status").value("DRAFT"))
             .andExpect(jsonPath("$.data.accountNumberMasked").value("******4567"))
@@ -184,7 +184,7 @@ class SellerApplicationIntegrationTest : IntegrationTestBase() {
     fun `서류를 함께 저장하면 현황 조회에 종류가 노출된다`() {
         performForBody(saveDraftRequest(token, applicationJson(documents = docs("ID_CARD"))))
         mockMvc
-            .perform(get("/api/v1/seller-applications/me").bearer(token))
+            .perform(get("/api/v1/seller-applications").bearer(token))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.documents.length()").value(1))
             .andExpect(jsonPath("$.data.documents[0].documentType").value("ID_CARD"))
@@ -195,7 +195,7 @@ class SellerApplicationIntegrationTest : IntegrationTestBase() {
         performForBody(saveDraftRequest(token, applicationJson(documents = listOf("ID_CARD" to tmpKey(userId, "id-old.png")))))
         performForBody(saveDraftRequest(token, applicationJson(documents = listOf("ID_CARD" to tmpKey(userId, "id-new.png")))))
         mockMvc
-            .perform(get("/api/v1/seller-applications/me").bearer(token))
+            .perform(get("/api/v1/seller-applications").bearer(token))
             .andExpect(jsonPath("$.data.documents.length()").value(1))
     }
 
@@ -204,7 +204,7 @@ class SellerApplicationIntegrationTest : IntegrationTestBase() {
         performForBody(saveDraftRequest(token, applicationJson(documents = docs("ID_CARD", "BANKBOOK_COPY"))))
         performForBody(saveDraftRequest(token, applicationJson(representativeName = "폼만수정")))
         mockMvc
-            .perform(get("/api/v1/seller-applications/me").bearer(token))
+            .perform(get("/api/v1/seller-applications").bearer(token))
             .andExpect(jsonPath("$.data.documents.length()").value(2))
             .andExpect(jsonPath("$.data.representativeName").value("폼만수정"))
     }
@@ -253,7 +253,7 @@ class SellerApplicationIntegrationTest : IntegrationTestBase() {
             .perform(submitRequest(token))
             .andExpect(status().isNoContent)
         mockMvc
-            .perform(get("/api/v1/seller-applications/me").bearer(token))
+            .perform(get("/api/v1/seller-applications").bearer(token))
             .andExpect(jsonPath("$.data.status").value("SUBMITTED"))
     }
 
@@ -461,7 +461,7 @@ class SellerApplicationIntegrationTest : IntegrationTestBase() {
             .contentType(MediaType.APPLICATION_JSON)
             .content(body)
 
-    private fun submitRequest(token: String): MockHttpServletRequestBuilder = post("/api/v1/seller-applications/me/submit").bearer(token)
+    private fun submitRequest(token: String): MockHttpServletRequestBuilder = post("/api/v1/seller-applications/submit").bearer(token)
 
     private fun performForBody(request: MockHttpServletRequestBuilder): String =
         mockMvc
