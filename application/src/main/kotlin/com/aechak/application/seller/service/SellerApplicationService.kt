@@ -112,8 +112,8 @@ class SellerApplicationService(
     private fun requireSubmittable(application: SellerApplication) {
         val missingFields =
             requiredFieldsOf(application.businessType)
-                .filter { (_, value) -> value(application).isNullOrBlank() }
-                .map { (label, _) -> label }
+                .filter { it.read(application).isNullOrBlank() }
+                .map { it.label }
         val registered = application.documents.map { it.documentType }.toSet()
         val missingDocuments =
             requiredDocumentsOf(application.businessType)
@@ -147,20 +147,26 @@ class SellerApplicationService(
             }
         }
 
-    private fun requiredFieldsOf(businessType: BusinessType): List<Pair<String, (SellerApplication) -> String?>> {
+    /** 필수 입력 항목 — label은 누락 안내 문구, read는 신청서에서 값을 꺼내는 방법. */
+    private data class RequiredField(
+        val label: String,
+        val read: (SellerApplication) -> String?,
+    )
+
+    private fun requiredFieldsOf(businessType: BusinessType): List<RequiredField> {
         val common =
-            listOf<Pair<String, (SellerApplication) -> String?>>(
-                "대표자명" to { it.representativeName },
-                "은행 코드" to { it.bankCode },
-                "계좌번호" to { it.accountNumberEnc },
-                "예금주" to { it.accountHolder },
+            listOf(
+                RequiredField("대표자명") { it.representativeName },
+                RequiredField("은행 코드") { it.bankCode },
+                RequiredField("계좌번호") { it.accountNumberEnc },
+                RequiredField("예금주") { it.accountHolder },
             )
         val business =
-            listOf<Pair<String, (SellerApplication) -> String?>>(
-                "상호명" to { it.businessName },
-                "사업자등록번호" to { it.businessRegNo },
+            listOf(
+                RequiredField("상호명") { it.businessName },
+                RequiredField("사업자등록번호") { it.businessRegNo },
             )
-        val corporate = listOf<Pair<String, (SellerApplication) -> String?>>("법인등록번호" to { it.corpRegNo })
+        val corporate = listOf(RequiredField("법인등록번호") { it.corpRegNo })
         return when (businessType) {
             BusinessType.PERSONAL_GENERAL -> common
             BusinessType.SOLE_PROPRIETORSHIP -> common + business
