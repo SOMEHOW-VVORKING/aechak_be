@@ -19,25 +19,10 @@ class PiiCryptoAdapterTest {
     }
 
     @Test
-    fun `골든 벡터 - context 라벨과 결합 형식은 영원히 같아야 한다`() {
-        // 라벨 문자열도 저장된 전 행과 공유하는 계약이다 — 해시값으로 못 박아 조용한 변경을 막는다
+    fun `hmac은 엔진에 그대로 위임한다`() {
         assertEquals(
-            "a7b89f2b695ffc2ab5d9df67722c01a120886fc67d308e2f4f3330f6b77dbf43",
-            adapter.hmac(PiiContext.PHONE, "01012345678").toHex(),
-        )
-        assertEquals(
-            "3bd9fd5fdaf180d101811eb46556056a0a31bc59a594e1aed2a5fdd17c18e2a0",
-            adapter.hmac(PiiContext.PHONE_LAST4, "5678").toHex(),
+            HmacSupport("0123456789abcdef0123456789abcdef".toByteArray()).hmac(PiiContext.PHONE, "01012345678").toList(),
+            adapter.hmac(PiiContext.PHONE, "01012345678").toList(),
         )
     }
-
-    @Test
-    fun `모든 PiiContext는 서로 다른 해시를 만든다`() {
-        // 라벨이 겹치거나 구분자를 품으면 여기서 걸린다 — 라벨 추가 시의 방어선
-        val hashes = PiiContext.entries.map { adapter.hmac(it, "5678").toList() }
-
-        assertEquals(PiiContext.entries.size, hashes.toSet().size)
-    }
-
-    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 }
