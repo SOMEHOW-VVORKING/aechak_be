@@ -40,10 +40,16 @@ class JwtConfig {
 
     @Bean
     fun rsaKey(props: JwtKeyProperties): RSAKey =
-        if (props.privateKey.isBlank() || props.publicKey.isBlank()) {
-            generateEphemeralKey()
-        } else {
-            loadFromPem(props)
+        when {
+            props.privateKey.isBlank() && props.publicKey.isBlank() -> generateEphemeralKey()
+
+            // 검증 전용 모듈(seller-api 등) — 서명 키를 보유하지 않아 유출돼도 토큰 위조가 불가하다.
+            // 이 키로 만든 jwtEncoder 빈은 서명 시점에 실패한다 — 발급 EP가 없는 모듈에서만 쓸 것.
+            props.privateKey.isBlank() -> loadPublicOnly(props)
+
+            props.publicKey.isBlank() -> error("auth.jwt.private-key만 설정됨 — public-key 없이는 검증이 불가하다(설정 누락)")
+
+            else -> loadFromPem(props)
         }
 
     @Bean
@@ -76,6 +82,15 @@ class JwtConfig {
             .Builder(keyPair.public as RSAPublicKey)
             .privateKey(keyPair.private as RSAPrivateKey)
             .keyID(EPHEMERAL_KEY_ID)
+            .build()
+    }
+
+    private fun loadPublicOnly(props: JwtKeyProperties): RSAKey {
+        val keyFactory = KeyFactory.getInstance("RSA")
+        val publicKey = keyFactory.generatePublic(X509EncodedKeySpec(decodePem(props.publicKey))) as RSAPublicKey
+        return RSAKey
+            .Builder(publicKey)
+            .keyID(CONFIGURED_KEY_ID)
             .build()
     }
 
