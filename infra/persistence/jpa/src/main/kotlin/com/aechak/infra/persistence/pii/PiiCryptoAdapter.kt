@@ -15,5 +15,5 @@ class PiiCryptoAdapter(
     override fun hmac(
         context: PiiContext,
         value: String,
-    ): ByteArray = hmacSupport.hmac(context.label, value)
+    ): ByteArray = hmacSupport.hmac(context, value)
 }

@@ -1,7 +1,7 @@
 -- 앱 서비스 문의. v1은 접수 + 운영팀 메일 전달까지.
 -- 어드민 처리 컬럼(order_id, claim_id, title, assigned_admin_id, answer, resolved_at)은 nullable, v1 미사용.
 -- created_at/updated_at은 BaseEntity가 채우므로 DB 기본값 없음.
--- V11 채번 — 현재 최신이 V10이라 max+1.
+-- V13 채번 — develop 병합 후 V11(phone_hmac)·V12(cart)와 겹치지 않게 max+1.
 CREATE TABLE IF NOT EXISTS admin_inquiries
 (
     id                BIGINT       NOT NULL AUTO_INCREMENT,
