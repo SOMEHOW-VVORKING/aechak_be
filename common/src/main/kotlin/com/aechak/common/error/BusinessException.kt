@@ -12,4 +12,5 @@ package com.aechak.common.error
 open class BusinessException(
     val errorCode: ErrorCode,
     cause: Throwable? = null,
-) : RuntimeException(errorCode.message, cause)
+    detail: String? = null,
+) : RuntimeException(detail ?: errorCode.message, cause)
