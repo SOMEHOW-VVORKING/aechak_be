@@ -8,12 +8,22 @@ import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.seller.seller.QSeller
 import com.querydsl.core.types.Expression
 import com.querydsl.core.types.Projections
+import com.querydsl.core.types.dsl.BooleanExpression
+import com.querydsl.jpa.impl.JPAQuery
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.springframework.stereotype.Repository
 
 private val optionCombination = QOptionCombination.optionCombination
 private val product = QProduct.product
 private val seller = QSeller.seller
+
+private fun <T> JPAQuery<T>.joinProductAndSeller(combination: QOptionCombination): JPAQuery<T> =
+    join(combination.product, product)
+        .join(seller)
+        .on(seller.userId.eq(product.sellerId))
+
+// 상품 조회도 검수 미승인은 없는 것으로 다룸. 담을 수 없는 상태가 아니라 없는 상품이라 상태 파생 전에 거름
+private fun inspectionApproved(): BooleanExpression = product.inspectionStatus.eq(InspectionStatus.APPROVED)
 
 /**
  * 주문 BC가 상품과 셀러 테이블을 직접 조인함. 공유 DB라 성립하는 방식이고 격리가 아니라 관리된 결합임.
@@ -28,13 +38,10 @@ class CartCatalogQueryAdapter(
         queryFactory
             .select(itemProjection())
             .from(optionCombination)
-            .join(optionCombination.product, product)
-            .join(seller)
-            .on(seller.userId.eq(product.sellerId))
+            .joinProductAndSeller(optionCombination)
             .where(
                 optionCombination.id.eq(optionCombinationId),
-                // 상품 조회도 검수 미승인은 없는 것으로 다룸. 담을 수 없는 상태가 아니라 없는 상품이라 상태 파생 전에 거름
-                product.inspectionStatus.eq(InspectionStatus.APPROVED),
+                inspectionApproved(),
             ).fetchOne()
 
     override fun findItems(optionCombinationIds: Collection<Long>): List<CartCatalogItemView> {
@@ -43,9 +50,7 @@ class CartCatalogQueryAdapter(
         return queryFactory
             .select(itemProjection())
             .from(optionCombination)
-            .join(optionCombination.product, product)
-            .join(seller)
-            .on(seller.userId.eq(product.sellerId))
+            .joinProductAndSeller(optionCombination)
             .where(optionCombination.id.`in`(optionCombinationIds))
             .fetch()
     }
@@ -56,12 +61,10 @@ class CartCatalogQueryAdapter(
         return queryFactory
             .select(itemProjection())
             .from(optionCombination)
-            .join(optionCombination.product, product)
-            .join(seller)
-            .on(seller.userId.eq(product.sellerId))
+            .joinProductAndSeller(optionCombination)
             .where(
                 optionCombination.id.`in`(optionCombinationIds),
-                product.inspectionStatus.eq(InspectionStatus.APPROVED),
+                inspectionApproved(),
             ).fetch()
     }
 
