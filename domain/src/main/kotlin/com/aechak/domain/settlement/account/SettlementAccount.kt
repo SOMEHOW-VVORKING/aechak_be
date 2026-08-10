@@ -51,7 +51,11 @@ class SettlementAccount protected constructor(
         protected set
 
     companion object {
-        fun register(
+        /**
+         * 검증을 마친 계좌 생성 — 입점 승인처럼 사람이 통장사본을 대조한 뒤 확정 상태로 만드는 경로.
+         * 미검증(UNVERIFIED) 생성 경로는 필요한 흐름(계좌 변경 신청 등)이 생기는 시점에 추가한다.
+         */
+        fun registerVerified(
             sellerId: Long,
             bankCode: String,
             accountNumberEnc: String,
@@ -62,6 +66,6 @@ class SettlementAccount protected constructor(
                 bankCode = bankCode,
                 accountNumberEnc = accountNumberEnc,
                 accountHolderName = accountHolderName,
-            )
+            ).apply { verificationStatus = AccountVerificationStatus.VERIFIED }
     }
 }

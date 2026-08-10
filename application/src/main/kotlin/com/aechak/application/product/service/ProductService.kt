@@ -18,8 +18,6 @@ import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.repository.CategoryRepository
 import com.aechak.domain.product.error.ProductErrorCode
 import com.aechak.domain.product.like.repository.ProductLikeRepository
-import com.aechak.domain.product.stats.ProductStats
-import com.aechak.domain.product.stats.repository.ProductStatsRepository
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
@@ -29,7 +27,6 @@ class ProductService(
     private val productDetailQueryPort: ProductDetailQueryPort,
     private val productOptionsQueryPort: ProductOptionsQueryPort,
     private val categoryRepository: CategoryRepository,
-    private val productStatsRepository: ProductStatsRepository,
     private val productLikeRepository: ProductLikeRepository,
 ) {
     fun getVisiblePage(
@@ -75,10 +72,6 @@ class ProductService(
             hasNext = hasNext,
         )
     }
-
-    /** 상품 통계 배치 조회 */
-    fun getStatsByProductIds(productIds: List<Long>): Map<Long, ProductStats> =
-        productStatsRepository.findAllByProductIds(productIds).associateBy { it.productId }
 
     /** 노출 조건을 통과한 상세 조회 */
     fun getVisibleDetail(publicId: String): ProductCatalogDetailView =
