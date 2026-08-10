@@ -81,3 +81,45 @@ resource "aws_ssm_parameter" "auth_return_urls" {
   type  = "String"
   value = join(",", [for o in local.web_origins : "${o}/login/complete"])
 }
+
+# --- PII 암호화 키 (SCRUM-169) ---
+# 앱이 전화번호 등 민감정보를 암호화(AES-GCM)·검색 해시(HMAC)하는 데 쓴다. 키 분실 = 해당 데이터 영구 복호 불능이라
+# 사람 손을 거치지 않고 terraform이 생성·등재한다(수기 오등재 방지 — db_password와 같은 결).
+# 키 로테이션은 상시 기능이 아니라 계획된 이벤트다: v2 리소스를 추가하고 앱의 active-version을 올린다(v1은 복호용으로 유지).
+
+resource "random_bytes" "pii_aes_key_v1" {
+  length = 32
+
+  lifecycle {
+    prevent_destroy = true # 재생성 = 기존 PII 영구 복호 불능. 철거는 이 가드를 손수 제거한 뒤에만
+  }
+}
+
+resource "random_bytes" "pii_hmac_key" {
+  length = 32
+
+  lifecycle {
+    prevent_destroy = true # 재생성 = 기존 blind index 전부 고아. 철거는 이 가드를 손수 제거한 뒤에만
+  }
+}
+
+resource "aws_ssm_parameter" "pii_aes_key_v1" {
+  name  = "/${var.project}/${var.env}/api/PII_AES_KEY_V1"
+  type  = "SecureString"
+  value = random_bytes.pii_aes_key_v1.base64
+
+  lifecycle {
+    prevent_destroy = true # 파라미터 삭제 = 앱 부팅 fail-fast. 철거는 이 가드를 손수 제거한 뒤에만
+  }
+}
+
+# 검색용 해시 키 — 입력 공간이 좁아(전화번호) 키·DB 동시 유출 시 전수 역산이 가능한 평문 등가 시크릿. AES 키와 분리한다
+resource "aws_ssm_parameter" "pii_hmac_key" {
+  name  = "/${var.project}/${var.env}/api/PII_HMAC_KEY"
+  type  = "SecureString"
+  value = random_bytes.pii_hmac_key.base64
+
+  lifecycle {
+    prevent_destroy = true # 파라미터 삭제 = 앱 부팅 fail-fast. 철거는 이 가드를 손수 제거한 뒤에만
+  }
+}

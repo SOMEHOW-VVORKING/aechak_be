@@ -12,6 +12,7 @@ kotlin = "2.2.21"                # Boot 4의 Kotlin baseline(2.2 계열) — Gra
 spring-boot = "4.0.5"            # 4.0.x 최신 패치 추종 — actuator·코어 버전 정렬 (혼합 시 NoSuchMethodError)
 jakarta-persistence = "3.2.0"    # domain은 BOM 밖이라 직접 관리 — Boot BOM의 JPA 버전과 일치 유지
 jakarta-servlet = "6.1.0"        # web-common 컴파일 전용 (런타임은 실행 모듈의 내장 톰캣이 제공)
+jakarta-validation = "3.1.1"     # web-common 커스텀 제약 컴파일 전용 (런타임은 실행 모듈의 starter-validation이 제공, Boot BOM과 일치)
 slf4j = "2.0.17"
 ktlint-gradle = "14.2.0"         # org.jlleitschuh.gradle.ktlint 래퍼
 ktlint = "1.8.0"                 # ktlint 코어
@@ -27,6 +28,7 @@ jakarta-persistence = { module = "jakarta.persistence:jakarta.persistence-api", 
 # --- web-common: HTTP 번역 계층 ---
 spring-web = { module = "org.springframework:spring-web" }
 jakarta-servlet-api = { module = "jakarta.servlet:jakarta.servlet-api", version.ref = "jakarta-servlet" }
+jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api", version.ref = "jakarta-validation" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 logback-classic = { module = "ch.qos.logback:logback-classic" }  # slf4j 바인딩. 실행 모듈은 Boot가 공급, 라이브러리 모듈은 MDC 테스트에만 필요
 
@@ -45,6 +47,7 @@ flyway-mysql = { module = "org.flywaydb:flyway-mysql" }    # Flyway 10+ MySQL �
 spring-boot-starter-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-oauth2-resource-server" }
 spring-security-oauth2-jose = { module = "org.springframework.security:spring-security-oauth2-jose" }
 spring-boot = { module = "org.springframework.boot:spring-boot" }    # @ConfigurationProperties — infra 어댑터의 설정 바인딩용
+spring-security-crypto = { module = "org.springframework.security:spring-security-crypto" } # PII 필드 암호화(AES-GCM) — 단독 아티팩트, 버전은 BOM이 해석
 jackson-databind = { module = "tools.jackson.core:jackson-databind" } # web-security 필터가 에러 응답(ErrorResponse)을 JSON으로 쓸 때 사용 — Boot 4 = Jackson 3, 버전은 BOM이 해석
 jackson-module-kotlin = { module = "tools.jackson.module:jackson-module-kotlin" } # Kotlin data class 직렬화 정합 — is-접두 프로퍼티 이름 보존(isRequired 등), 없으면 계약과 다른 필드명으로 나간다
 
