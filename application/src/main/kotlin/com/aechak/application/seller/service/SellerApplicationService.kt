@@ -31,9 +31,8 @@ class SellerApplicationService(
         command: SaveDraftCommand,
         promotedKeys: Map<DocumentType, String>,
     ): SellerApplication {
-        if (sellerRepository.existsByUserId(command.userId)) {
-            throw BusinessException(SellerErrorCode.ALREADY_SELLER)
-        }
+        // 서류 없는 요청은 선검증을 거치지 않고, 거친 요청도 그 뒤 승격 왕복 동안 상태가 바뀔 수 있다
+        requireNotSeller(command.userId)
         val application =
             sellerApplicationRepository.findByUserId(command.userId)
                 ?: sellerApplicationRepository.save(SellerApplication.draft(command.userId, command.businessType))
@@ -70,12 +69,17 @@ class SellerApplicationService(
 
     /** 승격(S3 외부 호출) 전에 거절 사유를 미리 걸러 스토리지에 쓰레기를 남기지 않는다. */
     fun requireSavable(userId: Long) {
-        if (sellerRepository.existsByUserId(userId)) {
-            throw BusinessException(SellerErrorCode.ALREADY_SELLER)
-        }
+        requireNotSeller(userId)
         val status = sellerApplicationRepository.findByUserId(userId)?.status ?: return
         if (status != ApplicationStatus.DRAFT && status != ApplicationStatus.REJECTED) {
             throw BusinessException(SellerErrorCode.APPLICATION_STATUS_TRANSITION_NOT_ALLOWED)
+        }
+    }
+
+    /** 이미 셀러인 계정은 신청 대상이 아니다 — 선검증과 저장이 함께 지키는 규칙. */
+    private fun requireNotSeller(userId: Long) {
+        if (sellerRepository.existsByUserId(userId)) {
+            throw BusinessException(SellerErrorCode.ALREADY_SELLER)
         }
     }
 

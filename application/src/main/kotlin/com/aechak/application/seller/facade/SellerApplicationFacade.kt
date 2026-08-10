@@ -36,7 +36,10 @@ class SellerApplicationFacade(
     /** 승격(S3 외부 호출)은 저장 트랜잭션 밖 — 선검증 tx → 승격 → 저장 tx (프로필 이미지 선례). */
     override fun saveDraft(command: SaveDraftCommand): ApplicationResult {
         requirePhoneVerified(command.userId)
-        requireSavableBeforePromote(command)
+        // 승격은 되돌릴 수 없는 외부 쓰기라 올릴 서류가 있을 때만 미리 거른다. 저장 가부의 판정 자체는 저장 트랜잭션이 다시 한다.
+        if (command.documents.isNotEmpty()) {
+            tx.execute { sellerApplicationService.requireSavable(command.userId) }
+        }
         val promotedKeys = promoteDocuments(command)
         try {
             tx.execute { sellerApplicationService.saveDraft(command, promotedKeys) }
@@ -44,12 +47,6 @@ class SellerApplicationFacade(
             translateConcurrentApply(e)
         }
         return getMe(command.userId)
-    }
-
-    /** 승격 전에 거절 사유를 미리 걸러 스토리지 쓰레기를 막는다 — 승격할 서류가 없으면 검사도 불필요. */
-    private fun requireSavableBeforePromote(command: SaveDraftCommand) {
-        if (command.documents.isEmpty()) return
-        tx.execute { sellerApplicationService.requireSavable(command.userId) }
     }
 
     private fun promoteDocuments(command: SaveDraftCommand): Map<DocumentType, String> =
