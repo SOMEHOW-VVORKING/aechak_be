@@ -31,7 +31,7 @@ import java.time.LocalDateTime
         Index(name = "ix_seller_applications_status_submitted_at", columnList = "status, submitted_at"),
         Index(name = "ix_seller_applications_business_reg_no", columnList = "business_reg_no"),
     ],
-    uniqueConstraints = [UniqueConstraint(name = "uk_seller_applications_user_id", columnNames = ["user_id"])],
+    uniqueConstraints = [UniqueConstraint(name = SellerApplication.UK_USER_ID, columnNames = ["user_id"])],
 )
 class SellerApplication protected constructor(
     userId: Long?,
@@ -96,8 +96,9 @@ class SellerApplication protected constructor(
     var bankCode: String? = null
         protected set
 
-    @Column(length = 64)
-    var accountNumber: String? = null
+    /** 정산 계좌번호 AES 암호문(Base64) — 평문은 저장하지 않는다. 암·복호화는 application 계층(PiiCrypto) 소관. */
+    @Column(length = 256)
+    var accountNumberEnc: String? = null
         protected set
 
     @Column(length = 50)
@@ -127,7 +128,7 @@ class SellerApplication protected constructor(
         representativeName: String?,
         telesalesNumber: String?,
         bankCode: String?,
-        accountNumber: String?,
+        accountNumberEnc: String?,
         accountHolder: String?,
     ) {
         requireDraft()
@@ -138,7 +139,7 @@ class SellerApplication protected constructor(
         this.representativeName = representativeName
         this.telesalesNumber = telesalesNumber
         this.bankCode = bankCode
-        this.accountNumber = accountNumber
+        this.accountNumberEnc = accountNumberEnc
         this.accountHolder = accountHolder
     }
 
@@ -150,11 +151,19 @@ class SellerApplication protected constructor(
         status = ApplicationStatus.DRAFT
     }
 
-    /** 서류 등록 — 신청서는 서류 종류당 1장. 같은 종류가 있으면 교체한다(기존 행은 orphanRemoval로 삭제). */
+    /**
+     * 서류 등록 — 신청서는 서류 종류당 1장. 같은 종류가 있으면 그 행을 갱신해 교체한다.
+     * 삭제 후 재삽입이 아닌 이유: 한 flush 안에서 INSERT가 DELETE보다 먼저 나가
+     * (application_id, document_type) UNIQUE에 자충한다.
+     */
     fun registerDocument(document: ApplicationDocument) {
         requireDraft()
-        _documents.removeAll { it.documentType == document.documentType }
-        _documents += document
+        val existing = _documents.find { it.documentType == document.documentType }
+        if (existing == null) {
+            _documents += document
+        } else {
+            existing.replaceFile(document.storageKey, document.contentType)
+        }
     }
 
     fun submit() {
@@ -201,6 +210,9 @@ class SellerApplication protected constructor(
     }
 
     companion object {
+        /** 유저당 신청서 1건 UNIQUE 제약명 — @Table 선언과 커밋 시점 예외 번역(제약명 분기)이 공유한다. */
+        const val UK_USER_ID = "uk_seller_applications_user_id"
+
         fun draft(
             userId: Long?,
             businessType: BusinessType,
