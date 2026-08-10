@@ -31,7 +31,7 @@ import java.time.LocalDateTime
         Index(name = "ix_seller_applications_status_submitted_at", columnList = "status, submitted_at"),
         Index(name = "ix_seller_applications_business_reg_no", columnList = "business_reg_no"),
     ],
-    uniqueConstraints = [UniqueConstraint(name = "uk_seller_applications_user_id", columnNames = ["user_id"])],
+    uniqueConstraints = [UniqueConstraint(name = SellerApplication.UK_USER_ID, columnNames = ["user_id"])],
 )
 class SellerApplication protected constructor(
     userId: Long?,
@@ -210,6 +210,9 @@ class SellerApplication protected constructor(
     }
 
     companion object {
+        /** 유저당 신청서 1건 UNIQUE 제약명 — @Table 선언과 커밋 시점 예외 번역(제약명 분기)이 공유한다. */
+        const val UK_USER_ID = "uk_seller_applications_user_id"
+
         fun draft(
             userId: Long?,
             businessType: BusinessType,

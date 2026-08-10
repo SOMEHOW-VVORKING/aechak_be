@@ -9,6 +9,7 @@ import com.aechak.application.seller.usecase.command.SaveDraftCommand
 import com.aechak.application.seller.usecase.result.ApplicationResult
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.common.error.BusinessException
+import com.aechak.domain.seller.application.SellerApplication
 import com.aechak.domain.seller.application.enums.DocumentType
 import com.aechak.domain.seller.error.SellerErrorCode
 import org.springframework.dao.DataIntegrityViolationException
@@ -83,7 +84,7 @@ class SellerApplicationFacade(
     /** 커밋 시점 무결성 위반의 번역 — 제약명 기반 분기(다른 제약까지 10104로 오라벨하지 않는다). */
     private fun translateConcurrentApply(e: DataIntegrityViolationException): Nothing {
         val cause = e.mostSpecificCause.message.orEmpty()
-        if (cause.contains("uk_seller_applications_user_id")) {
+        if (cause.contains(SellerApplication.UK_USER_ID)) {
             throw BusinessException(SellerErrorCode.APPLICATION_ALREADY_IN_PROGRESS, e)
         }
         throw e
