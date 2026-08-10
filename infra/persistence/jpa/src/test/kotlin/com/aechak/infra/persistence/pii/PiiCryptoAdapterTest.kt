@@ -1,5 +1,6 @@
 package com.aechak.infra.persistence.pii
 
+import com.aechak.application.pii.port.PiiContext
 import javax.crypto.spec.SecretKeySpec
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -18,10 +19,10 @@ class PiiCryptoAdapterTest {
     }
 
     @Test
-    fun `hmac은 엔진과 동일한 값을 위임 반환한다`() {
+    fun `hmac은 엔진에 그대로 위임한다`() {
         assertEquals(
-            HmacSupport("0123456789abcdef0123456789abcdef".toByteArray()).hmac("phone", "01012345678").toList(),
-            adapter.hmac("phone", "01012345678").toList(),
+            HmacSupport("0123456789abcdef0123456789abcdef".toByteArray()).hmac(PiiContext.PHONE, "01012345678").toList(),
+            adapter.hmac(PiiContext.PHONE, "01012345678").toList(),
         )
     }
 }
