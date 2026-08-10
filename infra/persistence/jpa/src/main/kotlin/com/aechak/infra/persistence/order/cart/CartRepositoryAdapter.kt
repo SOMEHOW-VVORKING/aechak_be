@@ -19,6 +19,11 @@ interface CartJpaRepository : JpaRepository<Cart, Long> {
     fun findByBuyerIdForUpdate(
         @Param("buyerId") buyerId: Long,
     ): List<Cart>
+
+    @Query("select c from Cart c left join fetch c._items where c.buyerId = :buyerId")
+    fun findByBuyerIdWithItems(
+        @Param("buyerId") buyerId: Long,
+    ): List<Cart>
 }
 
 @Repository
@@ -33,6 +38,8 @@ class CartRepositoryAdapter(
 
     // fetch join이라 라인 수만큼 행이 나오지만 하이버네이트가 루트를 중복 제거함
     override fun findByBuyerIdForUpdate(buyerId: Long): Cart? = jpaRepository.findByBuyerIdForUpdate(buyerId).firstOrNull()
+
+    override fun findByBuyerIdWithItems(buyerId: Long): Cart? = jpaRepository.findByBuyerIdWithItems(buyerId).firstOrNull()
 
     override fun flush() = jpaRepository.flush()
 }

@@ -9,5 +9,7 @@ interface CartRepository {
 
     fun findByBuyerIdForUpdate(buyerId: Long): Cart?
 
+    fun findByBuyerIdWithItems(buyerId: Long): Cart?
+
     fun flush()
 }
