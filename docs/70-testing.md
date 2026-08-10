@@ -190,6 +190,9 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
 - **픽스처 빌더**: 유스케이스 테스트 착수 시 `OrderFixture.aCart()` 형태의 Object Mother 도입. 그 전까지 도메인 팩토리 직접 호출 허용.
 - **인증**: Security가 컨트롤러 통합에 붙으면 `@WithMockUser`/커스텀 시큐리티 테스트 지원 구체화.
 - **MockK**: Fake/`@MockitoBean`으로 안 풀리는 상호작용 검증이 실제로 필요해지면 카탈로그 추가.
+- ~~**테스트 지원 공유**~~ → **결정 완료(SCRUM-192, 2026-08-10)**. 실행 모듈 2개째(seller-api)부터 통합 테스트 지원
+  (IntegrationTestBase·IntegrationTestConfig·DatabaseCleaner·FakeFileStorage)은 `:api`의 **java-test-fixtures**가 소유하고
+  소비 모듈은 `testImplementation(testFixtures(project(":api")))`로 공유한다. KafkaIntegrationTestBase는 api 전용(컨슈머가 api에만 있음)이라 api src/test 잔류.
 - **MongoDB**: 도입 시 공용 베이스에 `@ServiceConnection` Mongo 컨테이너를 추가한다 — 별도 베이스를 만들지 않는다.
 - **병렬 실행**: 테스트별 스키마/DB 분리로 격리가 강화되면 재검토.
 - **모듈 간 테스트 베이스 공유**: boot/batch·infra에 통합 테스트가 필요해지는 커밋에서 결정한다 — `java-test-fixtures`(또는 test-support 모듈)로 베이스를 공유할지, 모듈마다 자체 베이스를 둘지. 현재는 공유 장치가 없어 boot/api 베이스가 boot/api 안에서만 쓰인다.
