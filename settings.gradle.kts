@@ -23,13 +23,21 @@ rootProject.name = "aechak"
 // 모듈 이름은 평평하게 두고 아래 projectDir로 위치만 매핑한다.
 // infra 구체 모듈 예: persistence/jpa = :jpa-persistence, client/pg-client = :pg-client.
 include(
-    "common", "web-common", "web-security",
-    "domain", "application",
-    "api", "batch",                          // admin — MVP 제외, 필요 시점에 생성
-    "jpa-persistence", "pg-client",          // kafka는 어댑터 코드가 생길 때 하위 모듈 추가
-    "social-client", "redis",                // 소셜 로그인(ACC-01): id_token 검증 / refresh token 저장
+    "common",
+    "web-common",
+    "web-security",
+    "domain",
+    "application",
+    "message",                        // Kafka 통합 메시지 계약 (00-overview A-2)
+    "api",
+    "batch",                          // admin — MVP 제외, 필요 시점에 생성
+    "jpa-persistence",
+    "pg-client",          // kafka는 어댑터 코드가 생길 때 하위 모듈 추가
+    "social-client",
+    "redis",                // 소셜 로그인(ACC-01): id_token 검증 / refresh token 저장
     "s3-client",                             // 오브젝트 스토리지 어댑터
-    "sms-client",                            // SMS 발송 어댑터(SLR-01 전화 인증)
+    "sms-client",                            // SMS 발송 어댑터(전화 인증)
+    "kafka",
 )
 
 project(":api").projectDir = file("boot/api")
@@ -40,3 +48,4 @@ project(":social-client").projectDir = file("infra/client/social-client")
 project(":s3-client").projectDir = file("infra/client/s3-client")
 project(":sms-client").projectDir = file("infra/client/sms-client")
 project(":redis").projectDir = file("infra/redis")
+project(":kafka").projectDir = file("infra/kafka")

@@ -2,6 +2,7 @@ package com.aechak.infra.persistence.pii
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 
 /**
@@ -31,6 +32,19 @@ class HmacSupportTest {
     @Test
     fun `context 라벨이 다르면 같은 값도 다른 해시가 나온다`() {
         assertFalse(hmac.hmac("phone", "5678").contentEquals(hmac.hmac("phone-last4", "5678")))
+    }
+
+    @Test
+    fun `구분자를 포함한 context는 거부한다`() {
+        // 허용하면 ("account", "123:456")과 ("account:123", "456")이 같은 입력으로 뭉개져
+        // 용도가 다른 값이 같은 해시를 갖는다. 뒤쪽을 막아 결합을 유일하게 만든다.
+        assertFailsWith<IllegalArgumentException> { hmac.hmac("account:123", "456") }
+    }
+
+    @Test
+    fun `value의 구분자는 경계를 흔들지 않는다`() {
+        // value는 마지막 필드 — 첫 구분자 이후를 통째로 가져가므로 쪼개질 일이 없다
+        assertFalse(hmac.hmac("account", "123:456").contentEquals(hmac.hmac("account", "123456")))
     }
 
     @Test

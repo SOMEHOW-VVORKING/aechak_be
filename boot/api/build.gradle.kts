@@ -6,10 +6,13 @@ dependencies {
     implementation(project(":application"))
     implementation(project(":jpa-persistence"))         // 도메인 포트의 구현체 조립. 다른 infra 모듈도 어댑터가 생기면 여기 추가
     implementation(project(":social-client"))           // 소셜 id_token 검증 어댑터(ACC-01)
-    implementation(project(":sms-client"))              // SMS 발송 어댑터(SLR-01 전화 인증)
+    implementation(project(":sms-client"))              // SMS 발송 어댑터(전화 인증)
     implementation(project(":redis"))                   // refresh token 저장소 어댑터(ACC-01)
     implementation(project(":s3-client"))               // presigned URL 발급·승격 어댑터
     implementation(kotlin("reflect"))                   // Spring(Data)의 Kotlin 리플렉션 지원에 런타임 필수
+    implementation(project(":kafka"))                   // 릴레이·퍼블리셔 빈 조립
+    implementation(project(":message"))
+    implementation(libs.spring.boot.starter.kafka)
     implementation(libs.spring.boot.starter.web)
     implementation(libs.jackson.module.kotlin)          // Kotlin DTO 필드명 보존(is-접두 등) — Boot이 감지해 자동 등록, 없으면 계약과 다른 이름으로 직렬화된다
     implementation(libs.spring.boot.starter.validation) // Request dto의 @Valid 형식 검증
@@ -26,4 +29,6 @@ dependencies {
     testImplementation(libs.spring.boot.starter.test)  // 컨텍스트 부팅 스모크 테스트(엔티티 스키마 생성 검증)
     testImplementation(libs.spring.boot.testcontainers) // @ServiceConnection — 통합 테스트 DB를 실 MySQL 컨테이너로 배선(70 §9)
     testImplementation(libs.testcontainers.mysql)       // MySQL 컨테이너 모듈. H2는 두지 않는다 — 폴백 통과(false confidence) 차단
+    testImplementation(libs.spring.kafka.test)          // EmbeddedKafka — 이벤트 백본 통합 테스트
+    testImplementation(libs.awaitility)                 // 릴레이·컨슈머가 별도 스레드라 비동기 단언 필요
 }

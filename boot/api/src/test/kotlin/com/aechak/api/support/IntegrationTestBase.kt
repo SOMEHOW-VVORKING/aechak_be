@@ -12,6 +12,8 @@ import org.springframework.context.annotation.Import
 import org.springframework.security.oauth2.jwt.JwtClaimsSet
 import org.springframework.security.oauth2.jwt.JwtEncoder
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.Instant
 
@@ -66,5 +68,11 @@ abstract class IntegrationTestBase {
                 .claim(JwtConfig.ROLE_CLAIM, "GENERAL")
                 .build()
         return jwtEncoder.encode(JwtEncoderParameters.from(claims)).tokenValue
+    }
+
+    companion object {
+        @JvmStatic
+        @DynamicPropertySource
+        fun containers(registry: DynamicPropertyRegistry) = IntegrationTestConfig.registerContainers(registry)
     }
 }

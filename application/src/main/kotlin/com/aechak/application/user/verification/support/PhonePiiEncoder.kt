@@ -1,5 +1,6 @@
 package com.aechak.application.user.verification.support
 
+import com.aechak.application.pii.port.PiiContext
 import com.aechak.application.pii.port.PiiCrypto
 import org.springframework.stereotype.Component
 
@@ -13,7 +14,7 @@ class PhonePii(
 /**
  * 정규화된 전화번호 → 저장 파생값 3종. 컨버터(1필드 1컬럼)로는 다중 컬럼 파생이 불가능해
  * 조회·저장이 같은 값을 쓰는 유스케이스 계층에서 명시 변환한다.
- * context 라벨은 저장된 전 행과 공유하는 영구 계약 — 변경은 전량 재계산 이벤트로만 가능하다.
+ * 용도 라벨은 PiiContext가 소유한다 — 저장된 전 행과 공유하는 영구 계약이라 한곳에 닫아둔다.
  */
 @Component
 class PhonePiiEncoder(
@@ -22,12 +23,7 @@ class PhonePiiEncoder(
     fun encode(normalizedPhoneNumber: String): PhonePii =
         PhonePii(
             encrypted = piiCrypto.encrypt(normalizedPhoneNumber),
-            phoneHmac = piiCrypto.hmac(CONTEXT_PHONE, normalizedPhoneNumber),
-            last4Hmac = piiCrypto.hmac(CONTEXT_PHONE_LAST4, normalizedPhoneNumber.takeLast(4)),
+            phoneHmac = piiCrypto.hmac(PiiContext.PHONE, normalizedPhoneNumber),
+            last4Hmac = piiCrypto.hmac(PiiContext.PHONE_LAST4, normalizedPhoneNumber.takeLast(4)),
         )
-
-    companion object {
-        const val CONTEXT_PHONE = "phone"
-        const val CONTEXT_PHONE_LAST4 = "phone-last4"
-    }
 }
