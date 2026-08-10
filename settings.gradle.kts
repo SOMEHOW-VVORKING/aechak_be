@@ -26,6 +26,7 @@ include(
     "common",
     "web-common",
     "web-security",
+    "pii",                            // PII 암호화 엔진·키 조립 공용 모듈 (web-security 계열, SCRUM-192)
     "domain",
     "application",
     "message",                        // Kafka 통합 메시지 계약 (00-overview A-2)

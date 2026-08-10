@@ -1,4 +1,4 @@
-package com.aechak.infra.persistence.pii
+package com.aechak.pii
 
 import com.aechak.application.pii.port.PiiContext
 import com.aechak.application.pii.port.PiiCrypto

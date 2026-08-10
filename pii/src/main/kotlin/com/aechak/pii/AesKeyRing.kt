@@ -1,4 +1,4 @@
-package com.aechak.infra.persistence.pii
+package com.aechak.pii
 
 import org.springframework.security.crypto.encrypt.AesBytesEncryptor
 import org.springframework.security.crypto.encrypt.AesBytesEncryptor.CipherAlgorithm

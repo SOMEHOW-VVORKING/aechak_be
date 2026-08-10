@@ -1,9 +1,6 @@
-package com.aechak.api.config
+package com.aechak.pii
 
 import com.aechak.application.pii.port.PiiCrypto
-import com.aechak.infra.persistence.pii.AesKeyRing
-import com.aechak.infra.persistence.pii.HmacSupport
-import com.aechak.infra.persistence.pii.PiiCryptoAdapter
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration

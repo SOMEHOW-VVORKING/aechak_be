@@ -1,4 +1,4 @@
-package com.aechak.infra.persistence.pii
+package com.aechak.pii
 
 import javax.crypto.spec.SecretKeySpec
 import kotlin.test.Test

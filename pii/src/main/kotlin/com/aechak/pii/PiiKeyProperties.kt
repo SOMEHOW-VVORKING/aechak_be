@@ -1,4 +1,4 @@
-package com.aechak.api.config
+package com.aechak.pii
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 
