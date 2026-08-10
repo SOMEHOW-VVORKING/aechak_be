@@ -59,6 +59,6 @@ abstract class KafkaIntegrationTestBase {
     companion object {
         @JvmStatic
         @DynamicPropertySource
-        fun datasource(registry: DynamicPropertyRegistry) = IntegrationTestConfig.registerDatasource(registry)
+        fun containers(registry: DynamicPropertyRegistry) = IntegrationTestConfig.registerContainers(registry)
     }
 }
