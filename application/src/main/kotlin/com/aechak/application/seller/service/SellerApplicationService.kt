@@ -22,23 +22,35 @@ class SellerApplicationService(
     private val sellerRepository: SellerRepository,
     private val piiCrypto: PiiCrypto,
 ) {
-    /**
-     * 행 재사용 저장 — 없으면 DRAFT 생성, REJECTED는 재작성 진입(reopen) 후 수정.
-     * SUBMITTED·APPROVED 수정 시도는 도메인 가드(updateDraft)가 10101로 거른다.
-     * 서류는 부분 upsert — 승격을 마친 종류만 등록/교체하고, 미포함 종류는 유지한다.
-     */
+    /** 임시저장 — 신청서 한 건을 재사용해 폼과 서류를 얹는다. */
     fun saveDraft(
         command: SaveDraftCommand,
         promotedKeys: Map<DocumentType, String>,
     ): SellerApplication {
         // 서류 없는 요청은 선검증을 거치지 않고, 거친 요청도 그 뒤 승격 왕복 동안 상태가 바뀔 수 있다
         requireNotSeller(command.userId)
+        val application = findOrReopenDraft(command)
+        updateForm(application, command)
+        registerDocuments(application, promotedKeys)
+        return application
+    }
+
+    /** 행 재사용 — 없으면 DRAFT 생성, REJECTED는 재작성 진입(reopen). */
+    private fun findOrReopenDraft(command: SaveDraftCommand): SellerApplication {
         val application =
             sellerApplicationRepository.findByUserId(command.userId)
                 ?: sellerApplicationRepository.save(SellerApplication.draft(command.userId, command.businessType))
         if (application.status == ApplicationStatus.REJECTED) {
             application.reopen()
         }
+        return application
+    }
+
+    /** 폼 반영 — 계좌번호만 암호화해 넘긴다. SUBMITTED·APPROVED 수정 시도는 도메인 가드가 10101로 거른다. */
+    private fun updateForm(
+        application: SellerApplication,
+        command: SaveDraftCommand,
+    ) {
         application.updateDraft(
             businessType = command.businessType,
             businessName = command.businessName,
@@ -51,6 +63,13 @@ class SellerApplicationService(
             accountNumberEnc = command.accountNumber?.takeIf { it.isNotBlank() }?.let(::encryptAccountNumber),
             accountHolder = command.accountHolder,
         )
+    }
+
+    /** 서류 부분 upsert — 승격을 마친 종류만 등록/교체하고, 미포함 종류는 유지한다. */
+    private fun registerDocuments(
+        application: SellerApplication,
+        promotedKeys: Map<DocumentType, String>,
+    ) {
         promotedKeys.forEach { (documentType, storageKey) ->
             application.registerDocument(
                 ApplicationDocument.of(
@@ -60,7 +79,6 @@ class SellerApplicationService(
                 ),
             )
         }
-        return application
     }
 
     fun getByUserId(userId: Long): SellerApplication =
