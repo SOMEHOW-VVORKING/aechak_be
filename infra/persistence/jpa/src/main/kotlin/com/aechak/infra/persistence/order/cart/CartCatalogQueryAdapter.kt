@@ -2,6 +2,8 @@ package com.aechak.infra.persistence.order.cart
 
 import com.aechak.application.order.cart.port.CartCatalogQueryPort
 import com.aechak.application.order.cart.port.view.CartCatalogItemView
+import com.aechak.domain.order.cart.QCart
+import com.aechak.domain.order.cart.QCartItem
 import com.aechak.domain.product.option.QOptionCombination
 import com.aechak.domain.product.product.QProduct
 import com.aechak.domain.product.product.enums.InspectionStatus
@@ -16,6 +18,8 @@ import org.springframework.stereotype.Repository
 private val optionCombination = QOptionCombination.optionCombination
 private val product = QProduct.product
 private val seller = QSeller.seller
+private val cart = QCart.cart
+private val cartItem = QCartItem.cartItem
 
 private fun <T> JPAQuery<T>.joinProductAndSeller(combination: QOptionCombination): JPAQuery<T> =
     join(combination.product, product)
@@ -67,6 +71,21 @@ class CartCatalogQueryAdapter(
                 inspectionApproved(),
             ).fetch()
     }
+
+    override fun countDisplayableItems(buyerId: Long): Int =
+        (
+            queryFactory
+                .select(cartItem.id.count())
+                .from(cart)
+                .join(cart._items, cartItem)
+                .join(optionCombination)
+                .on(optionCombination.id.eq(cartItem.optionCombinationId))
+                .joinProductAndSeller(optionCombination)
+                .where(
+                    cart.buyerId.eq(buyerId),
+                    inspectionApproved(),
+                ).fetchOne() ?: 0L
+        ).toInt()
 
     private fun itemProjection(): Expression<CartCatalogItemView> =
         Projections.constructor(
