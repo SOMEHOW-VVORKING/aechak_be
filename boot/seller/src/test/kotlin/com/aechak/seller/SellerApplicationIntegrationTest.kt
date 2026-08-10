@@ -1,4 +1,4 @@
-package com.aechak.api.seller
+package com.aechak.seller
 
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.file.error.FileErrorCode

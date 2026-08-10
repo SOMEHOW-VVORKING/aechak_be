@@ -1,4 +1,4 @@
-package com.aechak.api.seller.request.validation
+package com.aechak.seller.seller.request.validation
 
 import jakarta.validation.Constraint
 import jakarta.validation.ConstraintValidator

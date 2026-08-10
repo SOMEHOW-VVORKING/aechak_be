@@ -1,9 +1,9 @@
-package com.aechak.api.seller.request
+package com.aechak.seller.seller.request
 
-import com.aechak.api.seller.request.validation.BusinessRegNo
 import com.aechak.application.seller.usecase.command.SaveDraftCommand
 import com.aechak.domain.seller.application.enums.BusinessType
 import com.aechak.domain.seller.application.enums.DocumentType
+import com.aechak.seller.seller.request.validation.BusinessRegNo
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.NotBlank

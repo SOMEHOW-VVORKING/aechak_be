@@ -1,8 +1,8 @@
-package com.aechak.api.seller
+package com.aechak.seller.seller
 
-import com.aechak.api.seller.request.SaveDraftRequest
-import com.aechak.api.seller.response.ApplicationResponse
 import com.aechak.application.seller.usecase.SellerApplicationUseCase
+import com.aechak.seller.seller.request.SaveDraftRequest
+import com.aechak.seller.seller.response.ApplicationResponse
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid

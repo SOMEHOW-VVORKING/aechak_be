@@ -1,4 +1,4 @@
-package com.aechak.api.seller.response
+package com.aechak.seller.seller.response
 
 import com.aechak.application.seller.usecase.result.ApplicationResult
 import com.aechak.domain.seller.application.enums.ApplicationStatus
