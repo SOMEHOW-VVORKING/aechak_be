@@ -70,6 +70,8 @@ data "aws_iam_policy_document" "ecs_task_runtime" {
     resources = [
       "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/api",
       "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/api/*",
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/seller",
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/seller/*",
     ]
   }
 }
@@ -178,5 +180,82 @@ resource "aws_appautoscaling_policy" "api_cpu" {
     target_value       = 70
     scale_in_cooldown  = 120
     scale_out_cooldown = 60
+  }
+}
+
+# ── seller-api (SCRUM-193): 셀러센터 실행 모듈 ─────────
+# 롤은 api와 공유한다 — 같은 버킷·같은 SSM 트리를 쓰는 동일 신뢰 수준의 웹 모듈이라 분리 실익이 없다.
+# 셀러 전용 권한이 갈라지는 시점(정산 이체 등)에 롤 분리를 재검토한다.
+resource "aws_cloudwatch_log_group" "seller_api" {
+  name              = "/ecs/${var.project}-seller-api-${var.env}"
+  retention_in_days = 30
+}
+
+resource "aws_ecs_task_definition" "seller_api" {
+  family                   = "${var.project}-seller-api-${var.env}"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = 512 # api(1024)의 절반 — 셀러 트래픽은 당분간 미미. 상품 등록이 붙으면 재조정
+  memory                   = 1024
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
+  }
+
+  container_definitions = jsonencode([{
+    name      = "seller-api"
+    image     = "${aws_ecr_repository.seller_api.repository_url}:bootstrap" # 첫 CI 배포가 실제 태그로 교체
+    essential = true
+
+    portMappings = [{ containerPort = var.app_port, protocol = "tcp" }]
+
+    environment = [
+      { name = "SPRING_PROFILES_ACTIVE", value = var.env },
+      { name = "AWS_REGION", value = var.region },
+    ]
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.seller_api.name
+        awslogs-region        = var.region
+        awslogs-stream-prefix = "seller-api"
+      }
+    }
+  }])
+}
+
+resource "aws_ecs_service" "seller_api" {
+  name            = "${var.project}-seller-api-${var.env}"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.seller_api.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  network_configuration {
+    subnets          = [aws_subnet.app_a.id]
+    security_groups  = [aws_security_group.app.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.seller_api.arn
+    container_name   = "seller-api"
+    container_port   = var.app_port
+  }
+
+  health_check_grace_period_seconds = 90
+
+  # 오토스케일링 없음 — 고정 1대. desired_count를 ignore하지 않는 이유이기도 하다(TF가 관리)
+  lifecycle {
+    ignore_changes = [task_definition] # CI가 새 리비전 등록 — TF가 되돌리지 않게
   }
 }
