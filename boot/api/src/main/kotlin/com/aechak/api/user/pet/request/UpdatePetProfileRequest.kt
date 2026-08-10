@@ -1,19 +1,19 @@
 package com.aechak.api.user.pet.request
 
 import com.aechak.application.user.pet.usecase.command.UpdatePetProfileCommand
+import com.aechak.webcommon.validation.NotBlankUnicode
 import com.fasterxml.jackson.annotation.JsonProperty
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
 import jakarta.validation.constraints.Digits
-import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 import java.math.BigDecimal
 
 /** 전체 객체 전송이라 유지할 값도 실어 보내야 함. `profileImageKey`를 빼면 기존 사진이 지워짐. */
 data class UpdatePetProfileRequest(
-    @field:NotBlank(message = "이름은 필수입니다.")
+    @field:NotBlankUnicode(message = "이름은 필수입니다.")
     @field:Size(max = PetProfileConstraints.NAME_MAX, message = "이름은 {max}자를 넘을 수 없습니다.")
     val name: String,
     val breedId: Long,

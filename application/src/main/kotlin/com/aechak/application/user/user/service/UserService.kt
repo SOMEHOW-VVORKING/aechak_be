@@ -37,4 +37,10 @@ class UserService(
 
     /** 내 정보의 소셜 이메일 — 연결 없음·미제공(애플 가림)이면 null. */
     fun findEmail(userId: Long): String? = socialIdentityRepository.findByUserId(userId)?.email
+
+    /** 이 번호(HMAC)를 이미 인증한 계정 — 점유 이전 대상 조회. */
+    fun findPhoneOccupant(phoneHmac: ByteArray): User? = userRepository.findByPhoneHmac(phoneHmac)
+
+    /** 점유 해제 UPDATE를 신규 세팅보다 먼저 DB로 밀어낸다 — 순서가 바뀌면 UNIQUE(phone_hmac)에 자충한다. */
+    fun flushChanges() = userRepository.flush()
 }
