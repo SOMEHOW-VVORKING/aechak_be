@@ -37,7 +37,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 
 /**
- * 담기·조회·수정·삭제 API 통합. HTTP 경계부터 실 MySQL까지 태워 검증 순서와 응답 계약을 고정함.
+ * 담기·조회·개수·수정·삭제 API 통합. HTTP 경계부터 실 MySQL까지 태워 검증 순서와 응답 계약을 고정함.
  * 깨지면 막아야 할 것을 통과시켰거나 응답이 프론트와 어긋난 것임.
  * Boot 4에는 @AutoConfigureMockMvc 슬라이스가 없어 WebApplicationContext와 실 보안 필터체인으로 MockMvc를 조립함.
  * 엔티티에 상태 세터가 없어 상태 픽스처는 persist 후 JPQL bulk update로 만듦.
@@ -1811,6 +1811,95 @@ class CartIntegrationTest : IntegrationTestBase() {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(deleteJson(listOf(1L))),
             ).andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    // ---------- 개수 조회 ----------
+
+    private fun cartItemCount(token: String): Int =
+        JsonPath.read(
+            mockMvc
+                .perform(get("/api/v1/carts/items/count").bearer(token))
+                .andExpect(status().isOk)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8),
+            "$.data.cartItemCount",
+        )
+
+    @Test
+    fun `수량을 여러 개 담아도 품목 종류 수로 센다`() {
+        val token = mintAccessToken(createActiveUser())
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        addCartItem(token, comboIds[0], 2)
+        addCartItem(token, comboIds[1], 3)
+
+        assertEquals(2, cartItemCount(token), "수량 합계 5가 아니라 품목 종류 수 2여야 한다")
+    }
+
+    @Test
+    fun `장바구니가 없으면 0을 주고 행을 만들지 않는다`() {
+        val buyerId = createActiveUser()
+
+        assertEquals(0, cartItemCount(mintAccessToken(buyerId)), "장바구니가 없는 사용자는 0이어야 한다")
+        assertEquals(0L, cartRowCount(buyerId), "개수 조회가 장바구니를 lazy 생성하면 안 된다")
+    }
+
+    @Test
+    fun `장바구니는 있고 항목이 없으면 0이다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (comboIds, _) = seedProduct()
+        deleteCartItems(token, listOf(addCartItemId(token, comboIds[0], 1)))
+
+        assertEquals(1L, cartRowCount(buyerId), "항목만 지워지고 장바구니 행은 남아야 이 테스트가 성립한다")
+        assertEquals(0, cartItemCount(token), "빈 장바구니는 0이어야 한다")
+    }
+
+    @Test
+    fun `남의 장바구니 항목은 세지 않는다`() {
+        val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
+        val mine = mintAccessToken(createActiveUser())
+        val others = mintAccessToken(createActiveUser())
+        addCartItem(mine, comboIds[0], 1)
+        addCartItem(others, comboIds[0], 1)
+        addCartItem(others, comboIds[1], 1)
+
+        assertEquals(1, cartItemCount(mine), "buyerId 조건이 빠지면 남의 항목까지 세어 3이 된다")
+        assertEquals(2, cartItemCount(others), "같은 옵션 조합을 각자 담아도 서로의 라인은 별개여야 한다")
+    }
+
+    @Test
+    fun `검수가 풀린 상품은 목록과 배지에서 함께 빠진다`() {
+        val token = mintAccessToken(createActiveUser())
+        // 검수 상태는 상품 단위라 같은 상품의 옵션 둘로는 한쪽만 떨굴 수 없음
+        val (kept, _) = seedProduct()
+        val (dropped, _) = seedProduct(sellerId = 88L, productName = "고양이 간식")
+        addCartItem(token, kept[0], 1)
+        addCartItem(token, dropped[0], 1)
+        updateInspectionStatus(dropped[0], InspectionStatus.PENDING)
+
+        assertEquals(1, cartItemIdsInOrder(token).size, "검수가 풀린 항목은 목록에서 빠져야 한다")
+        assertEquals(1, cartItemCount(token), "개수가 카탈로그를 안 보면 목록은 1인데 개수만 2가 된다")
+    }
+
+    @Test
+    fun `카탈로그 행이 없는 항목도 목록과 배지에서 함께 빠진다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (comboIds, _) = seedProduct()
+        addCartItem(token, comboIds[0], 1)
+        insertOrphanCartItem(buyerId, 1)
+
+        assertEquals(1, cartItemIdsInOrder(token).size, "카탈로그 행이 없는 항목은 목록에서 빠져야 한다")
+        assertEquals(1, cartItemCount(token), "개수가 카탈로그를 안 보면 목록은 1인데 개수만 2가 된다")
+    }
+
+    @Test
+    fun `미로그인 개수 조회는 401과 20004다`() {
+        mockMvc
+            .perform(get("/api/v1/carts/items/count"))
+            .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.errorCode").value(20004))
     }
 
