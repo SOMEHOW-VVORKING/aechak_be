@@ -4,6 +4,7 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.product.search.support.ProductKeywordSearchCursorCodec
 import com.aechak.domain.product.category.Category
+import com.aechak.domain.product.like.ProductLike
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.product.stats.ProductStats
@@ -220,6 +221,29 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
             ),
             "별점이 응답에 매핑돼야 한다",
         )
+        assertFalse(JsonPath.read<Boolean>(body, "$.data.products[0].isLiked"), "게스트 검색 카드의 isLiked는 false다")
+    }
+
+    @Test
+    fun `로그인 사용자의 검색 카드는 찜한 상품만 isLiked로 반환한다`() {
+        val userId = createActiveUser()
+        tx.execute {
+            val mid = persistMidCategory()
+            val liked = persistProduct(mid, "강아지 사료 찜함")
+            persistProduct(mid, "강아지 사료 안함")
+            em.flush()
+            em.persist(ProductLike.of(liked, userId))
+        }
+
+        val body = searchAuth("사료", mintAccessToken(userId))
+
+        val likedByName =
+            JsonPath
+                .read<List<String>>(body, "$.data.products[*].name")
+                .zip(JsonPath.read<List<Boolean>>(body, "$.data.products[*].isLiked"))
+                .toMap()
+        assertTrue(likedByName.getValue("강아지 사료 찜함"))
+        assertFalse(likedByName.getValue("강아지 사료 안함"))
     }
 
     @Test
@@ -325,6 +349,20 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
             .response
             .getContentAsString(Charsets.UTF_8)
     }
+
+    private fun searchAuth(
+        keyword: String,
+        token: String,
+    ): String =
+        mockMvc
+            .perform(
+                get("/api/v1/search/products")
+                    .param("keyword", keyword)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token"),
+            ).andExpect(status().isOk)
+            .andReturn()
+            .response
+            .getContentAsString(Charsets.UTF_8)
 
     // ---------- 픽스처 (tx.execute 안에서만 호출) ----------
 
