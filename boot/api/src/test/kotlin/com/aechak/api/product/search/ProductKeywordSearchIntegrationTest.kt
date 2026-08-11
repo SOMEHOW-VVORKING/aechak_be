@@ -12,6 +12,7 @@ import com.aechak.domain.product.stats.ProductStats
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.user.user.User
 import com.jayway.jsonpath.JsonPath
+import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -29,6 +30,7 @@ import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import java.math.BigDecimal
+import java.time.Duration
 import java.time.LocalDateTime
 
 /**
@@ -563,7 +565,9 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
 
         searchAsUser("사료", mintAccessToken(userId))
 
-        assertEquals(listOf("사료"), recentKeywords(userId))
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            assertEquals(listOf("사료"), recentKeywords(userId))
+        }
     }
 
     @Test
@@ -590,8 +594,10 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
         searchAsUser("사료", token)
         searchAsUser("사료", token)
 
-        assertEquals(1L, countRecent(userId), "원자적 upsert라 중복 행이 생기지 않는다")
-        assertEquals(listOf("사료"), recentKeywords(userId))
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            assertEquals(1L, countRecent(userId), "원자적 upsert라 중복 행이 생기지 않는다")
+            assertEquals(listOf("사료"), recentKeywords(userId))
+        }
     }
 
     @Test
@@ -606,8 +612,10 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
         searchAsUser("iPhone", token)
         searchAsUser("iphone", token)
 
-        assertEquals(2L, countRecent(userId), "as_cs 콜레이션이라 대소문자가 다르면 각각 저장된다")
-        assertTrue(recentKeywords(userId).containsAll(listOf("iPhone", "iphone")), "친 표기가 각각 보존된다")
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            assertEquals(2L, countRecent(userId), "as_cs 콜레이션이라 대소문자가 다르면 각각 저장된다")
+            assertTrue(recentKeywords(userId).containsAll(listOf("iPhone", "iphone")), "친 표기가 각각 보존된다")
+        }
     }
 
     @Test
@@ -618,7 +626,9 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
         // 전각 공백(U+3000)과 NEL(U+0085)을 내부에 둔 원본. 저장은 trim + 공백 접기 + 대소문자 보존
         searchAsUser("  아이폰\u0085\u3000케이스  ", token)
 
-        assertEquals(listOf("아이폰 케이스"), recentKeywords(userId))
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            assertEquals(listOf("아이폰 케이스"), recentKeywords(userId))
+        }
     }
 
     @Test

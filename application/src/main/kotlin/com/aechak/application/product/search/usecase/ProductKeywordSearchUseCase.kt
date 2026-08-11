@@ -5,5 +5,8 @@ import com.aechak.application.product.usecase.result.ProductSummaryResult
 import com.aechak.application.support.CursorPageResult
 
 interface ProductKeywordSearchUseCase {
-    fun searchProducts(query: ProductKeywordSearchQuery): CursorPageResult<ProductSummaryResult>
+    fun searchProducts(
+        query: ProductKeywordSearchQuery,
+        searcherId: Long?,
+    ): CursorPageResult<ProductSummaryResult>
 }
