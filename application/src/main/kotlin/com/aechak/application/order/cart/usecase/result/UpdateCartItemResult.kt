@@ -11,13 +11,13 @@ data class UpdateCartItemResult(
 ) {
     companion object {
         fun from(
-            survivor: CartItem,
+            updatedItem: CartItem,
             merged: Boolean,
         ): UpdateCartItemResult =
             UpdateCartItemResult(
-                cartItemId = survivor.id,
-                quantity = survivor.quantity,
-                optionCombinationId = survivor.optionCombinationId,
+                cartItemId = updatedItem.id,
+                quantity = updatedItem.quantity,
+                optionCombinationId = updatedItem.optionCombinationId,
                 merged = merged,
             )
     }

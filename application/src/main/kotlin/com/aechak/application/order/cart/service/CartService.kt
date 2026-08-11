@@ -33,10 +33,7 @@ class CartService(
         val catalogItem =
             cartCatalogQueryPort.findItem(command.optionCombinationId)
                 ?: throw BusinessException(OrderErrorCode.CART_ITEM_OPTION_NOT_FOUND)
-        val itemStatus = catalogItem.itemStatus()
-        if (itemStatus != CartItemStatus.ACTIVE && itemStatus != CartItemStatus.OUT_OF_STOCK) {
-            throw BusinessException(OrderErrorCode.CART_ITEM_NOT_PURCHASABLE)
-        }
+        val itemStatus = requirePurchasable(catalogItem)
 
         val cart =
             cartRepository.findByBuyerIdForUpdate(command.buyerId)
@@ -74,13 +71,13 @@ class CartService(
             }
 
         item.changeQuantity(newQuantity)
-        val targetCartItem = targetOptionCombinationId?.let { cart.changeItemOption(item, it) } ?: item
+        val updatedItem = targetOptionCombinationId?.let { cart.changeItemOption(item, it) } ?: item
 
-        requireEnoughStock(targetCartItem, catalog)
+        requireEnoughStock(updatedItem, catalog)
 
         return UpdateCartItemResult.from(
-            survivor = targetCartItem,
-            merged = targetCartItem.id != item.id,
+            updatedItem = updatedItem,
+            merged = updatedItem.id != item.id,
         )
     }
 
@@ -151,11 +148,12 @@ class CartService(
     }
 
     /** 담기와 같은 판정. 품절은 여기서 안 막고 재고 검사가 가름 */
-    private fun requirePurchasable(catalogItem: CartCatalogItemView) {
+    private fun requirePurchasable(catalogItem: CartCatalogItemView): CartItemStatus {
         val itemStatus = catalogItem.itemStatus()
         if (itemStatus != CartItemStatus.ACTIVE && itemStatus != CartItemStatus.OUT_OF_STOCK) {
             throw BusinessException(OrderErrorCode.CART_ITEM_NOT_PURCHASABLE)
         }
+        return itemStatus
     }
 
     fun cartExists(buyerId: Long): Boolean = cartRepository.existsByBuyerId(buyerId)
