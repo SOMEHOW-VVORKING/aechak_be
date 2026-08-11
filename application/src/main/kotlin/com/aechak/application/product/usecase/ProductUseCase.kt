@@ -1,7 +1,9 @@
 package com.aechak.application.product.usecase
 
+import com.aechak.application.product.usecase.command.RegisterProductCommand
 import com.aechak.application.product.usecase.query.ProductSearchQuery
 import com.aechak.application.product.usecase.result.ProductOptionsResult
+import com.aechak.application.product.usecase.result.ProductRegisterResult
 import com.aechak.application.product.usecase.result.ProductResult
 import com.aechak.application.product.usecase.result.ProductSummaryResult
 import com.aechak.application.support.CursorPageResult
@@ -18,4 +20,7 @@ interface ProductUseCase {
 
     /** 상품 옵션 조회 */
     fun getProductOptions(publicId: String): ProductOptionsResult
+
+    /** 셀러 상품 등록 */
+    fun registerProduct(command: RegisterProductCommand): ProductRegisterResult
 }

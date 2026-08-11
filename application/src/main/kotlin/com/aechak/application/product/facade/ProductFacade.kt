@@ -3,8 +3,10 @@ package com.aechak.application.product.facade
 import com.aechak.application.product.service.ProductService
 import com.aechak.application.product.stats.service.ProductStatsService
 import com.aechak.application.product.usecase.ProductUseCase
+import com.aechak.application.product.usecase.command.RegisterProductCommand
 import com.aechak.application.product.usecase.query.ProductSearchQuery
 import com.aechak.application.product.usecase.result.ProductOptionsResult
+import com.aechak.application.product.usecase.result.ProductRegisterResult
 import com.aechak.application.product.usecase.result.ProductResult
 import com.aechak.application.product.usecase.result.ProductSummaryResult
 import com.aechak.application.support.CursorPageResult
@@ -49,4 +51,7 @@ class ProductFacade(
     @Transactional(readOnly = true)
     override fun getProductOptions(publicId: String): ProductOptionsResult =
         ProductOptionsResult.from(productService.getVisibleOptions(publicId))
+
+    @Transactional
+    override fun registerProduct(command: RegisterProductCommand): ProductRegisterResult = TODO()
 }
