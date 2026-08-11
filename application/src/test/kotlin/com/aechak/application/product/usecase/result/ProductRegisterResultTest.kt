@@ -13,19 +13,19 @@ class ProductRegisterResultTest {
     fun `등록 결과는 상품의 공개 식별자와 생성 시각, 넘겨받은 버전 번호를 싣는다`() {
         val product = registeredProduct()
 
-        val result = ProductRegisterResult.from(product, versionNo = 3)
+        val result = ProductRegisterResult.of(product, versionNo = 3)
 
-        assertEquals(product.publicId, result.publicId)
-        assertEquals(product.createdAt, result.createdAt)
-        assertEquals(3, result.versionNo)
+        assertEquals(product.publicId, result.publicId, "내부 id가 아니라 상품의 공개 식별자를 실어야 한다")
+        assertEquals(product.createdAt, result.createdAt, "생성 시각은 상품에서 가져와야 한다")
+        assertEquals(3, result.versionNo, "버전 번호는 넘겨받은 값을 그대로 실어야 한다")
     }
 
     @Test
     fun `등록 직후 상태는 판매중과 검수 승인이다`() {
-        val result = ProductRegisterResult.from(registeredProduct(), versionNo = 1)
+        val result = ProductRegisterResult.of(registeredProduct(), versionNo = 1)
 
-        assertEquals(SaleStatus.ON_SALE, result.saleStatus)
-        assertEquals(InspectionStatus.APPROVED, result.inspectionStatus)
+        assertEquals(SaleStatus.ON_SALE, result.saleStatus, "등록 직후 판매 상태는 판매중이어야 한다")
+        assertEquals(InspectionStatus.APPROVED, result.inspectionStatus, "검수 게이트가 없어 등록 직후 승인이어야 한다")
     }
 
     private fun registeredProduct(): Product {

@@ -13,7 +13,7 @@ data class ProductRegisterResult(
     val createdAt: LocalDateTime,
 ) {
     companion object {
-        fun from(
+        fun of(
             product: Product,
             versionNo: Int,
         ): ProductRegisterResult =

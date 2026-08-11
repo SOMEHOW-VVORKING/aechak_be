@@ -9,7 +9,10 @@ import com.aechak.application.product.usecase.result.ProductOptionsResult
 import com.aechak.application.product.usecase.result.ProductRegisterResult
 import com.aechak.application.product.usecase.result.ProductResult
 import com.aechak.application.product.usecase.result.ProductSummaryResult
+import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.application.support.CursorPageResult
+import com.aechak.common.error.BusinessException
+import com.aechak.domain.product.error.ProductErrorCode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -18,6 +21,7 @@ import java.time.LocalDateTime
 class ProductFacade(
     private val productService: ProductService,
     private val productStatsService: ProductStatsService,
+    private val sellerUseCase: SellerUseCase,
 ) : ProductUseCase {
     @Transactional(readOnly = true)
     override fun getProducts(query: ProductSearchQuery): CursorPageResult<ProductSummaryResult> {
@@ -53,5 +57,11 @@ class ProductFacade(
         ProductOptionsResult.from(productService.getVisibleOptions(publicId))
 
     @Transactional
-    override fun registerProduct(command: RegisterProductCommand): ProductRegisterResult = TODO()
+    override fun registerProduct(command: RegisterProductCommand): ProductRegisterResult {
+        if (!sellerUseCase.isActiveSeller(command.sellerId)) {
+            throw BusinessException(ProductErrorCode.PRODUCT_SELLER_NOT_ACTIVE)
+        }
+        val version = productService.register(command)
+        return ProductRegisterResult.of(version.product, version.versionNo)
+    }
 }
