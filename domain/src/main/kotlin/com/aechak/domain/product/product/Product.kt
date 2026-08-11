@@ -4,6 +4,7 @@ import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.error.ProductErrorCode
 import com.aechak.domain.product.product.enums.InspectionStatus
+import com.aechak.domain.product.product.enums.ProductImageType
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.support.AggregateRoot
 import com.aechak.domain.support.Ulid
@@ -49,7 +50,7 @@ class Product protected constructor(
     @Column(nullable = false, updatable = false, length = 26)
     val publicId: String = Ulid.generate()
 
-    @Column(length = 255, nullable = false)
+    @Column(length = NAME_MAX, nullable = false)
     var name: String = name
         protected set
 
@@ -57,7 +58,7 @@ class Product protected constructor(
     var description: String? = description
         protected set
 
-    @Column(length = 1024)
+    @Column(length = ProductImage.STORAGE_KEY_MAX)
     var representativeImageKey: String? = representativeImageKey
         protected set
 
@@ -92,6 +93,16 @@ class Product protected constructor(
     private val _images: MutableList<ProductImage> = mutableListOf()
     val images: List<ProductImage> get() = _images.toList()
 
+    /** sort_order는 image_type별로 UNIQUE라 종류마다 0부터 다시 매김. */
+    private fun addImages(
+        additionalImageKeys: List<String>,
+        detailImageKeys: List<String>,
+    ) {
+        representativeImageKey?.let { _images += ProductImage.of(ProductImageType.REPRESENTATIVE, it, 0) }
+        additionalImageKeys.forEachIndexed { index, key -> _images += ProductImage.of(ProductImageType.PRODUCT, key, index) }
+        detailImageKeys.forEachIndexed { index, key -> _images += ProductImage.of(ProductImageType.DETAIL, key, index) }
+    }
+
     /** 가격 계산 정책(정가/할인가/기간) */
     fun pricing(): ProductPricing =
         ProductPricing(
@@ -111,6 +122,13 @@ class Product protected constructor(
     fun discountRateAt(at: LocalDateTime): Int? = pricing().discountRateAt(at)
 
     companion object {
+        const val NAME_MAX = 255
+
+        const val REGULAR_PRICE_MIN = 100L
+        const val REGULAR_PRICE_MAX = 100_000_000L
+        const val ADDITIONAL_IMAGE_MAX = 9
+        const val DETAIL_IMAGE_MAX = 20
+
         fun register(
             category: Category,
             sellerId: Long,
@@ -121,9 +139,14 @@ class Product protected constructor(
             discountPrice: Long?,
             discountStartAt: LocalDateTime?,
             discountEndAt: LocalDateTime?,
+            additionalImageKeys: List<String> = emptyList(),
+            detailImageKeys: List<String> = emptyList(),
         ): Product {
-            if (regularPrice < 0L) {
+            if (regularPrice !in REGULAR_PRICE_MIN..REGULAR_PRICE_MAX) {
                 throw BusinessException(ProductErrorCode.INVALID_PRODUCT_PRICE)
+            }
+            if (additionalImageKeys.size > ADDITIONAL_IMAGE_MAX || detailImageKeys.size > DETAIL_IMAGE_MAX) {
+                throw BusinessException(ProductErrorCode.TOO_MANY_PRODUCT_IMAGES)
             }
             if (discountPrice != null && (discountPrice !in 0L..regularPrice)) {
                 throw BusinessException(ProductErrorCode.INVALID_PRODUCT_PRICE)
@@ -150,7 +173,7 @@ class Product protected constructor(
                 discountPrice = discountPrice,
                 discountStartAt = discountStartAt,
                 discountEndAt = discountEndAt,
-            )
+            ).apply { addImages(additionalImageKeys, detailImageKeys) }
         }
     }
 }

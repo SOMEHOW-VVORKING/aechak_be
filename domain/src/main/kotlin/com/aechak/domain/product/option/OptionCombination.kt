@@ -68,6 +68,7 @@ class OptionCombination protected constructor(
             additionalPrice: Long,
             stockQuantity: Int,
             valueSignature: String,
+            optionValues: List<OptionValue> = emptyList(),
         ): OptionCombination {
             if (additionalPrice < 0L) {
                 throw BusinessException(ProductErrorCode.INVALID_OPTION_ADDITIONAL_PRICE)
@@ -76,6 +77,7 @@ class OptionCombination protected constructor(
                 throw BusinessException(ProductErrorCode.INVALID_OPTION_STOCK)
             }
             return OptionCombination(product, name, additionalPrice, stockQuantity, valueSignature)
+                .apply { optionValues.forEach { _values += OptionCombinationValue.of(it) } }
         }
     }
 }

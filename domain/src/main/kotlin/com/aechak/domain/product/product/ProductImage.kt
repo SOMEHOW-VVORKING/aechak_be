@@ -17,7 +17,7 @@ class ProductImage protected constructor(
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     val imageType: ProductImageType,
-    @Column(length = 1024, nullable = false)
+    @Column(length = STORAGE_KEY_MAX, nullable = false)
     val storageKey: String,
     sortOrder: Int,
 ) : BaseEntity() {
@@ -29,6 +29,8 @@ class ProductImage protected constructor(
         protected set
 
     companion object {
+        const val STORAGE_KEY_MAX = 1024
+
         fun of(
             imageType: ProductImageType,
             storageKey: String,
