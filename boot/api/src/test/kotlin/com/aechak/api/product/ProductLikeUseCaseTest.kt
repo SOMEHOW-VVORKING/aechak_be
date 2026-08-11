@@ -3,7 +3,7 @@ package com.aechak.api.product
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.product.like.usecase.ProductLikeUseCase
 import com.aechak.application.product.like.usecase.command.ProductLikeCommand
-import com.aechak.application.product.like.usecase.query.LikedProductSearchQuery
+import com.aechak.application.product.like.usecase.query.LikedProductListQuery
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.enums.CategoryStatus
@@ -136,7 +136,7 @@ class ProductLikeUseCaseTest : IntegrationTestBase() {
         userId: Long,
         cursor: String? = null,
         size: Int = 20,
-    ) = productLikeUseCase.getLikedProducts(LikedProductSearchQuery(cursor = cursor, size = size), userId)
+    ) = productLikeUseCase.getLikedProducts(LikedProductListQuery(cursor = cursor, size = size), userId)
 
     // ---------- 찜 추가·취소 ----------
 

@@ -1,7 +1,7 @@
 package com.aechak.application.product.like.usecase
 
 import com.aechak.application.product.like.usecase.command.ProductLikeCommand
-import com.aechak.application.product.like.usecase.query.LikedProductSearchQuery
+import com.aechak.application.product.like.usecase.query.LikedProductListQuery
 import com.aechak.application.product.usecase.result.ProductSummaryResult
 import com.aechak.application.support.CursorPageResult
 
@@ -14,7 +14,7 @@ interface ProductLikeUseCase {
 
     /** 내 찜 목록 조회 */
     fun getLikedProducts(
-        query: LikedProductSearchQuery,
+        query: LikedProductListQuery,
         userId: Long,
     ): CursorPageResult<ProductSummaryResult>
 }

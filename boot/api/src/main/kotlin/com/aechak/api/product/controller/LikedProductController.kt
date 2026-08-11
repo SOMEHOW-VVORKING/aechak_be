@@ -1,6 +1,6 @@
 package com.aechak.api.product.controller
 
-import com.aechak.api.product.request.LikedProductSearchRequest
+import com.aechak.api.product.request.LikedProductListRequest
 import com.aechak.api.product.response.ProductListResponse
 import com.aechak.application.product.like.usecase.ProductLikeUseCase
 import com.aechak.webcommon.response.ApiResponse
@@ -20,7 +20,7 @@ class LikedProductController(
 ) {
     @GetMapping
     fun getLikedProducts(
-        @Valid @ModelAttribute request: LikedProductSearchRequest,
+        @Valid @ModelAttribute request: LikedProductListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<ProductListResponse>> =
         ResponseEntity.ok(

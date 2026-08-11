@@ -1,7 +1,7 @@
 package com.aechak.application.product.like.usecase.query
 
 /** 내 찜 목록 조회 입력 (커서 페이지네이션) */
-data class LikedProductSearchQuery(
+data class LikedProductListQuery(
     val cursor: String? = null,
     val size: Int = 20,
 ) {

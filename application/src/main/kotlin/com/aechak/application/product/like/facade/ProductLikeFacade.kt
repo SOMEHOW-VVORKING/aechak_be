@@ -3,7 +3,7 @@ package com.aechak.application.product.like.facade
 import com.aechak.application.product.like.service.ProductLikeService
 import com.aechak.application.product.like.usecase.ProductLikeUseCase
 import com.aechak.application.product.like.usecase.command.ProductLikeCommand
-import com.aechak.application.product.like.usecase.query.LikedProductSearchQuery
+import com.aechak.application.product.like.usecase.query.LikedProductListQuery
 import com.aechak.application.product.usecase.result.ProductSummaryResult
 import com.aechak.application.support.CursorPageResult
 import org.springframework.stereotype.Service
@@ -22,7 +22,7 @@ class ProductLikeFacade(
 
     @Transactional(readOnly = true)
     override fun getLikedProducts(
-        query: LikedProductSearchQuery,
+        query: LikedProductListQuery,
         userId: Long,
     ): CursorPageResult<ProductSummaryResult> {
         val now = LocalDateTime.now()

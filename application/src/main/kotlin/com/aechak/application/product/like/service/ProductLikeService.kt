@@ -5,7 +5,7 @@ import com.aechak.application.product.like.port.LikedProductQueryPort
 import com.aechak.application.product.like.port.view.LikedProductView
 import com.aechak.application.product.like.support.LikedProductCursorCodec
 import com.aechak.application.product.like.usecase.command.ProductLikeCommand
-import com.aechak.application.product.like.usecase.query.LikedProductSearchQuery
+import com.aechak.application.product.like.usecase.query.LikedProductListQuery
 import com.aechak.application.support.CursorPageResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.error.ProductErrorCode
@@ -38,7 +38,7 @@ class ProductLikeService(
     }
 
     fun getLikedPage(
-        query: LikedProductSearchQuery,
+        query: LikedProductListQuery,
         userId: Long,
         now: LocalDateTime,
     ): CursorPageResult<LikedProductView> {
