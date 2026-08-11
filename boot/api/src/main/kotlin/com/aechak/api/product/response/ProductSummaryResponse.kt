@@ -14,6 +14,7 @@ data class ProductSummaryResponse(
     val saleStatus: String,
     val averageRating: BigDecimal?,
     val reviewCount: Int,
+    val isLiked: Boolean,
 ) {
     companion object {
         fun from(result: ProductSummaryResult): ProductSummaryResponse =
@@ -28,6 +29,7 @@ data class ProductSummaryResponse(
                 saleStatus = result.saleStatus.name,
                 averageRating = result.averageRating,
                 reviewCount = result.reviewCount,
+                isLiked = result.isLiked,
             )
     }
 }

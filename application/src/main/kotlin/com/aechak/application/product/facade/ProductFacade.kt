@@ -1,5 +1,6 @@
 package com.aechak.application.product.facade
 
+import com.aechak.application.product.like.service.ProductLikeStatusService
 import com.aechak.application.product.service.ProductService
 import com.aechak.application.product.stats.service.ProductStatsService
 import com.aechak.application.product.usecase.ProductUseCase
@@ -16,21 +17,18 @@ import java.time.LocalDateTime
 class ProductFacade(
     private val productService: ProductService,
     private val productStatsService: ProductStatsService,
+    private val productLikeStatusService: ProductLikeStatusService,
 ) : ProductUseCase {
     @Transactional(readOnly = true)
-    override fun getProducts(query: ProductSearchQuery): CursorPageResult<ProductSummaryResult> {
+    override fun getProducts(
+        query: ProductSearchQuery,
+        userId: Long?,
+    ): CursorPageResult<ProductSummaryResult> {
         val now = LocalDateTime.now()
         val page = productService.getVisiblePage(query, now)
         val statsById = productStatsService.getStatsByProductIds(page.items.map { it.id })
-        return CursorPageResult(
-            items =
-                page.items.map {
-                    ProductSummaryResult.from(view = it, stats = statsById[it.id], now = now)
-                },
-            totalCount = page.totalCount,
-            nextCursor = page.nextCursor,
-            hasNext = page.hasNext,
-        )
+        val likedIds = productLikeStatusService.likedProductIds(userId, page.items.map { it.id })
+        return ProductSummaryResult.fromPage(page, statsById, likedIds, now)
     }
 
     @Transactional(readOnly = true)
