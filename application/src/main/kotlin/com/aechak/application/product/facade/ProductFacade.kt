@@ -21,12 +21,8 @@ class ProductFacade(
     override fun getProducts(query: ProductSearchQuery): CursorPageResult<ProductSummaryResult> {
         val now = LocalDateTime.now()
         val page = productService.getVisiblePage(query, now)
-        val statsById = productStatsService.getStatsByProductIds(page.items.map { it.id })
         return CursorPageResult(
-            items =
-                page.items.map {
-                    ProductSummaryResult.from(view = it, stats = statsById[it.id], now = now)
-                },
+            items = page.items.map { ProductSummaryResult.from(view = it, now = now) },
             totalCount = page.totalCount,
             nextCursor = page.nextCursor,
             hasNext = page.hasNext,

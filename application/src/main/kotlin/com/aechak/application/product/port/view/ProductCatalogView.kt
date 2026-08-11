@@ -2,13 +2,15 @@ package com.aechak.application.product.port.view
 
 import com.aechak.domain.product.product.ProductPricing
 import com.aechak.domain.product.product.enums.SaleStatus
+import java.math.BigDecimal
 import java.time.LocalDateTime
 
 /**
  * 카탈로그 목록 조회 읽기 모델.
  *
  * sortPriceAtAnchor, popularityScore는 SQL이 계산한 정렬 및 커서 경계용 값(표시용 아님).
- * 표시용 별점, 리뷰 수, 할인가는 Facade와 [pricing]이 응답 시각 기준으로 채움.
+ * averageRating, reviewCount는 product_stats 조인에서 함께 담는 표시용 값
+ * 할인가는 [pricing]이 응답 시각 기준으로 계산
  */
 data class ProductCatalogView(
     val id: Long,
@@ -23,8 +25,10 @@ data class ProductCatalogView(
     val sortPriceAtAnchor: Long,
     val saleStatus: SaleStatus,
     val popularityScore: Int,
+    val averageRating: BigDecimal?,
+    val reviewCount: Int,
 ) {
-    /** 정렬키가 필요 없는 조회(카탈로그, 상세 등)용 보조 생성자. popularityScore=0 */
+    /** 정렬키(popularityScore)가 필요 없는 목록 조회용 보조 생성자(popularityScore=0) */
     constructor(
         id: Long,
         publicId: String,
@@ -37,6 +41,8 @@ data class ProductCatalogView(
         discountEndAt: LocalDateTime?,
         sortPriceAtAnchor: Long,
         saleStatus: SaleStatus,
+        averageRating: BigDecimal?,
+        reviewCount: Int,
     ) : this(
         id,
         publicId,
@@ -50,6 +56,8 @@ data class ProductCatalogView(
         sortPriceAtAnchor,
         saleStatus,
         0,
+        averageRating,
+        reviewCount,
     )
 
     fun pricing(): ProductPricing =

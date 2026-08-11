@@ -28,6 +28,8 @@ class ProductCatalogQueryAdapter(
     override fun findVisiblePage(condition: ProductCatalogCondition): List<ProductCatalogView> {
         val effectivePrice = effectivePrice(condition.now)
         return visibleProductQuery(queryFactory, catalogViewProjection(effectivePrice))
+            .leftJoin(productStats)
+            .on(productStats.productId.eq(product.id))
             .where(categoryFilter(condition.categoryId), keyset(condition, effectivePrice))
             .orderBy(*orderBy(condition.sort, effectivePrice))
             .limit(condition.limit.toLong())

@@ -2,7 +2,6 @@ package com.aechak.application.product.usecase.result
 
 import com.aechak.application.product.port.view.ProductCatalogView
 import com.aechak.domain.product.product.enums.SaleStatus
-import com.aechak.domain.product.stats.ProductStats
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -21,7 +20,6 @@ data class ProductSummaryResult(
     companion object {
         fun from(
             view: ProductCatalogView,
-            stats: ProductStats?,
             now: LocalDateTime,
         ): ProductSummaryResult {
             val pricing = view.pricing()
@@ -34,8 +32,8 @@ data class ProductSummaryResult(
                 discountPrice = pricing.discountedPriceAt(now),
                 discountRate = pricing.discountRateAt(now),
                 saleStatus = view.saleStatus,
-                averageRating = stats?.averageRating,
-                reviewCount = stats?.reviewCount ?: 0,
+                averageRating = view.averageRating,
+                reviewCount = view.reviewCount,
             )
         }
     }
