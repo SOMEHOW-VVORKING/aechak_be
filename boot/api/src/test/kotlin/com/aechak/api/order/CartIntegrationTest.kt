@@ -153,6 +153,13 @@ class CartIntegrationTest : IntegrationTestBase() {
             .singleResult
             .toLong()
 
+    private fun cartItemRowCountOf(cartItemId: Long): Long =
+        em
+            .createQuery("select count(ci) from CartItem ci where ci.id = :id", java.lang.Long::class.java)
+            .setParameter("id", cartItemId)
+            .singleResult
+            .toLong()
+
     private fun cartItemRowCount(): Long =
         em
             .createQuery("select count(ci) from CartItem ci", java.lang.Long::class.java)
@@ -1698,34 +1705,32 @@ class CartIntegrationTest : IntegrationTestBase() {
         assertEquals(0, JsonPath.read<Int>(body, "$.data.deletedCount"))
     }
 
+    /** 남의 항목 존재를 응답으로 알려주지 않으려고 없는 id와 똑같이 무시함. 지워지지 않는 것이 핵심임. */
     @Test
-    fun `장바구니가 없어도 남의 항목 삭제는 50206이고 아무것도 지우지 않는다`() {
+    fun `장바구니가 없어도 남의 항목은 지워지지 않고 0건 성공이다`() {
         val (comboIds, _) = seedProduct()
         val ownerItemId = addCartItemId(mintAccessToken(createActiveUser()), comboIds[0], 1)
         val intruderToken = mintAccessToken(createActiveUser())
 
-        mockMvc
-            .perform(deleteRequest(intruderToken, deleteJson(listOf(ownerItemId))))
-            .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(50206))
+        val body = deleteCartItems(intruderToken, listOf(ownerItemId))
 
-        assertEquals(1L, cartItemRowCount(), "장바구니가 없는 요청자라도 남의 항목을 지우면 안 된다")
+        assertEquals(0, JsonPath.read<Int>(body, "$.data.deletedCount"), "남의 항목은 세지 않아야 한다")
+        assertEquals(1L, cartItemRowCount(), "남의 항목이 지워지면 안 된다")
     }
 
     @Test
-    fun `남의 항목이 하나라도 섞이면 50206이고 아무것도 지우지 않는다`() {
+    fun `남의 항목이 섞이면 내 것만 지우고 남의 것은 무시한다`() {
         val (comboIds, _) = seedProduct(optionNames = listOf("옵션 1", "옵션 2"))
         val ownerToken = mintAccessToken(createActiveUser())
         val intruderToken = mintAccessToken(createActiveUser())
         val ownerItemId = addCartItemId(ownerToken, comboIds[0], 1)
         val intruderItemId = addCartItemId(intruderToken, comboIds[1], 1)
 
-        mockMvc
-            .perform(deleteRequest(intruderToken, deleteJson(listOf(intruderItemId, ownerItemId))))
-            .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(50206))
+        val body = deleteCartItems(intruderToken, listOf(intruderItemId, ownerItemId))
 
-        assertEquals(2L, cartItemRowCount(), "부분 삭제 없이 전부 실패해야 한다")
+        assertEquals(1, JsonPath.read<Int>(body, "$.data.deletedCount"), "내 것 하나만 세야 한다")
+        assertEquals(1L, cartItemRowCount(), "남의 항목은 남아 있어야 한다")
+        assertEquals(1L, cartItemRowCountOf(ownerItemId), "지워지면 안 되는 것은 소유자의 항목이다")
     }
 
     @Test

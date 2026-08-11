@@ -85,28 +85,16 @@ class CartService(
     }
 
     fun deleteItems(command: DeleteCartItemsCommand): DeleteCartItemsResult {
-        val cart = cartRepository.findByBuyerIdForUpdate(command.buyerId)
-        if (cart == null) {
-            if (cartRepository.existsAnyItemById(command.cartItemIds)) {
-                throw BusinessException(OrderErrorCode.CART_ITEM_ACCESS_DENIED)
-            }
-            return DeleteCartItemsResult(deletedCount = 0)
+        val cart =
+            cartRepository.findByBuyerIdForUpdate(command.buyerId)
+                ?: return DeleteCartItemsResult(deletedCount = 0)
+
+        val ignoredIds = command.cartItemIds - cart.getItemIds()
+        if (ignoredIds.isNotEmpty()) {
+            log.warn("내 장바구니에 없는 항목의 삭제 요청을 무시함. buyerId={}, cartItemIds={}", command.buyerId, ignoredIds)
         }
 
-        requireAllOwned(command.cartItemIds, cart)
-        val deletedCount = cart.removeItems(command.cartItemIds)
-
-        return DeleteCartItemsResult(deletedCount = deletedCount)
-    }
-
-    private fun requireAllOwned(
-        requestDeleteIds: Set<Long>,
-        cart: Cart,
-    ) {
-        val otherIds = requestDeleteIds - cart.getItemIds()
-        if (cartRepository.existsAnyItemById(otherIds)) {
-            throw BusinessException(OrderErrorCode.CART_ITEM_ACCESS_DENIED)
-        }
+        return DeleteCartItemsResult(deletedCount = cart.removeItems(command.cartItemIds))
     }
 
     private fun validatedQuantity(command: UpdateCartItemCommand): Int? {
