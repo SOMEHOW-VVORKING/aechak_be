@@ -84,14 +84,6 @@ class User protected constructor() : AggregateRoot() {
     val profile: UserProfile
         get() = _profile ?: throw IllegalStateException("프로필이 로딩/생성되지 않았습니다 (userId=$id)")
 
-    /**
-     * 프로필 미생성 허용 조회 — "ACTIVE ⇒ 프로필 존재"는 정상 전이(completeOnboarding)에서만 보장되고,
-     * status만 직접 UPDATE된 계정(테스트 픽스처·수동 활성화된 dev 계정)이 실존한다. 표시 계층은
-     * null을 "프로필 없음"으로 강하하고, 복구는 updateProfile의 생성 경로가 담당한다.
-     */
-    val profileOrNull: UserProfile?
-        get() = _profile
-
     fun withdraw() {
         if (status == UserStatus.WITHDRAWN) {
             throw BusinessException(UserErrorCode.ALREADY_WITHDRAWN)
@@ -110,19 +102,14 @@ class User protected constructor() : AggregateRoot() {
         status = UserStatus.ACTIVE
     }
 
-    /**
-     * 프로필 전체 교체 — ACTIVE에서만. 비ACTIVE 도달은 UserStatusFilter가 걸렀어야 할 방어선 이상이라 500이 맞다.
-     * 프로필 행이 없는 ACTIVE 계정(수동 활성화)은 여기서 생성해 자가 치유한다 — 생성·교체 모두 결과는
-     * "요청 값 그대로의 프로필"이라 호출자 관점 동작 차이가 없다.
-     */
+    /** 프로필 전체 교체 — ACTIVE에서만. 비ACTIVE 도달은 UserStatusFilter가 걸렀어야 할 방어선 이상이라 500이 맞다. */
     fun updateProfile(
         nickname: String,
         bio: String?,
         profileImageKey: String?,
     ) {
         check(status == UserStatus.ACTIVE) { "프로필 수정은 ACTIVE 상태에서만 가능합니다 (userId=$id, status=$status)" }
-        val target = _profile ?: UserProfile.of(this, nickname).also { _profile = it }
-        target.updateProfile(nickname, bio, profileImageKey)
+        profile.updateProfile(nickname, bio, profileImageKey)
     }
 
     /**

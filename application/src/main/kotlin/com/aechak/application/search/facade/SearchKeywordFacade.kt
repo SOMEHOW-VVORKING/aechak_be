@@ -12,6 +12,12 @@ import org.springframework.transaction.annotation.Transactional
 class SearchKeywordFacade(
     private val searchKeywordService: SearchKeywordService,
 ) : SearchKeywordUseCase {
+    @Transactional
+    override fun recordRecentKeyword(
+        userId: Long,
+        keyword: String,
+    ) = searchKeywordService.recordRecentKeyword(userId, keyword)
+
     @Transactional(readOnly = true)
     override fun getSearchKeywords(userId: Long): SearchKeywordsResult {
         val recentKeywords = searchKeywordService.getRecentKeywords(userId).map(RecentKeywordResult::from)

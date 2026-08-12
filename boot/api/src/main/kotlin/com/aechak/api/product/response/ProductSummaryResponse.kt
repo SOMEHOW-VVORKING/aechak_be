@@ -1,6 +1,6 @@
 package com.aechak.api.product.response
 
-import com.aechak.application.product.usecase.result.ProductSummaryResult
+import com.aechak.application.product.product.usecase.result.ProductSummaryResult
 import java.math.BigDecimal
 
 data class ProductSummaryResponse(

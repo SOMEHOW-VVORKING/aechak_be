@@ -1,7 +1,7 @@
 package com.aechak.application.review.facade
 
 import com.aechak.application.file.usecase.FileUseCase
-import com.aechak.application.product.usecase.ProductUseCase
+import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.review.service.ProductReviewService
 import com.aechak.application.review.usecase.ProductReviewUseCase
 import com.aechak.application.review.usecase.query.ProductReviewListQuery
