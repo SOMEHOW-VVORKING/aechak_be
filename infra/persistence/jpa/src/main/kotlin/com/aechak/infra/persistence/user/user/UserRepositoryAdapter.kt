@@ -23,6 +23,8 @@ interface UserJpaRepository : JpaRepository<User, Long> {
         @Param("nickname") nickname: String,
         @Param("excludeUserId") excludeUserId: Long,
     ): Boolean
+
+    fun findByPhoneHmac(phoneHmac: ByteArray): User?
 }
 
 /**
@@ -41,4 +43,8 @@ class UserRepositoryAdapter(
         nickname: String,
         excludeUserId: Long,
     ): Boolean = jpaRepository.existsNickname(nickname, excludeUserId)
+
+    override fun findByPhoneHmac(phoneHmac: ByteArray): User? = jpaRepository.findByPhoneHmac(phoneHmac)
+
+    override fun flush() = jpaRepository.flush()
 }

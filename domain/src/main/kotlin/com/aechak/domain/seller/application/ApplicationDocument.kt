@@ -36,10 +36,21 @@ class ApplicationDocument protected constructor(
     val documentType: DocumentType = documentType
 
     @Column(nullable = false, length = 512)
-    val storageKey: String = storageKey
+    var storageKey: String = storageKey
+        protected set
 
     @Column(nullable = false, length = 100)
-    val contentType: String = contentType
+    var contentType: String = contentType
+        protected set
+
+    /** 동일 종류 재등록 = 파일 교체 — 행을 지웠다 다시 만들지 않고 같은 행을 갱신한다(updated_at이 곧 최신 업로드 시각). */
+    fun replaceFile(
+        storageKey: String,
+        contentType: String,
+    ) {
+        this.storageKey = storageKey
+        this.contentType = contentType
+    }
 
     companion object {
         fun of(
