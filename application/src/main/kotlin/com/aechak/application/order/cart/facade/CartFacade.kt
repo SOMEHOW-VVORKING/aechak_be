@@ -1,23 +1,28 @@
 package com.aechak.application.order.cart.facade
 
+import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.order.cart.service.CartService
 import com.aechak.application.order.cart.usecase.CartUseCase
 import com.aechak.application.order.cart.usecase.command.AddCartItemCommand
 import com.aechak.application.order.cart.usecase.result.AddCartItemResult
+import com.aechak.application.order.cart.usecase.result.CartResult
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
+import java.time.LocalDateTime
 
 /**
- * 트랜잭션 경계 둘을 파사드가 소유함. 장바구니 확보가 하나, 담기가 하나.
+ * 담기의 트랜잭션 경계 둘을 파사드가 소유함. 장바구니 확보가 하나, 담기가 하나.
  * 생성이 담기 트랜잭션에 중첩되지 않아야 충돌이 담기까지 굴리지 않음.
  */
 @Service
 class CartFacade(
     private val cartService: CartService,
+    private val fileUseCase: FileUseCase,
     transactionManager: PlatformTransactionManager,
 ) : CartUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -31,6 +36,17 @@ class CartFacade(
     override fun addCartItem(command: AddCartItemCommand): AddCartItemResult {
         ensureCart(command.buyerId)
         return tx.execute { cartService.addItem(command) }!!
+    }
+
+    @Transactional(readOnly = true)
+    override fun getCart(buyerId: Long): CartResult {
+        val items = cartService.findCartItems(buyerId)
+        return CartResult.from(
+            items = items,
+            catalog = cartService.findDisplayCatalog(items),
+            now = LocalDateTime.now(),
+            resolveThumbnail = fileUseCase::resolveMediaUrl,
+        )
     }
 
     /**

@@ -36,7 +36,7 @@ class SellerApplicationTest {
             representativeName = "김운경",
             telesalesNumber = "2026-서울강남-01234",
             bankCode = "004",
-            accountNumber = "enc:abc",
+            accountNumberEnc = "enc:abc",
             accountHolder = "김운경",
         )
 
@@ -60,7 +60,7 @@ class SellerApplicationTest {
                     representativeName = null,
                     telesalesNumber = null,
                     bankCode = null,
-                    accountNumber = null,
+                    accountNumberEnc = null,
                     accountHolder = null,
                 )
             }
@@ -98,7 +98,7 @@ class SellerApplicationTest {
             representativeName = "김운경",
             telesalesNumber = null,
             bankCode = null,
-            accountNumber = null,
+            accountNumberEnc = null,
             accountHolder = null,
         )
         application.submit()

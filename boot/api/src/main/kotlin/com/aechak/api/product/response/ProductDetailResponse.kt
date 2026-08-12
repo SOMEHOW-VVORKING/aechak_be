@@ -1,6 +1,6 @@
 package com.aechak.api.product.response
 
-import com.aechak.application.product.usecase.result.ProductResult
+import com.aechak.application.product.product.usecase.result.ProductResult
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.math.BigDecimal
 

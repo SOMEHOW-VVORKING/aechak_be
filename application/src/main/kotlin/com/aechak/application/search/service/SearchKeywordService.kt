@@ -6,6 +6,7 @@ import com.aechak.domain.search.recent.RecentSearch
 import com.aechak.domain.search.recent.repository.RecentSearchRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import java.time.LocalDateTime
 
 @Service
 class SearchKeywordService(
@@ -13,6 +14,16 @@ class SearchKeywordService(
     private val recommendedKeywordRepository: RecommendedKeywordRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    /** 검색 실행 시 최근 검색어 upsert. 표기 보존 정규화 후 저장, 저장 개수 상한은 미강제(조회에서 컷) */
+    fun recordRecentKeyword(
+        userId: Long,
+        rawKeyword: String,
+    ) {
+        val keyword = RecentSearch.normalizeKeyword(rawKeyword)
+        if (keyword.isBlank()) return
+        recentSearchRepository.record(userId, keyword, LocalDateTime.now())
+    }
 
     fun getRecentKeywords(userId: Long): List<RecentSearch> = recentSearchRepository.findRecentByUserId(userId, MAX_RECENT_KEYWORDS)
 

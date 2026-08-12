@@ -1,10 +1,10 @@
 package com.aechak.api.product
 
 import com.aechak.api.support.IntegrationTestBase
-import com.aechak.application.product.port.ProductCatalogSort
-import com.aechak.application.product.service.ProductService
-import com.aechak.application.product.usecase.ProductUseCase
-import com.aechak.application.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.port.ProductCatalogSort
+import com.aechak.application.product.product.service.ProductService
+import com.aechak.application.product.product.usecase.ProductUseCase
+import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.product.category.Category
