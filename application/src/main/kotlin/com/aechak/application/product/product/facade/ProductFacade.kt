@@ -1,12 +1,12 @@
 package com.aechak.application.product.product.facade
 
 import com.aechak.application.product.product.service.ProductService
-import com.aechak.application.product.stats.service.ProductStatsService
 import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.application.product.product.usecase.result.ProductOptionsResult
 import com.aechak.application.product.product.usecase.result.ProductResult
 import com.aechak.application.product.product.usecase.result.ProductSummaryResult
+import com.aechak.application.product.stats.service.ProductStatsService
 import com.aechak.application.support.CursorPageResult
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
