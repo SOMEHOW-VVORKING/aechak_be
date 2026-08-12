@@ -1,5 +1,6 @@
 package com.aechak.application.file.facade
 
+import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.service.FileService
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
@@ -17,4 +18,9 @@ class FileFacade(
     override fun promote(command: PromoteFileCommand): PromoteFileResult = fileService.promote(command)
 
     override fun resolveMediaUrl(key: String?): String? = fileService.resolveMediaUrl(key)
+
+    override fun issueDownloadUrl(
+        key: String,
+        purpose: UploadPurpose,
+    ): String = fileService.issueDownloadUrl(key, purpose)
 }

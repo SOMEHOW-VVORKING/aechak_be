@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest
 
 @Component
@@ -44,6 +45,22 @@ class FileStorageAdapter(
     }
 
     override fun publicUrlOf(key: String): String = "${s3Properties.mediaPublicBaseUrl.trimEnd('/')}/${key.trimStart('/')}"
+
+    override fun issueDownloadUrl(
+        key: String,
+        purpose: UploadPurpose,
+    ): String {
+        val presigned =
+            s3Presigner.presignGetObject { presigned: GetObjectPresignRequest.Builder ->
+                presigned.signatureDuration(s3Properties.downloadPresignTtl).getObjectRequest { request ->
+                    request
+                        .bucket(bucketOf(purpose.category))
+                        .key(key)
+                        .build()
+                }
+            }
+        return presigned.url().toString()
+    }
 
     private fun bucketOf(category: StorageCategory): String =
         when (category) {

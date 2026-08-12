@@ -4,6 +4,7 @@ import com.aechak.application.file.error.FileErrorCode
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.enums.FileType
+import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.file.usecase.result.IssuePresignedUrlResult
@@ -42,4 +43,10 @@ class FileService(
     }
 
     fun resolveMediaUrl(key: String?): String? = key?.let(fileStorage::publicUrlOf)
+
+    /** 저장 key → 단기 다운로드 URL. 발급 자체는 무검증 — 호출 경로가 어드민 게이트 뒤로 한정된다. */
+    fun issueDownloadUrl(
+        key: String,
+        purpose: UploadPurpose,
+    ): String = fileStorage.issueDownloadUrl(key, purpose)
 }
