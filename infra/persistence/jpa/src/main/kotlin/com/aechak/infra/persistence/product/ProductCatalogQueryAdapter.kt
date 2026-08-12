@@ -1,9 +1,9 @@
 package com.aechak.infra.persistence.product
 
-import com.aechak.application.product.port.ProductCatalogCondition
-import com.aechak.application.product.port.ProductCatalogQueryPort
-import com.aechak.application.product.port.ProductCatalogSort
-import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.ProductCatalogCondition
+import com.aechak.application.product.product.port.ProductCatalogQueryPort
+import com.aechak.application.product.product.port.ProductCatalogSort
+import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.querydsl.core.types.OrderSpecifier
 import com.querydsl.core.types.Predicate
 import com.querydsl.core.types.dsl.NumberExpression
@@ -28,6 +28,8 @@ class ProductCatalogQueryAdapter(
     override fun findVisiblePage(condition: ProductCatalogCondition): List<ProductCatalogView> {
         val effectivePrice = effectivePrice(condition.now)
         return visibleProductQuery(queryFactory, catalogViewProjection(effectivePrice))
+            .leftJoin(productStats)
+            .on(productStats.productId.eq(product.id))
             .where(categoryFilter(condition.categoryId), keyset(condition, effectivePrice))
             .orderBy(*orderBy(condition.sort, effectivePrice))
             .limit(condition.limit.toLong())
