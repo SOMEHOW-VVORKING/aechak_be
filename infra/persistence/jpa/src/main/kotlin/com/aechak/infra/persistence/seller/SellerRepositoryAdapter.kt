@@ -14,4 +14,6 @@ class SellerRepositoryAdapter(
 ) : SellerRepository {
     // sellers는 user_id가 PK — 존재 검사가 곧 기셀러 판정
     override fun existsByUserId(userId: Long): Boolean = jpaRepository.existsById(userId)
+
+    override fun save(seller: Seller): Seller = jpaRepository.save(seller)
 }

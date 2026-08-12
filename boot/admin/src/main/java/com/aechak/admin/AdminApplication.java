@@ -17,6 +17,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
                 "com.aechak.websecurity",        // RS256 디코더 조립(JwtConfig)·프린시펄 변환
                 "com.aechak.pii",                // PII 암호화 엔진·키 조립(PiiCryptoConfig) — 계좌번호 복호에 필요
                 "com.aechak.application.seller", // 심사 유스케이스 (신청자측 파사드도 딸려온다 — 아래 user·file 스캔 이유)
+                "com.aechak.application.settlement", // 승인 tx의 정산계좌 이관 진입점
                 "com.aechak.application.file",   // 서류 다운로드 URL 발급(FileUseCase)
                 "com.aechak.application.user.user", // SellerApplicationFacade의 휴대폰 인증 검사 의존(UserUseCase) — user 전체 스캔은 전화 인증(Redis·SMS 포트) 조립까지 요구해 하위로 좁힌다
                 "com.aechak.application.user.term", // UserFacade의 약관 동의 의존(ConsentService)
