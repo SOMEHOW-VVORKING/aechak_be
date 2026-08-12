@@ -1,6 +1,6 @@
 package com.aechak.infra.persistence.product.search
 
-import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.application.product.search.port.ProductKeywordFilter
 import com.aechak.application.product.search.port.ProductKeywordSearchCondition
 import com.aechak.application.product.search.port.ProductKeywordSearchPort

@@ -1,9 +1,9 @@
 package com.aechak.infra.persistence.product
 
-import com.aechak.application.product.port.ProductCatalogCondition
-import com.aechak.application.product.port.ProductCatalogQueryPort
-import com.aechak.application.product.port.ProductCatalogSort
-import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.ProductCatalogCondition
+import com.aechak.application.product.product.port.ProductCatalogQueryPort
+import com.aechak.application.product.product.port.ProductCatalogSort
+import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.querydsl.core.types.OrderSpecifier
 import com.querydsl.core.types.Predicate
 import com.querydsl.core.types.dsl.NumberExpression

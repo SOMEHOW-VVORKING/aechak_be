@@ -1,9 +1,9 @@
 package com.aechak.application.product.search.facade
 
+import com.aechak.application.product.product.usecase.result.ProductSummaryResult
 import com.aechak.application.product.search.service.ProductKeywordSearchService
 import com.aechak.application.product.search.usecase.ProductKeywordSearchUseCase
 import com.aechak.application.product.search.usecase.query.ProductKeywordSearchQuery
-import com.aechak.application.product.usecase.result.ProductSummaryResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.domain.product.search.event.ProductKeywordSearchedEvent
 import org.springframework.context.ApplicationEventPublisher

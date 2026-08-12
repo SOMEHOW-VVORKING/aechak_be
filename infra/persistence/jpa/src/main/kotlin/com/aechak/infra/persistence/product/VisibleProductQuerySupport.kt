@@ -1,6 +1,6 @@
 package com.aechak.infra.persistence.product
 
-import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.domain.product.category.QCategory
 import com.aechak.domain.product.category.enums.CategoryStatus
 import com.aechak.domain.product.product.QProduct

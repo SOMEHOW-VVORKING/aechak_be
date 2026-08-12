@@ -1,7 +1,7 @@
 package com.aechak.api.product
 
 import com.aechak.api.support.IntegrationTestBase
-import com.aechak.application.product.usecase.ProductUseCase
+import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.enums.CategoryStatus

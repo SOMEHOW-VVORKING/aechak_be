@@ -1,6 +1,6 @@
 package com.aechak.application.product.search.port
 
-import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.view.ProductCatalogView
 import java.time.LocalDateTime
 
 interface ProductKeywordSearchPort {
