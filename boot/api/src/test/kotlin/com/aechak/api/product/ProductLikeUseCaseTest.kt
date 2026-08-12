@@ -158,6 +158,20 @@ class ProductLikeUseCaseTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `통계 행이 없는 상품을 찜해도 찜 수가 1로 집계된다`() {
+        val publicId =
+            tx.execute {
+                persistProduct(persistMidCategory(), "통계없는상품").publicId
+            }!!
+        val productId = productIdOf(publicId)
+
+        doLike(publicId, likerId)
+
+        assertEquals(1L, membershipCount(productId, likerId))
+        assertEquals(1L, likeCountOf(productId))
+    }
+
+    @Test
     fun `이미 찜한 상품을 다시 찜해도 찜은 하나만 남고 찜 수도 그대로다`() {
         val publicId =
             tx.execute {

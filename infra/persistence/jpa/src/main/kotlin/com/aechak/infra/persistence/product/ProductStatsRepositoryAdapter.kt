@@ -11,9 +11,16 @@ import org.springframework.stereotype.Repository
 interface ProductStatsJpaRepository : JpaRepository<ProductStats, Long> {
     fun findAllByProductIdIn(productIds: Collection<Long>): List<ProductStats>
 
-    // 조건부 원자 UPDATE, updated_at 함께 세팅
+    // 통계 행이 없는 상품도 누락 없이 집계하도록 원자 upsert, 감사 컬럼은 NOT NULL이라 함께 세팅
     @Modifying
-    @Query("update ProductStats s set s.likeCount = s.likeCount + 1, s.updatedAt = CURRENT_TIMESTAMP where s.productId = :productId")
+    @Query(
+        value =
+            "INSERT INTO product_stats " +
+                "(product_id, review_count, rating_sum, average_rating, like_count, created_at, updated_at) " +
+                "VALUES (:productId, 0, 0, NULL, 1, NOW(), NOW()) " +
+                "ON DUPLICATE KEY UPDATE like_count = like_count + 1, updated_at = NOW()",
+        nativeQuery = true,
+    )
     fun increaseLikeCount(
         @Param("productId") productId: Long,
     ): Int
