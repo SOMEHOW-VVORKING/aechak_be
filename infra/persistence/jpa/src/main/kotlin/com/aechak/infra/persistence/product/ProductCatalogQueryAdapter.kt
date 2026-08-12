@@ -56,6 +56,11 @@ class ProductCatalogQueryAdapter(
             .where(product.publicId.eq(publicId))
             .fetchOne()
 
+    override fun findVisibleIdByPublicId(publicId: String): Long? =
+        visibleProductQuery(queryFactory, product.id)
+            .where(product.publicId.eq(publicId))
+            .fetchOne()
+
     /**
      * 중분류 필터가 있으면 해당 중분류와 그 아래 소분류의 상품만 조회하는 조건을 반환한다.
      * 필터가 없으면 null을 반환해 전체 카테고리를 조회한다.
