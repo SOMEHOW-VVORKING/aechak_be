@@ -1,6 +1,8 @@
 package com.aechak.seller.product
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.application.file.port.FileKey
+import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.product.usecase.ProductUseCase
 import com.aechak.application.product.usecase.query.ProductSearchQuery
 import com.aechak.domain.product.category.Category
@@ -94,8 +96,8 @@ class SellerProductRegisterIntegrationTest : IntegrationTestBase() {
     fun `이미지는 종류별로 sort_order를 0부터 매긴다`() {
         val body =
             productJson(
-                additionalImageKeys = listOf("products/a1.png", "products/a2.png"),
-                detailImageKeys = listOf("products/d1.png"),
+                additionalImageKeys = listOf(tmpKey("a1.png"), tmpKey("a2.png")),
+                detailImageKeys = listOf(tmpKey("d1.png")),
             )
         mockMvc.perform(registerRequest(token, body)).andExpect(status().isCreated)
 
@@ -145,7 +147,7 @@ class SellerProductRegisterIntegrationTest : IntegrationTestBase() {
         assertEquals(1, version[0], "등록 승인본의 번호는 1이어야 한다")
         assertEquals("연어 건사료 2kg", version[1], "등록 시점 상품명을 그대로 굳혀야 한다")
         assertEquals(25000L, version[2], "스냅샷 가격은 할인가가 아니라 정가여야 한다")
-        assertEquals("products/thumbnail.png", version[3], "대표 이미지 키를 굳혀야 한다")
+        assertEquals("products/thumbnail.png", version[3], "승격된 정식 키를 굳혀야 한다")
         assertEquals(VersionChangeType.INFO, version[4], "등록은 정보 변경으로 남아야 한다")
         assertEquals(VersionChangedBy.SELLER, version[5], "등록 주체는 셀러여야 한다")
     }
@@ -306,8 +308,24 @@ class SellerProductRegisterIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `이미지가 종류별 상한을 넘으면 40003을 반환한다`() {
-        val body = productJson(detailImageKeys = (1..21).map { "products/d$it.png" })
+        val body = productJson(detailImageKeys = (1..21).map { tmpKey("d$it.png") })
         assertRejected(body, 40003)
+    }
+
+    @Test
+    fun `타인이 업로드한 이미지 키는 100002를 반환한다`() {
+        val other = createActiveUser()
+        val body = productJson(detailImageKeys = listOf(tmpKey("d1.png", ownerId = other)))
+        mockMvc
+            .perform(registerRequest(token, body))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(100002))
+    }
+
+    @Test
+    fun `발급 용도가 다른 이미지 키는 100003을 반환한다`() {
+        val body = productJson(detailImageKeys = listOf(tmpKey("d1.png", purpose = UploadPurpose.USER_PROFILE)))
+        assertRejected(body, 100003)
     }
 
     @Test
@@ -403,6 +421,13 @@ class SellerProductRegisterIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(errorCode))
     }
 
+    /** 공통 업로드가 발급하는 tmp 키 형태. 승격이 소유자와 용도를 이 접두로 가른다. */
+    private fun tmpKey(
+        fileName: String,
+        ownerId: Long = sellerUserId,
+        purpose: UploadPurpose = UploadPurpose.PRODUCT,
+    ): String = "${FileKey.tmpPrefixOf(ownerId, purpose)}$fileName"
+
     private fun openSeller(userId: Long) {
         tx.execute { em.persist(Seller.open(userId, "애착상회", 0L)) }
     }
@@ -481,7 +506,7 @@ class SellerProductRegisterIntegrationTest : IntegrationTestBase() {
               "productName": "$productName",
               "regularPrice": $regularPrice,
               $optional
-              "thumbnailImageKey": "products/thumbnail.png",
+              "thumbnailImageKey": "${tmpKey("thumbnail.png")}",
               "additionalImageKeys": ${additionalImageKeys.toJsonArray()},
               "detailImageKeys": ${detailImageKeys.toJsonArray()},
               "optionCombinations": $optionCombinations

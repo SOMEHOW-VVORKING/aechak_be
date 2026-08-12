@@ -46,8 +46,10 @@ class ProductService(
     private val productVersionRepository: ProductVersionRepository,
     private val productStatsRepository: ProductStatsRepository,
 ) {
-    fun register(command: RegisterProductCommand): ProductVersion {
-        val options = command.toProductOptions()
+    fun register(
+        command: RegisterProductCommand,
+        options: ProductOptions,
+    ): ProductVersion {
         val product = productRepository.save(command.toEntity(loadLeafCategory(command.categoryId)))
         // 집계는 조건부 원자 UPDATE로만 갱신해서 행이 없으면 첫 리뷰가 0행 갱신으로 조용히 사라짐
         productStatsRepository.save(ProductStats.create(product.id))
