@@ -1,6 +1,6 @@
 package com.aechak.seller.product
 
-import com.aechak.application.product.usecase.ProductUseCase
+import com.aechak.application.product.usecase.SellerProductUseCase
 import com.aechak.seller.product.request.ProductRegisterRequest
 import com.aechak.seller.product.response.ProductRegisterResponse
 import com.aechak.webcommon.response.ApiResponse
@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 @RequestMapping("/sellers/me/products")
 class SellerProductController(
-    private val productUseCase: ProductUseCase,
+    private val sellerProductUseCase: SellerProductUseCase,
 ) {
     @PostMapping
     fun register(
@@ -26,5 +26,5 @@ class SellerProductController(
     ): ResponseEntity<ApiResponse<ProductRegisterResponse>> =
         ResponseEntity
             .status(HttpStatus.CREATED)
-            .body(ApiResponse.of(ProductRegisterResponse.from(productUseCase.registerProduct(request.toCommand(principal.userId)))))
+            .body(ApiResponse.of(ProductRegisterResponse.from(sellerProductUseCase.registerProduct(request.toCommand(principal.userId)))))
 }

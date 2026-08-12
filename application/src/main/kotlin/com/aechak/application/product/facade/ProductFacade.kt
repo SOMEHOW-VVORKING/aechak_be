@@ -3,6 +3,7 @@ package com.aechak.application.product.facade
 import com.aechak.application.product.service.ProductService
 import com.aechak.application.product.stats.service.ProductStatsService
 import com.aechak.application.product.usecase.ProductUseCase
+import com.aechak.application.product.usecase.SellerProductUseCase
 import com.aechak.application.product.usecase.command.RegisterProductCommand
 import com.aechak.application.product.usecase.query.ProductSearchQuery
 import com.aechak.application.product.usecase.result.ProductOptionsResult
@@ -22,7 +23,8 @@ class ProductFacade(
     private val productService: ProductService,
     private val productStatsService: ProductStatsService,
     private val sellerUseCase: SellerUseCase,
-) : ProductUseCase {
+) : ProductUseCase,
+    SellerProductUseCase {
     @Transactional(readOnly = true)
     override fun getProducts(query: ProductSearchQuery): CursorPageResult<ProductSummaryResult> {
         val now = LocalDateTime.now()
