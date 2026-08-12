@@ -1,4 +1,4 @@
-package com.aechak.api.product.controller
+package com.aechak.api.product.like
 
 import com.aechak.application.product.like.usecase.ProductLikeUseCase
 import com.aechak.application.product.like.usecase.command.ProductLikeCommand

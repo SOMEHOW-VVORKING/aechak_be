@@ -1,4 +1,4 @@
-package com.aechak.api.product.request
+package com.aechak.api.product.like.request
 
 import com.aechak.application.product.like.usecase.query.LikedProductListQuery
 import org.hibernate.validator.constraints.Range

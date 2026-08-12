@@ -1,6 +1,6 @@
-package com.aechak.api.product.controller
+package com.aechak.api.product.like
 
-import com.aechak.api.product.request.LikedProductListRequest
+import com.aechak.api.product.like.request.LikedProductListRequest
 import com.aechak.api.product.response.ProductListResponse
 import com.aechak.application.product.like.usecase.ProductLikeUseCase
 import com.aechak.webcommon.response.ApiResponse
