@@ -1,9 +1,13 @@
 package com.aechak.domain.user.user.repository
 
 import com.aechak.domain.user.user.User
+import com.aechak.domain.user.user.UserAuthor
 
 interface UserRepository {
     fun findById(id: Long): User?
+
+    /** 작성자 표시용 배치 조회 — 프로필 없으면 닉네임/프로필키는 null. */
+    fun findAuthorsByIds(ids: Collection<Long>): List<UserAuthor>
 
     fun save(user: User): User
 

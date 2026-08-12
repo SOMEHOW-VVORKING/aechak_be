@@ -1,6 +1,7 @@
 package com.aechak.infra.persistence.user.user
 
 import com.aechak.domain.user.user.User
+import com.aechak.domain.user.user.UserAuthor
 import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.domain.user.user.repository.UserRepository
 import org.springframework.data.jpa.repository.JpaRepository
@@ -16,6 +17,15 @@ interface UserJpaRepository : JpaRepository<User, Long> {
     fun findStatusById(
         @Param("id") id: Long,
     ): UserStatus?
+
+    /** 작성자 표시용 배치 프로젝션 — 프로필 없어도 포함되도록 left join. */
+    @Query(
+        "select new com.aechak.domain.user.user.UserAuthor(u.id, u.status, p.nickname, p.profileImageKey) " +
+            "from User u left join UserProfile p on p.userId = u.id where u.id in :ids",
+    )
+    fun findAuthorsByIds(
+        @Param("ids") ids: Collection<Long>,
+    ): List<UserAuthor>
 
     /** 닉네임 선점 검사 — 비교는 nickname 컬럼 collation(utf8mb4 ci)을 그대로 탄다. */
     @Query("select count(p) > 0 from UserProfile p where p.nickname = :nickname and p.userId <> :excludeUserId")
@@ -36,6 +46,9 @@ class UserRepositoryAdapter(
     private val jpaRepository: UserJpaRepository,
 ) : UserRepository {
     override fun findById(id: Long): User? = jpaRepository.findByIdOrNull(id)
+
+    override fun findAuthorsByIds(ids: Collection<Long>): List<UserAuthor> =
+        if (ids.isEmpty()) emptyList() else jpaRepository.findAuthorsByIds(ids)
 
     override fun save(user: User): User = jpaRepository.save(user)
 
