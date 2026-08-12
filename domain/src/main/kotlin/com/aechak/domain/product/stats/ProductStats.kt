@@ -28,6 +28,6 @@ class ProductStats protected constructor(
         protected set
 
     companion object {
-        fun init(productId: Long): ProductStats = ProductStats(productId)
+        fun create(productId: Long): ProductStats = ProductStats(productId)
     }
 }

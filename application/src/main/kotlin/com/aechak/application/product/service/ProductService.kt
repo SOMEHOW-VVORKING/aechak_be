@@ -26,6 +26,8 @@ import com.aechak.domain.product.option.repository.OptionCombinationRepository
 import com.aechak.domain.product.option.repository.OptionGroupRepository
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.repository.ProductRepository
+import com.aechak.domain.product.stats.ProductStats
+import com.aechak.domain.product.stats.repository.ProductStatsRepository
 import com.aechak.domain.product.version.ProductVersion
 import com.aechak.domain.product.version.repository.ProductVersionRepository
 import org.springframework.stereotype.Service
@@ -42,10 +44,13 @@ class ProductService(
     private val optionGroupRepository: OptionGroupRepository,
     private val optionCombinationRepository: OptionCombinationRepository,
     private val productVersionRepository: ProductVersionRepository,
+    private val productStatsRepository: ProductStatsRepository,
 ) {
     fun register(command: RegisterProductCommand): ProductVersion {
         val options = command.toProductOptions()
         val product = productRepository.save(command.toEntity(loadLeafCategory(command.categoryId)))
+        // 집계는 조건부 원자 UPDATE로만 갱신해서 행이 없으면 첫 리뷰가 0행 갱신으로 조용히 사라짐
+        productStatsRepository.save(ProductStats.create(product.id))
         registerOptions(product, options)
         return productVersionRepository.save(ProductVersion.create(product, command.thumbnailImageKey))
     }

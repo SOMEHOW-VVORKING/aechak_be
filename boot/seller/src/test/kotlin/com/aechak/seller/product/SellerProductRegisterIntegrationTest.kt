@@ -11,6 +11,7 @@ import com.aechak.domain.product.version.enums.VersionChangedBy
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -150,10 +151,30 @@ class SellerProductRegisterIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `등록은 통계 행을 0으로 초기화해 함께 남긴다`() {
+        // 집계는 조건부 원자 UPDATE로만 갱신해서, 행이 없으면 첫 리뷰가 0행 갱신으로 조용히 사라진다
+        mockMvc.perform(registerRequest(token, productJson())).andExpect(status().isCreated)
+
+        val stats =
+            tx.execute {
+                em
+                    .createQuery(
+                        "select s.reviewCount, s.ratingSum, s.likeCount, s.averageRating from ProductStats s",
+                        Array<Any>::class.java,
+                    ).singleResult
+            }!!
+        assertEquals(0, stats[0], "리뷰 수는 0으로 시작해야 한다")
+        assertEquals(0L, stats[1], "별점 합계는 0으로 시작해야 한다")
+        assertEquals(0L, stats[2], "찜 수는 0으로 시작해야 한다")
+        assertNull(stats[3], "리뷰가 없으면 평균 별점은 비어 있어야 한다")
+    }
+
+    @Test
     fun `등록이 거절되면 승인본도 남지 않는다`() {
         assertRejected(productJson(categoryId = midCategoryId), 40100)
 
         assertEquals(0L, countOf("ProductVersion"), "상품이 롤백되면 승인본도 함께 사라져야 한다")
+        assertEquals(0L, countOf("ProductStats"), "상품이 롤백되면 통계 행도 함께 사라져야 한다")
         assertEquals(0L, countOf("Product"), "카테고리 거절이면 상품도 남으면 안 된다")
     }
 

@@ -166,7 +166,7 @@ class ProductDetailUseCaseTest : IntegrationTestBase() {
         reviewCount: Int,
         averageRating: BigDecimal,
     ) {
-        em.persist(ProductStats.init(productId))
+        em.persist(ProductStats.create(productId))
         em.flush()
         em
             .createQuery(

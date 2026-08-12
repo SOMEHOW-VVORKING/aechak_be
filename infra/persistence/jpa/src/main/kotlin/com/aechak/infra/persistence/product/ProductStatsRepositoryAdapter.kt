@@ -15,4 +15,6 @@ class ProductStatsRepositoryAdapter(
 ) : ProductStatsRepository {
     override fun findAllByProductIds(productIds: Collection<Long>): List<ProductStats> =
         if (productIds.isEmpty()) emptyList() else jpaRepository.findAllByProductIdIn(productIds)
+
+    override fun save(productStats: ProductStats): ProductStats = jpaRepository.save(productStats)
 }
