@@ -20,6 +20,8 @@ class ProductImage protected constructor(
     @Column(length = STORAGE_KEY_MAX, nullable = false)
     val storageKey: String,
     sortOrder: Int,
+    @Column(nullable = false)
+    val fromVersionNo: Int,
 ) : BaseEntity() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -28,6 +30,19 @@ class ProductImage protected constructor(
     var sortOrder: Int = sortOrder
         protected set
 
+    /** null이면 현재 노출분. 값이 있으면 그 버전까지 노출되고 닫힌 것. */
+    @Column
+    var toVersionNo: Int? = null
+        protected set
+
+    fun closeAt(lastVersionNo: Int) {
+        toVersionNo = lastVersionNo
+    }
+
+    fun moveTo(sortOrder: Int) {
+        this.sortOrder = sortOrder
+    }
+
     companion object {
         const val STORAGE_KEY_MAX = 1024
 
@@ -35,6 +50,7 @@ class ProductImage protected constructor(
             imageType: ProductImageType,
             storageKey: String,
             sortOrder: Int,
-        ): ProductImage = ProductImage(imageType, storageKey, sortOrder)
+            fromVersionNo: Int,
+        ): ProductImage = ProductImage(imageType, storageKey, sortOrder, fromVersionNo)
     }
 }
