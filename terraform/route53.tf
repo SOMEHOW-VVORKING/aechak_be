@@ -22,6 +22,10 @@ locals {
   # 프론트는 서비스 얼굴이라 서비스명을 빼고 env만 쓴다.
   # prod는 apex가 되는데 CNAME을 못 걸어서 그때 방식을 다시 정해야 한다.
   web_domain = var.env == "prod" ? "aechak.co.kr" : "${var.env}.aechak.co.kr"
+
+  # 셀러센터·어드민 콘솔 프론트 도메인. 콘솔이라 서비스명을 남긴다(prod도 서브도메인).
+  seller_domain = var.env == "prod" ? "seller.aechak.co.kr" : "seller-${var.env}.aechak.co.kr"
+  admin_domain  = var.env == "prod" ? "admin.aechak.co.kr" : "admin-${var.env}.aechak.co.kr"
 }
 
 resource "aws_route53_record" "api" {
@@ -60,4 +64,21 @@ resource "aws_route53_record" "web" {
   type    = "CNAME"
   ttl     = 300
   records = ["aechak-fe.pages.dev"]
+}
+
+# web과 같은 Cloudflare Pages CNAME. Pages 프로젝트에 커스텀 도메인 등록이 선행돼야 검증된다.
+resource "aws_route53_record" "seller_web" {
+  zone_id = data.aws_route53_zone.root.zone_id
+  name    = local.seller_domain
+  type    = "CNAME"
+  ttl     = 300
+  records = ["aechak-seller.pages.dev"]
+}
+
+resource "aws_route53_record" "admin_web" {
+  zone_id = data.aws_route53_zone.root.zone_id
+  name    = local.admin_domain
+  type    = "CNAME"
+  ttl     = 300
+  records = ["aechak-admin.pages.dev"]
 }
