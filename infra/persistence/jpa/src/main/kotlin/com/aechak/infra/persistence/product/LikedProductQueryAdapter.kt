@@ -3,7 +3,7 @@ package com.aechak.infra.persistence.product
 import com.aechak.application.product.like.port.LikedProductCondition
 import com.aechak.application.product.like.port.LikedProductQueryPort
 import com.aechak.application.product.like.port.view.LikedProductView
-import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.domain.product.like.QProductLike
 import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.product.enums.SaleStatus
@@ -49,6 +49,8 @@ class LikedProductQueryAdapter(
             .leftJoin(product.category, category)
             .leftJoin(category.parent, parent)
             .leftJoin(parent.parent, grandParent)
+            .leftJoin(productStats)
+            .on(productStats.productId.eq(product.id))
             .where(
                 product.inspectionStatus.eq(InspectionStatus.APPROVED),
                 product.saleStatus.`in`(SaleStatus.EXPOSABLE),
@@ -73,6 +75,8 @@ class LikedProductQueryAdapter(
                 product.discountEndAt,
                 effectivePrice,
                 product.saleStatus,
+                productStats.averageRating,
+                reviewCountScore(),
                 viewable(),
             ),
         )

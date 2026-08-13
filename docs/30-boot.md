@@ -31,7 +31,7 @@ package com.aechak.api.order
  * - 주입은 UseCase 인터페이스만. Facade/Service/Repository 타입 주입 금지.
  * - 하는 일 세 가지뿐: ①형식 검증(@Valid) ②Request→Command 변환 ③Result→Response 변환.
  *   비즈니스 판단이 controller에 등장하면 application으로 내린다.
- * - 응답 규격은 05 문서: 성공 = ApiResponse.of(...) / 생성·삭제 = 빈 본문 + Status.
+ * - 응답 규격은 05 문서: 성공 = ApiResponse.of(...) / 반환할 데이터가 없는 생성·삭제만 빈 본문 + Status.
  * - 자격 기반 인가(활성 셀러·ADMIN 등)는 @PreAuthorize, 소유권 검증은 서비스 계층 — 20-application §6.
  */
 @RestController

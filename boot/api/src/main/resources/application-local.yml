@@ -24,6 +24,14 @@ aws:
     media-bucket: ${AWS_S3_MEDIA_BUCKET}
     docs-bucket: ${AWS_S3_DOCS_BUCKET}
 
+# TEST/LOCAL 전용 고정 키 — 실환경 사용 금지. 커밋된 공개 값이며 로컬 더미 데이터만 잠근다.
+# 고정인 이유: 재시작·팀원 간 로컬 DB 덤프 공유에도 복호가 유지돼야 한다(임시 생성 키는 재시작마다 기존 행이 죽는다).
+aechak:
+  pii:
+    aes-keys:
+      1: ${PII_AES_KEY_V1:dxeyFW4YgkgYreLe9IX7laeZPHaP3Eada2M9yuBCA+Q=}
+    hmac-key: ${PII_HMAC_KEY:Jtk5KHlAG6nnDtIBDhqoDXIs7FovvRs0kOckZP6cl7k=}
+
 auth:
   web:
     # return은 화이트리스트 "정확 일치"만 통과 — 오픈 리다이렉트 방지.

@@ -11,7 +11,6 @@ import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.error.ProductErrorCode
 import com.aechak.domain.product.like.repository.ProductLikeRepository
 import com.aechak.domain.product.product.repository.ProductRepository
-import com.aechak.domain.product.stats.ProductStats
 import com.aechak.domain.product.stats.repository.ProductStatsRepository
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
@@ -62,10 +61,6 @@ class ProductLikeService(
             hasNext = hasNext,
         )
     }
-
-    /** 상품 통계(찜 개수) 배치 조회 */
-    fun getStatsByProductIds(productIds: List<Long>): Map<Long, ProductStats> =
-        productStatsRepository.findAllByProductIds(productIds).associateBy { it.productId }
 
     private fun resolveProductId(publicId: String): Long =
         productRepository.findIdByPublicId(publicId)

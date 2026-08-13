@@ -1,11 +1,12 @@
 package com.aechak.infra.persistence.product
 
-import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.domain.product.category.QCategory
 import com.aechak.domain.product.category.enums.CategoryStatus
 import com.aechak.domain.product.product.QProduct
 import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.product.enums.SaleStatus
+import com.aechak.domain.product.stats.QProductStats
 import com.aechak.domain.seller.seller.QSeller
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import com.querydsl.core.BooleanBuilder
@@ -25,6 +26,7 @@ internal val category = QCategory.category
 internal val parent = QCategory("parent") // 중분류 서브트리 필터, 부모 카테고리 status 검증용 별칭
 internal val grandParent = QCategory("grandParent") // 조부모(대분류) status 검증용 별칭
 internal val seller = QSeller.seller
+internal val productStats = QProductStats.productStats // 인기순 정렬과 별점 필터, 표시용 별점/리뷰 수
 
 internal fun <T> visibleProductQuery(
     queryFactory: JPAQueryFactory,
@@ -80,6 +82,40 @@ internal fun catalogViewProjection(effectivePrice: NumberExpression<Long>): Expr
         product.discountEndAt,
         effectivePrice,
         product.saleStatus,
+        productStats.averageRating,
+        reviewCountScore(),
         // 카탈로그·검색은 categoryChainActive() 필터로 활성 상품만 통과하므로 진입 가능은 항상 참
+        Expressions.asBoolean(true),
+    )
+
+/** 인기순 정렬과 커서용 리뷰 수. 조인이 없거나 행이 없으면 coalesce 0 */
+internal fun reviewCountScore(): NumberExpression<Int> =
+    CaseBuilder()
+        .`when`(productStats.reviewCount.isNull)
+        .then(0)
+        .otherwise(productStats.reviewCount)
+
+/** 검색 목록 projection */
+internal fun searchViewProjection(
+    effectivePrice: NumberExpression<Long>,
+    popularityScore: NumberExpression<Int>,
+): Expression<ProductCatalogView> =
+    Projections.constructor(
+        ProductCatalogView::class.java,
+        product.id,
+        product.publicId,
+        product.name,
+        seller.storeName,
+        product.representativeImageKey,
+        product.regularPrice,
+        product.discountPrice,
+        product.discountStartAt,
+        product.discountEndAt,
+        effectivePrice,
+        product.saleStatus,
+        popularityScore,
+        productStats.averageRating,
+        reviewCountScore(),
+        // 활성 카테고리만 통과하므로 진입 가능은 항상 참
         Expressions.asBoolean(true),
     )

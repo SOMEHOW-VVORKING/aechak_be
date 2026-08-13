@@ -1,10 +1,10 @@
 package com.aechak.api.product
 
 import com.aechak.api.support.IntegrationTestBase
-import com.aechak.application.product.port.ProductCatalogCondition
-import com.aechak.application.product.port.ProductCatalogQueryPort
-import com.aechak.application.product.port.ProductCatalogSort
-import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.ProductCatalogCondition
+import com.aechak.application.product.product.port.ProductCatalogQueryPort
+import com.aechak.application.product.product.port.ProductCatalogSort
+import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.seller.seller.Seller

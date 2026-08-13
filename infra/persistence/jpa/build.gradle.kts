@@ -5,4 +5,5 @@ dependencies {
     implementation(libs.spring.context)      // @Repository 스테레오타입
     implementation(libs.spring.data.jpa)
     implementation(libs.querydsl.jpa)        // JPAQueryFactory + domain의 Q클래스 참조 (QueryDSL은 이 모듈에 가둔다)
+    implementation(libs.spring.security.crypto) // PII 암호화 엔진(AES-GCM) — 구현이 이 모듈 소속이라 여기 가둔다
 }

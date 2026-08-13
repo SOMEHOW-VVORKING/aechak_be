@@ -1,6 +1,6 @@
 package com.aechak.application.product.like.port.view
 
-import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.view.ProductCatalogView
 
 data class LikedProductView(
     val likeId: Long,

@@ -3,8 +3,10 @@ package com.aechak.application.user.user.facade
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
+import com.aechak.application.pii.port.PiiCrypto
 import com.aechak.application.user.term.service.ConsentService
 import com.aechak.application.user.user.service.UserService
+import com.aechak.application.user.user.support.PhoneNumberMasker
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.application.user.user.usecase.command.SetNicknameCommand
 import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
@@ -40,6 +42,7 @@ class UserFacade(
     private val userService: UserService,
     private val consentService: ConsentService,
     private val fileUseCase: FileUseCase,
+    private val piiCrypto: PiiCrypto,
     transactionManager: PlatformTransactionManager,
 ) : UserUseCase {
     private val tx = TransactionTemplate(transactionManager)
@@ -100,7 +103,7 @@ class UserFacade(
      * S3 고아로 남는다 — MVP 수용, 정리 배치는 후속.
      */
     override fun updateProfile(command: UpdateProfileCommand): UserMeResult {
-        val currentKey = userService.getById(command.userId).profileOrNull?.profileImageKey
+        val currentKey = userService.getById(command.userId).profile.profileImageKey
         // null=제거 / 저장값과 같으면 유지(저장값 대조가 곧 소유 증명) / 그 외는 전부 새 업로드로 보고 승격
         val finalKey =
             command.profileImageKey?.let {
@@ -127,7 +130,7 @@ class UserFacade(
     /** 프로필 노출은 ACTIVE에서만 — 그 외 상태는 프로필 계열 null(ACTIVE 아닌 조회는 어드민 모듈 몫), FE 재시작 라우팅은 status만 쓴다. */
     private fun loadMe(userId: Long): UserMeResult {
         val user = userService.getById(userId)
-        val profile = if (user.status != UserStatus.ACTIVE) null else user.profileOrNull
+        val profile = if (user.status != UserStatus.ACTIVE) null else user.profile
         return UserMeResult(
             status = user.status,
             nickname = profile?.nickname,
@@ -135,8 +138,8 @@ class UserFacade(
             profileImageKey = profile?.profileImageKey,
             bio = profile?.bio,
             email = userService.findEmail(userId),
-            // 휴대폰 인증(ACC-03) 전까지 수집 경로 없음 — 복호화·마스킹 정책과 함께 그때 채운다
-            phoneNumber = null,
+            // 원문은 반출 금지 — 복호 후 즉시 마스킹(가운데 자리 전체)해 표시용으로만 내린다
+            phoneNumber = user.phoneNumber?.let { PhoneNumberMasker.mask(piiCrypto.decrypt(it)) },
             isPhoneVerified = user.isPhoneVerified,
         )
     }
