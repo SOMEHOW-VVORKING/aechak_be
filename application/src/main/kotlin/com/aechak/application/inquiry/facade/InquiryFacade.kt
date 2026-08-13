@@ -26,11 +26,11 @@ class InquiryFacade(
     override fun submitInquiry(command: SubmitInquiryCommand): SubmitInquiryResult {
         val inquiry = requireNotNull(tx.execute { inquiryService.receive(command) })
         log.info("문의 접수 (inquiryId={}, type={})", inquiry.id, inquiry.inquiryType)
-        notifyOps(inquiry)
+        notifyOperationsTeam(inquiry)
         return SubmitInquiryResult.from(inquiry)
     }
 
-    private fun notifyOps(inquiry: Inquiry) {
+    private fun notifyOperationsTeam(inquiry: Inquiry) {
         if (!notificationPolicy.enabled || notificationPolicy.recipients.isEmpty()) {
             log.debug("문의 통지 비활성으로 발송 생략 (inquiryId={})", inquiry.id)
             return
