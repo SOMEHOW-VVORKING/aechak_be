@@ -8,11 +8,13 @@ import com.aechak.application.product.stats.service.ProductStatsService
 import com.aechak.application.product.usecase.ProductUseCase
 import com.aechak.application.product.usecase.SellerProductUseCase
 import com.aechak.application.product.usecase.command.RegisterProductCommand
+import com.aechak.application.product.usecase.command.UpdateProductCommand
 import com.aechak.application.product.usecase.query.ProductSearchQuery
 import com.aechak.application.product.usecase.result.ProductOptionsResult
 import com.aechak.application.product.usecase.result.ProductRegisterResult
 import com.aechak.application.product.usecase.result.ProductResult
 import com.aechak.application.product.usecase.result.ProductSummaryResult
+import com.aechak.application.product.usecase.result.ProductUpdateResult
 import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.application.support.CursorPageResult
 import com.aechak.common.error.BusinessException
@@ -70,9 +72,16 @@ class ProductFacade(
     override fun registerProduct(command: RegisterProductCommand): ProductRegisterResult {
         requireActiveSeller(command.sellerId)
         val options = command.toProductOptions()
-        val stored = withPromotedKeys(command)
+        val stored = promoteNewImageKeys(command)
         val version = tx.execute { productService.register(stored, options) }!!
         return ProductRegisterResult.of(version.product, version.versionNo)
+    }
+
+    override fun updateProduct(command: UpdateProductCommand): ProductUpdateResult {
+        requireActiveSeller(command.sellerId)
+        val storedKeys = tx.execute { productService.getCurrentImageKeys(command.productPublicId, command.sellerId) }!!
+        val stored = promoteNewImageKeys(command, storedKeys)
+        return tx.execute { productService.updateProduct(stored) }!!
     }
 
     private fun requireActiveSeller(sellerId: Long) {
@@ -81,12 +90,39 @@ class ProductFacade(
         }
     }
 
-    private fun withPromotedKeys(command: RegisterProductCommand): RegisterProductCommand =
+    private fun promoteNewImageKeys(command: RegisterProductCommand): RegisterProductCommand =
         command.copy(
             thumbnailImageKey = promoteToStorageKey(command.sellerId, command.thumbnailImageKey),
             additionalImageKeys = command.additionalImageKeys.map { promoteToStorageKey(command.sellerId, it) },
             detailImageKeys = command.detailImageKeys.map { promoteToStorageKey(command.sellerId, it) },
         )
+
+    /**
+     * 승격된 키에는 소유자 정보가 없어 파일 쪽이 소유를 못 가림.
+     * 이 상품에 붙어 있던 값과 같은 것만이 소유 증명이고, 나머지는 전부 새 업로드로 봄.
+     */
+    private fun promoteNewImageKeys(
+        command: UpdateProductCommand,
+        storedKeys: Set<String>,
+    ): UpdateProductCommand =
+        command.copy(
+            thumbnailImageKey = promoteUnlessStored(command.sellerId, command.thumbnailImageKey, storedKeys),
+            additionalImageKeys =
+                command.additionalImageKeys.map {
+                    promoteUnlessStored(
+                        command.sellerId,
+                        it,
+                        storedKeys,
+                    )
+                },
+            detailImageKeys = command.detailImageKeys.map { promoteUnlessStored(command.sellerId, it, storedKeys) },
+        )
+
+    private fun promoteUnlessStored(
+        sellerId: Long,
+        key: String,
+        storedKeys: Set<String>,
+    ): String = if (key in storedKeys) key else promoteToStorageKey(sellerId, key)
 
     private fun promoteToStorageKey(
         sellerId: Long,
