@@ -290,7 +290,10 @@ class ProductLikeUseCaseTest : IntegrationTestBase() {
         val page = likedPublicIds(likerId)
 
         assertEquals(listOf(ids.first), page.items.map { it.productId })
-        assertEquals(SaleStatus.OUT_OF_STOCK, page.items.single().saleStatus)
+        val card = page.items.single()
+        assertEquals(SaleStatus.OUT_OF_STOCK, card.saleStatus)
+        assertTrue(card.isViewable) // 카테고리 활성이라 상세 진입은 가능
+        assertFalse(card.isPurchasable) // 품절이라 구매는 불가
         assertEquals(1L, membershipCount(suspendedId, likerId))
     }
 
@@ -310,7 +313,7 @@ class ProductLikeUseCaseTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `카테고리가 비활성으로 바뀐 찜 상품도 목록에 보인다`() {
+    fun `카테고리가 비활성으로 바뀐 찜 상품도 목록에 보이되 상세 페이지 진입 불가이다`() {
         val publicId =
             tx.execute {
                 val mid = persistMidCategory()
@@ -324,6 +327,41 @@ class ProductLikeUseCaseTest : IntegrationTestBase() {
         val page = likedPublicIds(likerId)
 
         assertEquals(listOf(publicId), page.items.map { it.productId })
+        val card = page.items.single()
+        assertFalse(card.isViewable) // 카테고리 비활성이라 상세 진입 불가
+        assertFalse(card.isPurchasable) // 진입 불가면 구매도 불가
+    }
+
+    @Test
+    fun `상위 카테고리가 비활성이면 자기 카테고리가 활성이어도 상세 페이지 진입이 불가하다`() {
+        val publicId =
+            tx.execute {
+                val mid = persistMidCategory()
+                val product = persistProduct(mid, "부모카테고리비활성상품")
+                em.flush()
+                overrideCategoryStatus(mid.parent!!.id, CategoryStatus.INACTIVE)
+                product.publicId
+            }!!
+        doLike(publicId, likerId)
+
+        val card = likedPublicIds(likerId).items.single()
+
+        assertFalse(card.isViewable)
+        assertFalse(card.isPurchasable)
+    }
+
+    @Test
+    fun `판매 중이고 카테고리가 활성인 찜 상품은 상세 페이지 진입과 구매가 모두 가능하다`() {
+        val publicId =
+            tx.execute {
+                persistProduct(persistMidCategory(), "정상판매상품").publicId
+            }!!
+        doLike(publicId, likerId)
+
+        val card = likedPublicIds(likerId).items.single()
+
+        assertTrue(card.isViewable)
+        assertTrue(card.isPurchasable)
     }
 
     // ---------- 동시성 ----------

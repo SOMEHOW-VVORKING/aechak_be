@@ -20,6 +20,8 @@ data class ProductDetailResponse(
     val categories: List<CategoryResponse>,
     @get:JsonProperty("isLiked")
     val isLiked: Boolean,
+    @get:JsonProperty("isPurchasable")
+    val isPurchasable: Boolean,
 ) {
     data class ImageResponse(
         val imageType: String,
@@ -65,6 +67,7 @@ data class ProductDetailResponse(
                 review = ReviewSummaryResponse(result.review.reviewCount, result.review.averageRating),
                 categories = result.categories.map { CategoryResponse(it.categoryId, it.name, it.depth) },
                 isLiked = result.isLiked,
+                isPurchasable = result.isPurchasable,
             )
     }
 }

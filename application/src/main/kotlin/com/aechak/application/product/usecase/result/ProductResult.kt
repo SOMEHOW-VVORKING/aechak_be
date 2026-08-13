@@ -24,6 +24,7 @@ data class ProductResult(
     val review: ReviewSummaryResult,
     val categories: List<CategoryResult>,
     val isLiked: Boolean,
+    val isPurchasable: Boolean,
 ) {
     data class ImageResult(
         val imageType: ProductImageType,
@@ -77,6 +78,7 @@ data class ProductResult(
                 review = ReviewSummaryResult(stats?.reviewCount ?: 0, stats?.averageRating),
                 categories = categoriesOf(view),
                 isLiked = isLiked,
+                isPurchasable = view.saleStatus.canPurchase(),
             )
         }
 
