@@ -3,7 +3,8 @@
 #
 # 접속 정보 7개는 기본값이 없어 하나라도 빠지면 앱이 기동에 실패한다.
 # 아래 웹 연동 3개는 기본값이 있어 없어도 뜨지만, 없으면 CORS와 소셜 로그인이 동작하지 않는다.
-# 카카오 키·JWT 키는 여기 없다 — terraform이 값을 알 수 없다(없어도 앱은 뜬다).
+# 카카오 키·JWT 키·CoolSMS 키(COOLSMS_API_KEY·COOLSMS_API_SECRET·COOLSMS_FROM)는 여기 없다 —
+# terraform이 값을 알 수 없어 수기 등재한다. 카카오·JWT는 없어도 앱이 뜨지만 COOLSMS_* 3개는 없으면 부팅 실패.
 
 resource "aws_ssm_parameter" "db_url" {
   name  = "/${var.project}/${var.env}/api/SPRING_DATASOURCE_URL"
