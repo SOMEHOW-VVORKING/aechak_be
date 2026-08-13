@@ -7,6 +7,7 @@ import com.aechak.application.order.cart.usecase.command.AddCartItemCommand
 import com.aechak.application.order.cart.usecase.command.DeleteCartItemsCommand
 import com.aechak.application.order.cart.usecase.command.UpdateCartItemCommand
 import com.aechak.application.order.cart.usecase.result.AddCartItemResult
+import com.aechak.application.order.cart.usecase.result.CartItemCountResult
 import com.aechak.application.order.cart.usecase.result.CartResult
 import com.aechak.application.order.cart.usecase.result.DeleteCartItemsResult
 import com.aechak.application.order.cart.usecase.result.UpdateCartItemResult
@@ -53,6 +54,9 @@ class CartFacade(
             resolveThumbnail = fileUseCase::resolveMediaUrl,
         )
     }
+
+    @Transactional(readOnly = true)
+    override fun countCartItems(buyerId: Long): CartItemCountResult = CartItemCountResult(cartService.countDisplayableItems(buyerId))
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun updateCartItem(command: UpdateCartItemCommand): UpdateCartItemResult = cartService.updateItem(command)

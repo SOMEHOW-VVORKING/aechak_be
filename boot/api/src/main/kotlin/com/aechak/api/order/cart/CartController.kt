@@ -4,6 +4,7 @@ import com.aechak.api.order.cart.request.AddCartItemRequest
 import com.aechak.api.order.cart.request.DeleteCartItemsRequest
 import com.aechak.api.order.cart.request.UpdateCartItemRequest
 import com.aechak.api.order.cart.response.AddCartItemResponse
+import com.aechak.api.order.cart.response.CartItemCountResponse
 import com.aechak.api.order.cart.response.CartResponse
 import com.aechak.api.order.cart.response.DeleteCartItemsResponse
 import com.aechak.api.order.cart.response.UpdateCartItemResponse
@@ -42,6 +43,12 @@ class CartController(
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<CartResponse>> =
         ResponseEntity.ok(ApiResponse.of(CartResponse.from(cartUseCase.getCart(principal.userId))))
+
+    @GetMapping("/items/count")
+    fun countCartItems(
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<CartItemCountResponse>> =
+        ResponseEntity.ok(ApiResponse.of(CartItemCountResponse.from(cartUseCase.countCartItems(principal.userId))))
 
     @PatchMapping("/items/{cartItemId}")
     fun updateCartItem(

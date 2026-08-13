@@ -160,6 +160,8 @@ class CartService(
 
     fun findCartItems(buyerId: Long): List<CartItem> = cartRepository.findByBuyerIdWithItems(buyerId)?.items.orEmpty()
 
+    fun countDisplayableItems(buyerId: Long): Int = cartCatalogQueryPort.countDisplayableItems(buyerId)
+
     /** 검수 미승인, 카탈로그 행 자체가 없는 것은 제외함. */
     fun findDisplayCatalog(items: List<CartItem>): Map<Long, CartCatalogItemView> {
         if (items.isEmpty()) return emptyMap()
