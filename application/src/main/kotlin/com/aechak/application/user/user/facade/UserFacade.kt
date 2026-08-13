@@ -3,8 +3,10 @@ package com.aechak.application.user.user.facade
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
+import com.aechak.application.pii.port.PiiCrypto
 import com.aechak.application.user.term.service.ConsentService
 import com.aechak.application.user.user.service.UserService
+import com.aechak.application.user.user.support.PhoneNumberMasker
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.application.user.user.usecase.command.SetNicknameCommand
 import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
@@ -40,6 +42,7 @@ class UserFacade(
     private val userService: UserService,
     private val consentService: ConsentService,
     private val fileUseCase: FileUseCase,
+    private val piiCrypto: PiiCrypto,
     transactionManager: PlatformTransactionManager,
 ) : UserUseCase {
     private val tx = TransactionTemplate(transactionManager)
@@ -135,8 +138,8 @@ class UserFacade(
             profileImageKey = profile?.profileImageKey,
             bio = profile?.bio,
             email = userService.findEmail(userId),
-            // 휴대폰 인증(ACC-03) 전까지 수집 경로 없음 — 복호화·마스킹 정책과 함께 그때 채운다
-            phoneNumber = null,
+            // 원문은 반출 금지 — 복호 후 즉시 마스킹(가운데 자리 전체)해 표시용으로만 내린다
+            phoneNumber = user.phoneNumber?.let { PhoneNumberMasker.mask(piiCrypto.decrypt(it)) },
             isPhoneVerified = user.isPhoneVerified,
         )
     }
