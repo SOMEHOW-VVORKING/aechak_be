@@ -224,6 +224,24 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
             ),
             "별점이 응답에 매핑돼야 한다",
         )
+        assertTrue(JsonPath.read<Boolean>(body, "$.data.products[0].isViewable"), "활성 카테고리라 진입 가능")
+        assertTrue(JsonPath.read<Boolean>(body, "$.data.products[0].isPurchasable"), "판매중이라 구매 가능")
+    }
+
+    @Test
+    fun `품절 상품 카드는 진입은 가능하되 구매 불가로 내려간다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            val soldOut = persistProduct(mid, "품절 사료")
+            em.flush()
+            overrideSaleStatus(soldOut.id, SaleStatus.OUT_OF_STOCK)
+        }
+
+        val body = search("사료")
+
+        assertEquals("OUT_OF_STOCK", JsonPath.read<String>(body, "$.data.products[0].saleStatus"))
+        assertTrue(JsonPath.read<Boolean>(body, "$.data.products[0].isViewable"), "품절이어도 상세 진입은 가능")
+        assertFalse(JsonPath.read<Boolean>(body, "$.data.products[0].isPurchasable"), "품절이라 구매 불가")
     }
 
     @Test

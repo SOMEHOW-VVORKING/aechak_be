@@ -11,6 +11,7 @@ import java.time.LocalDateTime
  * sortPriceAtAnchor, popularityScore는 SQL이 계산한 정렬 및 커서 경계용 값(표시용 아님).
  * averageRating, reviewCount는 product_stats 조인에서 함께 담는 표시용 값
  * 할인가는 [pricing]이 응답 시각 기준으로 계산
+ * isViewable은 상세 진입 가능 여부(카테고리 체인 활성). 카탈로그·검색은 항상 참, 찜 목록만 false가 나올 수 있다.
  */
 data class ProductCatalogView(
     val id: Long,
@@ -27,6 +28,7 @@ data class ProductCatalogView(
     val popularityScore: Int,
     val averageRating: BigDecimal?,
     val reviewCount: Int,
+    val isViewable: Boolean,
 ) {
     /** 정렬키(popularityScore)가 필요 없는 목록 조회용 보조 생성자(popularityScore=0) */
     constructor(
@@ -43,6 +45,7 @@ data class ProductCatalogView(
         saleStatus: SaleStatus,
         averageRating: BigDecimal?,
         reviewCount: Int,
+        isViewable: Boolean,
     ) : this(
         id,
         publicId,
@@ -58,6 +61,7 @@ data class ProductCatalogView(
         0,
         averageRating,
         reviewCount,
+        isViewable,
     )
 
     fun pricing(): ProductPricing =

@@ -16,6 +16,8 @@ data class ProductSummaryResult(
     val saleStatus: SaleStatus,
     val averageRating: BigDecimal?,
     val reviewCount: Int,
+    val isViewable: Boolean,
+    val isPurchasable: Boolean,
 ) {
     companion object {
         fun from(
@@ -34,6 +36,9 @@ data class ProductSummaryResult(
                 saleStatus = view.saleStatus,
                 averageRating = view.averageRating,
                 reviewCount = view.reviewCount,
+                isViewable = view.isViewable,
+                // 상세 진입이 막힌 상품은 구매도 불가하므로 isViewable을 함께 본다
+                isPurchasable = view.isViewable && view.saleStatus.canPurchase(),
             )
         }
     }

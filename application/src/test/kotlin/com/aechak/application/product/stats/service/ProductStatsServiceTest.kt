@@ -13,6 +13,10 @@ class ProductStatsServiceTest {
         private val stored: List<ProductStats>,
     ) : ProductStatsRepository {
         override fun findAllByProductIds(productIds: Collection<Long>): List<ProductStats> = stored.filter { it.productId in productIds }
+
+        override fun increaseLikeCount(productId: Long): Int = error("이 테스트에서 호출하지 않는다")
+
+        override fun decreaseLikeCount(productId: Long): Int = error("이 테스트에서 호출하지 않는다")
     }
 
     @Test

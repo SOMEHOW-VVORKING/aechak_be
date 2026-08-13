@@ -7,7 +7,4 @@ interface ProductCatalogQueryPort {
     fun findVisiblePage(condition: ProductCatalogCondition): List<ProductCatalogView>
 
     fun countVisible(categoryId: Long?): Long
-
-    /** 커서 keyset 해석용 내부 id 변환 */
-    fun findIdByPublicId(publicId: String): Long?
 }
