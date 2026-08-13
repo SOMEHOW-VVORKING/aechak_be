@@ -10,9 +10,11 @@ import com.aechak.application.product.port.view.ProductCatalogView
 import com.aechak.application.product.port.view.ProductImageView
 import com.aechak.application.product.port.view.ProductOptionsView
 import com.aechak.application.product.support.ProductCursorCodec
+import com.aechak.application.product.usecase.command.ChangeProductSaleStatusCommand
 import com.aechak.application.product.usecase.command.RegisterProductCommand
 import com.aechak.application.product.usecase.command.UpdateProductCommand
 import com.aechak.application.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.usecase.result.ProductSaleStatusChangeResult
 import com.aechak.application.product.usecase.result.ProductUpdateResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.common.error.BusinessException
@@ -101,6 +103,19 @@ class ProductService(
             appendVersion(product, nextVersionNo)
         }
         return ProductUpdateResult.of(product)
+    }
+
+    /**
+     * 상태 변경은 버전을 남기지 않음
+     */
+    fun changeSaleStatus(command: ChangeProductSaleStatusCommand): ProductSaleStatusChangeResult {
+        val product =
+            productRepository.findByPublicIdAndSellerId(command.productPublicId, command.sellerId)
+                ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+
+        product.changeSaleStatusBySeller(command.saleStatus)
+        productRepository.saveNow(product)
+        return ProductSaleStatusChangeResult.of(product)
     }
 
     /**

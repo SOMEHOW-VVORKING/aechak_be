@@ -219,6 +219,37 @@ class SellerProductUpdateIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `등록부터 수정과 상태 변경을 거쳐 구매자 조회까지 관통한다`() {
+        mockMvc
+            .perform(updateRequest(token, productId, updateJson(productName = "닭가슴살 큐브", regularPrice = 30_000L)))
+            .andExpect(status().isOk)
+
+        mockMvc
+            .perform(
+                patch("/api/v1/sellers/me/products/$productId/status")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"saleStatus": "SUSPENDED"}"""),
+            ).andExpect(status().isOk)
+        assertEquals(listOf(1, 2), versionNos(), "등록 1, 정보 수정 2. 상태 변경은 버전을 안 남김: ${versionNos()}")
+
+        val thrown = assertThrows<BusinessException> { productUseCase.getProduct(productId, null) }
+        assertEquals(40000, thrown.errorCode.code, "판매중지 상품은 구매자 상세에서 40000이어야 한다")
+
+        mockMvc
+            .perform(
+                patch("/api/v1/sellers/me/products/$productId/status")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"saleStatus": "ON_SALE"}"""),
+            ).andExpect(status().isOk)
+
+        val detail = productUseCase.getProduct(productId, null)
+        assertEquals("닭가슴살 큐브", detail.name, "재판매 복귀 후 구매자 상세가 수정된 상품명을 보여야 한다")
+        assertEquals(30_000L, detail.regularPrice, "재판매 복귀 후 구매자 상세가 수정된 정가를 보여야 한다")
+    }
+
+    @Test
     fun `한 번 뺀 이미지 키를 다시 보내면 100002로 거절된다`() {
         // 재노출은 재업로드가 실제 경로다. 닫힌 키는 tmp 접두가 없어 승격 소유 검증에 걸린다.
         mockMvc

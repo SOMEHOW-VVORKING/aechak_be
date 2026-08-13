@@ -2,8 +2,10 @@ package com.aechak.seller.product
 
 import com.aechak.application.product.usecase.SellerProductUseCase
 import com.aechak.seller.product.request.ProductRegisterRequest
+import com.aechak.seller.product.request.ProductSaleStatusChangeRequest
 import com.aechak.seller.product.request.ProductUpdateRequest
 import com.aechak.seller.product.response.ProductRegisterResponse
+import com.aechak.seller.product.response.ProductSaleStatusChangeResponse
 import com.aechak.seller.product.response.ProductUpdateResponse
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
@@ -11,6 +13,7 @@ import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -43,6 +46,20 @@ class SellerProductController(
         ResponseEntity.ok(
             ApiResponse.of(
                 ProductUpdateResponse.from(sellerProductUseCase.updateProduct(request.toCommand(principal.userId, productId))),
+            ),
+        )
+
+    @PatchMapping("/{productId}/status")
+    fun changeSaleStatus(
+        @PathVariable productId: String,
+        @Valid @RequestBody request: ProductSaleStatusChangeRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<ProductSaleStatusChangeResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(
+                ProductSaleStatusChangeResponse.from(
+                    sellerProductUseCase.changeProductSaleStatus(request.toCommand(principal.userId, productId)),
+                ),
             ),
         )
 }

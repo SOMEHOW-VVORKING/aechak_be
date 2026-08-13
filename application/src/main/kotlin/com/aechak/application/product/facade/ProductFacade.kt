@@ -7,12 +7,14 @@ import com.aechak.application.product.service.ProductService
 import com.aechak.application.product.stats.service.ProductStatsService
 import com.aechak.application.product.usecase.ProductUseCase
 import com.aechak.application.product.usecase.SellerProductUseCase
+import com.aechak.application.product.usecase.command.ChangeProductSaleStatusCommand
 import com.aechak.application.product.usecase.command.RegisterProductCommand
 import com.aechak.application.product.usecase.command.UpdateProductCommand
 import com.aechak.application.product.usecase.query.ProductSearchQuery
 import com.aechak.application.product.usecase.result.ProductOptionsResult
 import com.aechak.application.product.usecase.result.ProductRegisterResult
 import com.aechak.application.product.usecase.result.ProductResult
+import com.aechak.application.product.usecase.result.ProductSaleStatusChangeResult
 import com.aechak.application.product.usecase.result.ProductSummaryResult
 import com.aechak.application.product.usecase.result.ProductUpdateResult
 import com.aechak.application.seller.usecase.SellerUseCase
@@ -82,6 +84,12 @@ class ProductFacade(
         val storedKeys = tx.execute { productService.getCurrentImageKeys(command.productPublicId, command.sellerId) }!!
         val stored = promoteNewImageKeys(command, storedKeys)
         return tx.execute { productService.updateProduct(stored) }!!
+    }
+
+    @Transactional
+    override fun changeProductSaleStatus(command: ChangeProductSaleStatusCommand): ProductSaleStatusChangeResult {
+        requireActiveSeller(command.sellerId)
+        return productService.changeSaleStatus(command)
     }
 
     private fun requireActiveSeller(sellerId: Long) {
