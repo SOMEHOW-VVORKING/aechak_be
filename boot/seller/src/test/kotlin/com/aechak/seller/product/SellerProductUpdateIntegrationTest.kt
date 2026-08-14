@@ -1,7 +1,9 @@
 package com.aechak.seller.product
 
+import com.aechak.api.support.FakeFileStorage
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.file.port.FileKey
+import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.product.usecase.ProductUseCase
 import com.aechak.application.product.usecase.query.ProductSearchQuery
@@ -11,6 +13,7 @@ import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.OrderItem
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.enums.CategoryStatus
+import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.enums.ProductImageType
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.seller.seller.enums.SellerStatus
@@ -49,6 +52,9 @@ class SellerProductUpdateIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var productUseCase: ProductUseCase
+
+    @Autowired
+    private lateinit var fileStorage: FileStorage
 
     private lateinit var mockMvc: MockMvc
     private var sellerUserId = 0L
@@ -216,6 +222,23 @@ class SellerProductUpdateIntegrationTest : IntegrationTestBase() {
                 updateRequest(token, "01JZZZZZZZZZZZZZZZZZZZZZZZ", updateJson(additionalImageKeys = listOf(tmpKey("a9.png")))),
             ).andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value(40000))
+    }
+
+    @Test
+    fun `거절되는 요청은 스토리지에 사본을 남기지 않는다`() {
+        clearPromoted()
+
+        assertRejected(updateJson(regularPrice = 0L, additionalImageKeys = listOf(tmpKey("a9.png"))), 40001)
+        assertRejected(updateJson(categoryId = midCategoryId, additionalImageKeys = listOf(tmpKey("a9.png"))), 40100)
+        assertRejected(
+            updateJson(additionalImageKeys = (1..Product.ADDITIONAL_IMAGE_MAX + 1).map { tmpKey("a$it.png") }),
+            40003,
+        )
+
+        assertTrue(
+            promotedKeys().isEmpty(),
+            "승격은 되돌릴 수 없어서 거절 전에 일어나면 안 된다. 남은 키: ${promotedKeys()}",
+        )
     }
 
     @Test
@@ -724,6 +747,10 @@ class SellerProductUpdateIntegrationTest : IntegrationTestBase() {
                 .resultList
                 .map { it[0] as String to it[1] as Int }
         }!!
+
+    private fun promotedKeys(): List<String> = (fileStorage as FakeFileStorage).promotedKeys
+
+    private fun clearPromoted() = (fileStorage as FakeFileStorage).clearPromoted()
 
     private fun countOf(entityName: String): Long =
         tx.execute {

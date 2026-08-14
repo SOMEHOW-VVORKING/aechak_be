@@ -63,13 +63,19 @@ class ProductService(
         return productVersionRepository.save(ProductVersion.create(product, command.thumbnailImageKey))
     }
 
-    fun getCurrentImageKeys(
-        productPublicId: String,
-        sellerId: Long,
-    ): Set<String> {
+    fun validateAndGetCurrentImageKeys(command: UpdateProductCommand): Set<String> {
         val product =
-            productRepository.findByPublicIdAndSellerId(productPublicId, sellerId)
+            productRepository.findByPublicIdAndSellerId(command.productPublicId, command.sellerId)
                 ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+        loadLeafCategory(command.categoryId)
+        Product.validateEditable(
+            regularPrice = command.regularPrice,
+            discountPrice = command.discountPrice,
+            discountStartAt = command.discountStartAt,
+            discountEndAt = command.discountEndAt,
+            additionalImageKeys = command.additionalImageKeys,
+            detailImageKeys = command.detailImageKeys,
+        )
         return (listOfNotNull(product.representativeImageKey) + product.currentImages.map { it.storageKey }).toSet()
     }
 

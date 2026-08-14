@@ -240,6 +240,18 @@ class Product protected constructor(
             ).apply { addImages(additionalImageKeys, detailImageKeys, FIRST_VERSION_NO) }
         }
 
+        fun validateEditable(
+            regularPrice: Long,
+            discountPrice: Long?,
+            discountStartAt: LocalDateTime?,
+            discountEndAt: LocalDateTime?,
+            additionalImageKeys: List<String>,
+            detailImageKeys: List<String>,
+        ) {
+            validatePricing(regularPrice, discountPrice, discountStartAt, discountEndAt)
+            validateImageCounts(additionalImageKeys, detailImageKeys)
+        }
+
         private fun validatePricing(
             regularPrice: Long,
             discountPrice: Long?,

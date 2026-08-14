@@ -81,7 +81,7 @@ class ProductFacade(
 
     override fun updateProduct(command: UpdateProductCommand): ProductUpdateResult {
         requireActiveSeller(command.sellerId)
-        val storedKeys = tx.execute { productService.getCurrentImageKeys(command.productPublicId, command.sellerId) }!!
+        val storedKeys = tx.execute { productService.validateAndGetCurrentImageKeys(command) }!!
         val stored = promoteNewImageKeys(command, storedKeys)
         return tx.execute { productService.updateProduct(stored) }!!
     }
