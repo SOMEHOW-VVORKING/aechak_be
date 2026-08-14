@@ -34,18 +34,18 @@ class OrderRepositoryAdapter(
 
 - payment(L3)의 영속 모델·매퍼는 채택 레벨과 무관하게 항상 이 모듈에 위치한다. // TODO: 결제 착수 시
 
-### 1-1. PII 암호화 ⚠️ PENDING — 방식 미확정
+### 1-1. PII 암호화 — 확정 (2026-08 SCRUM-175·192)
 
-PII(전화번호·계좌번호 등)의 저장 암호화(AES-256) 방식은 아직 팀 결정 전이다.
-확정 전까지 리뷰에서 암호화 누락·방식을 지적하지 않는다 (REVIEW.md 참조).
-
-논의 중 확인된 제약 (확정 시 반영):
-- 엔티티에서 `@Convert`로 infra converter를 지목하면 domain→infra 의존 발생 → 00 §2 위반.
-  후보안은 domain 값 타입(`data class Encrypted`) + infra의 `@Converter(autoApply=true)` 타입 매칭.
-- 값 타입에 `@JvmInline` 금지 — 인라인 언박싱으로 JVM 필드가 String이 되어 Hibernate가
-  converter를 매칭하지 못한다(조용한 평문 저장).
-- 미결 쟁점: 암호화 로직의 위치 — jpa-persistence 내부 vs 독립 crypto 모듈(캐시·메시지 등
-  JPA 외 경로에서 재사용 필요 시). // TODO: 멘토 자문 후 확정
+- **포트**: `PiiCrypto`(encrypt/decrypt/hmac) + 용도 라벨 `PiiContext` — application 소유. 소비자는 포트만 안다.
+- **엔진·키 조립**: `:pii` 공용 모듈(web-security 계열) — AES-GCM 버전 키링·HMAC(blind index)·`PiiCryptoConfig`(키 검증·조립).
+  실행 모듈은 `:pii` 의존 + `com.aechak.pii` 스캔으로 켠다. 키(aechak.pii.*) 미주입이면 부팅 실패(fail-fast) — 임시 키 폴백 금지.
+- **조립이 boot가 아닌 공유 모듈 소유인 이유**: 모든 실행 모듈이 같은 DB의 같은 암호문을 같은 키로 복호해야 한다 —
+  모듈별로 달라지면 안 되는 조립이라 복제(드리프트) 대신 한 벌로 관리한다. 모듈별로 달라야 하는 조립(SecurityConfig)은 여전히 각 boot 소유.
+  (당초 엔진은 jpa-persistence에 뒀으나 실행 모듈이 둘이 되며 조립 공유 필요가 증명되어 추출 — 엔진에 JPA 의존 0이라 파일 이동 수준이었다.)
+- **변환 방식**: 컨버터가 아니라 **응용 계층 명시 변환**. 전화번호는 1평문→3컬럼(암호문·전체 HMAC·뒷4 HMAC)이라 1:1 컨버터로 불가하고,
+  점유 검색은 저장 전에 해시가 필요하다(`PhonePiiEncoder`). 계좌번호도 현재 명시 암호화(Base64 String).
+- 후속: SettlementAccount는 검색 불요라 값 타입 + `@Converter(autoApply=true)` 후보 유지 — 컨버터는 JPA 장치이므로
+  jpa-persistence 소속으로 만들고 `:pii` 엔진을 의존한다(값 타입 `@JvmInline` 금지 — 언박싱으로 컨버터 미매칭·조용한 평문 저장).
 
 ## 2. infra/kafka
 
