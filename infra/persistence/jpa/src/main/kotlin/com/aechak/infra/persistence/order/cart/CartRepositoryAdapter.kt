@@ -24,6 +24,11 @@ interface CartJpaRepository : JpaRepository<Cart, Long> {
     fun findByBuyerIdWithItems(
         @Param("buyerId") buyerId: Long,
     ): List<Cart>
+
+    @Query("select count(i) > 0 from CartItem i where i.id in :cartItemIds")
+    fun existsAnyItemById(
+        @Param("cartItemIds") cartItemIds: Collection<Long>,
+    ): Boolean
 }
 
 @Repository
@@ -40,6 +45,9 @@ class CartRepositoryAdapter(
     override fun findByBuyerIdForUpdate(buyerId: Long): Cart? = jpaRepository.findByBuyerIdForUpdate(buyerId).firstOrNull()
 
     override fun findByBuyerIdWithItems(buyerId: Long): Cart? = jpaRepository.findByBuyerIdWithItems(buyerId).firstOrNull()
+
+    override fun existsAnyItemById(cartItemIds: Collection<Long>): Boolean =
+        cartItemIds.isNotEmpty() && jpaRepository.existsAnyItemById(cartItemIds)
 
     override fun flush() = jpaRepository.flush()
 }
