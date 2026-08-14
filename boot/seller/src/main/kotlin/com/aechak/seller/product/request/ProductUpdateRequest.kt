@@ -32,6 +32,13 @@ data class ProductUpdateRequest(
             (additionalImageKeys.orEmpty() + detailImageKeys.orEmpty())
                 .all { it.isNotBlank() && it.length <= ProductImage.STORAGE_KEY_MAX }
 
+    /** 한 종류 안에서 키가 겹치면 뒤엣것만 살아남아 보낸 것보다 이미지가 조용히 줄어듦. */
+    @get:AssertTrue(message = "같은 이미지 키를 한 종류 안에 두 번 넣을 수 없습니다.")
+    val imageKeysDistinct: Boolean
+        get() = additionalImageKeys.orEmpty().hasNoDuplicate() && detailImageKeys.orEmpty().hasNoDuplicate()
+
+    private fun List<String>.hasNoDuplicate(): Boolean = distinct().size == size
+
     fun toCommand(
         sellerId: Long,
         productPublicId: String,

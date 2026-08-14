@@ -242,6 +242,30 @@ class SellerProductUpdateIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `같은 이미지 키를 한 종류 안에 두 번 넣으면 90001이다`() {
+        assertRejected(updateJson(additionalImageKeys = listOf("products/a1.png", "products/a1.png")), 90001)
+        assertRejected(updateJson(detailImageKeys = listOf("products/d1.png", "products/d1.png")), 90001)
+    }
+
+    @Test
+    fun `종류가 다르면 같은 키를 함께 보낼 수 있다`() {
+        mockMvc
+            .perform(
+                updateRequest(
+                    token,
+                    productId,
+                    updateJson(additionalImageKeys = listOf("products/a1.png"), detailImageKeys = listOf("products/a1.png")),
+                ),
+            ).andExpect(status().isOk)
+
+        assertEquals(
+            listOf(ProductImageType.PRODUCT, ProductImageType.DETAIL),
+            imageRows().filter { it.second == "products/a1.png" }.map { it.first },
+            "같은 파일을 추가와 상세에 함께 걸 수 있어야 한다: ${imageRows()}",
+        )
+    }
+
+    @Test
     fun `등록부터 수정과 상태 변경을 거쳐 구매자 조회까지 관통한다`() {
         mockMvc
             .perform(updateRequest(token, productId, updateJson(productName = "닭가슴살 큐브", regularPrice = 30_000L)))
