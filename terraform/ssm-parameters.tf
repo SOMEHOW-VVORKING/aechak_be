@@ -123,3 +123,111 @@ resource "aws_ssm_parameter" "pii_hmac_key" {
     prevent_destroy = true # 파라미터 삭제 = 앱 부팅 fail-fast. 철거는 이 가드를 손수 제거한 뒤에만
   }
 }
+
+# ── seller-api (SCRUM-193): /aechak/{env}/seller/ ──────
+# 값은 api와 같은 원천(tf 리소스)을 재참조한다 — 두 경로가 항상 같은 값이 되도록 원천을 하나로 둔다.
+# 별도 경로인 이유: 기존 /api/ 경로는 prevent_destroy 가드(PII)라 이동 불가 + IAM 스코프를 모듈 단위로 유지.
+
+resource "aws_ssm_parameter" "seller_db_url" {
+  name  = "/${var.project}/${var.env}/seller/SPRING_DATASOURCE_URL"
+  type  = "String"
+  value = "jdbc:mysql://${aws_db_instance.main.address}:3306/${var.project}"
+}
+
+resource "aws_ssm_parameter" "seller_db_username" {
+  name  = "/${var.project}/${var.env}/seller/SPRING_DATASOURCE_USERNAME"
+  type  = "String"
+  value = aws_db_instance.main.username
+}
+
+resource "aws_ssm_parameter" "seller_db_password" {
+  name  = "/${var.project}/${var.env}/seller/SPRING_DATASOURCE_PASSWORD"
+  type  = "SecureString"
+  value = random_password.db.result
+}
+
+resource "aws_ssm_parameter" "seller_redis_host" {
+  name  = "/${var.project}/${var.env}/seller/SPRING_DATA_REDIS_HOST"
+  type  = "String"
+  value = aws_elasticache_cluster.redis.cache_nodes[0].address
+}
+
+resource "aws_ssm_parameter" "seller_redis_port" {
+  name  = "/${var.project}/${var.env}/seller/SPRING_DATA_REDIS_PORT"
+  type  = "String"
+  value = "6379"
+}
+
+resource "aws_ssm_parameter" "seller_media_bucket" {
+  name  = "/${var.project}/${var.env}/seller/AWS_S3_MEDIA_BUCKET"
+  type  = "String"
+  value = aws_s3_bucket.media.id
+}
+
+resource "aws_ssm_parameter" "seller_docs_bucket" {
+  name  = "/${var.project}/${var.env}/seller/AWS_S3_DOCS_BUCKET"
+  type  = "String"
+  value = aws_s3_bucket.docs.id
+}
+
+resource "aws_ssm_parameter" "seller_media_public_base_url" {
+  name  = "/${var.project}/${var.env}/seller/AWS_S3_MEDIA_PUBLIC_BASE_URL"
+  type  = "String"
+  value = "https://${local.media_domain}"
+}
+
+# 셀러센터 웹 오리진 — 구매자 웹과 별개 목록. 배포된 셀러 웹 도메인이 생기면 여기 합류
+resource "aws_ssm_parameter" "seller_cors_origins" {
+  name  = "/${var.project}/${var.env}/seller/CORS_ALLOWED_ORIGINS"
+  type  = "String"
+  value = join(",", var.seller_frontend_origins)
+}
+
+# PII 키 — api와 같은 random_bytes를 재참조(같은 DB의 같은 암호문을 복호해야 하므로 값이 달라질 수 없는 구조로)
+resource "aws_ssm_parameter" "seller_pii_aes_key_v1" {
+  name  = "/${var.project}/${var.env}/seller/PII_AES_KEY_V1"
+  type  = "SecureString"
+  value = random_bytes.pii_aes_key_v1.base64
+
+  lifecycle {
+    prevent_destroy = true # 파라미터 삭제 = seller 부팅 fail-fast
+  }
+}
+
+resource "aws_ssm_parameter" "seller_pii_hmac_key" {
+  name  = "/${var.project}/${var.env}/seller/PII_HMAC_KEY"
+  type  = "SecureString"
+  value = random_bytes.pii_hmac_key.base64
+
+  lifecycle {
+    prevent_destroy = true # 파라미터 삭제 = seller 부팅 fail-fast
+  }
+}
+
+# --- JWT RS256 실키 (SCRUM-193) ---
+# 지금까지 dev는 키 미주입 → 프로세스마다 임시 키 생성이었다. 실행 모듈이 둘이 되면
+# api가 발급한 토큰을 seller가 다른 키로 검증해 전부 401이 되므로 실키 공유가 분리의 전제다.
+# 재생성돼도 전 세션 재로그인으로 끝나는 가역 사고라(PII와 달리) prevent_destroy는 걸지 않는다.
+resource "tls_private_key" "jwt" {
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+# api = 발급+검증(양키), seller = 검증만(공개키) — seller가 뚫려도 토큰 위조는 불가한 구도
+resource "aws_ssm_parameter" "jwt_private_key" {
+  name  = "/${var.project}/${var.env}/api/AUTH_JWT_PRIVATE_KEY"
+  type  = "SecureString"
+  value = tls_private_key.jwt.private_key_pem_pkcs8 # 앱 파서가 PKCS8 전제
+}
+
+resource "aws_ssm_parameter" "jwt_public_key" {
+  name  = "/${var.project}/${var.env}/api/AUTH_JWT_PUBLIC_KEY"
+  type  = "String"
+  value = tls_private_key.jwt.public_key_pem
+}
+
+resource "aws_ssm_parameter" "seller_jwt_public_key" {
+  name  = "/${var.project}/${var.env}/seller/AUTH_JWT_PUBLIC_KEY"
+  type  = "String"
+  value = tls_private_key.jwt.public_key_pem
+}

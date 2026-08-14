@@ -79,3 +79,9 @@ variable "frontend_origins" {
   type        = list(string)
   description = "presigned 업로드 CORS 허용 오리진 (웹 dev 포트별 복수)"
 }
+
+variable "seller_frontend_origins" {
+  description = "셀러센터 웹 로컬 개발 오리진 — 배포된 셀러 웹 도메인이 생기면 CORS 로컬에 그 값을 합류시킨다"
+  type        = list(string)
+  default     = []
+}
