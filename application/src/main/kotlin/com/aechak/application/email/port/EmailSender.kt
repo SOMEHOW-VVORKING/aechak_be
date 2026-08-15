@@ -1,4 +1,4 @@
-package com.aechak.application.inquiry.port
+package com.aechak.application.email.port
 
 interface EmailSender {
     fun send(message: EmailMessage)

@@ -1,7 +1,7 @@
 package com.aechak.infra.ses
 
-import com.aechak.application.inquiry.port.EmailMessage
-import com.aechak.application.inquiry.port.EmailSender
+import com.aechak.application.email.port.EmailMessage
+import com.aechak.application.email.port.EmailSender
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.mail.MailSender

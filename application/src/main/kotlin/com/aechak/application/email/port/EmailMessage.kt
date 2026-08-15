@@ -1,4 +1,4 @@
-package com.aechak.application.inquiry.port
+package com.aechak.application.email.port
 
 data class EmailMessage(
     val to: List<String>,

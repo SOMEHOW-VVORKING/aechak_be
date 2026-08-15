@@ -4,6 +4,7 @@ import com.aechak.common.error.BusinessException
 import com.aechak.domain.inquiry.error.InquiryErrorCode
 import com.aechak.domain.inquiry.inquiry.enums.InquiryStatus
 import com.aechak.domain.inquiry.inquiry.enums.InquiryType
+import com.aechak.domain.inquiry.inquiry.event.InquiryReceivedEvent
 import com.aechak.domain.support.AggregateRoot
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -35,6 +36,19 @@ class Inquiry protected constructor(
     @Column(nullable = false, length = 20)
     var status: InquiryStatus = InquiryStatus.RECEIVED
         protected set
+
+    /** 접수 사실 이벤트 등록 */
+    fun registerReceived() =
+        registerEvent(
+            InquiryReceivedEvent(
+                inquiryId = id,
+                inquiryType = inquiryType,
+                userId = userId,
+                replyEmail = replyEmail,
+                content = content,
+                createdAt = createdAt,
+            ),
+        )
 
     companion object {
         const val MAX_CONTENT_LENGTH = 2000
