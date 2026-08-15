@@ -269,6 +269,49 @@ class ProductTest {
         assertEquals(SaleStatus.ON_SALE, product.saleStatus, "거절됐으면 판매중 그대로여야 한다")
     }
 
+    @Test
+    fun `판매중 상품의 재고가 다 떨어지면 품절로 내려간다`() {
+        val product = product()
+
+        product.syncSaleStatusWithStock(hasActiveStock = false)
+
+        assertEquals(SaleStatus.OUT_OF_STOCK, product.saleStatus, "재고가 없으면 품절이어야 한다")
+    }
+
+    @Test
+    fun `품절 상품에 재고가 생기면 판매중으로 돌아온다`() {
+        val product = product()
+        product.syncSaleStatusWithStock(hasActiveStock = false)
+
+        product.syncSaleStatusWithStock(hasActiveStock = true)
+
+        assertEquals(SaleStatus.ON_SALE, product.saleStatus, "재고가 생겼으니 판매중으로 돌아와야 한다")
+    }
+
+    @Test
+    fun `같은 판정을 거듭 받아도 상태가 흔들리지 않는다`() {
+        val product = product()
+
+        product.syncSaleStatusWithStock(hasActiveStock = true)
+        assertEquals(SaleStatus.ON_SALE, product.saleStatus, "판매중에 재고가 있으면 그대로여야 한다")
+
+        product.syncSaleStatusWithStock(hasActiveStock = false)
+        product.syncSaleStatusWithStock(hasActiveStock = false)
+        assertEquals(SaleStatus.OUT_OF_STOCK, product.saleStatus, "품절에 재고가 없으면 그대로여야 한다")
+    }
+
+    @Test
+    fun `판매중지 상품은 재고가 바뀌어도 상태를 유지한다`() {
+        val product = product()
+        product.changeSaleStatusBySeller(SaleStatus.SUSPENDED)
+
+        product.syncSaleStatusWithStock(hasActiveStock = false)
+        assertEquals(SaleStatus.SUSPENDED, product.saleStatus, "재고가 없어도 판매중지가 유지돼야 한다")
+
+        product.syncSaleStatusWithStock(hasActiveStock = true)
+        assertEquals(SaleStatus.SUSPENDED, product.saleStatus, "재고를 채워도 판매중지가 유지돼야 한다")
+    }
+
     private fun keys(count: Int): List<String> = (1..count).map { "products/$it.png" }
 
     private fun assertInvalidPeriod(block: () -> Unit) = assertRejected(ProductErrorCode.INVALID_DISCOUNT_PERIOD, block)
