@@ -26,10 +26,12 @@ include(
     "common",
     "web-common",
     "web-security",
+    "pii",                            // PII 암호화 엔진·키 조립 공용 모듈 (web-security 계열, SCRUM-192)
     "domain",
     "application",
     "message",                        // Kafka 통합 메시지 계약 (00-overview A-2)
     "api",
+    "seller-api",                     // 셀러센터 실행 모듈 — 상품 등록·주문 관리가 붙기 전에 선분리(SCRUM-192)
     "batch",                          // admin — MVP 제외, 필요 시점에 생성
     "jpa-persistence",
     "pg-client",          // kafka는 어댑터 코드가 생길 때 하위 모듈 추가
@@ -41,6 +43,7 @@ include(
 )
 
 project(":api").projectDir = file("boot/api")
+project(":seller-api").projectDir = file("boot/seller")
 project(":batch").projectDir = file("boot/batch")
 project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
 project(":pg-client").projectDir = file("infra/client/pg-client")

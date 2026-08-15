@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0" # JWT RS256 키쌍 생성 — private_key_pem_pkcs8이 4.0부터
+    }
   }
 
   backend "s3" {

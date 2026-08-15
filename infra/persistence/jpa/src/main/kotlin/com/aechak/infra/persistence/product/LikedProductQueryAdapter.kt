@@ -3,7 +3,7 @@ package com.aechak.infra.persistence.product
 import com.aechak.application.product.like.port.LikedProductCondition
 import com.aechak.application.product.like.port.LikedProductQueryPort
 import com.aechak.application.product.like.port.view.LikedProductView
-import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.domain.product.like.QProductLike
 import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.product.enums.SaleStatus
@@ -34,10 +34,7 @@ class LikedProductQueryAdapter(
 
     override fun countLiked(userId: Long): Long = likedBaseQuery(product.count(), userId).fetchOne() ?: 0L
 
-    /**
-     * 노출 가능한 내 찜 상품 기본 쿼리.
-     * 카탈로그와 달리 카테고리 활성은 요구하지 않는다 (위시리스트는 내 것이라 카테고리 정리로 숨기지 않음).
-     */
+    /** 노출 가능한 내 찜 상품 기본 쿼리 */
     private fun <T> likedBaseQuery(
         select: Expression<T>,
         userId: Long,
@@ -49,9 +46,14 @@ class LikedProductQueryAdapter(
             .on(seller.userId.eq(product.sellerId).and(seller.status.eq(SellerStatus.ACTIVE)))
             .join(productLike)
             .on(productLike.product.id.eq(product.id))
+            .leftJoin(product.category, category)
+            .leftJoin(category.parent, parent)
+            .leftJoin(parent.parent, grandParent)
+            .leftJoin(productStats)
+            .on(productStats.productId.eq(product.id))
             .where(
                 product.inspectionStatus.eq(InspectionStatus.APPROVED),
-                product.saleStatus.`in`(SaleStatus.ON_SALE, SaleStatus.OUT_OF_STOCK),
+                product.saleStatus.`in`(SaleStatus.EXPOSABLE),
                 productLike.userId.eq(userId),
             )
 
@@ -73,8 +75,18 @@ class LikedProductQueryAdapter(
                 product.discountEndAt,
                 effectivePrice,
                 product.saleStatus,
+                productStats.averageRating,
+                reviewCountScore(),
+                viewable(),
             ),
         )
+
+    /** 상세 진입 가능 여부 */
+    private fun viewable(): Expression<Boolean> =
+        CaseBuilder()
+            .`when`(categoryChainActive())
+            .then(true)
+            .otherwise(false)
 
     /** likeId keyset 경계 (최신 찜 순) */
     private fun keyset(lastLikeId: Long?): Predicate? = lastLikeId?.let { productLike.id.lt(it) }

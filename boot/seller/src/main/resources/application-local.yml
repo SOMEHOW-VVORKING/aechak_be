@@ -1,0 +1,27 @@
+# 로컬 개발 — api와 같은 MySQL·Redis(docker compose)를 공유하고 포트만 다르다
+server:
+  port: 8081
+
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/aechak}
+    username: ${SPRING_DATASOURCE_USERNAME:app}
+    password: ${SPRING_DATASOURCE_PASSWORD:local}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+api:
+  # 셀러센터 웹 FE dev 오리진 — FE 리포 포트 확정 시 갱신
+  cors-allowed-origins: http://localhost:5174
+
+# TEST/LOCAL 전용 고정 키 — 실환경 사용 금지. api application-local.yml과 동일 값(같은 로컬 DB를 복호).
+aechak:
+  pii:
+    aes-keys:
+      1: ${PII_AES_KEY_V1:dxeyFW4YgkgYreLe9IX7laeZPHaP3Eada2M9yuBCA+Q=}
+    hmac-key: ${PII_HMAC_KEY:Jtk5KHlAG6nnDtIBDhqoDXIs7FovvRs0kOckZP6cl7k=}

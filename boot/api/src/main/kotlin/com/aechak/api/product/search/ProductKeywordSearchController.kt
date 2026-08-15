@@ -23,12 +23,8 @@ class ProductKeywordSearchController(
     fun searchProducts(
         @Valid @ModelAttribute request: ProductKeywordSearchRequest,
         @AuthenticationPrincipal principal: AuthPrincipal?,
-    ): ResponseEntity<ApiResponse<ProductListResponse>> =
-        ResponseEntity.ok(
-            ApiResponse.of(
-                ProductListResponse.from(
-                    productKeywordSearchUseCase.searchProducts(request.toQuery(), principal?.userId),
-                ),
-            ),
-        )
+    ): ResponseEntity<ApiResponse<ProductListResponse>> {
+        val result = productKeywordSearchUseCase.searchProducts(request.toQuery(), principal?.userId)
+        return ResponseEntity.ok(ApiResponse.of(ProductListResponse.from(result)))
+    }
 }

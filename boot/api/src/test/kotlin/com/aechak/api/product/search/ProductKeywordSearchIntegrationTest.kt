@@ -2,6 +2,8 @@ package com.aechak.api.product.search
 
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.auth.error.AuthErrorCode
+import com.aechak.application.product.search.port.ProductKeywordFilter
+import com.aechak.application.product.search.port.ProductKeywordSearchSort
 import com.aechak.application.product.search.support.ProductKeywordSearchCursorCodec
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.like.ProductLike
@@ -11,6 +13,7 @@ import com.aechak.domain.product.stats.ProductStats
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.user.user.User
 import com.jayway.jsonpath.JsonPath
+import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -28,6 +31,7 @@ import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import java.math.BigDecimal
+import java.time.Duration
 import java.time.LocalDateTime
 
 /**
@@ -222,6 +226,8 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
             "별점이 응답에 매핑돼야 한다",
         )
         assertFalse(JsonPath.read<Boolean>(body, "$.data.products[0].isLiked"), "게스트 검색 카드의 isLiked는 false다")
+        assertTrue(JsonPath.read<Boolean>(body, "$.data.products[0].isViewable"), "활성 카테고리라 진입 가능")
+        assertTrue(JsonPath.read<Boolean>(body, "$.data.products[0].isPurchasable"), "판매중이라 구매 가능")
     }
 
     @Test
@@ -235,7 +241,7 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
             em.persist(ProductLike.of(liked, userId))
         }
 
-        val body = searchAuth("사료", mintAccessToken(userId))
+        val body = searchAsUser("사료", mintAccessToken(userId))
 
         val likedByName =
             JsonPath
@@ -244,6 +250,22 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
                 .toMap()
         assertTrue(likedByName.getValue("강아지 사료 찜함"))
         assertFalse(likedByName.getValue("강아지 사료 안함"))
+    }
+
+    @Test
+    fun `품절 상품 카드는 진입은 가능하되 구매 불가로 내려간다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            val soldOut = persistProduct(mid, "품절 사료")
+            em.flush()
+            overrideSaleStatus(soldOut.id, SaleStatus.OUT_OF_STOCK)
+        }
+
+        val body = search("사료")
+
+        assertEquals("OUT_OF_STOCK", JsonPath.read<String>(body, "$.data.products[0].saleStatus"))
+        assertTrue(JsonPath.read<Boolean>(body, "$.data.products[0].isViewable"), "품절이어도 상세 진입은 가능")
+        assertFalse(JsonPath.read<Boolean>(body, "$.data.products[0].isPurchasable"), "품절이라 구매 불가")
     }
 
     @Test
@@ -286,7 +308,15 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
             persistProduct(mid, "강아지 사료")
         }
 
-        val forged = ProductKeywordSearchCursorCodec.encode("사료", "00000000000000000000000000")
+        val forged =
+            ProductKeywordSearchCursorCodec.encode(
+                sort = ProductKeywordSearchSort.POPULAR,
+                filterHash = ProductKeywordSearchCursorCodec.filterHash(filterOf("사료")),
+                publicId = "00000000000000000000000000",
+                lastReviewCount = 0,
+                lastPrice = null,
+                now = LocalDateTime.now(),
+            )
 
         mockMvc
             .perform(get("/api/v1/search/products").param("keyword", "사료").param("cursor", forged))
@@ -332,16 +362,366 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.ONBOARDING_REQUIRED.code))
     }
 
+    // ---------- SCRUM-158 정렬 ----------
+
+    @Test
+    fun `인기순은 리뷰 수 내림차순으로 정렬한다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            val low = persistProduct(mid, "정렬 사료 A")
+            em.flush()
+            persistStats(low.id, reviewCount = 3, averageRating = BigDecimal("3.00"))
+            val high = persistProduct(mid, "정렬 사료 B")
+            em.flush()
+            persistStats(high.id, reviewCount = 50, averageRating = BigDecimal("2.00"))
+            persistProduct(mid, "정렬 사료 C") // 통계 없음 = 리뷰 수 0
+        }
+
+        val body = search("사료", sort = "popular")
+
+        assertEquals(listOf("정렬 사료 B", "정렬 사료 A", "정렬 사료 C"), productNames(body), "리뷰 수 desc, 통계 없는 상품은 0으로 뒤")
+    }
+
+    @Test
+    fun `낮은가격순은 유효가격 오름차순으로 정렬한다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            persistProduct(mid, "가격 사료 A", regular = 30000L)
+            persistProduct(mid, "가격 사료 B", regular = 10000L)
+            persistProduct(mid, "가격 사료 C", regular = 20000L)
+        }
+
+        val body = search("사료", sort = "price_asc")
+
+        assertEquals(listOf("가격 사료 B", "가격 사료 C", "가격 사료 A"), productNames(body))
+    }
+
+    @Test
+    fun `최신순은 id 내림차순으로 정렬한다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            (1..3).forEach { persistProduct(mid, "최신 사료 $it") }
+        }
+
+        val body = search("사료", sort = "latest")
+
+        assertEquals(listOf("최신 사료 3", "최신 사료 2", "최신 사료 1"), productNames(body))
+    }
+
+    @Test
+    fun `인기순 커서로 다음 페이지를 겹침 없이 순회한다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            (1..4).forEach {
+                val p = persistProduct(mid, "인기 사료 $it")
+                em.flush()
+                persistStats(p.id, reviewCount = it * 10, averageRating = BigDecimal("3.00"))
+            }
+        }
+
+        val page1 = search("사료", sort = "popular", size = 2)
+        assertEquals(listOf("인기 사료 4", "인기 사료 3"), productNames(page1))
+
+        val page2 = search("사료", sort = "popular", size = 2, cursor = JsonPath.read(page1, "$.data.nextCursor"))
+        assertEquals(listOf("인기 사료 2", "인기 사료 1"), productNames(page2))
+        assertFalse(JsonPath.read<Boolean>(page2, "$.data.hasNext"))
+    }
+
+    // ---------- SCRUM-158 필터 ----------
+
+    @Test
+    fun `가격대 필터는 유효가격 범위 안의 상품만 남긴다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            persistProduct(mid, "가격 사료 5천", regular = 5000L)
+            persistProduct(mid, "가격 사료 3만", regular = 30000L)
+            persistProduct(mid, "가격 사료 5만", regular = 50000L)
+        }
+
+        val body = search("사료", minPrice = 10000L, maxPrice = 40000L, sort = "price_asc")
+
+        assertEquals(listOf("가격 사료 3만"), productNames(body))
+        assertEquals(1, JsonPath.read<Int>(body, "$.data.totalCount"), "총개수도 같은 필터를 반영한다")
+    }
+
+    @Test
+    fun `최소 평점 필터는 별점 하한 이상만 남기고 리뷰 없는 상품은 제외한다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            val a = persistProduct(mid, "평점 사료 A")
+            em.flush()
+            persistStats(a.id, reviewCount = 10, averageRating = BigDecimal("4.50"))
+            val b = persistProduct(mid, "평점 사료 B")
+            em.flush()
+            persistStats(b.id, reviewCount = 10, averageRating = BigDecimal("3.00"))
+            persistProduct(mid, "평점 사료 C") // 리뷰 없음 = averageRating null
+        }
+
+        val body = search("사료", minRating = "4.0")
+
+        assertEquals(listOf("평점 사료 A"), productNames(body))
+        assertEquals(1, JsonPath.read<Int>(body, "$.data.totalCount"))
+    }
+
+    @Test
+    fun `무료배송 필터는 셀러 기본 배송비가 0인 상품만 남긴다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            persistSellerWithFee(101L, "무료셀러", 0L)
+            persistSellerWithFee(102L, "유료셀러", 3000L)
+            persistProduct(mid, "무배 사료 A", sellerId = 101L)
+            persistProduct(mid, "무배 사료 B", sellerId = 102L)
+        }
+
+        val body = search("사료", freeShipping = true)
+
+        assertEquals(listOf("무배 사료 A"), productNames(body))
+    }
+
+    @Test
+    fun `품절 제외 필터는 판매중만 남긴다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            persistProduct(mid, "재고 사료 판매중")
+            val oos = persistProduct(mid, "재고 사료 품절")
+            em.flush()
+            overrideSaleStatus(oos.id, SaleStatus.OUT_OF_STOCK)
+        }
+
+        assertEquals(
+            listOf("재고 사료 품절", "재고 사료 판매중"),
+            productNames(search("사료", sort = "latest")),
+            "기본은 품절도 노출(최신순 id desc라 나중에 등록한 품절이 앞)",
+        )
+        assertEquals(listOf("재고 사료 판매중"), productNames(search("사료", excludeSoldOut = true)))
+    }
+
+    @Test
+    fun `카테고리 필터는 지정한 중분류의 상품만 남긴다`() {
+        val midId =
+            tx.execute {
+                val mid1 = persistMidCategory("사료류")
+                val mid2 = persistMidCategory("장난감류")
+                persistProduct(mid1, "카테고리 사료 A")
+                persistProduct(mid2, "카테고리 사료 B")
+                mid1.id
+            }!!
+
+        val body = search("사료", category = midId)
+
+        assertEquals(listOf("카테고리 사료 A"), productNames(body))
+    }
+
+    @Test
+    fun `대분류로 카테고리 필터하면 400을 반환한다`() {
+        val rootId =
+            tx.execute {
+                val root = Category.create(null, 1, "강아지", null, 1)
+                em.persist(root)
+                em.flush()
+                root.id
+            }!!
+
+        mockMvc
+            .perform(get("/api/v1/search/products").param("keyword", "사료").param("category", rootId.toString()))
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `없는 카테고리로 필터하면 404를 반환한다`() {
+        mockMvc
+            .perform(get("/api/v1/search/products").param("keyword", "사료").param("category", "999999"))
+            .andExpect(status().isNotFound)
+    }
+
+    // ---------- SCRUM-158 커서와 검증 ----------
+
+    @Test
+    fun `다른 정렬에서 받은 커서는 400으로 거절한다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            (1..3).forEach { persistProduct(mid, "정렬커서 사료 $it") }
+        }
+
+        val popularCursor = JsonPath.read<String>(search("사료", sort = "popular", size = 1), "$.data.nextCursor")
+
+        mockMvc
+            .perform(
+                get("/api/v1/search/products")
+                    .param("keyword", "사료")
+                    .param("sort", "price_asc")
+                    .param("cursor", popularCursor),
+            ).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `다른 필터에서 받은 커서는 400으로 거절한다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            (1..3).forEach { persistProduct(mid, "필터커서 사료 $it", regular = (it * 10000).toLong()) }
+        }
+
+        val cursor = JsonPath.read<String>(search("사료", size = 1, minPrice = 5000L), "$.data.nextCursor")
+
+        mockMvc
+            .perform(
+                get("/api/v1/search/products")
+                    .param("keyword", "사료")
+                    .param("minPrice", "20000")
+                    .param("cursor", cursor),
+            ).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `가격이나 별점 검증에 걸리면 400을 반환한다`() {
+        mockMvc
+            .perform(get("/api/v1/search/products").param("keyword", "사료").param("minPrice", "50000").param("maxPrice", "10000"))
+            .andExpect(status().isBadRequest)
+        mockMvc
+            .perform(get("/api/v1/search/products").param("keyword", "사료").param("minPrice", "-1"))
+            .andExpect(status().isBadRequest)
+        mockMvc
+            .perform(get("/api/v1/search/products").param("keyword", "사료").param("minRating", "5.5"))
+            .andExpect(status().isBadRequest)
+        mockMvc
+            .perform(get("/api/v1/search/products").param("keyword", "사료").param("sort", "unknown"))
+            .andExpect(status().isBadRequest)
+        // 큰 소수 자릿수는 @Digits로 400 (메모리 고갈 방지)
+        mockMvc
+            .perform(get("/api/v1/search/products").param("keyword", "사료").param("minRating", "0.001"))
+            .andExpect(status().isBadRequest)
+        mockMvc
+            .perform(get("/api/v1/search/products").param("keyword", "사료").param("minRating", "1E-100000000"))
+            .andExpect(status().isBadRequest)
+    }
+
+    // ---------- SCRUM-159 최근 검색어 적재 ----------
+
+    @Test
+    fun `로그인 사용자가 검색하면 최근 검색어로 적재된다`() {
+        val userId = createActiveUser()
+        tx.execute {
+            val mid = persistMidCategory()
+            persistProduct(mid, "강아지 사료")
+        }
+
+        searchAsUser("사료", mintAccessToken(userId))
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            assertEquals(listOf("사료"), recentKeywords(userId))
+        }
+    }
+
+    @Test
+    fun `게스트 검색은 적재되지 않는다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            persistProduct(mid, "강아지 사료")
+        }
+
+        search("사료")
+
+        assertEquals(0L, countAllRecent(), "비로그인 검색은 recent_searches에 남지 않는다")
+    }
+
+    @Test
+    fun `같은 키워드 재검색은 새 행 없이 최신으로 갱신한다`() {
+        val userId = createActiveUser()
+        val token = mintAccessToken(userId)
+        tx.execute {
+            val mid = persistMidCategory()
+            persistProduct(mid, "강아지 사료")
+        }
+
+        searchAsUser("사료", token)
+        searchAsUser("사료", token)
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            assertEquals(1L, countRecent(userId), "원자적 upsert라 중복 행이 생기지 않는다")
+            assertEquals(listOf("사료"), recentKeywords(userId))
+        }
+    }
+
+    @Test
+    fun `대소문자가 다른 키워드는 각각 적재된다`() {
+        val userId = createActiveUser()
+        val token = mintAccessToken(userId)
+        tx.execute {
+            val mid = persistMidCategory()
+            persistProduct(mid, "iPhone Case")
+        }
+
+        searchAsUser("iPhone", token)
+        searchAsUser("iphone", token)
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            assertEquals(2L, countRecent(userId), "as_cs 콜레이션이라 대소문자가 다르면 각각 저장된다")
+            assertTrue(recentKeywords(userId).containsAll(listOf("iPhone", "iphone")), "친 표기가 각각 보존된다")
+        }
+    }
+
+    @Test
+    fun `적재 키워드는 앞뒤와 내부 공백을 접고 원본 대소문자를 보존한다`() {
+        val userId = createActiveUser()
+        val token = mintAccessToken(userId)
+
+        // 전각 공백(U+3000)과 NEL(U+0085)을 내부에 둔 원본. 저장은 trim + 공백 접기 + 대소문자 보존
+        searchAsUser("  아이폰\u0085\u3000케이스  ", token)
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            assertEquals(listOf("아이폰 케이스"), recentKeywords(userId))
+        }
+    }
+
+    @Test
+    fun `커서 페이지 이동은 최근 검색어로 적재하지 않는다`() {
+        val userId = createActiveUser()
+        val token = mintAccessToken(userId)
+        tx.execute {
+            val mid = persistMidCategory()
+            (1..3).forEach { persistProduct(mid, "커서적재 사료 $it") }
+        }
+
+        // 게스트 첫 페이지로 커서만 얻는다(게스트라 적재되지 않음)
+        val cursor = JsonPath.read<String>(search("커서적재", size = 1), "$.data.nextCursor")
+
+        // 로그인 사용자가 커서로 2페이지 요청 (새 검색이 아니라 미적재 확인)
+        mockMvc
+            .perform(
+                get("/api/v1/search/products")
+                    .param("keyword", "커서적재")
+                    .param("size", "1")
+                    .param("cursor", cursor)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token"),
+            ).andExpect(status().isOk)
+
+        assertEquals(0L, countRecent(userId), "커서 페이지 이동은 적재하지 않는다")
+    }
+
     // --- helpers ---
 
     private fun search(
         keyword: String,
         cursor: String? = null,
         size: Int? = null,
+        sort: String? = null,
+        minPrice: Long? = null,
+        maxPrice: Long? = null,
+        minRating: String? = null,
+        category: Long? = null,
+        freeShipping: Boolean? = null,
+        excludeSoldOut: Boolean? = null,
     ): String {
         val request = get("/api/v1/search/products").param("keyword", keyword)
         cursor?.let { request.param("cursor", it) }
         size?.let { request.param("size", it.toString()) }
+        sort?.let { request.param("sort", it) }
+        minPrice?.let { request.param("minPrice", it.toString()) }
+        maxPrice?.let { request.param("maxPrice", it.toString()) }
+        minRating?.let { request.param("minRating", it) }
+        category?.let { request.param("category", it.toString()) }
+        freeShipping?.let { request.param("freeShipping", it.toString()) }
+        excludeSoldOut?.let { request.param("excludeSoldOut", it.toString()) }
         return mockMvc
             .perform(request)
             .andExpect(status().isOk)
@@ -350,7 +730,7 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
             .getContentAsString(Charsets.UTF_8)
     }
 
-    private fun searchAuth(
+    private fun searchAsUser(
         keyword: String,
         token: String,
     ): String =
@@ -363,6 +743,51 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
             .andReturn()
             .response
             .getContentAsString(Charsets.UTF_8)
+
+    private fun filterOf(keyword: String): ProductKeywordFilter =
+        ProductKeywordFilter(
+            keyword = keyword,
+            minPrice = null,
+            maxPrice = null,
+            minRating = null,
+            categoryId = null,
+            freeShipping = false,
+            excludeSoldOut = false,
+        )
+
+    private fun productNames(body: String): List<String> = JsonPath.read(body, "$.data.products[*].name")
+
+    private fun recentKeywords(userId: Long): List<String> =
+        tx.execute {
+            em
+                .createQuery(
+                    "select r.keyword from RecentSearch r where r.userId = :uid order by r.searchedAt desc, r.id desc",
+                    String::class.java,
+                ).setParameter("uid", userId)
+                .resultList
+        }!!
+
+    private fun countRecent(userId: Long): Long =
+        tx.execute {
+            em
+                .createQuery("select count(r) from RecentSearch r where r.userId = :uid", java.lang.Long::class.java)
+                .setParameter("uid", userId)
+                .singleResult
+                .toLong()
+        }!!
+
+    private fun countAllRecent(): Long =
+        tx.execute {
+            em.createQuery("select count(r) from RecentSearch r", java.lang.Long::class.java).singleResult.toLong()
+        }!!
+
+    private fun persistSellerWithFee(
+        sellerId: Long,
+        storeName: String,
+        baseShippingFee: Long,
+    ) {
+        em.persist(Seller.open(userId = sellerId, storeName = storeName, baseShippingFee = baseShippingFee))
+    }
 
     // ---------- 픽스처 (tx.execute 안에서만 호출) ----------
 

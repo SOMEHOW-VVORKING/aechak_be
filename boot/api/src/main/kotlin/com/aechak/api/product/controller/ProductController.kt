@@ -4,7 +4,7 @@ import com.aechak.api.product.request.ProductSearchRequest
 import com.aechak.api.product.response.ProductDetailResponse
 import com.aechak.api.product.response.ProductListResponse
 import com.aechak.api.product.response.ProductOptionsResponse
-import com.aechak.application.product.usecase.ProductUseCase
+import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
