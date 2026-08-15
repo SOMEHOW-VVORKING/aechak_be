@@ -14,6 +14,12 @@ interface ProductLikeJpaRepository : JpaRepository<ProductLike, Long> {
         userId: Long,
     ): Boolean
 
+    @Query("select pl.product.id from ProductLike pl where pl.userId = :userId and pl.product.id in :productIds")
+    fun findLikedProductIds(
+        @Param("userId") userId: Long,
+        @Param("productIds") productIds: Collection<Long>,
+    ): List<Long>
+
     // 멱등 원자 삽입 (충돌은 0행으로 흡수), 감사 컬럼은 NOT NULL이라 함께 세팅
     @Modifying
     @Query(
@@ -43,6 +49,11 @@ class ProductLikeRepositoryAdapter(
         productId: Long,
         userId: Long,
     ): Boolean = jpaRepository.existsByProductIdAndUserId(productId, userId)
+
+    override fun findLikedProductIds(
+        userId: Long,
+        productIds: Collection<Long>,
+    ): Set<Long> = if (productIds.isEmpty()) emptySet() else jpaRepository.findLikedProductIds(userId, productIds).toSet()
 
     override fun insertIfAbsent(
         productId: Long,
