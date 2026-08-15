@@ -215,6 +215,7 @@ class ProductDetailUseCaseTest : IntegrationTestBase() {
         assertEquals("store-77", detail.seller.storeName)
         assertEquals("sellers/77.jpg", detail.seller.profileImageKey)
         assertFalse(detail.isLiked)
+        assertTrue(detail.isPurchasable) // 판매중이므로 구매 가능
     }
 
     @Test
@@ -299,7 +300,7 @@ class ProductDetailUseCaseTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `품절 상품은 OUT_OF_STOCK 상태로 정상 노출된다`() {
+    fun `품절 상품은 OUT_OF_STOCK 상태로 정상 노출되되 구매 불가로 내려간다`() {
         val publicId =
             tx.execute {
                 val mid = persistMidCategory()
@@ -309,7 +310,9 @@ class ProductDetailUseCaseTest : IntegrationTestBase() {
                 product.publicId
             }!!
 
-        assertEquals(SaleStatus.OUT_OF_STOCK, getDetail(publicId).saleStatus)
+        val detail = getDetail(publicId)
+        assertEquals(SaleStatus.OUT_OF_STOCK, detail.saleStatus)
+        assertFalse(detail.isPurchasable) // 품절이라 상세는 볼 수 있어도 구매는 불가
     }
 
     // ---------- 카테고리 ----------

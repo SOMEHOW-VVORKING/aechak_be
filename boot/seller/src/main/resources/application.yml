@@ -1,0 +1,64 @@
+spring:
+  application:
+    name: aechak-seller-api
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+  jpa:
+    open-in-view: false
+  cloud:
+    aws:
+      region:
+        static: ap-northeast-2 # 리전 자동탐지 제거 — CI 러너처럼 AWS 설정 없는 환경에선 탐지 실패로 부팅이 깨짐
+
+# 로그 레벨 옆에 traceId — api와 동일 포맷(로그 수집 파이프라인 공유 전제)
+logging:
+  pattern:
+    level: "%5p [%X{traceId:-}]"
+
+# ECS 롤링 시 SIGTERM을 받으면 처리 중 요청까지는 끝내고 종료
+server:
+  shutdown: graceful
+
+# ALB 헬스체크용. health 외 엔드포인트는 민감정보라 노출 금지
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+  health:
+    redis:
+      enabled: false
+
+# 이 파일은 전 환경 공통만 담는다. datasource·redis는 프로파일 yml 소유.
+# flyway 설정이 없는 이유: 스키마 관리는 api가 유일 소유자 — seller는 마이그레이션을 수행하지 않는다.
+
+api:
+  base-path: /api/v1         # 호스트로 분리되므로 접두는 api와 동일 — FE가 경로를 바꿀 필요가 없다
+
+aws:
+  s3:
+    media-bucket: ${AWS_S3_MEDIA_BUCKET:}
+    docs-bucket: ${AWS_S3_DOCS_BUCKET:}
+    media-public-base-url: ${AWS_S3_MEDIA_PUBLIC_BASE_URL:}
+
+auth:
+  token:
+    access-ttl: 30m          # 검증에만 쓰이지만 JwtConfig(web-security)가 TokenPolicy 빈을 요구 — api와 값 일치 유지
+    refresh-ttl: 7d
+    rotation-grace: 60s
+  jwt:
+    # RS256 PEM — 토큰 발급은 api 소관, 여기선 서명 검증(public)만 실질 사용. api와 같은 키를 주입한다.
+    private-key: ${AUTH_JWT_PRIVATE_KEY:}
+    public-key: ${AUTH_JWT_PUBLIC_KEY:}
+
+# PII 암호화 키 — api와 동일 키(같은 DB의 같은 암호문을 복호). 미주입이면 부팅 실패(fail-fast).
+aechak:
+  pii:
+    active-version: 1
+    aes-keys:
+      1: ${PII_AES_KEY_V1}
+    hmac-key: ${PII_HMAC_KEY}

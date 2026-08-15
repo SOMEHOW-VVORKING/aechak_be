@@ -99,3 +99,9 @@ variable "inquiry_ops_recipients" {
     error_message = "inquiry_notification_enabled=true 이면 inquiry_ops_recipients에 유효한 이메일이 최소 1개 필요합니다."
   }
 }
+
+variable "seller_frontend_origins" {
+  description = "셀러센터 웹 로컬 개발 오리진 — 배포된 셀러 웹 도메인이 생기면 CORS 로컬에 그 값을 합류시킨다"
+  type        = list(string)
+  default     = []
+}

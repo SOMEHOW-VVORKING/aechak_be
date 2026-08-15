@@ -3,7 +3,6 @@ package com.aechak.api.order.cart.response
 import com.aechak.application.order.cart.usecase.result.CartResult
 
 data class CartResponse(
-    val cartItemCount: Int,
     val sellerGroups: List<SellerGroupResponse>,
 ) {
     data class SellerGroupResponse(
@@ -63,7 +62,6 @@ data class CartResponse(
     companion object {
         fun from(result: CartResult): CartResponse =
             CartResponse(
-                cartItemCount = result.cartItemCount,
                 sellerGroups = result.sellerGroups.map(SellerGroupResponse::from),
             )
     }

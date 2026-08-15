@@ -18,6 +18,7 @@ import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.repository.CategoryRepository
 import com.aechak.domain.product.error.ProductErrorCode
 import com.aechak.domain.product.like.repository.ProductLikeRepository
+import com.aechak.domain.product.product.repository.ProductRepository
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
@@ -28,6 +29,7 @@ class ProductService(
     private val productOptionsQueryPort: ProductOptionsQueryPort,
     private val categoryRepository: CategoryRepository,
     private val productLikeRepository: ProductLikeRepository,
+    private val productRepository: ProductRepository,
 ) {
     fun getVisiblePage(
         query: ProductSearchQuery,
@@ -120,7 +122,7 @@ class ProductService(
             }
         }
         val lastId =
-            productCatalogQueryPort.findIdByPublicId(decoded.publicId)
+            productRepository.findIdByPublicId(decoded.publicId)
                 ?: throw BusinessException(CommonErrorCode.INVALID_CURSOR)
         return CursorAnchor(lastId = lastId, lastPrice = decoded.lastPrice, anchorNow = decoded.anchorNow)
     }
