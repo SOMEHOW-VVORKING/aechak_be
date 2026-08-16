@@ -26,6 +26,9 @@ import org.springframework.transaction.support.TransactionTemplate
         // 팀 공통 테스트 설정은 flyway를 꺼둔다. 엔티티 테이블은 ddl-auto가 만들어주기 때문인데,
         // 아웃박스와 인박스 테이블은 엔티티가 아니라 마이그레이션으로만 생긴다. 그래서 여기서는 켠다.
         "spring.flyway.enabled=true",
+        // 공유 MySQL을 flyway off 컨텍스트와 함께 쓰므로, 마이그레이션 전에 clean할 수 있게 연다
+        // (IntegrationTestConfig의 clean-then-migrate 전략과 짝).
+        "spring.flyway.clean-disabled=false",
         "spring.kafka.bootstrap-servers=\${spring.embedded.kafka.brokers}",
         "spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer",
         "spring.kafka.producer.value-serializer=org.apache.kafka.common.serialization.StringSerializer",

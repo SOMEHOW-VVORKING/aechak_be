@@ -402,7 +402,6 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
         val review =
             Review.write(
                 productId = productId,
-                optionCombinationId = 1L,
                 optionNameSnapshot = optionName,
                 orderItemId = orderItemId,
                 authorUserId = authorUserId,

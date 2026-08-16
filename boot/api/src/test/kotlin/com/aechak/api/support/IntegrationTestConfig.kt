@@ -2,6 +2,7 @@ package com.aechak.api.support
 
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.user.verification.support.VerificationCodeGenerator
+import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
@@ -43,6 +44,19 @@ class IntegrationTestConfig {
 
     @Bean
     fun databaseCleaner(jdbcTemplate: JdbcTemplate) = DatabaseCleaner(jdbcTemplate)
+
+    /**
+     * Flyway를 켠 컨텍스트(KafkaIntegrationTestBase)는 마이그레이션 전에 스키마를 clean한다.
+     * MySQL 컨테이너를 Flyway on/off 컨텍스트가 공유하는데, off 쪽 테스트가 남긴 시드 데이터와
+     * V2 categories 시드가 충돌해 컨텍스트 로딩이 실행 순서에 따라 깨지던 문제를 없앤다.
+     * Flyway를 끈 컨텍스트에는 Flyway 빈이 없어 이 전략이 호출되지 않는다.
+     */
+    @Bean
+    fun flywayCleanMigrateStrategy(): FlywayMigrationStrategy =
+        FlywayMigrationStrategy { flyway ->
+            flyway.clean()
+            flyway.migrate()
+        }
 
     /** 실 어댑터면 펫 사진 승격이 자격증명 없이 AWS로 나감 */
     @Bean

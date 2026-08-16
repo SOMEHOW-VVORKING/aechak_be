@@ -22,4 +22,9 @@ enum class UploadPurpose(
         StorageCategory.DOCS,
         setOf(FileType.PNG, FileType.JPEG, FileType.WEBP, FileType.PDF),
     ),
+    REVIEW_IMAGE(
+        "reviews/images",
+        StorageCategory.MEDIA,
+        setOf(FileType.PNG, FileType.JPEG, FileType.WEBP),
+    ),
 }

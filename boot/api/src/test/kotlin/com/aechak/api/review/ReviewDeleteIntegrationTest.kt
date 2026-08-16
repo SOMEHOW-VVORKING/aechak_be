@@ -202,7 +202,6 @@ class ReviewDeleteIntegrationTest : IntegrationTestBase() {
         val review =
             Review.write(
                 productId = productId,
-                optionCombinationId = 1L,
                 optionNameSnapshot = "블랙 / L",
                 orderItemId = orderItemId,
                 authorUserId = authorUserId,
