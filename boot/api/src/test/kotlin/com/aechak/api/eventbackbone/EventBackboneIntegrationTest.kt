@@ -31,6 +31,7 @@ import org.springframework.kafka.core.DefaultKafkaConsumerFactory
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.test.utils.ContainerTestUtils
 import org.springframework.kafka.test.utils.KafkaTestUtils
+import org.springframework.transaction.support.TransactionTemplate
 import tools.jackson.databind.ObjectMapper
 import java.time.Duration
 import java.time.Instant
@@ -872,9 +873,36 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
         }
     }
 
+    /** 이벤트 백본 테스트에서만 사용하는 인박스 검증용 소비자. */
+    class SyntheticInboxProbe(
+        private val objectMapper: ObjectMapper,
+        private val processedMessages: ProcessedMessages,
+        private val transactionTemplate: TransactionTemplate,
+    ) {
+        @KafkaListener(id = ID, topics = [Topics.ORDER], groupId = ID)
+        fun onMessage(value: String) {
+            transactionTemplate.executeWithoutResult {
+                val envelope = objectMapper.readValue(value, Envelope::class.java)
+                if (envelope.eventType != "SyntheticMessage") return@executeWithoutResult
+                if (!processedMessages.markProcessed(ID, envelope.eventId)) return@executeWithoutResult
+            }
+        }
+
+        companion object {
+            const val ID = "synthetic-skeleton"
+        }
+    }
+
     @TestConfiguration
     class TraceProbeConfig {
         @Bean
         fun traceProbe() = TraceProbe()
+
+        @Bean
+        fun syntheticInboxProbe(
+            @Qualifier(MESSAGING_OBJECT_MAPPER) objectMapper: ObjectMapper,
+            processedMessages: ProcessedMessages,
+            transactionTemplate: TransactionTemplate,
+        ) = SyntheticInboxProbe(objectMapper, processedMessages, transactionTemplate)
     }
 }
