@@ -12,14 +12,17 @@ import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.option.OptionCombination
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.seller.seller.Seller
+import com.aechak.domain.user.point.policy.ReviewRewardPolicy
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.websecurity.config.JwtConfig
 import com.jayway.jsonpath.JsonPath
 import jakarta.persistence.EntityManager
 import jakarta.persistence.PersistenceContext
+import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -31,11 +34,13 @@ import org.springframework.security.oauth2.jwt.JwtEncoder
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
 import java.util.UUID
@@ -43,6 +48,7 @@ import java.util.UUID
 /**
  * 리뷰 작성 API(POST /reviews) 통합 테스트.
  * 아웃박스 발행을 타므로 Flyway가 켜진 KafkaIntegrationTestBase를 상속한다.
+ * REVIEW 토픽을 선언해 컨슈머(평점 투영, 적립)까지 도는 e2e도 함께 검증한다.
  */
 @EmbeddedKafka(
     partitions = 1,
@@ -123,7 +129,7 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
     }
 
     @Test
-    fun `포토 리뷰를 작성하면 이미지를 결과에 담는다`() {
+    fun `포토 리뷰를 작성하면 컨슈머가 평점을 집계하고 정책 금액을 적립한다`() {
         val buyerId = createActiveUser()
         val fixture = persistReviewableOrderItem(buyerId)
         val tmpKey = "${FileKey.tmpPrefixOf(buyerId, UploadPurpose.REVIEW_IMAGE)}photo.jpg"
@@ -136,8 +142,33 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                 .getContentAsString(Charsets.UTF_8)
 
         val reviewId = JsonPath.read<Int>(responseBody, "$.data.reviewId").toLong()
-        assertNotNull(reviewId)
         assertEquals(1, JsonPath.read<List<*>>(responseBody, "$.data.images").size)
+
+        await().atMost(Duration.ofSeconds(20)).untilAsserted {
+            val reviewCount =
+                db
+                    .sql("select review_count from product_stats where product_id = :pid")
+                    .param("pid", fixture.productId)
+                    .query(Int::class.javaObjectType)
+                    .optional()
+            assertTrue(reviewCount.isPresent && reviewCount.get() == 1)
+
+            val rewardCount =
+                db
+                    .sql("select count(*) from point_transactions where idempotency_key = :key")
+                    .param("key", "EARN:REVIEW_REWARD:$reviewId")
+                    .query(Long::class.javaObjectType)
+                    .single()
+            assertEquals(1L, rewardCount)
+
+            val balance =
+                db
+                    .sql("select point_balance from users where id = :uid")
+                    .param("uid", buyerId)
+                    .query(Long::class.javaObjectType)
+                    .single()
+            assertEquals(ReviewRewardPolicy.amountFor(hasPhoto = true), balance)
+        }
     }
 
     @Test
@@ -269,6 +300,44 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(reviewBody(orderItemId = 1L)),
             ).andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `리뷰를 삭제하면 컨슈머가 평점 집계를 0으로 재계산한다`() {
+        val buyerId = createActiveUser()
+        val fixture = persistReviewableOrderItem(buyerId)
+
+        val responseBody =
+            postReview(buyerId, reviewBody(fixture.orderItemId))
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        val reviewId = JsonPath.read<Int>(responseBody, "$.data.reviewId").toLong()
+
+        await().atMost(Duration.ofSeconds(20)).untilAsserted {
+            val count =
+                db
+                    .sql("select review_count from product_stats where product_id = :pid")
+                    .param("pid", fixture.productId)
+                    .query(Int::class.javaObjectType)
+                    .optional()
+            assertTrue(count.isPresent && count.get() == 1)
+        }
+
+        mockMvc
+            .perform(delete("/api/v1/reviews/$reviewId").header(HttpHeaders.AUTHORIZATION, bearer(buyerId)))
+            .andExpect(status().isNoContent)
+
+        await().atMost(Duration.ofSeconds(20)).untilAsserted {
+            val count =
+                db
+                    .sql("select review_count from product_stats where product_id = :pid")
+                    .param("pid", fixture.productId)
+                    .query(Int::class.javaObjectType)
+                    .single()
+            assertEquals(0, count)
+        }
     }
 
     private fun postReview(

@@ -2,6 +2,7 @@ package com.aechak.application.product.stats.service
 
 import com.aechak.domain.product.stats.ProductStats
 import com.aechak.domain.product.stats.repository.ProductStatsRepository
+import java.math.BigDecimal
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -13,6 +14,13 @@ class ProductStatsServiceTest {
         private val stored: List<ProductStats>,
     ) : ProductStatsRepository {
         override fun findAllByProductIds(productIds: Collection<Long>): List<ProductStats> = stored.filter { it.productId in productIds }
+
+        override fun upsertReviewStats(
+            productId: Long,
+            reviewCount: Int,
+            ratingSum: Long,
+            averageRating: BigDecimal?,
+        ) = Unit
     }
 
     @Test
