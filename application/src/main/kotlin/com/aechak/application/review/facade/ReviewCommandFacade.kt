@@ -15,6 +15,7 @@ import com.aechak.domain.review.error.ReviewErrorCode
 import com.aechak.domain.review.review.Review
 import com.aechak.domain.review.review.ReviewImage
 import com.aechak.message.review.ReviewCreatedMessage
+import com.aechak.message.review.ReviewDeletedMessage
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
@@ -66,6 +67,9 @@ class ReviewCommandFacade(
         userId: Long,
         reviewId: Long,
     ) {
-        reviewCommandService.delete(userId, reviewId)
+        val deletedProductId = reviewCommandService.delete(userId, reviewId)
+        if (deletedProductId != null) {
+            messagePublisher.publish(ReviewDeletedMessage(reviewId = reviewId, productId = deletedProductId))
+        }
     }
 }

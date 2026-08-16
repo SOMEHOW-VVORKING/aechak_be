@@ -47,15 +47,17 @@ class ReviewCommandService(
         }
     }
 
+    /** 삭제 처리 후 실제로 삭제가 발생했으면 재집계 대상인 productId를 반환 */
     fun delete(
         userId: Long,
         reviewId: Long,
-    ) {
+    ): Long? {
         val review = reviewRepository.findById(reviewId) ?: throw BusinessException(ReviewErrorCode.REVIEW_NOT_FOUND)
         if (review.authorUserId != userId) {
             throw BusinessException(ReviewErrorCode.REVIEW_ACCESS_DENIED)
         }
-        reviewRepository.markDeletedIfNotDeleted(reviewId, userId)
+        val affected = reviewRepository.markDeletedIfNotDeleted(reviewId, userId)
+        return if (affected > 0) review.productId else null
     }
 
     companion object {

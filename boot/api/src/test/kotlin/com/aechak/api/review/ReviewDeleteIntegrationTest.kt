@@ -1,12 +1,17 @@
 package com.aechak.api.review
 
-import com.aechak.api.support.IntegrationTestBase
+import com.aechak.api.support.KafkaIntegrationTestBase
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.review.review.Review
 import com.aechak.domain.review.review.enums.ReviewStatus
 import com.aechak.domain.seller.seller.Seller
+import com.aechak.domain.user.user.User
+import com.aechak.domain.user.user.enums.UserStatus
+import com.aechak.websecurity.config.JwtConfig
 import com.jayway.jsonpath.JsonPath
+import jakarta.persistence.EntityManager
+import jakarta.persistence.PersistenceContext
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -14,6 +19,10 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
+import org.springframework.kafka.test.context.EmbeddedKafka
+import org.springframework.security.oauth2.jwt.JwtClaimsSet
+import org.springframework.security.oauth2.jwt.JwtEncoder
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
@@ -22,14 +31,33 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.time.Instant
 
-/** 리뷰 삭제 API(DELETE /reviews/{id}) 통합 테스트. */
-class ReviewDeleteIntegrationTest : IntegrationTestBase() {
+/**
+ * 리뷰 삭제 API(DELETE /reviews/{id}) 통합 테스트.
+ * 삭제가 평점 재집계 이벤트를 아웃박스로 발행하므로 Flyway·임베디드 Kafka가 있는 KafkaIntegrationTestBase를 상속한다.
+ */
+@EmbeddedKafka(
+    partitions = 1,
+    topics = [
+        com.aechak.infra.kafka.Topics.ORDER,
+        com.aechak.infra.kafka.Topics.ORDER_DLT,
+        com.aechak.infra.kafka.Topics.REVIEW,
+        com.aechak.infra.kafka.Topics.REVIEW_DLT,
+    ],
+)
+class ReviewDeleteIntegrationTest : KafkaIntegrationTestBase() {
     @Autowired
     private lateinit var context: WebApplicationContext
 
     @Autowired
     private lateinit var securityFilterChain: FilterChainProxy
+
+    @Autowired
+    private lateinit var jwtEncoder: JwtEncoder
+
+    @PersistenceContext
+    private lateinit var em: EntityManager
 
     private lateinit var mockMvc: MockMvc
     private val defaultSellerId = 77L
@@ -150,6 +178,32 @@ class ReviewDeleteIntegrationTest : IntegrationTestBase() {
     }
 
     private fun bearer(userId: Long) = "Bearer ${mintAccessToken(userId)}"
+
+    private fun mintAccessToken(userId: Long): String {
+        val now = Instant.now()
+        val claims =
+            JwtClaimsSet
+                .builder()
+                .subject(userId.toString())
+                .issuedAt(now)
+                .expiresAt(now.plusSeconds(3600))
+                .claim(JwtConfig.ROLE_CLAIM, "GENERAL")
+                .build()
+        return jwtEncoder.encode(JwtEncoderParameters.from(claims)).tokenValue
+    }
+
+    private fun createActiveUser(): Long =
+        tx.execute {
+            val user = User.preRegister()
+            em.persist(user)
+            em.flush()
+            em
+                .createQuery("update User u set u.status = :st where u.id = :id")
+                .setParameter("st", UserStatus.ACTIVE)
+                .setParameter("id", user.id)
+                .executeUpdate()
+            user.id
+        }!!
 
     private fun getReviews(
         publicId: String,

@@ -59,7 +59,5 @@ class ReviewRepositoryAdapter(
     override fun markDeletedIfNotDeleted(
         reviewId: Long,
         userId: Long,
-    ) {
-        jpaRepository.markDeletedIfNotDeleted(reviewId, userId)
-    }
+    ): Int = jpaRepository.markDeletedIfNotDeleted(reviewId, userId)
 }
