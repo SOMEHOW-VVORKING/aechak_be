@@ -20,6 +20,7 @@ springdoc = "3.0.3"              # OpenAPI 3/Swagger UI
 spring-cloud-aws = "4.0.2"       # Boot 4.x 호환 계열(4.0.x) 최신 패치 — 3.x는 Boot 4에서 미동작
 querydsl = "7.0"                 # OpenFeign 포크 — JPA 3.2/Hibernate 7 타깃(원조 com.querydsl는 Hibernate 7 미지원)
 ksp = "2.2.21-2.0.5"             # QueryDSL Q클래스 생성 — Kotlin 2.2.21 정합 버전
+ahocorasick = "0.6.3"            # 금칙어 다중 패턴 매칭(리뷰 마스킹) — robert-bor/aho-corasick, Apache-2.0
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -35,6 +36,7 @@ logback-classic = { module = "ch.qos.logback:logback-classic" }  # slf4j 바인�
 # --- application: 유스케이스 조율 계층 ---
 spring-context = { module = "org.springframework:spring-context" }
 spring-tx = { module = "org.springframework:spring-tx" }
+ahocorasick = { module = "org.ahocorasick:ahocorasick", version.ref = "ahocorasick" }  # 리뷰 금칙어 마스킹(CRQ-RVW-06) 다중 패턴 매칭
 
 # --- infra:persistence: domain 포트의 JPA 어댑터 ---
 spring-data-jpa = { module = "org.springframework.data:spring-data-jpa" }
