@@ -1,6 +1,7 @@
 package com.aechak.application.review.service
 
 import com.aechak.application.order.usecase.result.ReviewOrderItemResult
+import com.aechak.application.review.moderation.service.ReviewModerationDecision
 import com.aechak.application.review.usecase.command.CreateReviewCommand
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.review.error.ReviewErrorCode
@@ -38,8 +39,14 @@ class ReviewCommandService(
         command: CreateReviewCommand,
         orderItem: ReviewOrderItemResult,
         images: List<ReviewImage>,
+        moderationDecision: ReviewModerationDecision,
     ): Review {
         val review = command.toEntity(orderItem, images)
+        when (moderationDecision) {
+            is ReviewModerationDecision.Keep -> Unit
+            is ReviewModerationDecision.Mask -> review.mask(moderationDecision.displayContent)
+            is ReviewModerationDecision.Block -> review.block()
+        }
         return try {
             reviewRepository.save(review)
         } catch (e: DuplicateOrderItemReviewException) {

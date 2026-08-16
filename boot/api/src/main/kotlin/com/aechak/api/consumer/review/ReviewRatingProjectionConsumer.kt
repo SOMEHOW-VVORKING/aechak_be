@@ -5,7 +5,6 @@ import com.aechak.application.product.stats.usecase.ProductStatsUseCase
 import com.aechak.infra.kafka.Topics
 import com.aechak.infra.kafka.config.MessagingJacksonConfig.Companion.MESSAGING_OBJECT_MAPPER
 import com.aechak.message.Envelope
-import com.aechak.message.review.ReviewBlockedMessage
 import com.aechak.message.review.ReviewCreatedMessage
 import com.aechak.message.review.ReviewDeletedMessage
 import org.springframework.beans.factory.annotation.Qualifier
@@ -42,10 +41,6 @@ class ReviewRatingProjectionConsumer(
 
             ReviewDeletedMessage::class.simpleName -> {
                 objectMapper.readValue(envelope.payload, ReviewDeletedMessage::class.java).productId
-            }
-
-            ReviewBlockedMessage::class.simpleName -> {
-                objectMapper.readValue(envelope.payload, ReviewBlockedMessage::class.java).productId
             }
 
             else -> {

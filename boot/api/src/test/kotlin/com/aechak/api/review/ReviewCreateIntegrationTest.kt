@@ -106,6 +106,46 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                 .query(Long::class.javaObjectType)
                 .single()
         assertEquals(1L, outboxCount)
+        assertEquals("PUBLIC", reviewStatus(reviewId))
+    }
+
+    @Test
+    fun `금칙어가 섞인 리뷰는 응답 전에 MASKED 상태와 노출 문구를 저장한다`() {
+        val buyerId = createActiveUser()
+        val fixture = persistReviewableOrderItem(buyerId)
+
+        val responseBody =
+            postReview(buyerId, reviewBody(fixture.orderItemId, content = "시발 배송은 좋아요"))
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+
+        val reviewId = JsonPath.read<Int>(responseBody, "$.data.reviewId").toLong()
+        assertEquals("MASKED", reviewStatus(reviewId))
+        assertEquals("** 배송은 좋아요", displayContent(reviewId))
+    }
+
+    @Test
+    fun `금칙어 비율이 절반을 넘는 리뷰는 응답 전에 BLOCKED 상태가 되고 적립금을 지급하지 않는다`() {
+        val buyerId = createActiveUser()
+        val fixture = persistReviewableOrderItem(buyerId)
+
+        val responseBody =
+            postReview(buyerId, reviewBody(fixture.orderItemId, content = "시발 씨발 좆!!!"))
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+
+        val reviewId = JsonPath.read<Int>(responseBody, "$.data.reviewId").toLong()
+        assertEquals("BLOCKED", reviewStatus(reviewId))
+
+        await().atMost(Duration.ofSeconds(20)).untilAsserted {
+            assertEquals(1L, processedCount("review-point-rewarder", "review-$reviewId:created"))
+        }
+        assertEquals(0L, rewardCount(reviewId))
+        assertEquals(0L, pointBalance(buyerId))
     }
 
     @Test
@@ -387,6 +427,46 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                 .executeUpdate()
             user.id
         }!!
+
+    private fun reviewStatus(reviewId: Long): String =
+        db
+            .sql("select review_status from reviews where id = :id")
+            .param("id", reviewId)
+            .query(String::class.java)
+            .single()
+
+    private fun displayContent(reviewId: Long): String? =
+        db
+            .sql("select display_content from reviews where id = :id")
+            .param("id", reviewId)
+            .query(String::class.java)
+            .optional()
+            .orElse(null)
+
+    private fun processedCount(
+        consumer: String,
+        eventId: String,
+    ): Long =
+        db
+            .sql("select count(*) from processed_message where consumer = :consumer and event_id = :eventId")
+            .param("consumer", consumer)
+            .param("eventId", eventId)
+            .query(Long::class.javaObjectType)
+            .single()
+
+    private fun rewardCount(reviewId: Long): Long =
+        db
+            .sql("select count(*) from point_transactions where idempotency_key = :key")
+            .param("key", "EARN:REVIEW_REWARD:$reviewId")
+            .query(Long::class.javaObjectType)
+            .single()
+
+    private fun pointBalance(userId: Long): Long =
+        db
+            .sql("select point_balance from users where id = :id")
+            .param("id", userId)
+            .query(Long::class.javaObjectType)
+            .single()
 
     private fun persistReviewableOrderItem(
         buyerUserId: Long,

@@ -86,6 +86,25 @@ class ReviewTest {
     }
 
     @Test
+    fun `마스킹하면 MASKED 상태와 노출 문구를 저장한다`() {
+        val review = aReview()
+
+        review.mask("** 상품입니다")
+
+        assertEquals(ReviewStatus.MASKED, review.reviewStatus)
+        assertEquals("** 상품입니다", review.displayContent)
+    }
+
+    @Test
+    fun `차단하면 BLOCKED 상태가 된다`() {
+        val review = aReview()
+
+        review.block()
+
+        assertEquals(ReviewStatus.BLOCKED, review.reviewStatus)
+    }
+
+    @Test
     fun `삭제하면 DELETED 상태가 되고 삭제 시각이 채워진다`() {
         val review = aReview()
 

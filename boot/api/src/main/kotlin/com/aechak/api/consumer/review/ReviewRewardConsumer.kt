@@ -6,6 +6,7 @@ import com.aechak.infra.kafka.Topics
 import com.aechak.infra.kafka.config.MessagingJacksonConfig.Companion.MESSAGING_OBJECT_MAPPER
 import com.aechak.message.Envelope
 import com.aechak.message.review.ReviewCreatedMessage
+import com.aechak.message.review.ReviewModerationStatus
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.kafka.annotation.KafkaListener
@@ -29,6 +30,7 @@ class ReviewRewardConsumer(
         if (!processedMessages.markProcessed(GROUP, envelope.eventId)) return
 
         val message = objectMapper.readValue(envelope.payload, ReviewCreatedMessage::class.java)
+        if (message.reviewStatus == ReviewModerationStatus.BLOCKED) return
         pointUseCase.earnReviewReward(message.buyerUserId, message.reviewId, message.hasPhoto)
     }
 

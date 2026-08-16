@@ -28,33 +28,6 @@ interface ReviewJpaRepository : JpaRepository<Review, Long> {
         @Param("id") id: Long,
         @Param("userId") userId: Long,
     ): Int
-
-    @Modifying
-    @Query(
-        value = """
-            UPDATE reviews
-            SET review_status = 'MASKED', display_content = :displayContent, updated_at = NOW(6)
-            WHERE id = :id AND review_status = 'PUBLIC'
-        """,
-        nativeQuery = true,
-    )
-    fun maskIfPublic(
-        @Param("id") id: Long,
-        @Param("displayContent") displayContent: String,
-    ): Int
-
-    @Modifying
-    @Query(
-        value = """
-            UPDATE reviews
-            SET review_status = 'BLOCKED', updated_at = NOW(6)
-            WHERE id = :id AND review_status = 'PUBLIC'
-        """,
-        nativeQuery = true,
-    )
-    fun blockIfPublic(
-        @Param("id") id: Long,
-    ): Int
 }
 
 @Repository
@@ -87,11 +60,4 @@ class ReviewRepositoryAdapter(
         reviewId: Long,
         userId: Long,
     ): Int = jpaRepository.markDeletedIfNotDeleted(reviewId, userId)
-
-    override fun maskIfPublic(
-        reviewId: Long,
-        displayContent: String,
-    ): Int = jpaRepository.maskIfPublic(reviewId, displayContent)
-
-    override fun blockIfPublic(reviewId: Long): Int = jpaRepository.blockIfPublic(reviewId)
 }

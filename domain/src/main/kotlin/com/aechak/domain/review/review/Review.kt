@@ -73,6 +73,21 @@ class Review protected constructor(
         deletedAt = LocalDateTime.now()
     }
 
+    fun mask(displayContent: String) {
+        if (reviewStatus != ReviewStatus.PUBLIC) {
+            throw BusinessException(ReviewErrorCode.INVALID_REVIEW_STATUS_TRANSITION)
+        }
+        reviewStatus = ReviewStatus.MASKED
+        this.displayContent = displayContent
+    }
+
+    fun block() {
+        if (reviewStatus != ReviewStatus.PUBLIC) {
+            throw BusinessException(ReviewErrorCode.INVALID_REVIEW_STATUS_TRANSITION)
+        }
+        reviewStatus = ReviewStatus.BLOCKED
+    }
+
     companion object {
         // UNIQUE 제약명
         const val UK_ORDER_ITEM_ID = "uk_reviews_order_item_id"
