@@ -204,30 +204,11 @@ resource "aws_ssm_parameter" "seller_pii_hmac_key" {
   }
 }
 
-# --- JWT RS256 실키 (SCRUM-193) ---
-# 지금까지 dev는 키 미주입 → 프로세스마다 임시 키 생성이었다. 실행 모듈이 둘이 되면
-# api가 발급한 토큰을 seller가 다른 키로 검증해 전부 401이 되므로 실키 공유가 분리의 전제다.
-# 재생성돼도 전 세션 재로그인으로 끝나는 가역 사고라(PII와 달리) prevent_destroy는 걸지 않는다.
-resource "tls_private_key" "jwt" {
-  algorithm = "RSA"
-  rsa_bits  = 2048
-}
-
-# api = 발급+검증(양키), seller = 검증만(공개키) — seller가 뚫려도 토큰 위조는 불가한 구도
-resource "aws_ssm_parameter" "jwt_private_key" {
-  name  = "/${var.project}/${var.env}/api/AUTH_JWT_PRIVATE_KEY"
-  type  = "SecureString"
-  value = tls_private_key.jwt.private_key_pem_pkcs8 # 앱 파서가 PKCS8 전제
-}
-
-resource "aws_ssm_parameter" "jwt_public_key" {
-  name  = "/${var.project}/${var.env}/api/AUTH_JWT_PUBLIC_KEY"
-  type  = "String"
-  value = tls_private_key.jwt.public_key_pem
-}
-
-resource "aws_ssm_parameter" "seller_jwt_public_key" {
-  name  = "/${var.project}/${var.env}/seller/AUTH_JWT_PUBLIC_KEY"
-  type  = "String"
-  value = tls_private_key.jwt.public_key_pem
-}
+# --- JWT RS256 키: 수기 등재 (헤더의 카카오·JWT 키 방침과 동일) ---
+# terraform으로 생성하면 개인키가 state에 남아 여기서는 관리하지 않는다.
+# 실행 모듈 간 키 공유가 전제라 아래 파라미터를 사람이 직접 등재한다:
+#   /{project}/{env}/api/AUTH_JWT_PRIVATE_KEY  (SecureString, PKCS8 PEM) — api만 발급+검증
+#   /{project}/{env}/api/AUTH_JWT_PUBLIC_KEY   (String, PEM)
+#   /{project}/{env}/seller/AUTH_JWT_PUBLIC_KEY (String, PEM) — api 공개키와 같은 값이어야 api 발급 토큰을 검증한다
+# 누락 시 부팅은 되지만 임시 키 폴백으로 갈라져 모듈 간 검증이 전부 401이 된다.
+# 검증 전용 실행 모듈이 늘면(admin 등) 그 모듈 경로에도 공개키를 같은 값으로 등재한다.
