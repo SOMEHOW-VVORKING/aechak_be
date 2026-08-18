@@ -1,0 +1,31 @@
+# dev seller-api 배포의 단일 정의 — 배포 파라미터(ECR·클러스터·서비스)는 이 파일에만 둔다
+# 입구 둘: Actions 탭 수동 버튼(workflow_dispatch) / 자동 배포 deploy-dev.yml의 호출(workflow_call)
+# 수동 실행은 반드시 develop 브랜치로 — AWS의 OIDC 신뢰 조건이 develop 한정이라 다른 브랜치는 인증 거부됨
+
+name: deploy-dev-seller-api
+
+on:
+  workflow_dispatch:
+  workflow_call: # deploy-dev.yml(자동)이 이 파일을 호출 — 같은 정의를 공유해 이중 관리 방지
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dev-seller-api # 호출자(deploy-dev)와 같은 그룹이면 부모-자식 상호대기 데드락 — 실제 배포는 전부 이 그룹을 지나므로 직렬화는 유지
+  cancel-in-progress: false
+
+jobs:
+  deploy-seller-api:
+    permissions:
+      id-token: write # OIDC 신분증 발급 권한 — 없으면 AWS 인증 스텝이 실패함
+      contents: read
+    uses: ./.github/workflows/deploy-module.yml
+    secrets: inherit # 재사용 워크플로는 secrets 자동 상속이 안 됨 — 없으면 role ARN이 빈 값으로 넘어가 AWS 인증 실패
+    with:
+      module: seller-api
+      module-dir: boot/seller
+      ecr-repo: aechak-seller-api
+      ecs-cluster: aechak-dev
+      ecs-service: aechak-seller-api-dev
+      task-family: aechak-seller-api-dev

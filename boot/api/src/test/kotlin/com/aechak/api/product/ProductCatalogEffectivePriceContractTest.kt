@@ -1,10 +1,10 @@
 package com.aechak.api.product
 
 import com.aechak.api.support.IntegrationTestBase
-import com.aechak.application.product.port.ProductCatalogCondition
-import com.aechak.application.product.port.ProductCatalogQueryPort
-import com.aechak.application.product.port.ProductCatalogSort
-import com.aechak.application.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.ProductCatalogCondition
+import com.aechak.application.product.product.port.ProductCatalogQueryPort
+import com.aechak.application.product.product.port.ProductCatalogSort
+import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.seller.seller.Seller
@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import java.time.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /** SQL 유효가격(effectivePrice CASE)과 Kotlin ProductPricing 가격 선택의 계약 테스트 */
 class ProductCatalogEffectivePriceContractTest : IntegrationTestBase() {
@@ -70,6 +71,7 @@ class ProductCatalogEffectivePriceContractTest : IntegrationTestBase() {
                 view.sortPriceAtAnchor,
                 "publicId=${view.publicId}",
             )
+            assertTrue(view.isViewable, "카탈로그는 활성 카테고리만 통과하므로 늘 진입 가능함: publicId=${view.publicId}")
         }
     }
 }

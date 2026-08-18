@@ -1,6 +1,6 @@
 package com.aechak.api.product.response
 
-import com.aechak.application.product.usecase.result.ProductOptionsResult
+import com.aechak.application.product.product.usecase.result.ProductOptionsResult
 
 data class ProductOptionsResponse(
     val optionGroups: List<OptionGroupResponse>,

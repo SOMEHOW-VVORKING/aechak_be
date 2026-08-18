@@ -1,7 +1,7 @@
 package com.aechak.api.product.request
 
-import com.aechak.application.product.port.ProductCatalogSort
-import com.aechak.application.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.port.ProductCatalogSort
+import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import org.hibernate.validator.constraints.Range
