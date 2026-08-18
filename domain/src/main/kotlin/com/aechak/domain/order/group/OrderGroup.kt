@@ -127,6 +127,7 @@ class OrderGroup protected constructor(
             if (usedPoint > payableAmount) {
                 throw BusinessException(OrderErrorCode.POINT_EXCEEDS_PAYABLE_AMOUNT)
             }
+            val finalPaymentAmount = payableAmount - usedPoint
             return OrderGroup(
                 buyerId = buyerId,
                 deliveryAddressId = deliveryAddressId,
@@ -134,7 +135,7 @@ class OrderGroup protected constructor(
                 usedPoint = usedPoint,
                 totalProductAmount = totalProductAmount,
                 totalShippingFee = totalShippingFee,
-                finalPaymentAmount = payableAmount - usedPoint,
+                finalPaymentAmount = finalPaymentAmount,
                 idempotencyKey = idempotencyKey,
                 expiresAt = expiresAt,
             )
