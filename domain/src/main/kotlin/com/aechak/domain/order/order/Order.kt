@@ -33,6 +33,7 @@ import java.time.LocalDateTime
 class Order protected constructor(
     orderGroup: OrderGroup,
     sellerId: Long,
+    sellerNameSnapshot: String,
     allocatedCouponDiscount: Long,
     sellerShippingFee: Long,
 ) : AggregateRoot() {
@@ -56,7 +57,7 @@ class Order protected constructor(
     val sellerId: Long = sellerId
 
     @Column(length = 255)
-    var sellerNameSnapshot: String? = null
+    var sellerNameSnapshot: String? = sellerNameSnapshot
         protected set
 
     @Column(nullable = false)
@@ -123,14 +124,15 @@ class Order protected constructor(
     }
 
     companion object {
-        fun place(
+        fun create(
             orderGroup: OrderGroup,
             sellerId: Long,
+            sellerNameSnapshot: String,
             allocatedCouponDiscount: Long,
             sellerShippingFee: Long,
             items: List<OrderItem>,
         ): Order =
-            Order(orderGroup, sellerId, allocatedCouponDiscount, sellerShippingFee).apply {
+            Order(orderGroup, sellerId, sellerNameSnapshot, allocatedCouponDiscount, sellerShippingFee).apply {
                 items.forEach { _items += it }
             }
     }
