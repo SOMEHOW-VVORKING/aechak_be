@@ -74,6 +74,18 @@ data "aws_iam_policy_document" "ecs_task_runtime" {
       "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/seller/*",
     ]
   }
+
+  # 문의 접수 통지 메일 발송 — 검증된 발신 도메인, 지정 발신 주소로만
+  statement {
+    actions   = ["ses:SendEmail"]
+    resources = [aws_ses_domain_identity.mail.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "ses:FromAddress"
+      values   = [local.ses_from_address]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "ecs_task_runtime" {

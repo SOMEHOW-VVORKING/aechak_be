@@ -39,6 +39,10 @@ package com.aechak.application.order.usecase
  *
  * [규칙 — 진입점]
  * - 도메인당 인터페이스 1개. 메서드가 10개를 넘어 비대해지면 그때 기능별 분리를 논의한다.
+ * - 단 **소비하는 실행 모듈이 갈리고 쓰는 메서드가 겹치지 않으면 개수와 무관하게 나눈다.**
+ *   구매자 앱만 쓰는 조회와 셀러센터만 쓰는 쓰기를 한 타입에 두면 양쪽이 안 쓰는 절반을 주입받는다
+ *   (ProductUseCase / SellerProductUseCase). Facade는 하나로 두고 두 인터페이스를 함께 구현한다 —
+ *   쪼개면 같은 Service 주입이 양쪽에 복제된다(선례: AuthFacade가 4개 구현).
  * - 이 인터페이스만이 외부(Controller / Consumer / Batch / 타 도메인 Facade)에 노출된다.
  * - 타 도메인이 order를 부를 때도 반드시 이 인터페이스로만 — OrderService 직접 호출 금지.
  *

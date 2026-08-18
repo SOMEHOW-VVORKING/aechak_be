@@ -18,5 +18,7 @@ interface ProductJpaRepository : JpaRepository<Product, Long> {
 class ProductRepositoryAdapter(
     private val jpaRepository: ProductJpaRepository,
 ) : ProductRepository {
+    override fun save(product: Product): Product = jpaRepository.save(product)
+
     override fun findIdByPublicId(publicId: String): Long? = jpaRepository.findIdByPublicId(publicId)
 }

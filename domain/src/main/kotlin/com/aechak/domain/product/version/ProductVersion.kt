@@ -44,6 +44,21 @@ class ProductVersion protected constructor(
     val id: Long = 0L
 
     companion object {
+        fun create(
+            product: Product,
+            thumbnailKeySnapshot: String,
+        ): ProductVersion =
+            snapshot(
+                product = product,
+                versionNo = 1,
+                nameSnapshot = product.name,
+                priceSnapshot = product.regularPrice,
+                statusSnapshot = product.saleStatus,
+                thumbnailKeySnapshot = thumbnailKeySnapshot,
+                changeType = VersionChangeType.INFO,
+                changedBy = VersionChangedBy.SELLER,
+            )
+
         fun snapshot(
             product: Product,
             versionNo: Int,

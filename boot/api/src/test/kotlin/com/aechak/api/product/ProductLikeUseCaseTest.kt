@@ -83,7 +83,7 @@ class ProductLikeUseCaseTest : IntegrationTestBase() {
 
     /** likeCount 검증용 집계 행 시드 */
     private fun persistStats(productId: Long) {
-        em.persist(ProductStats.init(productId))
+        em.persist(ProductStats.create(productId))
     }
 
     private fun overrideSaleStatus(
@@ -244,6 +244,7 @@ class ProductLikeUseCaseTest : IntegrationTestBase() {
         val page = likedPublicIds(likerId)
 
         assertEquals(listOf(publicIds[2], publicIds[1], publicIds[0]), page.items.map { it.productId })
+        assertTrue(page.items.all { it.isLiked }, "찜 목록 카드는 모두 isLiked=true여야 한다")
         assertEquals(3L, page.totalCount)
         assertFalse(page.hasNext)
         assertNull(page.nextCursor)
