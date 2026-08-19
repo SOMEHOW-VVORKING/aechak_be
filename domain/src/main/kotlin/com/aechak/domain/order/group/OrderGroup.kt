@@ -84,7 +84,7 @@ class OrderGroup protected constructor(
     @Column
     val expiresAt: LocalDateTime? = expiresAt
 
-    @Column(name = "idempotency_key", nullable = false, length = 100)
+    @Column(name = "idempotency_key", nullable = false, length = IDEMPOTENCY_KEY_MAX_LENGTH)
     val idempotencyKey: String = idempotencyKey
 
     fun isExpired(now: LocalDateTime = LocalDateTime.now()): Boolean = expiresAt?.isBefore(now) ?: false
@@ -110,6 +110,8 @@ class OrderGroup protected constructor(
     }
 
     companion object {
+        const val IDEMPOTENCY_KEY_MAX_LENGTH = 100
+
         fun create(
             buyerId: Long,
             deliveryAddressId: Long,
