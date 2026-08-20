@@ -3,8 +3,8 @@ package com.aechak.seller.product
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.enums.UploadPurpose
-import com.aechak.application.product.usecase.ProductUseCase
-import com.aechak.application.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.usecase.ProductUseCase
+import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.order.Order
@@ -262,7 +262,7 @@ class SellerProductSaleStatusIntegrationTest : IntegrationTestBase() {
             em.createQuery("select count(e) from $entityName e", Long::class.javaObjectType).singleResult
         }!!
 
-    private fun listedProductIds(): List<String> = productUseCase.getProducts(ProductSearchQuery()).items.map { it.productId }
+    private fun listedProductIds(): List<String> = productUseCase.getProducts(ProductSearchQuery(), null).items.map { it.productId }
 
     /** 공통 업로드가 발급하는 tmp 키 형태. 승격이 소유자와 용도를 이 접두로 가른다. */
     private fun tmpKey(

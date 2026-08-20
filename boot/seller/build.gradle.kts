@@ -19,6 +19,8 @@ dependencies {
     implementation(libs.spring.boot.starter.data.redis)
     implementation(libs.springdoc.webmvc.ui)
     implementation(libs.spring.boot.starter.actuator)
+    implementation(platform(libs.spring.cloud.aws.bom)) // Spring Cloud AWS 계열 버전 정렬
+    implementation(libs.spring.cloud.aws.starter.parameter.store) // dev 설정을 부팅 시 SSM에서 로드 — import 미선언 프로파일에선 비활성
     // flyway 미포함 — 스키마 관리는 api가 유일 소유자. seller 단독 배포 시 새 마이그레이션은 api 선배포가 전제.
     runtimeOnly(libs.mysql.connector.j)
     testImplementation(testFixtures(project(":api")))   // 통합 테스트 공용 지원(IntegrationTestBase 등) — docs/70 §9

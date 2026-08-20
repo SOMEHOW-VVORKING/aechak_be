@@ -4,7 +4,7 @@ import com.aechak.api.product.request.ProductSearchRequest
 import com.aechak.api.product.response.ProductDetailResponse
 import com.aechak.api.product.response.ProductListResponse
 import com.aechak.api.product.response.ProductOptionsResponse
-import com.aechak.application.product.usecase.ProductUseCase
+import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
@@ -24,9 +24,10 @@ class ProductController(
     @GetMapping
     fun getProducts(
         @Valid @ModelAttribute request: ProductSearchRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal?,
     ): ResponseEntity<ApiResponse<ProductListResponse>> =
         ResponseEntity.ok(
-            ApiResponse.of(ProductListResponse.from(productUseCase.getProducts(request.toQuery()))),
+            ApiResponse.of(ProductListResponse.from(productUseCase.getProducts(request.toQuery(), principal?.userId))),
         )
 
     @GetMapping("/{productId}")

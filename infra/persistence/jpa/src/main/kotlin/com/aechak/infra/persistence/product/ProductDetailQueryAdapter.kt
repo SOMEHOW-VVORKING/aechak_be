@@ -1,8 +1,8 @@
 package com.aechak.infra.persistence.product
 
-import com.aechak.application.product.port.ProductDetailQueryPort
-import com.aechak.application.product.port.view.ProductCatalogDetailView
-import com.aechak.application.product.port.view.ProductImageView
+import com.aechak.application.product.product.port.ProductDetailQueryPort
+import com.aechak.application.product.product.port.view.ProductCatalogDetailView
+import com.aechak.application.product.product.port.view.ProductImageView
 import com.aechak.domain.product.product.QProductImage
 import com.querydsl.core.types.Expression
 import com.querydsl.core.types.Projections

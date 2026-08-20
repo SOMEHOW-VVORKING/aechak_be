@@ -8,6 +8,7 @@ import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
+import java.text.Normalizer
 import java.time.LocalDateTime
 
 /**
@@ -47,6 +48,15 @@ class RecentSearch protected constructor(
     val searchedAt: LocalDateTime = searchedAt
 
     companion object {
+        private val WHITESPACE_RUN = Regex("[\\s\\p{Z}\\x{0085}]+")
+
+        /** 저장용 키워드 정규화(NFC + 내부 공백 접기 + trim) */
+        fun normalizeKeyword(raw: String): String =
+            Normalizer
+                .normalize(raw, Normalizer.Form.NFC)
+                .replace(WHITESPACE_RUN, " ")
+                .trim()
+
         fun record(
             userId: Long,
             keyword: String,

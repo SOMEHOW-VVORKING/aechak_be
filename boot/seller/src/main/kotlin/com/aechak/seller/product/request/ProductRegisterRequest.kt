@@ -1,6 +1,6 @@
 package com.aechak.seller.product.request
 
-import com.aechak.application.product.usecase.command.RegisterProductCommand
+import com.aechak.application.product.product.usecase.command.RegisterProductCommand
 import com.aechak.domain.product.option.OptionGroup
 import com.aechak.domain.product.option.OptionValue
 import com.aechak.domain.product.product.Product

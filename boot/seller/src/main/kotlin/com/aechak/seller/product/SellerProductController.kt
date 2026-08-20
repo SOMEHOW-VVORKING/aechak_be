@@ -1,6 +1,6 @@
 package com.aechak.seller.product
 
-import com.aechak.application.product.usecase.SellerProductUseCase
+import com.aechak.application.product.product.usecase.SellerProductUseCase
 import com.aechak.seller.product.request.ProductRegisterRequest
 import com.aechak.seller.product.request.ProductSaleStatusChangeRequest
 import com.aechak.seller.product.request.ProductUpdateRequest

@@ -3,8 +3,8 @@ package com.aechak.seller.product
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.enums.UploadPurpose
-import com.aechak.application.product.usecase.ProductUseCase
-import com.aechak.application.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.usecase.ProductUseCase
+import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.enums.CategoryStatus
 import com.aechak.domain.product.product.enums.ProductImageType
@@ -87,7 +87,7 @@ class SellerProductRegisterIntegrationTest : IntegrationTestBase() {
     fun `등록한 상품은 검수 게이트 없이 구매자 목록에 바로 노출된다`() {
         val productId = registerAndReadProductId()
 
-        val listed = productUseCase.getProducts(ProductSearchQuery()).items
+        val listed = productUseCase.getProducts(ProductSearchQuery(), null).items
         assertTrue(listed.any { it.productId == productId }, "등록 직후 목록에 보여야 한다: $listed")
     }
 

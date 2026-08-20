@@ -5,8 +5,8 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.enums.UploadPurpose
-import com.aechak.application.product.usecase.ProductUseCase
-import com.aechak.application.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.usecase.ProductUseCase
+import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.order.Order
@@ -752,7 +752,7 @@ class SellerProductUpdateIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.saleStatus").value("ON_SALE"))
 
         assertTrue(
-            productUseCase.getProducts(ProductSearchQuery()).items.any { it.productId == productId },
+            productUseCase.getProducts(ProductSearchQuery(), null).items.any { it.productId == productId },
             "정보 수정이 노출 상태를 건드리면 안 된다",
         )
     }

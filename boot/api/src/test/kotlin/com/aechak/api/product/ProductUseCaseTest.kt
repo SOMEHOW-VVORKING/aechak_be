@@ -1,15 +1,16 @@
 package com.aechak.api.product
 
 import com.aechak.api.support.IntegrationTestBase
-import com.aechak.application.product.port.ProductCatalogSort
-import com.aechak.application.product.service.ProductService
-import com.aechak.application.product.usecase.ProductUseCase
-import com.aechak.application.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.port.ProductCatalogSort
+import com.aechak.application.product.product.service.ProductService
+import com.aechak.application.product.product.usecase.ProductUseCase
+import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.enums.CategoryStatus
 import com.aechak.domain.product.error.ProductErrorCode
+import com.aechak.domain.product.like.ProductLike
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.product.enums.SaleStatus
@@ -165,7 +166,8 @@ class ProductUseCaseTest : IntegrationTestBase() {
         sort: ProductCatalogSort = ProductCatalogSort.LATEST,
         cursor: String? = null,
         size: Int = 20,
-    ) = productUseCase.getProducts(ProductSearchQuery(categoryId, sort, cursor, size))
+        userId: Long? = null,
+    ) = productUseCase.getProducts(ProductSearchQuery(categoryId, sort, cursor, size), userId)
 
     // ---------- 노출 정책 ----------
 
@@ -509,6 +511,37 @@ class ProductUseCaseTest : IntegrationTestBase() {
         assertEquals(0, BigDecimal("4.50").compareTo(items.getValue("통계있음").averageRating))
         assertEquals(0, items.getValue("통계없음").reviewCount)
         assertNull(items.getValue("통계없음").averageRating)
+    }
+
+    // ---------- isLiked ----------
+
+    @Test
+    fun `로그인 사용자의 목록 카드는 찜한 상품만 isLiked=true로 반환한다`() {
+        val likerId = 42L
+        tx.execute {
+            val mid = persistMidCategory()
+            val liked = persistProduct(mid, "찜함")
+            persistProduct(mid, "찜안함")
+            em.flush()
+            em.persist(ProductLike.of(liked, likerId))
+        }
+
+        val items = search(userId = likerId).items.associateBy { it.name }
+
+        assertTrue(items.getValue("찜함").isLiked)
+        assertFalse(items.getValue("찜안함").isLiked)
+    }
+
+    @Test
+    fun `비로그인 목록 카드는 누군가 찜한 상품이라도 모두 isLiked=false로 반환한다`() {
+        tx.execute {
+            val mid = persistMidCategory()
+            val liked = persistProduct(mid, "누군가찜함")
+            em.flush()
+            em.persist(ProductLike.of(liked, 42L))
+        }
+
+        assertFalse(search().items.single().isLiked) // userId=null
     }
 
     // ---------- totalCount ----------

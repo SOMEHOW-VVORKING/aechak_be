@@ -2,7 +2,6 @@ package com.aechak.domain.order.cart
 
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
-import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.support.BaseEntity
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -31,7 +30,8 @@ class CartItem protected constructor(
     val id: Long = 0L
 
     @Column(nullable = false)
-    val optionCombinationId: Long = optionCombinationId
+    var optionCombinationId: Long = optionCombinationId
+        protected set
 
     @Column(nullable = false, columnDefinition = "smallint unsigned")
     var quantity: Int = quantity
@@ -41,7 +41,19 @@ class CartItem protected constructor(
         quantity = validatedQuantity(currentQuantity = quantity, addedQuantity = addedQuantity)
     }
 
+    /** 누적이 아니라 대입임. 깎는 방향도 받음. */
+    fun changeQuantity(newQuantity: Int) {
+        quantity = validatedQuantity(currentQuantity = 0, addedQuantity = newQuantity)
+    }
+
+    /** 중복 조합이 생기지 않는지는 애그리거트가 봄. */
+    fun changeOption(newOptionCombinationId: Long) {
+        optionCombinationId = newOptionCombinationId
+    }
+
     companion object {
+        const val MIN_QUANTITY = 1
+
         /** 라인당 수량 상한. 품목 종류 상한(100)과 단위가 다름. */
         const val MAX_QUANTITY = 99
 
@@ -58,8 +70,8 @@ class CartItem protected constructor(
             currentQuantity: Int,
             addedQuantity: Int,
         ): Int {
-            if (addedQuantity < 1) {
-                throw BusinessException(OrderErrorCode.INVALID_CART_ITEM_QUANTITY)
+            if (addedQuantity < MIN_QUANTITY) {
+                throw BusinessException(CommonErrorCode.INVALID_REQUEST)
             }
             // 담을 수량 자체를 먼저 막지 않으면 합계가 Int 범위를 넘겨 음수가 되고 상한 검사를 통과함
             if (addedQuantity > MAX_QUANTITY) {

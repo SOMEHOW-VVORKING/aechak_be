@@ -50,6 +50,21 @@ class CartCatalogQueryAdapter(
             .fetch()
     }
 
+    override fun findApprovedItems(optionCombinationIds: Collection<Long>): List<CartCatalogItemView> {
+        if (optionCombinationIds.isEmpty()) return emptyList()
+
+        return queryFactory
+            .select(itemProjection())
+            .from(optionCombination)
+            .join(optionCombination.product, product)
+            .join(seller)
+            .on(seller.userId.eq(product.sellerId))
+            .where(
+                optionCombination.id.`in`(optionCombinationIds),
+                product.inspectionStatus.eq(InspectionStatus.APPROVED),
+            ).fetch()
+    }
+
     private fun itemProjection(): Expression<CartCatalogItemView> =
         Projections.constructor(
             CartCatalogItemView::class.java,

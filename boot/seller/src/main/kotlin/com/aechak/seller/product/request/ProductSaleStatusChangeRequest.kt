@@ -1,6 +1,6 @@
 package com.aechak.seller.product.request
 
-import com.aechak.application.product.usecase.command.ChangeProductSaleStatusCommand
+import com.aechak.application.product.product.usecase.command.ChangeProductSaleStatusCommand
 import com.aechak.domain.product.product.enums.SaleStatus
 
 data class ProductSaleStatusChangeRequest(

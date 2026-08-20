@@ -15,7 +15,11 @@ class ProductStatsServiceTest {
         override fun findAllByProductIds(productIds: Collection<Long>): List<ProductStats> = stored.filter { it.productId in productIds }
 
         /** 이 페이크는 조회만 검증한다. 쓰기 경로는 통합 테스트가 실 저장소로 본다. */
-        override fun save(productStats: ProductStats): ProductStats = throw UnsupportedOperationException()
+        override fun save(productStats: ProductStats): ProductStats = error("이 테스트에서 호출하지 않는다")
+
+        override fun increaseLikeCount(productId: Long): Int = error("이 테스트에서 호출하지 않는다")
+
+        override fun decreaseLikeCount(productId: Long): Int = error("이 테스트에서 호출하지 않는다")
     }
 
     @Test
