@@ -10,8 +10,12 @@ import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.application.product.product.port.view.ProductImageView
 import com.aechak.application.product.product.port.view.ProductOptionsView
 import com.aechak.application.product.product.support.ProductCursorCodec
+import com.aechak.application.product.product.usecase.command.ChangeProductSaleStatusCommand
 import com.aechak.application.product.product.usecase.command.RegisterProductCommand
+import com.aechak.application.product.product.usecase.command.UpdateProductCommand
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.usecase.result.ProductSaleStatusChangeResult
+import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
@@ -29,7 +33,9 @@ import com.aechak.domain.product.product.repository.ProductRepository
 import com.aechak.domain.product.stats.ProductStats
 import com.aechak.domain.product.stats.repository.ProductStatsRepository
 import com.aechak.domain.product.version.ProductVersion
+import com.aechak.domain.product.version.enums.VersionChangedBy
 import com.aechak.domain.product.version.repository.ProductVersionRepository
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
@@ -55,6 +61,108 @@ class ProductService(
         productStatsRepository.save(ProductStats.create(product.id))
         registerOptions(product, options)
         return productVersionRepository.save(ProductVersion.create(product, command.thumbnailImageKey))
+    }
+
+    fun validateAndGetCurrentImageKeys(command: UpdateProductCommand): Set<String> {
+        val product =
+            productRepository.findByPublicIdAndSellerId(command.productPublicId, command.sellerId)
+                ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+        loadLeafCategory(command.categoryId)
+        Product.validateEditable(
+            regularPrice = command.regularPrice,
+            discountPrice = command.discountPrice,
+            discountStartAt = command.discountStartAt,
+            discountEndAt = command.discountEndAt,
+            additionalImageKeys = command.additionalImageKeys,
+            detailImageKeys = command.detailImageKeys,
+        )
+        return (listOfNotNull(product.representativeImageKey) + product.currentImages.map { it.storageKey }).toSet()
+    }
+
+    fun updateProduct(command: UpdateProductCommand): ProductUpdateResult {
+        val product =
+            productRepository.findByPublicIdAndSellerId(command.productPublicId, command.sellerId)
+                ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+        val category = loadLeafCategory(command.categoryId)
+
+        val nextVersionNo = (productVersionRepository.findLastVersionNo(product.id) ?: 0) + 1
+        val before = editableStateOf(product)
+        product.edit(
+            category = category,
+            name = command.productName,
+            description = command.description,
+            regularPrice = command.regularPrice,
+            discountPrice = command.discountPrice,
+            discountStartAt = command.discountStartAt,
+            discountEndAt = command.discountEndAt,
+        )
+        product.replaceImages(
+            command.thumbnailImageKey,
+            command.additionalImageKeys,
+            command.detailImageKeys,
+            nextVersionNo,
+        )
+        val after = editableStateOf(product)
+
+        productRepository.saveNow(product) // updatedAt을 갱신 하기 위함
+        if (before != after) {
+            appendVersion(product, nextVersionNo)
+        }
+        return ProductUpdateResult.of(product)
+    }
+
+    /**
+     * 상태 변경은 버전을 남기지 않음
+     */
+    fun changeSaleStatus(command: ChangeProductSaleStatusCommand): ProductSaleStatusChangeResult {
+        val product =
+            productRepository.findByPublicIdAndSellerId(command.productPublicId, command.sellerId)
+                ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+
+        product.changeSaleStatusBySeller(command.saleStatus)
+        productRepository.saveNow(product)
+        return ProductSaleStatusChangeResult.of(product)
+    }
+
+    /**
+     * 수정 가능한 필드들의 현재 값 스냅샷. 반영 전후 둘을 비교해 달라졌을 때만 버전을 남김.
+     * 대표 이미지 키가 따로 없는 건 currentImages 안에 REPRESENTATIVE 행으로 이미 들어 있기 때문.
+     */
+    private fun editableStateOf(product: Product): List<Any?> =
+        listOf(
+            product.category.id,
+            product.name,
+            product.description,
+            product.regularPrice,
+            product.discountPrice,
+            product.discountStartAt,
+            product.discountEndAt,
+            product.currentImages.map { it.imageType to it.storageKey },
+        )
+
+    private fun appendVersion(
+        product: Product,
+        versionNo: Int,
+    ) {
+        try {
+            productVersionRepository.save(
+                ProductVersion.snapshot(
+                    product = product,
+                    versionNo = versionNo,
+                    nameSnapshot = product.name,
+                    priceSnapshot = product.regularPrice,
+                    statusSnapshot = product.saleStatus,
+                    // 상품 쪽은 대표 이미지가 없을 수 있는데 스냅샷 컬럼은 NOT NULL이라 그때는 빈 문자열을 넣음.
+                    thumbnailKeySnapshot = product.representativeImageKey.orEmpty(),
+                    changedBy = VersionChangedBy.SELLER,
+                ),
+            )
+        } catch (e: DataIntegrityViolationException) {
+            if (ProductVersion.UK_PRODUCT_VERSION_NO in e.mostSpecificCause.message.orEmpty()) {
+                throw BusinessException(CommonErrorCode.CONCURRENT_MODIFICATION, e)
+            }
+            throw e
+        }
     }
 
     /** 옵션값 id로 조합 서명을 만들어야 해서 그룹을 먼저 저장해 id를 받는다. */

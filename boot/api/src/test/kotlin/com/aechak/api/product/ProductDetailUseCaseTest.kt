@@ -94,8 +94,9 @@ class ProductDetailUseCaseTest : IntegrationTestBase() {
     ) {
         em
             .createNativeQuery(
-                "insert into product_images (product_id, image_type, storage_key, sort_order, created_at, updated_at) " +
-                    "values (:productId, :imageType, :storageKey, :sortOrder, now(), now())",
+                "insert into product_images " +
+                    "(product_id, image_type, storage_key, sort_order, from_version_no, created_at, updated_at) " +
+                    "values (:productId, :imageType, :storageKey, :sortOrder, 1, now(), now())",
             ).setParameter("productId", productId)
             .setParameter("imageType", imageType.name)
             .setParameter("storageKey", storageKey)

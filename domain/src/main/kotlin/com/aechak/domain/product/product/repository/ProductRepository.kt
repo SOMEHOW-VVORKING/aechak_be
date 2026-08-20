@@ -6,5 +6,13 @@ import com.aechak.domain.product.product.Product
 interface ProductRepository {
     fun save(product: Product): Product
 
+    /** 커밋을 기다리지 않고 저장을 즉시 반영함. */
+    fun saveNow(product: Product): Product
+
+    fun findByPublicIdAndSellerId(
+        publicId: String,
+        sellerId: Long,
+    ): Product?
+
     fun findIdByPublicId(publicId: String): Long?
 }
