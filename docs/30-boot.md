@@ -1,8 +1,8 @@
 # boot 실행 모듈 (30-boot)
 
-> boot는 그룹핑 디렉토리이며 자체는 모듈이 아니다. 실행(runnable) 모듈은 api / admin / batch.
+> boot는 그룹핑 디렉토리이며 자체는 모듈이 아니다. 실행(runnable) 모듈은 api / seller-api / admin / batch.
 > 여기가 유일한 **조립 지점**: infra/* 모듈들을 의존해 구현체를 스프링 컨테이너에 꽂는다.
-> 의존: api/admin → web-common + application + domain + infra/* + message.
+> 의존: api/seller-api/admin → web-common + application + domain + infra/* + message.
 >       batch → common + application + domain + infra/* + spring-batch. **web-common 금지.**
 
 ---
@@ -99,7 +99,18 @@ class OrderMessageConsumer(private val someUseCase: SomeUseCase) {
 }
 ```
 
-## 5. batch
+## 5. seller-api — 셀러센터 실행 모듈 (SCRUM-192)
+
+- 셀러센터(웹) 전용 실행 모듈. 상품 등록·주문 관리가 붙기 전에 선분리 — 엔드포인트가 늘어난 뒤 분리하면 운영 트래픽 이전이 된다.
+- 라우팅은 **호스트 분리**(`seller-api.<도메인>`) 전제 — `api.base-path`(/api/v1)와 경로는 api 시절 그대로라 FE 경로 수정이 없다.
+- **선별 스캔**: 루트(com.aechak) 스캔은 auth·kafka 등 api 전용 조립까지 요구해 부팅이 깨진다.
+  스캔 목록은 `SellerApiApplication` 소유 — application 패키지를 추가로 쓰면 그 패키지가 요구하는 infra 어댑터·config 조립도 함께 늘린다.
+- **Flyway 미탑재**: 스키마 관리는 api가 유일 소유자. seller 단독 배포 시 새 마이그레이션은 api 선배포가 전제.
+- 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(web-security JwtConfig 공유, 같은 키 주입).
+- 온보딩 허용 경로 없음 — 셀러센터 전 EP가 ACTIVE 전용(UserStatusFilter 화이트리스트 empty).
+- 배포: ECS 서비스 `aechak-seller-api-dev` + ALB host 규칙(`seller-api-<env>` 도메인). JWT는 공개키만 주입한 검증 전용 모드 — 발급은 api 소관.
+
+## 6. batch
 
 ```
 boot/batch/src/main/kotlin/com/aechak/batch/
@@ -112,7 +123,7 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 - 예외 소비 방식: web-common의 핸들러가 아니라 SkipPolicy/Listener에서 errorCode 기준 처리.
 - 배치가 자체 발신하는 에러 코드의 status는 500 고정 (05 문서 ErrorCode 컨벤션).
 
-## 6. admin — A-5 결정: MVP 제외
+## 7. admin — A-5 결정: MVP 제외
 
 - MVP에서는 만들지 않는다 (입점 심사·신고 처리 등 운영은 DB/API 수동 — 60 문서).
 - 생성 시점이 오면 api와 동일 구조/규칙(JSON API 기반)으로 만들고, web-common의 GlobalExceptionHandler를 재사용한다.
