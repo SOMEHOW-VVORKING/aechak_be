@@ -46,4 +46,7 @@ class ProductFacade(
     @Transactional(readOnly = true)
     override fun getProductOptions(publicId: String): ProductOptionsResult =
         ProductOptionsResult.from(productService.getVisibleOptions(publicId))
+
+    @Transactional(readOnly = true)
+    override fun getVisibleProductId(publicId: String): Long = productService.getVisibleProductId(publicId)
 }
