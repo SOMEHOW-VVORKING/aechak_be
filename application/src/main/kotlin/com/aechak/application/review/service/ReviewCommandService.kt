@@ -17,6 +17,8 @@ class ReviewCommandService(
         if (review.authorUserId != userId) {
             throw BusinessException(ReviewErrorCode.REVIEW_ACCESS_DENIED)
         }
-        reviewRepository.markDeletedIfNotDeleted(reviewId, userId)
+        if (review.isDeleted()) return
+        review.delete()
+        reviewRepository.save(review)
     }
 }

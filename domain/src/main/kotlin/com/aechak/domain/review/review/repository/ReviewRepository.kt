@@ -5,8 +5,5 @@ import com.aechak.domain.review.review.Review
 interface ReviewRepository {
     fun findById(id: Long): Review?
 
-    fun markDeletedIfNotDeleted(
-        reviewId: Long,
-        userId: Long,
-    )
+    fun save(review: Review): Review
 }
