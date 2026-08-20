@@ -27,6 +27,15 @@ class DeliveryAddressFacade(
         return DeliveryAddressListResult(deliveryAddressResults, deliveryAddresses.size)
     }
 
+    @Transactional(readOnly = true)
+    override fun getDeliveryAddress(
+        userId: Long,
+        addressId: Long,
+    ): DeliveryAddressResult {
+        val address = deliveryAddressService.loadOwnedActive(userId, addressId)
+        return DeliveryAddressResult.from(address, deliveryAddressService.decodeContact(address.contactNumber))
+    }
+
     @Transactional
     override fun addDeliveryAddress(command: AddDeliveryAddressCommand): AddDeliveryAddressResult {
         val savedDeliveryAddress = deliveryAddressService.add(command)
