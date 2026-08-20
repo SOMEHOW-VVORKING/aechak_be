@@ -149,7 +149,7 @@ class Product protected constructor(
         validateImageCounts(additionalImageKeys, detailImageKeys)
         representativeImageKey = thumbnailImageKey
         val requested = imageOrders(thumbnailImageKey, additionalImageKeys, detailImageKeys)
-        val (staying, dropped) = _images.filter { it.toVersionNo == null }.partition { slotOf(it) in requested }
+        val (staying, dropped) = currentImages.partition { slotOf(it) in requested }
         dropped.forEach { it.closeAt(versionNo - 1) }
         val stayingBySlot = staying.associateBy { slotOf(it) }
         requested.forEach { (slot, order) ->
