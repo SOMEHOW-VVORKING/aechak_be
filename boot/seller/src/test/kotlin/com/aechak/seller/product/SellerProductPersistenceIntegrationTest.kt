@@ -8,11 +8,14 @@ import com.aechak.domain.product.product.repository.ProductRepository
 import com.aechak.domain.product.version.ProductVersion
 import com.aechak.domain.product.version.enums.VersionChangedBy
 import com.aechak.domain.product.version.repository.ProductVersionRepository
+import jakarta.persistence.EntityManagerFactory
+import jakarta.persistence.OptimisticLockException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 
 /**
@@ -25,6 +28,9 @@ class SellerProductPersistenceIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var productVersionRepository: ProductVersionRepository
+
+    @Autowired
+    private lateinit var entityManagerFactory: EntityManagerFactory
 
     private var leafCategoryId = 0L
 
@@ -149,6 +155,47 @@ class SellerProductPersistenceIntegrationTest : IntegrationTestBase() {
             tx.execute { em.createQuery("select p.representativeImageKey from Product p", String::class.java).singleResult },
             "대표 이미지 캐시도 함께 갱신돼야 한다",
         )
+    }
+
+    /**
+     * 이미지 행에는 잠금이 없어 상품 행의 @Version이 유일한 방어선임.
+     * 자식 행 UPDATE에 전 컬럼이 실려서, 이게 없으면 순서 변경 쪽의 낡은 toVersionNo가 삭제를 되돌림.
+     * 스레드 대신 EntityManager 둘로 교차를 직접 만듦. 겹칠 때만 잡는 테스트는 못 잡을 때 조용히 통과함.
+     */
+    @Test
+    fun `순서 변경과 삭제가 겹치면 뒤늦은 쪽이 낙관적 락에 걸린다`() {
+        val publicId =
+            persistProduct(sellerId = 1L, additionalImageKeys = listOf("products/a1.png", "products/a2.png"))
+        val productId = tx.execute { productIdOf(publicId) }!!
+
+        val remover = entityManagerFactory.createEntityManager()
+        val reorderer = entityManagerFactory.createEntityManager()
+        try {
+            remover.transaction.begin()
+            reorderer.transaction.begin()
+            // 둘 다 a1과 a2가 열린 같은 상태를 읽고 시작함
+            val forRemove = remover.find(Product::class.java, productId)
+            val forReorder = reorderer.find(Product::class.java, productId)
+
+            forRemove.replaceImages("products/old-thumb.png", listOf("products/a1.png"), emptyList(), versionNo = 2)
+            remover.transaction.commit()
+
+            forReorder.replaceImages(
+                "products/old-thumb.png",
+                listOf("products/a2.png", "products/a1.png"),
+                emptyList(),
+                versionNo = 2,
+            )
+
+            assertThrows<OptimisticLockException>(
+                "안 걸리면 낡은 a2 행이 다시 열려 방금 지운 이미지가 되살아난다",
+            ) { reorderer.flush() }
+        } finally {
+            listOf(reorderer, remover).forEach {
+                if (it.transaction.isActive) it.transaction.rollback()
+                it.close()
+            }
+        }
     }
 
     private fun persistProduct(
