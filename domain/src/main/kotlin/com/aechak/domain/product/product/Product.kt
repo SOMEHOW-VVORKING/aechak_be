@@ -149,7 +149,9 @@ class Product protected constructor(
         validateImageCounts(additionalImageKeys, detailImageKeys)
         representativeImageKey = thumbnailImageKey
         val requested = imageOrders(thumbnailImageKey, additionalImageKeys, detailImageKeys)
-        val (staying, dropped) = currentImages.partition { slotOf(it) in requested }
+        val current = currentImages
+        val currentOrders = current.associate { slotOf(it) to it.sortOrder }
+        val (staying, dropped) = current.partition { slotOf(it) in requested }
         dropped.forEach { it.closeAt(versionNo - 1) }
         val stayingBySlot = staying.associateBy { slotOf(it) }
         requested.forEach { (slot, order) ->
@@ -161,6 +163,11 @@ class Product protected constructor(
                 existing.moveTo(order)
             }
         }
+        if (currentOrders != requested) refreshUpdatedAt()
+    }
+
+    private fun refreshUpdatedAt() {
+        updatedAt = LocalDateTime.now()
     }
 
     /** 종류와 키가 같으면 같은 이미지. 키가 업로드마다 새로 생기므로 내용이 바뀌면 여기가 갈림. */

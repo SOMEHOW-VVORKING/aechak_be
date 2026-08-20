@@ -131,6 +131,96 @@ class SellerProductUpdateIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `이미지를 빼기만 해도 수정 시각과 잠금 버전이 오른다`() {
+        mockMvc
+            .perform(
+                updateRequest(token, productId, updateJson(additionalImageKeys = listOf("products/a1.png", tmpKey("a2.png")))),
+            ).andExpect(status().isOk)
+        val before = productRow()
+
+        mockMvc
+            .perform(updateRequest(token, productId, updateJson(additionalImageKeys = listOf("products/a1.png"))))
+            .andExpect(status().isOk)
+
+        val after = productRow()
+        assertTrue(after.first.isAfter(before.first), "이미지를 뺀 것도 수정이다. 이전: ${before.first}, 이후: ${after.first}")
+        assertEquals(before.second + 1, after.second, "잠금 버전이 안 오르면 동시 수정이 안 걸린다")
+    }
+
+    @Test
+    fun `이미지 순서만 바꿔도 수정 시각과 잠금 버전이 오른다`() {
+        mockMvc
+            .perform(
+                updateRequest(token, productId, updateJson(additionalImageKeys = listOf("products/a1.png", tmpKey("a2.png")))),
+            ).andExpect(status().isOk)
+        val before = productRow()
+
+        mockMvc
+            .perform(
+                updateRequest(token, productId, updateJson(additionalImageKeys = listOf("products/a2.png", "products/a1.png"))),
+            ).andExpect(status().isOk)
+
+        val after = productRow()
+        assertTrue(after.first.isAfter(before.first), "이전: ${before.first}, 이후: ${after.first}")
+        assertEquals(before.second + 1, after.second, "잠금 버전이 안 오르면 순서 변경과 삭제가 겹칠 때 닫힌 행이 되살아난다")
+    }
+
+    @Test
+    fun `이미지에 생기는 네 가지 변화가 모두 잠금 버전을 올린다`() {
+        assertBumpsVersion("추가") {
+            updateJson(additionalImageKeys = listOf("products/a1.png", tmpKey("a2.png")))
+        }
+        assertBumpsVersion("썸네일 교체") {
+            updateJson(
+                thumbnailImageKey = tmpKey("thumb2.png"),
+                additionalImageKeys = listOf("products/a1.png", "products/a2.png"),
+            )
+        }
+        assertBumpsVersion("상세 이미지 교체") {
+            updateJson(
+                thumbnailImageKey = "products/thumb2.png",
+                additionalImageKeys = listOf("products/a1.png", "products/a2.png"),
+                detailImageKeys = listOf(tmpKey("d2.png")),
+            )
+        }
+        assertBumpsVersion("순서 변경") {
+            updateJson(
+                thumbnailImageKey = "products/thumb2.png",
+                additionalImageKeys = listOf("products/a2.png", "products/a1.png"),
+                detailImageKeys = listOf("products/d2.png"),
+            )
+        }
+        assertBumpsVersion("삭제") {
+            updateJson(
+                thumbnailImageKey = "products/thumb2.png",
+                additionalImageKeys = listOf("products/a2.png"),
+                detailImageKeys = listOf("products/d2.png"),
+            )
+        }
+    }
+
+    /** 요청 하나를 보내고 잠금 버전이 정확히 하나 올랐는지 본다. 안 오르면 그 변화는 products에 UPDATE를 못 낸 것. */
+    private fun assertBumpsVersion(
+        label: String,
+        body: () -> String,
+    ) {
+        val before = productRow().second
+        mockMvc.perform(updateRequest(token, productId, body())).andExpect(status().isOk)
+        assertEquals(before + 1, productRow().second, "$label 은 상품 행에 UPDATE를 내야 한다")
+    }
+
+    @Test
+    fun `값이 하나도 안 달라지면 잠금 버전도 그대로다`() {
+        val before = productRow()
+
+        mockMvc
+            .perform(updateRequest(token, productId, updateJson()))
+            .andExpect(status().isOk)
+
+        assertEquals(before.second, productRow().second, "저장 버튼을 다시 눌렀다고 버전이 오르면 안 된다")
+    }
+
+    @Test
     fun `카테고리도 함께 바뀐다`() {
         mockMvc
             .perform(updateRequest(token, productId, updateJson(categoryId = otherLeafCategoryId)))
@@ -757,6 +847,15 @@ class SellerProductUpdateIntegrationTest : IntegrationTestBase() {
                     Array<Any>::class.java,
                 ).resultList
                 .map { it[0] as ProductImageType to it[1] as String }
+        }!!
+
+    /** 이미지만 바뀌는 요청에서 products 행에 UPDATE가 실제로 나갔는지 보는 자리. 시각과 잠금 버전을 함께 읽음. */
+    private fun productRow(): Pair<LocalDateTime, Int> =
+        tx.execute {
+            em
+                .createQuery("select p.updatedAt, p.version from Product p", Array<Any>::class.java)
+                .singleResult
+                .let { it[0] as LocalDateTime to it[1] as Int }
         }!!
 
     /** 현재 노출 중인 추가 이미지를 키와 순서 쌍으로 돌려줌. 순서 갱신이 행에 실제로 닿았는지 보는 자리. */
