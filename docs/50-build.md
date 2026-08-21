@@ -25,10 +25,12 @@ aechak/
 │   ├── settings.gradle.kts          # 루트 카탈로그 공유 (§3)
 │   ├── build.gradle.kts             # 적용할 플러그인 "구현체"를 classpath에 (§3)
 │   └── src/main/kotlin/
-│       ├── aechak.kotlin-common.gradle.kts     # 전 모듈 베이스
+│       ├── aechak.kotlin-common.gradle.kts     # Kotlin 모듈 베이스
+│       ├── aechak.java-common.gradle.kts       # Java 모듈 베이스 (admin 계열 — 30 §7의 Java 결정)
 │       ├── aechak.jpa-entity.gradle.kts        # domain 전용
 │       ├── aechak.spring-library.gradle.kts    # web-common / application / infra/*
-│       └── aechak.spring-boot-app.gradle.kts   # 실행 모듈(api·seller-api·batch)
+│       ├── aechak.spring-boot-app.gradle.kts   # Kotlin 실행 모듈(api·seller-api·batch)
+│       └── aechak.java-spring-boot-app.gradle.kts # Java 실행 모듈(admin)
 ├── settings.gradle.kts              # §3
 └── (모듈들 — §5)
 ```
@@ -77,12 +79,13 @@ include(
     "common", "web-common",
     "domain", "application",
     // "message",                            // PENDING(A-2)
-    "api", "seller-api", "batch",    // "admin" — A-5: MVP 제외
+    "api", "seller-api", "admin", "batch",
     "jpa-persistence", "pg-client",     // A-1 결정(L2). kafka·redis는 어댑터 생길 때 추가
 )
 // boot/·infra/{분류}는 모듈이 아닌 폴더 — 모듈 이름은 평평하게, projectDir로 위치만 매핑
 project(":api").projectDir = file("boot/api")
 project(":seller-api").projectDir = file("boot/seller")
+project(":admin").projectDir = file("boot/admin")
 project(":batch").projectDir = file("boot/batch")
 project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
 project(":pg-client").projectDir = file("infra/client/pg-client")
@@ -198,7 +201,8 @@ plugins {
 | application | aechak.spring-library | api(":domain") |
 | message (PENDING A-2) | aechak.kotlin-common | 없음 |
 | infra/* | aechak.spring-library | implementation(":application") |
-| api / admin | aechak.spring-boot-app | ":web-common", ":application", 필요한 infra 모듈(":jpa-persistence" 등) |
+| api / seller-api | aechak.spring-boot-app | ":web-common", ":application", 필요한 infra 모듈(":jpa-persistence" 등) |
+| admin | aechak.java-spring-boot-app | api와 같은 목록 + Lombok — Java 실행 모듈(30 §7) |
 | batch | aechak.spring-boot-app | ":application", 필요한 infra 모듈 — **web-common 금지** |
 
 대표 예시 (전 모듈이 이 꼴이다 — 컨벤션 1줄 + 의존 목록):
