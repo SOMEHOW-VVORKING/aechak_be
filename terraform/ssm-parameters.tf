@@ -82,6 +82,26 @@ resource "aws_ssm_parameter" "auth_return_urls" {
   value = join(",", [for o in local.web_origins : "${o}/login/complete"])
 }
 
+# ── 문의 통지(SES) ─────────────────────────────────────
+# enabled=true인데 from/recipients가 비면 앱이 fail-fast로 기동에 실패한다 — 셋을 함께 넣는다.
+resource "aws_ssm_parameter" "ses_from" {
+  name  = "/${var.project}/${var.env}/api/AWS_SES_FROM"
+  type  = "String"
+  value = local.ses_from_address
+}
+
+resource "aws_ssm_parameter" "inquiry_ops_recipients" {
+  name  = "/${var.project}/${var.env}/api/INQUIRY_OPS_RECIPIENTS"
+  type  = "String"
+  value = join(",", var.inquiry_ops_recipients)
+}
+
+resource "aws_ssm_parameter" "inquiry_notification_enabled" {
+  name  = "/${var.project}/${var.env}/api/INQUIRY_NOTIFICATION_ENABLED"
+  type  = "String"
+  value = tostring(var.inquiry_notification_enabled)
+}
+
 # --- PII 암호화 키 (SCRUM-169) ---
 # 앱이 전화번호 등 민감정보를 암호화(AES-GCM)·검색 해시(HMAC)하는 데 쓴다. 키 분실 = 해당 데이터 영구 복호 불능이라
 # 사람 손을 거치지 않고 terraform이 생성·등재한다(수기 오등재 방지 — db_password와 같은 결).
