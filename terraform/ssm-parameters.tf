@@ -102,6 +102,15 @@ resource "aws_ssm_parameter" "inquiry_notification_enabled" {
   value = tostring(var.inquiry_notification_enabled)
 }
 
+# --- 포트원 V2 결제 (SCRUM-205) ---
+# 넷 다 terraform이 만들지 않는다. 실값을 퍼블릭 레포에 두지 않기로 해 사람이 수기 등재한다.
+# 시크릿은 state에 남기지 않는 방침(JWT 키와 같은 결)과도 겹친다.
+#   /{project}/{env}/api/PORTONE_STORE_ID       (String)
+#   /{project}/{env}/api/PORTONE_CHANNEL_KEY    (String)
+#   /{project}/{env}/api/PORTONE_API_SECRET     (SecureString)
+#   /{project}/{env}/api/PORTONE_WEBHOOK_SECRET (SecureString)
+# 결제는 구매자 api만 호출하므로 seller 경로에는 넣지 않는다.
+
 # --- PII 암호화 키 (SCRUM-169) ---
 # 앱이 전화번호 등 민감정보를 암호화(AES-GCM)·검색 해시(HMAC)하는 데 쓴다. 키 분실 = 해당 데이터 영구 복호 불능이라
 # 사람 손을 거치지 않고 terraform이 생성·등재한다(수기 오등재 방지 — db_password와 같은 결).
