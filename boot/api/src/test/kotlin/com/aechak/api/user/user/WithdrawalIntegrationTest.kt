@@ -29,6 +29,7 @@ import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
@@ -180,14 +181,18 @@ class WithdrawalIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `재가입 제한 기간 중에 같은 소셜 계정으로 다시 로그인하면 거부된다`() {
+    fun `재가입 제한 기간 중에 같은 소셜 계정으로 다시 로그인하면 언제부터 가능한지와 함께 거부된다`() {
         val providerId = "kakao-in-grace"
         withdraw(signUpAndOnboard(providerId, "탈퇴할집사"))
+
+        // 방금 탈퇴했으므로 지금 시각으로 계산한 재가입 시점이 안내에 실려야 한다.
+        val allowedFrom = rejoinPolicy.allowedFrom(LocalDateTime.now()).format(DateTimeFormatter.ofPattern("yyyy년 M월 d일"))
 
         mockMvc
             .perform(loginRequest(providerId))
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.REJOIN_BLOCKED.code))
+            .andExpect(jsonPath("$.message").value(containsString(allowedFrom)))
     }
 
     @Test

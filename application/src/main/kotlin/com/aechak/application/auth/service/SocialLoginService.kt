@@ -16,6 +16,7 @@ import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.domain.user.user.repository.UserRepository
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 /** 소셜 로그인 흐름: id_token 검증 → 회원 조회/생성 → 자체 토큰 발급 */
 @Service
@@ -70,15 +71,19 @@ class SocialLoginService(
         }
     }
 
-    /** 탈퇴 후 제한 기간이 지나지 않았으면 재가입을 막음 */
+    /** 탈퇴 후 제한 기간이 지나지 않았으면 재가입을 막고, 언제부터 가능한지 알림 */
     private fun requireRejoinAllowed(withdrawnUser: User) {
         // WITHDRAWN 상태는 withdraw()에서 withdrawnAt과 함께 설정. 값이 없으면 잘못된 서버 상태.
         val withdrawnAt =
             checkNotNull(withdrawnUser.withdrawnAt) {
                 "WITHDRAWN 계정에 withdrawnAt이 없습니다 (userId=${withdrawnUser.id})"
             }
-        if (LocalDateTime.now() < withdrawnAt + rejoinPolicy.blockedPeriod) {
-            throw BusinessException(AuthErrorCode.REJOIN_BLOCKED)
+        val allowedFrom = rejoinPolicy.allowedFrom(withdrawnAt)
+        if (LocalDateTime.now() < allowedFrom) {
+            throw BusinessException(
+                AuthErrorCode.REJOIN_BLOCKED,
+                detail = "탈퇴한 계정입니다. ${allowedFrom.format(REJOIN_DATE_FORMAT)}부터 다시 가입할 수 있습니다.",
+            )
         }
     }
 
@@ -99,6 +104,10 @@ class SocialLoginService(
         val user = registerUser()
         socialIdentityRepository.save(SocialIdentity.link(user, provider, providerUser.providerId, providerUser.email))
         return user
+    }
+
+    companion object {
+        private val REJOIN_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy년 M월 d일")
     }
 
     /** 분기가 정한 로그인 대상과 이번 로그인이 신규 가입이었는지 */
