@@ -1,7 +1,10 @@
 package com.aechak.api.support
 
+import com.aechak.application.auth.port.SocialTokenVerifier
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.user.verification.support.VerificationCodeGenerator
+import com.aechak.domain.user.social.enums.SocialProvider
+import com.aechak.domain.user.social.vo.ProviderUser
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
@@ -27,10 +30,10 @@ class IntegrationTestConfig {
         // 운영 MySQL 버전 고정 태그. JVM당 1회만 뜨고, 두 베이스의 컨텍스트가 공유한다.
         private val mysql = MySQLContainer("mysql:8.4").apply { start() }
 
-        // 인증 코드·발송 제한 저장소. MySQL과 같은 이유로 빈이 아니라 수동 start.
+        // 인증 코드와 발송 제한 저장소. MySQL과 같은 이유로 빈이 아니라 수동 start.
         private val redis = GenericContainer("redis:7.4").withExposedPorts(REDIS_PORT).apply { start() }
 
-        /** 각 테스트 베이스의 @DynamicPropertySource가 호출해 datasource·redis를 이 컨테이너들로 연결한다. */
+        /** 각 테스트 베이스의 @DynamicPropertySource가 호출해 datasource와 redis를 이 컨테이너들로 연결한다. */
         @JvmStatic
         fun registerContainers(registry: DynamicPropertyRegistry) {
             registry.add("spring.datasource.url", mysql::getJdbcUrl)
@@ -49,8 +52,22 @@ class IntegrationTestConfig {
     @Primary
     fun fakeFileStorage(): FileStorage = FakeFileStorage()
 
-    /** 프로덕션은 SecureRandom이라, 통합 테스트에선 코드가 결정적이어야 confirm까지 관통한다 — 고정 생성기로 덮는다. */
+    /** 인증번호 확인 단계까지 테스트할 수 있도록 항상 같은 인증번호를 생성한다. */
     @Bean
     @Primary
     fun fixedVerificationCodeGenerator(): VerificationCodeGenerator = VerificationCodeGenerator { "000000" }
+
+    /** 외부 JWKS를 호출하지 않고 "providerId:email" 형식의 idToken을 검증 결과로 변환한다. */
+    @Bean
+    @Primary
+    fun fakeSocialTokenVerifier(): SocialTokenVerifier =
+        object : SocialTokenVerifier {
+            override fun verify(
+                provider: SocialProvider,
+                idToken: String,
+            ): ProviderUser {
+                val parts = idToken.split(":")
+                return ProviderUser(provider, parts[0], parts.getOrNull(1)?.ifBlank { null })
+            }
+        }
 }
