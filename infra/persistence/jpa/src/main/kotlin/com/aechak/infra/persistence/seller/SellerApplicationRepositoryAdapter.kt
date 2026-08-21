@@ -48,7 +48,13 @@ class SellerApplicationRepositoryAdapter(
         return if (status == null) jpaRepository.findPageAll(pageable) else jpaRepository.findPageByStatus(status, pageable)
     }
 
-    override fun countAll(status: ApplicationStatus?): Long = if (status == null) jpaRepository.count() else jpaRepository.countByStatus(status)
+    override fun countAll(status: ApplicationStatus?): Long =
+        if (status == null) {
+            jpaRepository.count()
+        } else {
+            jpaRepository.countByStatus(status)
+        }
 
-    override fun findAllByBusinessRegNo(businessRegNo: String): List<SellerApplication> = jpaRepository.findAllByBusinessRegNo(businessRegNo)
+    override fun findAllByBusinessRegNo(businessRegNo: String): List<SellerApplication> =
+        jpaRepository.findAllByBusinessRegNo(businessRegNo)
 }
