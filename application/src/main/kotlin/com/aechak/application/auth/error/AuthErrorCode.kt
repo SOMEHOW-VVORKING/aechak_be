@@ -3,10 +3,8 @@ package com.aechak.application.auth.error
 import com.aechak.common.error.ErrorCode
 
 /**
- * 인증/인가 = 20000번대 (에러코드 대역 합의 2026-07-13).
- * 코드·메시지는 API 계약의 에러코드표와 1:1 — 바꾸면 계약도 함께 바꾼다.
- * domain이 아닌 application 소속인 이유: auth는 세션 수명·소셜 신원 검증이라는 유스케이스 관심사로,
- * 별도 도메인 애그리거트를 갖지 않는다.
+ * 인증과 인가 오류에는 20000번대 코드를 사용
+ * 코드나 메시지를 변경할 때는 API 에러 코드 문서도 함께 수정
  */
 enum class AuthErrorCode(
     override val code: Int,
@@ -24,6 +22,8 @@ enum class AuthErrorCode(
     DISALLOWED_RETURN_URL(20008, "허용되지 않은 returnUrl입니다.", 400),
     INVALID_LOGIN_STATE(20009, "로그인 요청이 만료되었거나 유효하지 않습니다. 다시 시도해 주세요.", 400),
 
-    /** HTTP 응답이 아니라 콜백 302의 ?error= 값으로만 나간다 — status는 명목값. */
+    /** 콜백의 302 응답에 error 쿼리 파라미터로 전달하며 status 값은 직접 사용하지 않는다. */
     AUTHORIZATION_CODE_MISSING(20010, "소셜 로그인이 완료되지 않았습니다.", 401),
+
+    REJOIN_BLOCKED(20011, "탈퇴한 계정입니다. 일정 기간이 지난 뒤 다시 가입할 수 있습니다.", 403),
 }
