@@ -36,6 +36,7 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
 
     private lateinit var mockMvc: MockMvc
     private val defaultSellerId = 77L
+    private var cachedViewerId: Long? = null
     private var cachedToken: String? = null
 
     @BeforeEach
@@ -311,10 +312,53 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
         assertEquals(0, JsonPath.read<Int>(body, "$.data.summary.ratingDistribution['1']"))
     }
 
+    @Test
+    fun `본인이 쓴 리뷰만 isMine이 true다`() {
+        val viewer = viewerId()
+        val publicId =
+            tx.execute {
+                val product = persistVisibleProduct("사료")
+                em.flush()
+                val other = persistAuthor("다른사람")
+                persistReview(product.id, other, rating = 4, orderItemId = 1L, content = "남이 쓴 리뷰")
+                persistReview(product.id, viewer, rating = 5, orderItemId = 2L, content = "내가 쓴 리뷰")
+                product.publicId
+            }!!
+
+        val body = getReviews(publicId)
+
+        assertEquals(
+            listOf("내가 쓴 리뷰", "남이 쓴 리뷰"),
+            JsonPath.read<List<String>>(body, "$.data.reviews[*].content"),
+        )
+        assertEquals(listOf(true, false), JsonPath.read<List<Boolean>>(body, "$.data.reviews[*].isMine"))
+    }
+
+    @Test
+    fun `본인이 쓴 리뷰는 MASKED여도 isMine이 true다`() {
+        val viewer = viewerId()
+        val publicId =
+            tx.execute {
+                val product = persistVisibleProduct("사료")
+                em.flush()
+                val masked = persistReview(product.id, viewer, rating = 3, orderItemId = 1L, content = "원문 내용")
+                em.flush()
+                maskReview(masked.id, displayContent = "노출용 대체 문구")
+                product.publicId
+            }!!
+
+        val body = getReviews(publicId)
+
+        assertEquals("노출용 대체 문구", JsonPath.read<String>(body, "$.data.reviews[0].content"))
+        assertTrue(JsonPath.read<Boolean>(body, "$.data.reviews[0].isMine"))
+    }
+
     private fun reviewsPath(publicId: String) = "/api/v1/products/$publicId/reviews"
 
+    private fun viewerId(): Long = cachedViewerId ?: tx.execute { persistAuthor("본인") }!!.also { cachedViewerId = it }
+
     private fun bearer(): String {
-        val token = cachedToken ?: mintAccessToken(createActiveUser()).also { cachedToken = it }
+        val token = cachedToken ?: mintAccessToken(viewerId()).also { cachedToken = it }
         return "Bearer $token"
     }
 
