@@ -6,6 +6,7 @@ import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.IssueFileUrl
 import com.aechak.application.file.port.enums.FileType
 import com.aechak.application.file.port.enums.UploadPurpose
+import com.aechak.application.file.usecase.command.DeleteFileCommand
 import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.common.error.BusinessException
@@ -17,10 +18,11 @@ import kotlin.test.assertTrue
 private const val PROMOTED_SENTINEL = "promoted/sentinel-key"
 
 /**
- * 계약 — 발급·승격의 보안 경계. 깨지면 남이 발급받은 키나 다른 용도의 키가 S3에 닿는다.
+ * 다른 사용자의 키나 다른 용도로 발급된 키가 스토리지에 전달되지 않는지 검증한다.
  */
 class FileServiceTest {
-    private val service = FileService(FakeFileStorage())
+    private val storage = FakeFileStorage()
+    private val service = FileService(storage)
 
     @Test
     fun `화이트리스트에 없는 MIME 타입이면 UNSUPPORTED_FILE_TYPE로 거절한다`() {
@@ -98,7 +100,19 @@ class FileServiceTest {
         assertEquals(PROMOTED_SENTINEL, result.key, "가드 통과 후 storage가 돌려준 키를 그대로 위임해야 한다")
     }
 
+    @Test
+    fun `삭제는 키를 그대로 스토리지에 넘긴다`() {
+        val key = "users/profile/ULID.png"
+
+        service.delete(DeleteFileCommand(key, UploadPurpose.USER_PROFILE))
+
+        // DB에 저장된 키를 삭제하므로 임시 키의 사용자 및 용도 검증을 거치지 않는다.
+        assertEquals(listOf(key), storage.deletedKeys, "삭제는 스토리지 삭제로 그대로 위임해야 한다")
+    }
+
     private class FakeFileStorage : FileStorage {
+        val deletedKeys = mutableListOf<String>()
+
         override fun issueUploadUrl(
             purpose: UploadPurpose,
             fileType: FileType,
@@ -115,6 +129,13 @@ class FileServiceTest {
         ): String = PROMOTED_SENTINEL
 
         override fun publicUrlOf(key: String): String = "https://fake-cdn/$key"
+
+        override fun delete(
+            key: String,
+            purpose: UploadPurpose,
+        ) {
+            deletedKeys += key
+        }
     }
 
     companion object {

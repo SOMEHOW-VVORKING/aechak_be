@@ -4,6 +4,7 @@ import com.aechak.application.file.error.FileErrorCode
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.enums.FileType
+import com.aechak.application.file.usecase.command.DeleteFileCommand
 import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.file.usecase.result.IssuePresignedUrlResult
@@ -42,4 +43,6 @@ class FileService(
     }
 
     fun resolveMediaUrl(key: String?): String? = key?.let(fileStorage::publicUrlOf)
+
+    fun delete(command: DeleteFileCommand) = fileStorage.delete(command.key, command.purpose)
 }
