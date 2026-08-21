@@ -1,5 +1,6 @@
 package com.aechak.infra.persistence.user.user
 
+import com.aechak.application.user.user.port.view.UserAuthorView
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.domain.user.user.repository.UserRepository
@@ -16,6 +17,15 @@ interface UserJpaRepository : JpaRepository<User, Long> {
     fun findStatusById(
         @Param("id") id: Long,
     ): UserStatus?
+
+    /** 작성자 표시용 배치 프로젝션 — 프로필 없어도 포함되도록 left join. */
+    @Query(
+        "select new com.aechak.application.user.user.port.view.UserAuthorView(u.id, u.status, p.nickname, p.profileImageKey) " +
+            "from User u left join UserProfile p on p.userId = u.id where u.id in :ids",
+    )
+    fun findAuthorsByIds(
+        @Param("ids") ids: Collection<Long>,
+    ): List<UserAuthorView>
 
     /** 닉네임 선점 검사 — 비교는 nickname 컬럼 collation(utf8mb4 ci)을 그대로 탄다. */
     @Query("select count(p) > 0 from UserProfile p where p.nickname = :nickname and p.userId <> :excludeUserId")

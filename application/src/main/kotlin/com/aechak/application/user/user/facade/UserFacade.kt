@@ -11,6 +11,7 @@ import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.application.user.user.usecase.command.SetNicknameCommand
 import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
 import com.aechak.application.user.user.usecase.query.UserSearchQuery
+import com.aechak.application.user.user.usecase.result.UserAuthorResult
 import com.aechak.application.user.user.usecase.result.UserMeResult
 import com.aechak.application.user.user.usecase.result.UserSummaryResult
 import com.aechak.common.error.BusinessException
@@ -150,6 +151,25 @@ class UserFacade(
         TODO("골격 템플릿 — 기능 구현 시 채운다")
     }
 
+    @Transactional(readOnly = true)
+    override fun getAuthors(userIds: Collection<Long>): Map<Long, UserAuthorResult> {
+        val found = userService.getAuthors(userIds).associateBy { it.id }
+        return userIds.toSet().associateWith { id ->
+            val author = found[id]
+            val withdrawn = author?.status == UserStatus.WITHDRAWN
+            UserAuthorResult(
+                userId = id,
+                nickname = if (withdrawn) ANONYMIZED_NICKNAME else (author?.nickname ?: ANONYMIZED_NICKNAME),
+                withdrawn = withdrawn,
+                profileImageUrl = if (withdrawn) null else fileUseCase.resolveMediaUrl(author?.profileImageKey),
+            )
+        }
+    }
+
     @Transactional
     override fun registerFromSocial(): Long = userService.registerFromSocial().id
+
+    companion object {
+        private const val ANONYMIZED_NICKNAME = "탈퇴한 사용자"
+    }
 }

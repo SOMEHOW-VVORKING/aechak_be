@@ -26,26 +26,31 @@ include(
     "common",
     "web-common",
     "web-security",
+    "pii",                            // PII 암호화 엔진·키 조립 공용 모듈 (web-security 계열, SCRUM-192)
     "domain",
     "application",
     "message",                        // Kafka 통합 메시지 계약 (00-overview A-2)
     "api",
+    "seller-api",                     // 셀러센터 실행 모듈 — 상품 등록·주문 관리가 붙기 전에 선분리(SCRUM-192)
     "batch",                          // admin — MVP 제외, 필요 시점에 생성
     "jpa-persistence",
     "pg-client",          // kafka는 어댑터 코드가 생길 때 하위 모듈 추가
     "social-client",
     "redis",                // 소셜 로그인(ACC-01): id_token 검증 / refresh token 저장
     "s3-client",                             // 오브젝트 스토리지 어댑터
+    "ses-client",                            // 이메일 발송 어댑터(SES) — 문의 통지
     "sms-client",                            // SMS 발송 어댑터(전화 인증)
     "kafka",
 )
 
 project(":api").projectDir = file("boot/api")
+project(":seller-api").projectDir = file("boot/seller")
 project(":batch").projectDir = file("boot/batch")
 project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
 project(":pg-client").projectDir = file("infra/client/pg-client")
 project(":social-client").projectDir = file("infra/client/social-client")
 project(":s3-client").projectDir = file("infra/client/s3-client")
+project(":ses-client").projectDir = file("infra/client/ses-client")
 project(":sms-client").projectDir = file("infra/client/sms-client")
 project(":redis").projectDir = file("infra/redis")
 project(":kafka").projectDir = file("infra/kafka")

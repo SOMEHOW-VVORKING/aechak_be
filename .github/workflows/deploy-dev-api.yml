@@ -24,6 +24,7 @@ jobs:
     secrets: inherit # 재사용 워크플로는 secrets 자동 상속이 안 됨 — 없으면 role ARN이 빈 값으로 넘어가 AWS 인증 실패
     with:
       module: api
+      module-dir: boot/api
       ecr-repo: aechak-api
       ecs-cluster: aechak-dev
       ecs-service: aechak-api-dev

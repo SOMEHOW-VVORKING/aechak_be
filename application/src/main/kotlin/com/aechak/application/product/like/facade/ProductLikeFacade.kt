@@ -30,7 +30,7 @@ class ProductLikeFacade(
         return CursorPageResult(
             items =
                 page.items.map {
-                    ProductSummaryResult.from(view = it.product, now = now)
+                    ProductSummaryResult.from(view = it.product, now = now, isLiked = true)
                 },
             totalCount = page.totalCount,
             nextCursor = page.nextCursor,

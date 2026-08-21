@@ -24,9 +24,10 @@ class ProductController(
     @GetMapping
     fun getProducts(
         @Valid @ModelAttribute request: ProductSearchRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal?,
     ): ResponseEntity<ApiResponse<ProductListResponse>> =
         ResponseEntity.ok(
-            ApiResponse.of(ProductListResponse.from(productUseCase.getProducts(request.toQuery()))),
+            ApiResponse.of(ProductListResponse.from(productUseCase.getProducts(request.toQuery(), principal?.userId))),
         )
 
     @GetMapping("/{productId}")
