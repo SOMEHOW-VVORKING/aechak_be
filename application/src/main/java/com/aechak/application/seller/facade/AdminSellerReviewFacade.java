@@ -7,9 +7,10 @@ import com.aechak.application.seller.service.SellerApplicationService;
 import com.aechak.application.seller.usecase.AdminSellerReviewUseCase;
 import com.aechak.application.seller.usecase.result.AdminApplicationDetailResult;
 import com.aechak.application.seller.usecase.result.AdminApplicationDocumentResult;
-import com.aechak.application.seller.usecase.result.AdminApplicationPageResult;
 import com.aechak.application.seller.usecase.result.AdminApplicationSummaryResult;
 import com.aechak.application.seller.usecase.result.PreviousApplicationResult;
+import com.aechak.application.support.PageQuery;
+import com.aechak.application.support.PageResult;
 import com.aechak.domain.seller.application.SellerApplication;
 import com.aechak.domain.seller.application.enums.ApplicationStatus;
 import java.util.List;
@@ -33,9 +34,9 @@ public class AdminSellerReviewFacade implements AdminSellerReviewUseCase {
 
     @Transactional(readOnly = true)
     @Override
-    public AdminApplicationPageResult list(ApplicationStatus status, int page, int size) {
-        return new AdminApplicationPageResult(
-                adminSellerReviewService.findPage(status, page, size).stream()
+    public PageResult<AdminApplicationSummaryResult> list(ApplicationStatus status, PageQuery pageQuery) {
+        return new PageResult<>(
+                adminSellerReviewService.findPage(status, pageQuery).stream()
                         .map(AdminApplicationSummaryResult::from)
                         .toList(),
                 adminSellerReviewService.count(status));

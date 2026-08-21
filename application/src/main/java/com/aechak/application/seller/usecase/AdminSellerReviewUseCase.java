@@ -1,7 +1,9 @@
 package com.aechak.application.seller.usecase;
 
 import com.aechak.application.seller.usecase.result.AdminApplicationDetailResult;
-import com.aechak.application.seller.usecase.result.AdminApplicationPageResult;
+import com.aechak.application.seller.usecase.result.AdminApplicationSummaryResult;
+import com.aechak.application.support.PageQuery;
+import com.aechak.application.support.PageResult;
 import com.aechak.domain.seller.application.enums.ApplicationStatus;
 
 /**
@@ -11,7 +13,7 @@ import com.aechak.domain.seller.application.enums.ApplicationStatus;
 public interface AdminSellerReviewUseCase {
 
     /** 신청 목록 — status 미지정(null) 시 전체, 제출일 내림차순. */
-    AdminApplicationPageResult list(ApplicationStatus status, int page, int size);
+    PageResult<AdminApplicationSummaryResult> list(ApplicationStatus status, PageQuery pageQuery);
 
     /**
      * 신청 상세 — 계좌 전체 표시(통장사본 대조용)·서류별 단기 다운로드 URL·심사 이력·동일 사업자번호 이력.

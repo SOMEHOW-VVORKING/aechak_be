@@ -3,6 +3,7 @@ package com.aechak.admin.seller;
 import com.aechak.admin.seller.response.AdminApplicationDetailResponse;
 import com.aechak.admin.seller.response.AdminApplicationListResponse;
 import com.aechak.application.seller.usecase.AdminSellerReviewUseCase;
+import com.aechak.application.support.PageQuery;
 import com.aechak.domain.seller.application.enums.ApplicationStatus;
 import com.aechak.webcommon.response.ApiResponse;
 import com.aechak.websecurity.authentication.AuthPrincipal;
@@ -21,19 +22,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class AdminSellerApplicationController {
 
-    private static final int MAX_PAGE_SIZE = 100;
-
     private final AdminSellerReviewUseCase adminSellerReviewUseCase;
 
-    /** 신청 목록 — status 필터·제출일 내림차순. page/size는 형식 보정만(음수·상한 절삭). */
+    /** 신청 목록 — status 필터·제출일 내림차순. page/size 형식 오류는 PageQuery.of가 보정한다. */
     @GetMapping
     public ResponseEntity<ApiResponse<AdminApplicationListResponse>> list(
             @RequestParam(required = false) ApplicationStatus status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.Companion.of(
-                AdminApplicationListResponse.from(
-                        adminSellerReviewUseCase.list(status, Math.max(page, 0), Math.clamp(size, 1, MAX_PAGE_SIZE)))));
+                AdminApplicationListResponse.from(adminSellerReviewUseCase.list(status, PageQuery.of(page, size)))));
     }
 
     /** 신청 상세 — 계좌 전체 표시·서류 다운로드 URL(단기)·심사 이력·동일 사업자번호 이력. */

@@ -1,5 +1,6 @@
 package com.aechak.application.seller.service;
 
+import com.aechak.application.support.PageQuery;
 import com.aechak.common.error.BusinessException;
 import com.aechak.domain.seller.application.SellerApplication;
 import com.aechak.domain.seller.application.enums.ApplicationStatus;
@@ -25,8 +26,8 @@ public class AdminSellerReviewService {
         return application;
     }
 
-    public List<SellerApplication> findPage(ApplicationStatus status, int page, int size) {
-        return sellerApplicationRepository.findPage(status, page, size);
+    public List<SellerApplication> findPage(ApplicationStatus status, PageQuery pageQuery) {
+        return sellerApplicationRepository.findPage(status, pageQuery.getPage(), pageQuery.getSize());
     }
 
     public long count(ApplicationStatus status) {
