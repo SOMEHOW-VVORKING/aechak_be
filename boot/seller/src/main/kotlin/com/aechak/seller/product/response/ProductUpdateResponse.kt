@@ -1,6 +1,6 @@
 package com.aechak.seller.product.response
 
-import com.aechak.application.product.usecase.result.ProductUpdateResult
+import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.domain.product.product.enums.SaleStatus
 import java.time.LocalDateTime
 

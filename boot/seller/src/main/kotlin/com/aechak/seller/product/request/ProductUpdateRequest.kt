@@ -1,6 +1,6 @@
 package com.aechak.seller.product.request
 
-import com.aechak.application.product.usecase.command.UpdateProductCommand
+import com.aechak.application.product.product.usecase.command.UpdateProductCommand
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.ProductImage
 import jakarta.validation.constraints.AssertTrue

@@ -8,6 +8,7 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
@@ -17,6 +18,7 @@ import jakarta.persistence.UniqueConstraint
 @Table(
     name = "product_likes",
     uniqueConstraints = [UniqueConstraint(name = "uk_product_like", columnNames = ["product_id", "user_id"])],
+    indexes = [Index(name = "ix_product_like_user", columnList = "user_id, id")],
 )
 class ProductLike protected constructor(
     @ManyToOne(fetch = FetchType.LAZY)

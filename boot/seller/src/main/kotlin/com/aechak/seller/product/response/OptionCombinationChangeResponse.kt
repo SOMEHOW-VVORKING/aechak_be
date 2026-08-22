@@ -1,6 +1,6 @@
 package com.aechak.seller.product.response
 
-import com.aechak.application.product.usecase.result.OptionCombinationChangeResult
+import com.aechak.application.product.product.usecase.result.OptionCombinationChangeResult
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.time.LocalDateTime
 

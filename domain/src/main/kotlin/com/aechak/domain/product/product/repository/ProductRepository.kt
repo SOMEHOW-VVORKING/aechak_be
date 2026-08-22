@@ -19,4 +19,6 @@ interface ProductRepository {
         publicId: String,
         sellerId: Long,
     ): Product?
+
+    fun findIdByPublicId(publicId: String): Long?
 }

@@ -1,6 +1,6 @@
 package com.aechak.seller.product.request
 
-import com.aechak.application.product.usecase.command.ChangeOptionCombinationCommand
+import com.aechak.application.product.product.usecase.command.ChangeOptionCombinationCommand
 import com.fasterxml.jackson.annotation.JsonProperty
 import jakarta.validation.constraints.AssertTrue
 

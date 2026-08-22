@@ -20,6 +20,11 @@ interface ProductJpaRepository : JpaRepository<Product, Long> {
     fun findByIdForUpdate(
         @Param("id") id: Long,
     ): Product?
+
+    @Query("select p.id from Product p where p.publicId = :publicId")
+    fun findIdByPublicId(
+        @Param("publicId") publicId: String,
+    ): Long?
 }
 
 @Repository
@@ -36,4 +41,6 @@ class ProductRepositoryAdapter(
         publicId: String,
         sellerId: Long,
     ): Product? = jpaRepository.findByPublicIdAndSellerId(publicId, sellerId)
+
+    override fun findIdByPublicId(publicId: String): Long? = jpaRepository.findIdByPublicId(publicId)
 }

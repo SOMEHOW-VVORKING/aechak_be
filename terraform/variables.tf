@@ -79,3 +79,29 @@ variable "frontend_origins" {
   type        = list(string)
   description = "presigned 업로드 CORS 허용 오리진 (웹 dev 포트별 복수)"
 }
+
+variable "inquiry_notification_enabled" {
+  type        = bool
+  default     = false
+  description = "문의 접수 시 운영팀 이메일 통지 켜기. 켜면 SES 검증 + inquiry_ops_recipients 필수."
+}
+
+variable "inquiry_ops_recipients" {
+  type        = list(string)
+  default     = []
+  description = "문의 통지 수신 운영팀 이메일(복수). notification 켤 때 필수."
+
+  validation {
+    condition = !var.inquiry_notification_enabled || (
+      length(var.inquiry_ops_recipients) > 0 &&
+      alltrue([for e in var.inquiry_ops_recipients : length(trimspace(e)) > 0 && strcontains(e, "@")])
+    )
+    error_message = "inquiry_notification_enabled=true 이면 inquiry_ops_recipients에 유효한 이메일이 최소 1개 필요합니다."
+  }
+}
+
+variable "seller_frontend_origins" {
+  description = "셀러센터 웹 로컬 개발 오리진 — 배포된 셀러 웹 도메인이 생기면 CORS 로컬에 그 값을 합류시킨다"
+  type        = list(string)
+  default     = []
+}
