@@ -80,6 +80,9 @@ payment:
   portone:
     base-url: https://api.portone.io
     api-secret: ${PORTONE_API_SECRET:}
+  store: # 결제 준비 응답으로 FE에 나가는 상점 정보. 비면 컨트롤러가 게이트웨이 오류로 끊는다.
+    id: ${PORTONE_STORE_ID:}
+    channel-key: ${PORTONE_CHANNEL_KEY:}
 
 # 문의 접수 알림. 기본 off라 로컬은 발송 생략하고 정상 기동.
 # dev/prod만 env로 enabled=true — 그때 recipients/aws.ses.from이 비면 부팅 실패(fail-fast).

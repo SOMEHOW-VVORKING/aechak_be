@@ -4,9 +4,12 @@ import com.aechak.application.payment.port.PaymentCancelStatus
 import com.aechak.application.payment.port.PaymentGatewayPort
 import com.aechak.application.payment.port.PaymentGatewayStatus
 import com.aechak.application.payment.port.PaymentGatewayView
+import com.aechak.common.error.BusinessException
+import com.aechak.domain.payment.error.PaymentErrorCode
 import java.time.LocalDateTime
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 실 포트원 대신 기록만 하는 Fake.
@@ -15,9 +18,20 @@ import java.util.concurrent.CopyOnWriteArrayList
 class FakePaymentGateway : PaymentGatewayPort {
     private val registered = ConcurrentHashMap<String, Long>()
     private val stubbed = ConcurrentHashMap<String, PaymentGatewayView>()
+    private val preRegisterCalls = CopyOnWriteArrayList<String>()
     private val cancelled = CopyOnWriteArrayList<String>()
+    private val failOnce = AtomicBoolean(false)
 
     val cancelledPaymentIds: List<String> get() = cancelled.toList()
+
+    /** preRegister 호출 순서대로 쌓임. 실패 주입으로 끊긴 호출도 남김 */
+    val preRegisteredPaymentIds: List<String> get() = preRegisterCalls.toList()
+
+    fun registeredAmount(paymentId: String): Long? = registered[paymentId]
+
+    fun failNextPreRegister() {
+        failOnce.set(true)
+    }
 
     /** find가 기본값(PAID) 대신 돌려줄 뷰를 심음. */
     fun stub(
@@ -30,13 +44,19 @@ class FakePaymentGateway : PaymentGatewayPort {
     fun clear() {
         registered.clear()
         stubbed.clear()
+        preRegisterCalls.clear()
         cancelled.clear()
+        failOnce.set(false)
     }
 
     override fun preRegister(
         paymentId: String,
         amount: Long,
     ) {
+        preRegisterCalls += paymentId
+        if (failOnce.getAndSet(false)) {
+            throw BusinessException(PaymentErrorCode.PAYMENT_GATEWAY_ERROR)
+        }
         registered[paymentId] = amount
     }
 
