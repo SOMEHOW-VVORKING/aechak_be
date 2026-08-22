@@ -280,6 +280,11 @@ class ProductService(
         productDetailQueryPort.findVisibleDetail(publicId)
             ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND) // 보안을 위해 미존재, 미노출 무관하게 모두 404 반환
 
+    /** 노출 상품의 내부 id — 상세 전체 로딩 없이 id만. 없거나 미노출이면 404. */
+    fun getVisibleProductId(publicId: String): Long =
+        productCatalogQueryPort.findVisibleIdByPublicId(publicId)
+            ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+
     fun getImages(productId: Long): List<ProductImageView> = productDetailQueryPort.findImagesByProductId(productId)
 
     /** 노출 조건을 통과한 옵션 조회 */
