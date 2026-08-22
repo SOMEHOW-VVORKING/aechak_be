@@ -1,17 +1,31 @@
 package com.aechak.application.payment.facade
 
+import com.aechak.application.payment.port.PaymentGatewayPort
 import com.aechak.application.payment.service.PaymentService
 import com.aechak.application.payment.usecase.PaymentUseCase
+import com.aechak.application.payment.usecase.command.PreparePaymentCommand
+import com.aechak.application.payment.usecase.result.PreparePaymentResult
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 
-/**
- * PaymentUseCase의 유일한 구현체. @Transactional 경계는 여기 고정.
- * PG 호출은 application이 정의한 포트(PaymentGatewayPort — 구현: infra/client/pg-client) 뒤에서 한다.
- * 규칙은 user 도메인 템플릿(UserFacade) 참조.
- */
 @Service
 class PaymentFacade(
     private val paymentService: PaymentService,
+    private val paymentGateway: PaymentGatewayPort,
+    transactionManager: PlatformTransactionManager,
 ) : PaymentUseCase {
-    // TODO: 유스케이스 구현
+    private val tx = TransactionTemplate(transactionManager)
+
+    override fun preparePayment(command: PreparePaymentCommand): PreparePaymentResult {
+        val payment =
+            try {
+                tx.execute { paymentService.prepare(command) }!!
+            } catch (e: DataIntegrityViolationException) {
+                tx.execute { paymentService.prepare(command) } ?: throw e // 동시 요청이 먼저 만든 행이라 다시 조회해 돌려줌
+            }
+        paymentGateway.preRegister(payment.paymentId, payment.targetAmount)
+        return PreparePaymentResult.from(payment)
+    }
 }

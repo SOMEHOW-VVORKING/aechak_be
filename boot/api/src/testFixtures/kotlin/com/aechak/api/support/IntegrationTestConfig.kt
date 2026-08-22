@@ -1,7 +1,6 @@
 package com.aechak.api.support
 
 import com.aechak.application.file.port.FileStorage
-import com.aechak.application.payment.port.PaymentGatewayPort
 import com.aechak.application.user.verification.support.VerificationCodeGenerator
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
@@ -53,7 +52,7 @@ class IntegrationTestConfig {
     /** 실 어댑터면 통합 테스트가 시크릿 없이 실 포트원으로 나가 게이트웨이 오류를 던짐 */
     @Bean
     @Primary
-    fun fakePaymentGateway(): PaymentGatewayPort = FakePaymentGateway()
+    fun fakePaymentGateway(): FakePaymentGateway = FakePaymentGateway()
 
     /** 프로덕션은 SecureRandom이라, 통합 테스트에선 코드가 결정적이어야 confirm까지 관통한다 — 고정 생성기로 덮는다. */
     @Bean
