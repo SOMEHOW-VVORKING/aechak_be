@@ -18,7 +18,7 @@ class OptionValue protected constructor(
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
 
-    @Column(length = 100, nullable = false)
+    @Column(length = NAME_MAX, nullable = false)
     var name: String = name
         protected set
 
@@ -29,6 +29,8 @@ class OptionValue protected constructor(
         protected set
 
     companion object {
+        const val NAME_MAX = 100
+
         fun of(
             name: String,
             sortOrder: Int,

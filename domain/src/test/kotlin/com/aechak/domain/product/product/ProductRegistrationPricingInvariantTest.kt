@@ -8,7 +8,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Product.register()가 소유하는 할인 데이터 입력 불변식을 고정한다.
+ * 단위 테스트 — Product.register()가 소유하는 입력 불변식을 고정한다. 정가 범위, 이미지 개수, 할인 데이터.
+ * 깨지면 요청 DTO를 우회한 입구(배치, 어드민, 컨슈머)로 잘못된 상품이 들어온다.
  */
 class ProductRegistrationPricingInvariantTest {
     private val now = LocalDateTime.of(2026, 7, 20, 12, 0)
@@ -18,6 +19,8 @@ class ProductRegistrationPricingInvariantTest {
         discount: Long? = null,
         start: LocalDateTime? = null,
         end: LocalDateTime? = null,
+        additionalImageKeys: List<String> = emptyList(),
+        detailImageKeys: List<String> = emptyList(),
     ): Product =
         Product.register(
             category = Category.create(null, 1, "강아지", null, 1),
@@ -29,7 +32,50 @@ class ProductRegistrationPricingInvariantTest {
             discountPrice = discount,
             discountStartAt = start,
             discountEndAt = end,
+            additionalImageKeys = additionalImageKeys,
+            detailImageKeys = detailImageKeys,
         )
+
+    @Test
+    fun `정가는 허용 범위 안이어야 한다`() {
+        assertEquals(
+            Product.REGULAR_PRICE_MIN,
+            register(regular = Product.REGULAR_PRICE_MIN).regularPrice,
+            "하한 경계값은 허용돼야 한다",
+        )
+        assertEquals(
+            Product.REGULAR_PRICE_MAX,
+            register(regular = Product.REGULAR_PRICE_MAX).regularPrice,
+            "상한 경계값은 허용돼야 한다",
+        )
+        assertRejected(ProductErrorCode.INVALID_PRODUCT_PRICE) { register(regular = Product.REGULAR_PRICE_MIN - 1) }
+        assertRejected(ProductErrorCode.INVALID_PRODUCT_PRICE) { register(regular = Product.REGULAR_PRICE_MAX + 1) }
+    }
+
+    @Test
+    fun `이미지 개수는 종류별 상한을 넘을 수 없다`() {
+        assertRejected(ProductErrorCode.TOO_MANY_PRODUCT_IMAGES) {
+            register(regular = 10000L, additionalImageKeys = keys(Product.ADDITIONAL_IMAGE_MAX + 1))
+        }
+        assertRejected(ProductErrorCode.TOO_MANY_PRODUCT_IMAGES) {
+            register(regular = 10000L, detailImageKeys = keys(Product.DETAIL_IMAGE_MAX + 1))
+        }
+    }
+
+    @Test
+    fun `상한까지는 등록된다`() {
+        val product =
+            register(
+                regular = 10000L,
+                additionalImageKeys = keys(Product.ADDITIONAL_IMAGE_MAX),
+                detailImageKeys = keys(Product.DETAIL_IMAGE_MAX),
+            )
+        assertEquals(
+            Product.ADDITIONAL_IMAGE_MAX + Product.DETAIL_IMAGE_MAX,
+            product.images.size,
+            "대표 이미지가 없으면 추가와 상세 이미지 수의 합만 남아야 한다",
+        )
+    }
 
     @Test
     fun `할인가가 있으면 시작일은 필수다`() {
@@ -40,7 +86,7 @@ class ProductRegistrationPricingInvariantTest {
     @Test
     fun `종료일 없이 시작일만 있으면 허용된다`() {
         val p = register(regular = 10000L, discount = 7500L, start = now.minusDays(1))
-        assertEquals(7500L, p.discountedPriceAt(now))
+        assertEquals(7500L, p.discountedPriceAt(now), "종료일이 없으면 무기한 할인이라 지금도 할인가여야 한다")
     }
 
     @Test
@@ -55,12 +101,19 @@ class ProductRegistrationPricingInvariantTest {
         assertInvalidPeriod { register(regular = 10000L, end = now.plusDays(1)) } // 종료만
     }
 
-    private fun assertInvalidPeriod(block: () -> Unit) {
+    private fun keys(count: Int): List<String> = (1..count).map { "products/$it.png" }
+
+    private fun assertInvalidPeriod(block: () -> Unit) = assertRejected(ProductErrorCode.INVALID_DISCOUNT_PERIOD, block)
+
+    private fun assertRejected(
+        expected: ProductErrorCode,
+        block: () -> Unit,
+    ) {
         try {
             block()
-            throw AssertionError("INVALID_DISCOUNT_PERIOD가 발생해야 한다")
+            throw AssertionError("$expected 가 발생해야 한다")
         } catch (e: BusinessException) {
-            assertEquals(ProductErrorCode.INVALID_DISCOUNT_PERIOD, e.errorCode)
+            assertEquals(expected, e.errorCode, "다른 코드가 나왔다: ${e.errorCode}")
         }
     }
 }

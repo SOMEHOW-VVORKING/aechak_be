@@ -42,6 +42,8 @@ class ProductStatsRepositoryAdapter(
     override fun findAllByProductIds(productIds: Collection<Long>): List<ProductStats> =
         if (productIds.isEmpty()) emptyList() else jpaRepository.findAllByProductIdIn(productIds)
 
+    override fun save(productStats: ProductStats): ProductStats = jpaRepository.save(productStats)
+
     override fun increaseLikeCount(productId: Long): Int = jpaRepository.increaseLikeCount(productId)
 
     override fun decreaseLikeCount(productId: Long): Int = jpaRepository.decreaseLikeCount(productId)
