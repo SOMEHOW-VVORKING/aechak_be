@@ -66,7 +66,8 @@ interface OrderUseCase {
  * [규칙]
  * - UseCase 구현은 항상 Facade다. Service가 UseCase를 직접 구현하는 것 금지 (규칙은 하나만).
  * - 트랜잭션 경계의 소유자는 Facade (상세 §2-1). Service/도메인 메서드에 트랜잭션 어노테이션 금지.
- * - 도메인이 수집한 이벤트(aggregate.events)를 커밋 전 publisher로 발행하고 clearEvents().
+ * - 도메인이 수집한 이벤트(aggregate.events)는 커밋 전에 발행하고 clearEvents(). 애그리거트를 들고 있는 쪽이 발행한다 —
+ *   Facade까지 나오면 Facade가, Service 안에서 끝나면 Service가 발행하고 Result만 돌려준다.
  * - 타 도메인 협력이 필요하면 그쪽 UseCase를 주입받는다. 순환 의존 발생 = 이벤트 전환 신호.
  */
 @Service

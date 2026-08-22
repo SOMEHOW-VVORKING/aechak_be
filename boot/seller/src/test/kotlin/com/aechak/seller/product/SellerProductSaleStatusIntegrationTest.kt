@@ -146,6 +146,27 @@ class SellerProductSaleStatusIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `재고가 없으면 판매중으로 올려도 품절로 내려간다`() {
+        emptyAllStock()
+        mockMvc.perform(statusRequest(token, productId, "SUSPENDED")).andExpect(status().isOk)
+
+        mockMvc
+            .perform(statusRequest(token, productId, "ON_SALE"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.saleStatus").value("OUT_OF_STOCK"))
+    }
+
+    @Test
+    fun `재고가 없어도 판매중지는 그대로 반영된다`() {
+        emptyAllStock()
+
+        mockMvc
+            .perform(statusRequest(token, productId, "SUSPENDED"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.saleStatus").value("SUSPENDED"))
+    }
+
+    @Test
     fun `판매중지해도 기존 주문이 가리키는 버전은 그대로 남는다`() {
         val versionId = tx.execute { firstVersionId() }!!
         placeOrder(versionId)
@@ -255,6 +276,15 @@ class SellerProductSaleStatusIntegrationTest : IntegrationTestBase() {
             .perform(statusRequest(token, productId, saleStatus))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90001))
+    }
+
+    /** 엔티티에 세터가 없어 bulk update로 비움. */
+    private fun emptyAllStock() {
+        tx.execute {
+            em
+                .createQuery("update OptionCombination c set c.stockQuantity = 0, c.updatedAt = CURRENT_TIMESTAMP")
+                .executeUpdate()
+        }
     }
 
     private fun countOf(entityName: String): Long =

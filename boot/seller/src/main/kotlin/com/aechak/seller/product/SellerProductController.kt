@@ -1,9 +1,11 @@
 package com.aechak.seller.product
 
 import com.aechak.application.product.product.usecase.SellerProductUseCase
+import com.aechak.seller.product.request.OptionCombinationChangeRequest
 import com.aechak.seller.product.request.ProductRegisterRequest
 import com.aechak.seller.product.request.ProductSaleStatusChangeRequest
 import com.aechak.seller.product.request.ProductUpdateRequest
+import com.aechak.seller.product.response.OptionCombinationChangeResponse
 import com.aechak.seller.product.response.ProductRegisterResponse
 import com.aechak.seller.product.response.ProductSaleStatusChangeResponse
 import com.aechak.seller.product.response.ProductUpdateResponse
@@ -46,6 +48,21 @@ class SellerProductController(
         ResponseEntity.ok(
             ApiResponse.of(
                 ProductUpdateResponse.from(sellerProductUseCase.updateProduct(request.toCommand(principal.userId, productId))),
+            ),
+        )
+
+    @PatchMapping("/{productId}/options/{combinationId}")
+    fun changeOptionCombination(
+        @PathVariable productId: String,
+        @PathVariable combinationId: Long,
+        @Valid @RequestBody request: OptionCombinationChangeRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<OptionCombinationChangeResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(
+                OptionCombinationChangeResponse.from(
+                    sellerProductUseCase.changeOptionCombination(request.toCommand(principal.userId, productId, combinationId)),
+                ),
             ),
         )
 

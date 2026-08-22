@@ -192,6 +192,23 @@ class Product protected constructor(
         saleStatus = status
     }
 
+    /** SUSPENDED와 ENDED는 재고와 무관하게 유지함. */
+    fun syncSaleStatusWithStock(hasActiveStock: Boolean) {
+        when {
+            saleStatus == SaleStatus.ON_SALE && !hasActiveStock -> {
+                saleStatus = SaleStatus.OUT_OF_STOCK
+            }
+
+            saleStatus == SaleStatus.OUT_OF_STOCK && hasActiveStock -> {
+                saleStatus = SaleStatus.ON_SALE
+            }
+
+            else -> {
+                Unit
+            }
+        }
+    }
+
     /** 가격 계산 정책(정가/할인가/기간) */
     fun pricing(): ProductPricing =
         ProductPricing(

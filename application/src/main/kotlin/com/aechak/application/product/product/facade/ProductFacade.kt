@@ -7,10 +7,12 @@ import com.aechak.application.product.like.service.ProductLikeStatusService
 import com.aechak.application.product.product.service.ProductService
 import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.product.product.usecase.SellerProductUseCase
+import com.aechak.application.product.product.usecase.command.ChangeOptionCombinationCommand
 import com.aechak.application.product.product.usecase.command.ChangeProductSaleStatusCommand
 import com.aechak.application.product.product.usecase.command.RegisterProductCommand
 import com.aechak.application.product.product.usecase.command.UpdateProductCommand
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.usecase.result.OptionCombinationChangeResult
 import com.aechak.application.product.product.usecase.result.ProductOptionsResult
 import com.aechak.application.product.product.usecase.result.ProductRegisterResult
 import com.aechak.application.product.product.usecase.result.ProductResult
@@ -87,6 +89,12 @@ class ProductFacade(
     override fun changeProductSaleStatus(command: ChangeProductSaleStatusCommand): ProductSaleStatusChangeResult {
         requireActiveSeller(command.sellerId)
         return productService.changeSaleStatus(command)
+    }
+
+    @Transactional
+    override fun changeOptionCombination(command: ChangeOptionCombinationCommand): OptionCombinationChangeResult {
+        requireActiveSeller(command.sellerId)
+        return productService.changeOptionCombination(command)
     }
 
     private fun requireActiveSeller(sellerId: Long) {

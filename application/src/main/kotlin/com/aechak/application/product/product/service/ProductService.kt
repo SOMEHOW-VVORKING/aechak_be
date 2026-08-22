@@ -10,10 +10,12 @@ import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.application.product.product.port.view.ProductImageView
 import com.aechak.application.product.product.port.view.ProductOptionsView
 import com.aechak.application.product.product.support.ProductCursorCodec
+import com.aechak.application.product.product.usecase.command.ChangeOptionCombinationCommand
 import com.aechak.application.product.product.usecase.command.ChangeProductSaleStatusCommand
 import com.aechak.application.product.product.usecase.command.RegisterProductCommand
 import com.aechak.application.product.product.usecase.command.UpdateProductCommand
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.usecase.result.OptionCombinationChangeResult
 import com.aechak.application.product.product.usecase.result.ProductSaleStatusChangeResult
 import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.application.support.CursorPageResult
@@ -35,6 +37,8 @@ import com.aechak.domain.product.stats.repository.ProductStatsRepository
 import com.aechak.domain.product.version.ProductVersion
 import com.aechak.domain.product.version.enums.VersionChangedBy
 import com.aechak.domain.product.version.repository.ProductVersionRepository
+import com.aechak.domain.support.AggregateRoot
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
@@ -51,6 +55,7 @@ class ProductService(
     private val optionCombinationRepository: OptionCombinationRepository,
     private val productVersionRepository: ProductVersionRepository,
     private val productStatsRepository: ProductStatsRepository,
+    private val eventPublisher: ApplicationEventPublisher,
 ) {
     fun register(
         command: RegisterProductCommand,
@@ -112,7 +117,9 @@ class ProductService(
     }
 
     /**
-     * 상태 변경은 버전을 남기지 않음
+     * 상태 변경은 버전을 남기지 않음.
+     * 셀러 의사를 먼저 적고 재고 파생을 뒤에 얹음. 재고 없이 판매중으로 올리면 그 자리에서 품절이 되고,
+     * 재고가 들어오면 리스너가 판매중으로 되돌림.
      */
     fun changeSaleStatus(command: ChangeProductSaleStatusCommand): ProductSaleStatusChangeResult {
         val product =
@@ -120,8 +127,37 @@ class ProductService(
                 ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
 
         product.changeSaleStatusBySeller(command.saleStatus)
+        product.syncSaleStatusWithStock(optionCombinationRepository.existsActiveStock(product.id))
         productRepository.saveNow(product)
         return ProductSaleStatusChangeResult.of(product)
+    }
+
+    /** saveNow는 응답에 실을 updatedAt을 커밋 전에 확정하려는 것. */
+    fun changeOptionCombination(command: ChangeOptionCombinationCommand): OptionCombinationChangeResult {
+        val product =
+            productRepository.findByPublicIdAndSellerId(command.productPublicId, command.sellerId)
+                ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+        val combination =
+            optionCombinationRepository.findByIdAndProductIdForUpdate(command.combinationId, product.id)
+                ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+
+        val appliedStockDelta = combination.changeStock(command.stockDelta ?: 0)
+        when (command.isActive) {
+            true -> combination.activate()
+            false -> combination.deactivate()
+            null -> Unit
+        }
+        optionCombinationRepository.saveNow(combination)
+
+        combination.registerChangedEvent()
+        publish(combination)
+        return OptionCombinationChangeResult.of(combination, appliedStockDelta)
+    }
+
+    /** 커밋 전에 발행해야 AFTER_COMMIT 리스너가 커밋 뒤로 미뤄짐. */
+    private fun publish(aggregate: AggregateRoot) {
+        aggregate.events.forEach { eventPublisher.publishEvent(it) }
+        aggregate.clearEvents()
     }
 
     /**
