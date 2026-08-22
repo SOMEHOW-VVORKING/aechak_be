@@ -75,6 +75,12 @@ aws:
     # SES 검증 발신 주소. 비면 발송 실패(스왈로우), dev/prod는 SSM 주입.
     from: ${AWS_SES_FROM:}
 
+# 포트원 결제 게이트웨이. 계정 발급 전이라 시크릿 비면 어댑터가 호출 전에 게이트웨이 오류로 끊는다. dev/prod는 SSM 주입.
+payment:
+  portone:
+    base-url: https://api.portone.io
+    api-secret: ${PORTONE_API_SECRET:}
+
 # 문의 접수 알림. 기본 off라 로컬은 발송 생략하고 정상 기동.
 # dev/prod만 env로 enabled=true — 그때 recipients/aws.ses.from이 비면 부팅 실패(fail-fast).
 inquiry:
