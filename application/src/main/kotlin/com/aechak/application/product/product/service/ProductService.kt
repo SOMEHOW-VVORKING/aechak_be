@@ -16,6 +16,7 @@ import com.aechak.application.product.product.usecase.command.RegisterProductCom
 import com.aechak.application.product.product.usecase.command.UpdateProductCommand
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.application.product.product.usecase.result.OptionCombinationChangeResult
+import com.aechak.application.product.product.usecase.result.ProductCurationResult
 import com.aechak.application.product.product.usecase.result.ProductSaleStatusChangeResult
 import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.application.support.CursorPageResult
@@ -230,6 +231,13 @@ class ProductService(
             },
         )
     }
+
+    /** 인기순 상위 상품 */
+    fun getPopular(now: LocalDateTime): List<ProductCatalogView> =
+        productCatalogQueryPort.findPopular(ProductCurationResult.RANKING_SIZE, now)
+
+    fun getRandomOnSale(now: LocalDateTime): List<ProductCatalogView> =
+        productCatalogQueryPort.findRandomOnSale(ProductCurationResult.RECOMMENDED_SIZE, now)
 
     fun getVisiblePage(
         query: ProductSearchQuery,
