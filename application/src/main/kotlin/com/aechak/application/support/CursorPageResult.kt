@@ -10,4 +10,6 @@ data class CursorPageResult<T>(
     init {
         require((nextCursor != null) == hasNext) { "nextCursor와 hasNext의 값이 다릅니다." }
     }
+
+    fun <R> map(transform: (T) -> R): CursorPageResult<R> = CursorPageResult(items.map(transform), totalCount, nextCursor, hasNext)
 }
