@@ -1,9 +1,7 @@
-package com.aechak.infra.persistence.product
+package com.aechak.infra.persistence.product.option
 
 import com.aechak.domain.product.option.OptionCombination
-import com.aechak.domain.product.option.OptionGroup
 import com.aechak.domain.product.option.repository.OptionCombinationRepository
-import com.aechak.domain.product.option.repository.OptionGroupRepository
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
@@ -13,8 +11,6 @@ import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
-
-interface OptionGroupJpaRepository : JpaRepository<OptionGroup, Long>
 
 interface OptionCombinationJpaRepository : JpaRepository<OptionCombination, Long> {
     @Modifying
@@ -43,13 +39,6 @@ interface OptionCombinationJpaRepository : JpaRepository<OptionCombination, Long
         @Param("id") id: Long,
         @Param("productId") productId: Long,
     ): OptionCombination?
-}
-
-@Repository
-class OptionGroupRepositoryAdapter(
-    private val jpaRepository: OptionGroupJpaRepository,
-) : OptionGroupRepository {
-    override fun saveAll(optionGroups: List<OptionGroup>): List<OptionGroup> = jpaRepository.saveAll(optionGroups)
 }
 
 @Repository
