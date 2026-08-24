@@ -13,7 +13,6 @@ import com.aechak.application.review.usecase.result.CreateReviewResult
 import com.aechak.application.review.usecase.result.ReviewImageItemResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.review.error.ReviewErrorCode
-import com.aechak.domain.review.review.Review
 import com.aechak.domain.review.review.ReviewImage
 import com.aechak.domain.review.review.enums.ReviewStatus
 import com.aechak.message.review.ReviewCreatedMessage
@@ -38,10 +37,7 @@ class ReviewCommandFacade(
                 ?: throw BusinessException(ReviewErrorCode.REVIEW_ORDER_ITEM_NOT_FOUND)
         reviewCommandService.ensureCanCreateReview(command, orderItem)
 
-        val imageKeys = command.imageKeys.distinct()
-        if (imageKeys.size > Review.MAX_IMAGES) {
-            throw BusinessException(ReviewErrorCode.REVIEW_TOO_MANY_IMAGES)
-        }
+        val imageKeys = reviewCommandService.resolveImageKeys(command)
         val moderationDecision = reviewModerationService.decide(command.content)
 
         val images =

@@ -35,6 +35,15 @@ class ReviewCommandService(
         }
     }
 
+    /** 중복 키를 걸러낸 뒤 첨부 개수 상한을 확인한다. 승격은 되돌릴 수 없어 그 전에 호출한다 */
+    fun resolveImageKeys(command: CreateReviewCommand): List<String> {
+        val imageKeys = command.imageKeys.distinct()
+        if (imageKeys.size > Review.MAX_IMAGES) {
+            throw BusinessException(ReviewErrorCode.REVIEW_TOO_MANY_IMAGES)
+        }
+        return imageKeys
+    }
+
     fun create(
         command: CreateReviewCommand,
         orderItem: ReviewOrderItemResult,
