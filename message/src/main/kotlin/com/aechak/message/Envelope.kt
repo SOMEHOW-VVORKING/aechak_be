@@ -10,7 +10,7 @@ data class Envelope(
     val eventType: String,
     val occurredAt: Instant,
     val aggregateType: String,
-    val aggregateId: String,
+    val orderingKey: String,
     val traceId: String,
     val producer: String,
     val payload: String, // Message 본문 JSON 문자열

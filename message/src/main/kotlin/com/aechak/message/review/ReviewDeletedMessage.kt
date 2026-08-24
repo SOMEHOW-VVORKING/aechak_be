@@ -9,6 +9,6 @@ data class ReviewDeletedMessage(
     override val occurredAt: Instant = Instant.now(),
 ) : GuaranteedMessage {
     override val aggregateType: String get() = "review"
-    override val aggregateId: String get() = productId.toString()
+    override val orderingKey: String get() = productId.toString()
     override val eventId: String get() = "review-$reviewId:deleted"
 }

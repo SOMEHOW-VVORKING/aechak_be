@@ -74,7 +74,7 @@ infra/kafka/src/main/kotlin/com/aechak/infra/kafka/
 ```kotlin
 data class OrderPlacedMessage(
     val orderId: Long,
-    override val aggregateId: String,                        // 파티션 키 = 순서 단위
+    override val orderingKey: String,                        // 파티션 키 = 순서 단위. 애그리거트 id일 필요는 없다
     override val occurredAt: Instant = Instant.now(),
 ) : GuaranteedMessage {
     override val aggregateType = "order"                     // 토픽 라우팅

@@ -68,7 +68,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     /** 멱등키·시각을 생성자 프로퍼티로 둬 copy·재읽기에도 안 바뀜 */
     data class SyntheticMessage(
         val hello: String,
-        override val aggregateId: String = "test",
+        override val orderingKey: String = "test",
         override val eventId: String = UUID.randomUUID().toString(),
         override val occurredAt: Instant = Instant.now(),
     ) : GuaranteedMessage {
@@ -77,7 +77,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     data class SyntheticExpiringMessage(
         val hello: String,
-        override val aggregateId: String,
+        override val orderingKey: String,
         override val occurredAt: Instant = Instant.now(),
         override val eventId: String = UUID.randomUUID().toString(),
     ) : GuaranteedMessage {
@@ -86,7 +86,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     }
 
     data class SyntheticNegativeDelayMessage(
-        override val aggregateId: String,
+        override val orderingKey: String,
         override val eventId: String = UUID.randomUUID().toString(),
         override val occurredAt: Instant = Instant.now(),
     ) : GuaranteedMessage {
@@ -95,7 +95,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     }
 
     data class SyntheticDualMarkerMessage(
-        override val aggregateId: String,
+        override val orderingKey: String,
         override val eventId: String = UUID.randomUUID().toString(),
         override val occurredAt: Instant = Instant.now(),
     ) : GuaranteedMessage,
@@ -105,7 +105,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     /** 공백 든 토픽명은 전송이 반드시 실패함 */
     data class SyntheticUnsendableMessage(
-        override val aggregateId: String,
+        override val orderingKey: String,
         override val eventId: String = UUID.randomUUID().toString(),
         override val occurredAt: Instant = Instant.now(),
     ) : BestEffortMessage {
@@ -113,7 +113,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     }
 
     data class SyntheticUnsendableGuaranteedMessage(
-        override val aggregateId: String,
+        override val orderingKey: String,
         override val eventId: String = UUID.randomUUID().toString(),
         override val occurredAt: Instant = Instant.now(),
     ) : GuaranteedMessage {
@@ -122,7 +122,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     data class SyntheticBestEffortMessage(
         val hello: String,
-        override val aggregateId: String,
+        override val orderingKey: String,
         override val eventId: String = UUID.randomUUID().toString(),
         override val occurredAt: Instant = Instant.now(),
     ) : BestEffortMessage {
@@ -131,37 +131,37 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     @Test
     fun `발행하면 브로커까지 배달되고 PUBLISHED로 표시된다`() {
-        val aggregateId = "publish-test"
+        val orderingKey = "publish-test"
 
         tx.executeWithoutResult {
-            publisher.publish(SyntheticMessage("hi", aggregateId))
+            publisher.publish(SyntheticMessage("hi", orderingKey))
         }
 
         // 스위퍼 스케줄은 batch 소속이라 이 컨텍스트엔 없음
         await().atMost(Duration.ofSeconds(15)).untilAsserted {
-            assertThat(statusOf(aggregateId))
+            assertThat(statusOf(orderingKey))
                 .`as`("커밋된 아웃박스 행은 브로커 응답까지 받은 뒤 PUBLISHED(1)로 바뀌어야 한다")
                 .isEqualTo(1)
         }
         val publishedAtSet =
             db
-                .sql("SELECT published_at IS NOT NULL FROM outbox_message WHERE aggregate_id = :aggregateId")
-                .param("aggregateId", aggregateId)
+                .sql("SELECT published_at IS NOT NULL FROM outbox_message WHERE ordering_key = :orderingKey")
+                .param("orderingKey", orderingKey)
                 .query(Boolean::class.java)
                 .single()
         assertThat(publishedAtSet)
             .`as`("published_at은 보존·청소(14일)의 기준이다 — NULL이면 그 행은 영원히 안 지워진다")
             .isTrue()
-        assertThat(traceIdOf(aggregateId))
+        assertThat(traceIdOf(orderingKey))
             .`as`("MDC 없는 발행 경로에서도 체인 뿌리가 될 traceId가 만들어져야 한다")
             .isNotBlank()
     }
 
     @Test
     fun `즉시 발행은 스위퍼 개입 없이 PUBLISHED로 만든다`() {
-        val aggregateId = "immediate-success-test"
+        val orderingKey = "immediate-success-test"
         // 스위퍼 스케줄은 batch 소속이라 이 컨텍스트에 없음. PUBLISHED 전환은 즉시 발행만 만들 수 있는 결과
-        val message = SyntheticMessage("fast", aggregateId)
+        val message = SyntheticMessage("fast", orderingKey)
         tx.executeWithoutResult {
             publisher.publish(message)
         }
@@ -175,18 +175,18 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     @Test
     fun `발행 스레드의 MDC traceId가 이벤트에 그대로 실린다`() {
-        val aggregateId = "mdc-propagation-test"
+        val orderingKey = "mdc-propagation-test"
         // TraceIdFilter가 HTTP 스레드에 넣어주는 것과 같은 상황을 리터럴 키로 재현
         MDC.put("traceId", "trace-from-request")
         try {
             tx.executeWithoutResult {
-                publisher.publish(SyntheticMessage("hi", aggregateId))
+                publisher.publish(SyntheticMessage("hi", orderingKey))
             }
         } finally {
             MDC.remove("traceId")
         }
 
-        assertThat(traceIdOf(aggregateId))
+        assertThat(traceIdOf(orderingKey))
             .`as`("퍼블리셔가 다른 MDC 키를 읽으면 요청과 이벤트의 트레이스가 끊긴다")
             .isEqualTo("trace-from-request")
     }
@@ -200,15 +200,15 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     @Test
     fun `기본 허용 지연은 만료 없음으로 기록한다`() {
-        val aggregateId = "no-expiry-test"
+        val orderingKey = "no-expiry-test"
         tx.executeWithoutResult {
-            publisher.publish(SyntheticMessage("hi", aggregateId))
+            publisher.publish(SyntheticMessage("hi", orderingKey))
         }
 
         val expiredAtNull =
             db
-                .sql("SELECT expired_at IS NULL FROM outbox_message WHERE aggregate_id = :aggregateId")
-                .param("aggregateId", aggregateId)
+                .sql("SELECT expired_at IS NULL FROM outbox_message WHERE ordering_key = :orderingKey")
+                .param("orderingKey", orderingKey)
                 .query(Boolean::class.java)
                 .single()
         assertThat(expiredAtNull)
@@ -218,17 +218,17 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     @Test
     fun `유한 허용 지연은 만료 시각을 사건 시각 더하기 지연으로 기록한다`() {
-        val aggregateId = "expiry-test"
+        val orderingKey = "expiry-test"
         val occurredAt = Instant.now().minusSeconds(600) // 과거 사건. 기준이 INSERT 시각이 아님을 같이 고정
         tx.executeWithoutResult {
-            publisher.publish(SyntheticExpiringMessage("hi", aggregateId, occurredAt))
+            publisher.publish(SyntheticExpiringMessage("hi", orderingKey, occurredAt))
         }
 
         val occurredDiffSeconds =
             db
-                .sql("SELECT ABS(TIMESTAMPDIFF(SECOND, occurred_at, :occurredAt)) FROM outbox_message WHERE aggregate_id = :aggregateId")
+                .sql("SELECT ABS(TIMESTAMPDIFF(SECOND, occurred_at, :occurredAt)) FROM outbox_message WHERE ordering_key = :orderingKey")
                 .param("occurredAt", java.sql.Timestamp.from(occurredAt))
-                .param("aggregateId", aggregateId)
+                .param("orderingKey", orderingKey)
                 .query(Long::class.java)
                 .single()
         assertThat(occurredDiffSeconds)
@@ -237,8 +237,8 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
         val delaySeconds =
             db
-                .sql("SELECT TIMESTAMPDIFF(SECOND, occurred_at, expired_at) FROM outbox_message WHERE aggregate_id = :aggregateId")
-                .param("aggregateId", aggregateId)
+                .sql("SELECT TIMESTAMPDIFF(SECOND, occurred_at, expired_at) FROM outbox_message WHERE ordering_key = :orderingKey")
+                .param("orderingKey", orderingKey)
                 .query(Long::class.java)
                 .single()
         assertThat(delaySeconds)
@@ -248,15 +248,15 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     @Test
     fun `엔벨로프 와이어 형태를 고정한다`() {
-        val aggregateId = "golden-shape-test"
+        val orderingKey = "golden-shape-test"
         tx.executeWithoutResult {
-            publisher.publish(SyntheticExpiringMessage("shape", aggregateId))
+            publisher.publish(SyntheticExpiringMessage("shape", orderingKey))
         }
 
         val payloadJson =
             db
-                .sql("SELECT payload FROM outbox_message WHERE aggregate_id = :aggregateId")
-                .param("aggregateId", aggregateId)
+                .sql("SELECT payload FROM outbox_message WHERE ordering_key = :orderingKey")
+                .param("orderingKey", orderingKey)
                 .query(String::class.java)
                 .single()
 
@@ -269,7 +269,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
                 "eventType",
                 "occurredAt",
                 "aggregateType",
-                "aggregateId",
+                "orderingKey",
                 "traceId",
                 "producer",
                 "payload",
@@ -305,15 +305,15 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     @Test
     fun `두 마커를 동시에 구현하면 유실 불가로 처리된다`() {
-        val aggregateId = "dual-marker-test"
+        val orderingKey = "dual-marker-test"
         tx.executeWithoutResult {
-            publisher.publish(SyntheticDualMarkerMessage(aggregateId))
+            publisher.publish(SyntheticDualMarkerMessage(orderingKey))
         }
 
         val outboxRows =
             db
-                .sql("SELECT COUNT(*) FROM outbox_message WHERE aggregate_id = :aggregateId")
-                .param("aggregateId", aggregateId)
+                .sql("SELECT COUNT(*) FROM outbox_message WHERE ordering_key = :orderingKey")
+                .param("orderingKey", orderingKey)
                 .query(Int::class.java)
                 .single()
         assertThat(outboxRows)
@@ -330,16 +330,16 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     @Test
     fun `즉시 발행이 실패해도 커밋은 성공하고 행은 PENDING으로 남는다`() {
-        val aggregateId = "immediate-fail-test"
+        val orderingKey = "immediate-fail-test"
         assertThatCode {
             tx.executeWithoutResult {
-                publisher.publish(SyntheticUnsendableGuaranteedMessage(aggregateId))
+                publisher.publish(SyntheticUnsendableGuaranteedMessage(orderingKey))
             }
         }.`as`("커밋 후 즉시 발행의 실패가 호출부로 새면 이미 커밋된 요청이 실패로 둔갑한다")
             .doesNotThrowAnyException()
 
         Thread.sleep(1500)
-        assertThat(statusOf(aggregateId))
+        assertThat(statusOf(orderingKey))
             .`as`("즉시 발행이 실패한 행은 PENDING(0)으로 남아 배치 재발행 대상이 돼야 한다")
             .isEqualTo(0)
     }
@@ -365,11 +365,11 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     @Test
     fun `유실 가능 메시지는 아웃박스를 거치지 않고 커밋 후 브로커에 도착한다`() {
         val traceId = "direct-commit-${UUID.randomUUID()}"
-        val aggregateId = "direct-tx-test"
+        val orderingKey = "direct-tx-test"
         MDC.put("traceId", traceId)
         try {
             tx.executeWithoutResult {
-                publisher.publish(SyntheticBestEffortMessage("direct", aggregateId))
+                publisher.publish(SyntheticBestEffortMessage("direct", orderingKey))
             }
         } finally {
             MDC.remove("traceId")
@@ -382,8 +382,8 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
         }
         val outboxRows =
             db
-                .sql("SELECT COUNT(*) FROM outbox_message WHERE aggregate_id = :aggregateId")
-                .param("aggregateId", aggregateId)
+                .sql("SELECT COUNT(*) FROM outbox_message WHERE ordering_key = :orderingKey")
+                .param("orderingKey", orderingKey)
                 .query(Int::class.java)
                 .single()
         assertThat(outboxRows)
@@ -454,7 +454,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     @Test
     fun `발행 트랜잭션이 롤백되면 아웃박스 행도 사라지고 브로커로도 나가지 않는다`() {
-        val aggregateId = "rollback-test"
+        val orderingKey = "rollback-test"
         val traceId = "outbox-rollback-${UUID.randomUUID()}"
 
         // 발행 후 도메인 로직 실패 → 전체 롤백
@@ -462,7 +462,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
         try {
             runCatching {
                 tx.executeWithoutResult {
-                    publisher.publish(SyntheticMessage("boom", aggregateId))
+                    publisher.publish(SyntheticMessage("boom", orderingKey))
                     error("발행 이후 도메인 로직 실패 재현")
                 }
             }
@@ -472,8 +472,8 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
         val rows =
             db
-                .sql("SELECT COUNT(*) FROM outbox_message WHERE aggregate_id = :aggregateId")
-                .param("aggregateId", aggregateId)
+                .sql("SELECT COUNT(*) FROM outbox_message WHERE ordering_key = :orderingKey")
+                .param("orderingKey", orderingKey)
                 .query(Int::class.java)
                 .single()
         assertThat(rows)
@@ -490,11 +490,11 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     @Test
     fun `같은 엔벨로프가 두 번 배달돼도 인박스에는 한 번만 기록된다`() {
         val eventId = UUID.randomUUID().toString()
-        val aggregateId = "duplicate-test"
+        val orderingKey = "duplicate-test"
         val envelope = envelopeJson(eventId)
 
-        kafka.send(Topics.ORDER, aggregateId, envelope).get()
-        kafka.send(Topics.ORDER, aggregateId, envelope).get()
+        kafka.send(Topics.ORDER, orderingKey, envelope).get()
+        kafka.send(Topics.ORDER, orderingKey, envelope).get()
 
         await().atMost(Duration.ofSeconds(15)).untilAsserted {
             assertThat(inboxCount(eventId))
@@ -561,8 +561,8 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     @Test
     fun `발행 완료 기록 전에 죽어 같은 행이 두 번 발행돼도 컨슈머 효과는 한 번이다`() {
         val eventId = UUID.randomUUID().toString()
-        val aggregateId = "redelivery-test"
-        insertOutboxRow(aggregateId = aggregateId, eventId = eventId)
+        val orderingKey = "redelivery-test"
+        insertOutboxRow(orderingKey = orderingKey, eventId = eventId)
         sweeper.sweepNow()
 
         await().atMost(Duration.ofSeconds(15)).untilAsserted {
@@ -573,12 +573,12 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
         // 브로커 전송 후 PUBLISHED 기록 직전에 스위퍼가 죽은 상황 재현: 행이 PENDING으로 남음
         db
-            .sql("UPDATE outbox_message SET status = 0 WHERE aggregate_id = :aggregateId")
-            .param("aggregateId", aggregateId)
+            .sql("UPDATE outbox_message SET status = 0 WHERE ordering_key = :orderingKey")
+            .param("orderingKey", orderingKey)
             .update()
         sweeper.sweepNow()
 
-        assertThat(statusOf(aggregateId))
+        assertThat(statusOf(orderingKey))
             .`as`("스위퍼는 PENDING으로 남은 행을 다시 발행해야 한다")
             .isEqualTo(1)
         Thread.sleep(1500)
@@ -591,8 +591,8 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     fun `다시 보내도 실패할 행은 DEAD로 격리하고 뒷 행은 계속 발행한다`() {
         val deadAggregate = "sweep-dead-row"
         val laterAggregate = "sweep-later-row"
-        insertOutboxRow(aggregateType = "invalid topic!", aggregateId = deadAggregate) // occurred_at이 앞선 영구 실패 행
-        insertOutboxRow(aggregateId = laterAggregate)
+        insertOutboxRow(aggregateType = "invalid topic!", orderingKey = deadAggregate) // occurred_at이 앞선 영구 실패 행
+        insertOutboxRow(orderingKey = laterAggregate)
 
         sweeper.sweepNow()
 
@@ -606,7 +606,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     @Test
     fun `스위퍼는 청크 크기를 넘는 잔량도 한 번의 구동으로 모두 재발행한다`() {
-        repeat(60) { insertOutboxRow(aggregateId = "bulk-$it") }
+        repeat(60) { insertOutboxRow(orderingKey = "bulk-$it") }
 
         sweeper.sweepNow()
 
@@ -625,12 +625,12 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
         val publishedEventId = UUID.randomUUID().toString()
         val deadEventId = UUID.randomUUID().toString()
         val holdEventId = UUID.randomUUID().toString()
-        insertOutboxRow(aggregateId = "skip-published", eventId = publishedEventId)
-        insertOutboxRow(aggregateId = "skip-dead", eventId = deadEventId)
-        insertOutboxRow(aggregateId = "skip-hold", eventId = holdEventId)
-        db.sql("UPDATE outbox_message SET status = 1 WHERE aggregate_id = 'skip-published'").update()
-        db.sql("UPDATE outbox_message SET status = 2 WHERE aggregate_id = 'skip-dead'").update()
-        db.sql("UPDATE outbox_message SET status = 3 WHERE aggregate_id = 'skip-hold'").update()
+        insertOutboxRow(orderingKey = "skip-published", eventId = publishedEventId)
+        insertOutboxRow(orderingKey = "skip-dead", eventId = deadEventId)
+        insertOutboxRow(orderingKey = "skip-hold", eventId = holdEventId)
+        db.sql("UPDATE outbox_message SET status = 1 WHERE ordering_key = 'skip-published'").update()
+        db.sql("UPDATE outbox_message SET status = 2 WHERE ordering_key = 'skip-dead'").update()
+        db.sql("UPDATE outbox_message SET status = 3 WHERE ordering_key = 'skip-hold'").update()
 
         sweeper.sweepNow()
 
@@ -650,12 +650,12 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     @Test
     fun `만료된 행은 발행하지 않고 HOLD로 전환한다`() {
         val eventId = UUID.randomUUID().toString()
-        val aggregateId = "expired-hold-test"
-        insertOutboxRow(aggregateId = aggregateId, eventId = eventId, expiredAt = Instant.now().minusSeconds(3600))
+        val orderingKey = "expired-hold-test"
+        insertOutboxRow(orderingKey = orderingKey, eventId = eventId, expiredAt = Instant.now().minusSeconds(3600))
 
         sweeper.sweepNow()
 
-        assertThat(statusOf(aggregateId))
+        assertThat(statusOf(orderingKey))
             .`as`("기한 지난 행을 계속 재발행하면 허용 지연 계약이 거짓이 된다")
             .isEqualTo(3)
         // "안 나감"은 기다려 봐야 앎
@@ -669,8 +669,8 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     fun `만료 행은 사이클을 접지 않고 미만료 유한 기한 행은 정상 재발행된다`() {
         val expiredEventId = UUID.randomUUID().toString()
         val liveEventId = UUID.randomUUID().toString()
-        insertOutboxRow(aggregateId = "expiry-mixed-expired", eventId = expiredEventId, expiredAt = Instant.now().minusSeconds(3600))
-        insertOutboxRow(aggregateId = "expiry-mixed-live", eventId = liveEventId, expiredAt = Instant.now().plusSeconds(3600))
+        insertOutboxRow(orderingKey = "expiry-mixed-expired", eventId = expiredEventId, expiredAt = Instant.now().minusSeconds(3600))
+        insertOutboxRow(orderingKey = "expiry-mixed-live", eventId = liveEventId, expiredAt = Instant.now().plusSeconds(3600))
 
         sweeper.sweepNow()
 
@@ -685,21 +685,21 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     @Test
     fun `HOLD를 수동으로 재개하면 다시 발행된다`() {
         val eventId = UUID.randomUUID().toString()
-        val aggregateId = "hold-resume-test"
-        insertOutboxRow(aggregateId = aggregateId, eventId = eventId, expiredAt = Instant.now().minusSeconds(3600))
+        val orderingKey = "hold-resume-test"
+        insertOutboxRow(orderingKey = orderingKey, eventId = eventId, expiredAt = Instant.now().minusSeconds(3600))
         sweeper.sweepNow()
-        assertThat(statusOf(aggregateId))
+        assertThat(statusOf(orderingKey))
             .`as`("재개 테스트의 전제: 먼저 HOLD가 돼야 한다")
             .isEqualTo(3)
 
         // 운영자 재개 재현: 기한을 풀고 PENDING 복귀. 기한을 안 풀면 다음 사이클에 도로 HOLD
         db
-            .sql("UPDATE outbox_message SET status = 0, expired_at = NULL WHERE aggregate_id = :aggregateId")
-            .param("aggregateId", aggregateId)
+            .sql("UPDATE outbox_message SET status = 0, expired_at = NULL WHERE ordering_key = :orderingKey")
+            .param("orderingKey", orderingKey)
             .update()
         sweeper.sweepNow()
 
-        assertThat(statusOf(aggregateId))
+        assertThat(statusOf(orderingKey))
             .`as`("재개된 행은 다음 구동에서 발행돼야 한다")
             .isEqualTo(1)
         await().atMost(Duration.ofSeconds(15)).untilAsserted {
@@ -725,9 +725,9 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
 
     @Test
     fun `브로커 레코드의 헤더 3종은 엔벨로프와 같은 값으로 실린다`() {
-        val aggregateId = "header-contract-test"
+        val orderingKey = "header-contract-test"
         val traceId = "header-trace-${UUID.randomUUID()}"
-        val message = SyntheticMessage("hdr", aggregateId)
+        val message = SyntheticMessage("hdr", orderingKey)
         MDC.put("traceId", traceId)
         try {
             tx.executeWithoutResult {
@@ -751,7 +751,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
             val deadline = System.currentTimeMillis() + 15_000
             while (matched.isEmpty() && System.currentTimeMillis() < deadline) {
                 consumer.poll(Duration.ofMillis(500)).records(Topics.ORDER).forEach {
-                    if (it.key() == aggregateId) matched.add(it)
+                    if (it.key() == orderingKey) matched.add(it)
                 }
             }
             assertThat(matched).`as`("발행된 레코드가 브로커에 도착해야 한다").isNotEmpty()
@@ -799,7 +799,7 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
                 eventType = "SyntheticMessage",
                 occurredAt = Instant.parse("2026-07-23T00:00:00Z"),
                 aggregateType = "order",
-                aggregateId = "test",
+                orderingKey = "test",
                 traceId = "",
                 producer = "test",
                 payload = objectMapper.writeValueAsString(SyntheticMessage("from-test")),
@@ -812,28 +812,28 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
      */
     private fun insertOutboxRow(
         aggregateType: String = "order",
-        aggregateId: String,
+        orderingKey: String,
         eventId: String = UUID.randomUUID().toString(),
         expiredAt: Instant? = null,
     ) {
         db
             .sql(
                 """
-                INSERT INTO outbox_message (event_id, aggregate_type, aggregate_id, event_type, trace_id, payload, occurred_at, expired_at)
-                VALUES (:eventId, :aggregateType, :aggregateId, 'SyntheticMessage', '', :payload, NOW(6), :expiredAt)
+                INSERT INTO outbox_message (event_id, aggregate_type, ordering_key, event_type, trace_id, payload, occurred_at, expired_at)
+                VALUES (:eventId, :aggregateType, :orderingKey, 'SyntheticMessage', '', :payload, NOW(6), :expiredAt)
                 """.trimIndent(),
             ).param("expiredAt", expiredAt?.let { java.sql.Timestamp.from(it) })
             .param("eventId", eventId)
             .param("aggregateType", aggregateType)
-            .param("aggregateId", aggregateId)
+            .param("orderingKey", orderingKey)
             .param("payload", envelopeJson(eventId))
             .update()
     }
 
-    private fun statusOf(aggregateId: String): Int =
+    private fun statusOf(orderingKey: String): Int =
         db
-            .sql("SELECT status FROM outbox_message WHERE aggregate_id = :aggregateId ORDER BY id LIMIT 1")
-            .param("aggregateId", aggregateId)
+            .sql("SELECT status FROM outbox_message WHERE ordering_key = :orderingKey ORDER BY id LIMIT 1")
+            .param("orderingKey", orderingKey)
             .query(Int::class.java)
             .single()
 
@@ -851,10 +851,10 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
             .query(Int::class.java)
             .single()
 
-    private fun traceIdOf(aggregateId: String): String =
+    private fun traceIdOf(orderingKey: String): String =
         db
-            .sql("SELECT trace_id FROM outbox_message WHERE aggregate_id = :aggregateId ORDER BY id LIMIT 1")
-            .param("aggregateId", aggregateId)
+            .sql("SELECT trace_id FROM outbox_message WHERE ordering_key = :orderingKey ORDER BY id LIMIT 1")
+            .param("orderingKey", orderingKey)
             .query(String::class.java)
             .single()
 
