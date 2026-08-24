@@ -8,7 +8,11 @@ on:
   workflow_call:
     inputs:
       module:
-        description: "gradle 모듈명 (api, batch, ...)"
+        description: "gradle 모듈명 (api, seller-api, ...) — Dockerfile의 bootJar 대상·jar 이름"
+        required: true
+        type: string
+      module-dir:
+        description: "모듈 디렉터리 (boot/api, boot/seller, ...) — jar 산출 경로"
         required: true
         type: string
       ecr-repo:
@@ -56,7 +60,7 @@ jobs:
         run: |
           # 태그 == 커밋 해시 7자리 -> 현재 이미지가 어떤 커밋 코드인지 추적 가능
           IMAGE="$REGISTRY/${{ inputs.ecr-repo }}:${GITHUB_SHA::7}"
-          docker build -t "$IMAGE" .
+          docker build --build-arg MODULE=${{ inputs.module }} --build-arg MODULE_DIR=${{ inputs.module-dir }} -t "$IMAGE" .
           docker push "$IMAGE"
           echo "uri=$IMAGE" >> "$GITHUB_OUTPUT"
 

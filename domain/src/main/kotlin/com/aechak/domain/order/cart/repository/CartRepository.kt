@@ -11,5 +11,7 @@ interface CartRepository {
 
     fun findByBuyerIdWithItems(buyerId: Long): Cart?
 
+    fun existsAnyItemById(cartItemIds: Collection<Long>): Boolean
+
     fun flush()
 }

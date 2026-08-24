@@ -28,7 +28,7 @@ aechak/
 │       ├── aechak.kotlin-common.gradle.kts     # 전 모듈 베이스
 │       ├── aechak.jpa-entity.gradle.kts        # domain 전용
 │       ├── aechak.spring-library.gradle.kts    # web-common / application / infra/*
-│       └── aechak.spring-boot-app.gradle.kts   # 실행 모듈(api·batch)
+│       └── aechak.spring-boot-app.gradle.kts   # 실행 모듈(api·seller-api·batch)
 ├── settings.gradle.kts              # §3
 └── (모듈들 — §5)
 ```
@@ -77,11 +77,12 @@ include(
     "common", "web-common",
     "domain", "application",
     // "message",                            // PENDING(A-2)
-    "api", "batch",                  // "admin" — A-5: MVP 제외
+    "api", "seller-api", "batch",    // "admin" — A-5: MVP 제외
     "jpa-persistence", "pg-client",     // A-1 결정(L2). kafka·redis는 어댑터 생길 때 추가
 )
 // boot/·infra/{분류}는 모듈이 아닌 폴더 — 모듈 이름은 평평하게, projectDir로 위치만 매핑
 project(":api").projectDir = file("boot/api")
+project(":seller-api").projectDir = file("boot/seller")
 project(":batch").projectDir = file("boot/batch")
 project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
 project(":pg-client").projectDir = file("infra/client/pg-client")

@@ -13,13 +13,20 @@ class ProductStatsServiceTest {
         private val stored: List<ProductStats>,
     ) : ProductStatsRepository {
         override fun findAllByProductIds(productIds: Collection<Long>): List<ProductStats> = stored.filter { it.productId in productIds }
+
+        /** 이 페이크는 조회만 검증한다. 쓰기 경로는 통합 테스트가 실 저장소로 본다. */
+        override fun save(productStats: ProductStats): ProductStats = error("이 테스트에서 호출하지 않는다")
+
+        override fun increaseLikeCount(productId: Long): Int = error("이 테스트에서 호출하지 않는다")
+
+        override fun decreaseLikeCount(productId: Long): Int = error("이 테스트에서 호출하지 않는다")
     }
 
     @Test
     fun `조회한 통계를 productId를 키로 매핑한다`() {
         val service =
             ProductStatsService(
-                FakeProductStatsRepository(listOf(ProductStats.init(1L), ProductStats.init(2L))),
+                FakeProductStatsRepository(listOf(ProductStats.create(1L), ProductStats.create(2L))),
             )
 
         val result = service.getStatsByProductIds(listOf(1L, 2L))
@@ -32,7 +39,7 @@ class ProductStatsServiceTest {
     @Test
     fun `조회되지 않은 id는 결과에 포함하지 않는다`() {
         val service =
-            ProductStatsService(FakeProductStatsRepository(listOf(ProductStats.init(1L))))
+            ProductStatsService(FakeProductStatsRepository(listOf(ProductStats.create(1L))))
 
         val result = service.getStatsByProductIds(listOf(1L, 99L))
 

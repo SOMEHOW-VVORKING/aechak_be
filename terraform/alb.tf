@@ -52,3 +52,39 @@ resource "aws_lb_listener" "https" {
     target_group_arn = aws_lb_target_group.app.arn
   }
 }
+
+# ── seller-api (SCRUM-193): host 기반 분기 ─────────────
+resource "aws_lb_target_group" "seller_api" {
+  name_prefix = "seller" # 교체 시 이름충돌 방지 (max 6자)
+  port        = var.app_port
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  lifecycle { create_before_destroy = true }
+
+  health_check {
+    path                = "/actuator/health"
+    interval            = 30
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+}
+
+# 인증서 추가 불필요 — 기존 SAN(aechak.co.kr + *.aechak.co.kr)의 와일드카드가
+# seller-api-<env>.aechak.co.kr(한 레이블)을 덮는다.
+resource "aws_lb_listener_rule" "seller_api" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 10 # 명시 규칙이 이것뿐이라 값은 상징적 — 규칙이 늘면 대역을 설계한다
+
+  condition {
+    host_header {
+      values = [local.seller_api_domain]
+    }
+  }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.seller_api.arn
+  }
+}

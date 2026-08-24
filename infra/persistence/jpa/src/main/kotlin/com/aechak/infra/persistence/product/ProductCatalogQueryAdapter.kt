@@ -12,7 +12,7 @@ import org.springframework.stereotype.Repository
 
 /**
  * application이 요청한 공개 상품 카탈로그 목록 조회를 QueryDSL로 수행한다.
- * 상품·카테고리·셀러 정보를 조합해 노출 가능한 목록 view와 총개수, 커서 해석용 내부 id를 반환한다.
+ * 상품·카테고리·셀러 정보를 조합해 노출 가능한 목록 view와 총개수를 반환한다.
  * 노출 조인·술어는 상세·옵션 어댑터와 [visibleProductQuery]로 공유한다.
  */
 @Repository
@@ -47,14 +47,8 @@ class ProductCatalogQueryAdapter(
             .where(categoryFilter(categoryId))
             .fetchOne() ?: 0L
 
-    /**
-     * 외부에 노출된 상품 publicId를 커서 keyset에 사용할 내부 id로 변환한다.
-     * 해당 publicId의 상품이 없으면 null을 반환한다.
-     */
-    override fun findIdByPublicId(publicId: String): Long? =
-        queryFactory
-            .select(product.id)
-            .from(product)
+    override fun findVisibleIdByPublicId(publicId: String): Long? =
+        visibleProductQuery(queryFactory, product.id)
             .where(product.publicId.eq(publicId))
             .fetchOne()
 

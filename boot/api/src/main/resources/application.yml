@@ -3,6 +3,10 @@ spring:
     name: aechak-api
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  task:
+    execution:
+      # 전용 실행기 빈이 있으면 기본 실행기를 안 만드는 게 기본값. 그러면 이름 없는 @Async가 전용 풀로 흘러듦
+      mode: force
   flyway:
     baseline-on-migrate: true
     baseline-version: 0
@@ -71,6 +75,16 @@ aws:
     docs-bucket: ${AWS_S3_DOCS_BUCKET:}
     # media 앞단(CDN) 공개 도메인 — 표시용 URL(key→URL) 조립. 비면 상대경로(/key)로 내려간다(이미지 미노출 수준, 부팅 무영향)
     media-public-base-url: ${AWS_S3_MEDIA_PUBLIC_BASE_URL:}
+  ses:
+    # SES 검증 발신 주소. 비면 발송 실패(스왈로우), dev/prod는 SSM 주입.
+    from: ${AWS_SES_FROM:}
+
+# 문의 접수 알림. 기본 off라 로컬은 발송 생략하고 정상 기동.
+# dev/prod만 env로 enabled=true — 그때 recipients/aws.ses.from이 비면 부팅 실패(fail-fast).
+inquiry:
+  notification:
+    enabled: ${INQUIRY_NOTIFICATION_ENABLED:false}
+    recipients: ${INQUIRY_OPS_RECIPIENTS:}
 
 auth:
   token:

@@ -8,6 +8,6 @@ interface ProductCatalogQueryPort {
 
     fun countVisible(categoryId: Long?): Long
 
-    /** 커서 keyset 해석용 내부 id 변환 */
-    fun findIdByPublicId(publicId: String): Long?
+    /** 노출 상품의 내부 id만 조회(상세 전체 로딩 회피). */
+    fun findVisibleIdByPublicId(publicId: String): Long?
 }
