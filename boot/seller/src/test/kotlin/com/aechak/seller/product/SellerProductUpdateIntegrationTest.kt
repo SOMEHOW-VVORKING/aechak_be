@@ -8,6 +8,7 @@ import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.common.error.BusinessException
+import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.OrderItem
@@ -797,7 +798,17 @@ class SellerProductUpdateIntegrationTest : IntegrationTestBase() {
         unitPriceSnapshot: Long,
     ) {
         tx.execute {
-            val group = OrderGroup.create(9_999L, 0L, unitPriceSnapshot, 0L, unitPriceSnapshot, "idem-$productVersionId")
+            val group =
+                OrderGroup.create(
+                    buyerId = 9_999L,
+                    deliveryAddressId = 0L,
+                    deliveryAddress = deliveryAddressSnapshot(),
+                    usedPoint = 0L,
+                    totalProductAmount = unitPriceSnapshot,
+                    totalShippingFee = 0L,
+                    idempotencyKey = "idem-$productVersionId",
+                    expiresAt = LocalDateTime.now().plusMinutes(10),
+                )
             em.persist(group)
             val item =
                 OrderItem.of(
@@ -808,9 +819,28 @@ class SellerProductUpdateIntegrationTest : IntegrationTestBase() {
                     discountAllocatedAmount = 0L,
                     productVersionId = productVersionId,
                 )
-            em.persist(Order.place(group, sellerUserId, 0L, 0L, listOf(item)))
+            em.persist(
+                Order.create(
+                    orderGroup = group,
+                    sellerId = sellerUserId,
+                    sellerNameSnapshot = "애착상회$sellerUserId",
+                    allocatedCouponDiscount = 0L,
+                    sellerShippingFee = 0L,
+                    items = listOf(item),
+                ),
+            )
         }
     }
+
+    private fun deliveryAddressSnapshot() =
+        DeliveryAddressSnapshot(
+            receiverNameEnc = "enc-receiver",
+            contactNumberEnc = "enc-contact",
+            zipCode = "12345",
+            baseAddress = "서울시 애착구 멍냥로 1",
+            detailAddress = null,
+            deliveryMemo = null,
+        )
 
     private fun internalProductId(): Long =
         em
