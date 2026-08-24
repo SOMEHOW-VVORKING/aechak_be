@@ -17,6 +17,18 @@ import java.time.LocalDateTime
 interface OptionGroupJpaRepository : JpaRepository<OptionGroup, Long>
 
 interface OptionCombinationJpaRepository : JpaRepository<OptionCombination, Long> {
+    @Modifying
+    @Query(
+        "update OptionCombination oc " +
+            "set oc.stockQuantity = oc.stockQuantity - :quantity, oc.updatedAt = :now " +
+            "where oc.id = :id and oc.stockQuantity >= :quantity",
+    )
+    fun deductStock(
+        @Param("id") id: Long,
+        @Param("quantity") quantity: Int,
+        @Param("now") now: LocalDateTime,
+    ): Int
+
     @Query(
         "select count(c) > 0 from OptionCombination c " +
             "where c.product.id = :productId and c.isActive = true and c.stockQuantity > 0",
@@ -31,18 +43,6 @@ interface OptionCombinationJpaRepository : JpaRepository<OptionCombination, Long
         @Param("id") id: Long,
         @Param("productId") productId: Long,
     ): OptionCombination?
-
-    @Modifying
-    @Query(
-        "update OptionCombination oc " +
-            "set oc.stockQuantity = oc.stockQuantity - :quantity, oc.updatedAt = :now " +
-            "where oc.id = :id and oc.stockQuantity >= :quantity",
-    )
-    fun deductStock(
-        @Param("id") id: Long,
-        @Param("quantity") quantity: Int,
-        @Param("now") now: LocalDateTime,
-    ): Int
 }
 
 @Repository
