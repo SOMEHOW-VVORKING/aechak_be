@@ -2,6 +2,7 @@ package com.aechak.application.seller.facade
 
 import com.aechak.application.seller.service.SellerService
 import com.aechak.application.seller.usecase.SellerUseCase
+import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -15,4 +16,7 @@ class SellerFacade(
 ) : SellerUseCase {
     @Transactional(readOnly = true)
     override fun isActiveSeller(userId: Long): Boolean = sellerService.isActive(userId)
+
+    @Transactional(readOnly = true)
+    override fun getSellerStatus(userId: Long): SellerStatus? = sellerService.getStatus(userId)
 }
