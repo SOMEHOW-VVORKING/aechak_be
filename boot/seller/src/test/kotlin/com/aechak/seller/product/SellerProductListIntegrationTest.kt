@@ -275,6 +275,14 @@ class SellerProductListIntegrationTest : IntegrationTestBase() {
         assertBadRequest("createdFrom" to "2026-13-01", message = "createdFrom: 날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
     }
 
+    // 쿼리스트링은 키만 있어도 ""로 바인딩된다 — 빈 값을 미입력으로 무시하지 않고 형식 오류로 응답하는 동작 고정
+    @Test
+    fun `빈 문자열 필터 값도 90001을 반환한다`() {
+        assertBadRequest("createdFrom" to "", message = "createdFrom: 날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
+        assertBadRequest("createdTo" to "", message = "createdTo: 날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
+        assertBadRequest("stock" to "", message = "stock: 재고 있음 또는 품절만 지원합니다.")
+    }
+
     @Test
     fun `범위 밖 size와 음수 page는 90001을 반환한다`() {
         assertBadRequest("size" to "0")
