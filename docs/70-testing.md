@@ -195,7 +195,7 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
   소비 모듈은 `testImplementation(testFixtures(project(":api")))`로 공유한다. KafkaIntegrationTestBase는 api 전용(컨슈머가 api에만 있음)이라 api src/test 잔류.
 - **MongoDB**: 도입 시 공용 베이스에 `@ServiceConnection` Mongo 컨테이너를 추가한다 — 별도 베이스를 만들지 않는다.
 - **병렬 실행**: 테스트별 스키마/DB 분리로 격리가 강화되면 재검토.
-- **모듈 간 테스트 베이스 공유**: boot/batch·infra에 통합 테스트가 필요해지는 커밋에서 결정한다 — `java-test-fixtures`(또는 test-support 모듈)로 베이스를 공유할지, 모듈마다 자체 베이스를 둘지. 현재는 공유 장치가 없어 boot/api 베이스가 boot/api 안에서만 쓰인다.
+- **모듈 간 테스트 베이스 공유**: boot/batch·infra에 통합 테스트가 필요해지는 커밋에서 결정한다 — 위 `:api` test-fixtures를 그대로 소비할지, 모듈마다 자체 베이스를 둘지. 공유 장치 자체는 SCRUM-192에서 `:api` java-test-fixtures로 도입됐고, 현재 소비자는 seller-api뿐이다.
 - **운영 MySQL 버전 확정 시**: 컨테이너 태그를 그 버전으로 맞춘다.
 
 ## 10. PR 전 체크리스트

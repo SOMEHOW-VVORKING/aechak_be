@@ -1,6 +1,6 @@
 package com.aechak.seller.product.response
 
-import com.aechak.application.product.usecase.result.SellerProductSummaryResult
+import com.aechak.application.product.product.usecase.result.SellerProductSummaryResult
 import java.time.LocalDateTime
 
 data class SellerProductSummaryResponse(

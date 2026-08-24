@@ -1,8 +1,8 @@
 package com.aechak.seller.product.request
 
-import com.aechak.application.product.port.SellerProductSort
-import com.aechak.application.product.port.SellerProductStockFilter
-import com.aechak.application.product.usecase.query.SellerProductSearchQuery
+import com.aechak.application.product.product.port.SellerProductSort
+import com.aechak.application.product.product.port.SellerProductStockFilter
+import com.aechak.application.product.product.usecase.query.SellerProductSearchQuery
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.product.product.enums.InspectionStatus

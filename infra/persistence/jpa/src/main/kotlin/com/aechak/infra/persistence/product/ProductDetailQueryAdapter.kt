@@ -1,8 +1,8 @@
 package com.aechak.infra.persistence.product
 
-import com.aechak.application.product.port.ProductDetailQueryPort
-import com.aechak.application.product.port.view.ProductCatalogDetailView
-import com.aechak.application.product.port.view.ProductImageView
+import com.aechak.application.product.product.port.ProductDetailQueryPort
+import com.aechak.application.product.product.port.view.ProductCatalogDetailView
+import com.aechak.application.product.product.port.view.ProductImageView
 import com.aechak.domain.product.product.QProductImage
 import com.querydsl.core.types.Expression
 import com.querydsl.core.types.Projections
@@ -21,7 +21,7 @@ class ProductDetailQueryAdapter(
             .where(product.publicId.eq(publicId))
             .fetchOne()
 
-    /** 상품 이미지 전체를 sortOrder, id 순으로 반환 */
+    /** 현재 노출되는 이미지를 sortOrder, id 순으로 반환. 닫힌 버전 구간의 행은 제외함 */
     override fun findImagesByProductId(productId: Long): List<ProductImageView> =
         queryFactory
             .select(
@@ -33,7 +33,7 @@ class ProductDetailQueryAdapter(
                 ),
             ).from(product)
             .join(product._images, productImage)
-            .where(product.id.eq(productId))
+            .where(product.id.eq(productId), productImage.toVersionNo.isNull)
             .orderBy(productImage.sortOrder.asc(), productImage.id.asc())
             .fetch()
 

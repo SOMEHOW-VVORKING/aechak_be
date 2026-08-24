@@ -1,12 +1,12 @@
 package com.aechak.infra.persistence.product
 
-import com.aechak.application.product.port.SellerProductCondition
-import com.aechak.application.product.port.SellerProductQueryPort
-import com.aechak.application.product.port.SellerProductSort
-import com.aechak.application.product.port.SellerProductStockFilter
-import com.aechak.application.product.port.view.SellerProductOptionView
-import com.aechak.application.product.port.view.SellerProductOwnershipView
-import com.aechak.application.product.port.view.SellerProductView
+import com.aechak.application.product.product.port.SellerProductCondition
+import com.aechak.application.product.product.port.SellerProductQueryPort
+import com.aechak.application.product.product.port.SellerProductSort
+import com.aechak.application.product.product.port.SellerProductStockFilter
+import com.aechak.application.product.product.port.view.SellerProductOptionView
+import com.aechak.application.product.product.port.view.SellerProductOwnershipView
+import com.aechak.application.product.product.port.view.SellerProductView
 import com.aechak.domain.product.option.QOptionCombination
 import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.product.enums.SaleStatus

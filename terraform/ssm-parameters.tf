@@ -3,7 +3,8 @@
 #
 # 접속 정보 7개는 기본값이 없어 하나라도 빠지면 앱이 기동에 실패한다.
 # 아래 웹 연동 3개는 기본값이 있어 없어도 뜨지만, 없으면 CORS와 소셜 로그인이 동작하지 않는다.
-# 카카오 키·JWT 키는 여기 없다 — terraform이 값을 알 수 없다(없어도 앱은 뜬다).
+# 카카오 키·JWT 키·CoolSMS 키(COOLSMS_API_KEY·COOLSMS_API_SECRET·COOLSMS_FROM)는 여기 없다 —
+# terraform이 값을 알 수 없어 수기 등재한다. 카카오·JWT는 없어도 앱이 뜨지만 COOLSMS_* 3개는 없으면 부팅 실패.
 
 resource "aws_ssm_parameter" "db_url" {
   name  = "/${var.project}/${var.env}/api/SPRING_DATASOURCE_URL"
@@ -82,6 +83,26 @@ resource "aws_ssm_parameter" "auth_return_urls" {
   value = join(",", [for o in local.web_origins : "${o}/login/complete"])
 }
 
+# ── 문의 통지(SES) ─────────────────────────────────────
+# enabled=true인데 from/recipients가 비면 앱이 fail-fast로 기동에 실패한다 — 셋을 함께 넣는다.
+resource "aws_ssm_parameter" "ses_from" {
+  name  = "/${var.project}/${var.env}/api/AWS_SES_FROM"
+  type  = "String"
+  value = local.ses_from_address
+}
+
+resource "aws_ssm_parameter" "inquiry_ops_recipients" {
+  name  = "/${var.project}/${var.env}/api/INQUIRY_OPS_RECIPIENTS"
+  type  = "String"
+  value = join(",", var.inquiry_ops_recipients)
+}
+
+resource "aws_ssm_parameter" "inquiry_notification_enabled" {
+  name  = "/${var.project}/${var.env}/api/INQUIRY_NOTIFICATION_ENABLED"
+  type  = "String"
+  value = tostring(var.inquiry_notification_enabled)
+}
+
 # --- PII 암호화 키 (SCRUM-169) ---
 # 앱이 전화번호 등 민감정보를 암호화(AES-GCM)·검색 해시(HMAC)하는 데 쓴다. 키 분실 = 해당 데이터 영구 복호 불능이라
 # 사람 손을 거치지 않고 terraform이 생성·등재한다(수기 오등재 방지 — db_password와 같은 결).
@@ -123,3 +144,92 @@ resource "aws_ssm_parameter" "pii_hmac_key" {
     prevent_destroy = true # 파라미터 삭제 = 앱 부팅 fail-fast. 철거는 이 가드를 손수 제거한 뒤에만
   }
 }
+
+# ── seller-api (SCRUM-193): /aechak/{env}/seller/ ──────
+# 값은 api와 같은 원천(tf 리소스)을 재참조한다 — 두 경로가 항상 같은 값이 되도록 원천을 하나로 둔다.
+# 별도 경로인 이유: 기존 /api/ 경로는 prevent_destroy 가드(PII)라 이동 불가 + IAM 스코프를 모듈 단위로 유지.
+
+resource "aws_ssm_parameter" "seller_db_url" {
+  name  = "/${var.project}/${var.env}/seller/SPRING_DATASOURCE_URL"
+  type  = "String"
+  value = "jdbc:mysql://${aws_db_instance.main.address}:3306/${var.project}"
+}
+
+resource "aws_ssm_parameter" "seller_db_username" {
+  name  = "/${var.project}/${var.env}/seller/SPRING_DATASOURCE_USERNAME"
+  type  = "String"
+  value = aws_db_instance.main.username
+}
+
+resource "aws_ssm_parameter" "seller_db_password" {
+  name  = "/${var.project}/${var.env}/seller/SPRING_DATASOURCE_PASSWORD"
+  type  = "SecureString"
+  value = random_password.db.result
+}
+
+resource "aws_ssm_parameter" "seller_redis_host" {
+  name  = "/${var.project}/${var.env}/seller/SPRING_DATA_REDIS_HOST"
+  type  = "String"
+  value = aws_elasticache_cluster.redis.cache_nodes[0].address
+}
+
+resource "aws_ssm_parameter" "seller_redis_port" {
+  name  = "/${var.project}/${var.env}/seller/SPRING_DATA_REDIS_PORT"
+  type  = "String"
+  value = "6379"
+}
+
+resource "aws_ssm_parameter" "seller_media_bucket" {
+  name  = "/${var.project}/${var.env}/seller/AWS_S3_MEDIA_BUCKET"
+  type  = "String"
+  value = aws_s3_bucket.media.id
+}
+
+resource "aws_ssm_parameter" "seller_docs_bucket" {
+  name  = "/${var.project}/${var.env}/seller/AWS_S3_DOCS_BUCKET"
+  type  = "String"
+  value = aws_s3_bucket.docs.id
+}
+
+resource "aws_ssm_parameter" "seller_media_public_base_url" {
+  name  = "/${var.project}/${var.env}/seller/AWS_S3_MEDIA_PUBLIC_BASE_URL"
+  type  = "String"
+  value = "https://${local.media_domain}"
+}
+
+# 셀러센터 웹 오리진 — 구매자 웹과 별개 목록. 배포된 셀러 웹 도메인이 생기면 여기 합류
+resource "aws_ssm_parameter" "seller_cors_origins" {
+  name  = "/${var.project}/${var.env}/seller/CORS_ALLOWED_ORIGINS"
+  type  = "String"
+  value = join(",", var.seller_frontend_origins)
+}
+
+# PII 키 — api와 같은 random_bytes를 재참조(같은 DB의 같은 암호문을 복호해야 하므로 값이 달라질 수 없는 구조로)
+resource "aws_ssm_parameter" "seller_pii_aes_key_v1" {
+  name  = "/${var.project}/${var.env}/seller/PII_AES_KEY_V1"
+  type  = "SecureString"
+  value = random_bytes.pii_aes_key_v1.base64
+
+  lifecycle {
+    prevent_destroy = true # 파라미터 삭제 = seller 부팅 fail-fast
+  }
+}
+
+resource "aws_ssm_parameter" "seller_pii_hmac_key" {
+  name  = "/${var.project}/${var.env}/seller/PII_HMAC_KEY"
+  type  = "SecureString"
+  value = random_bytes.pii_hmac_key.base64
+
+  lifecycle {
+    prevent_destroy = true # 파라미터 삭제 = seller 부팅 fail-fast
+  }
+}
+
+# --- JWT RS256 키: 수기 등재 (헤더의 카카오·JWT 키 방침과 동일) ---
+# terraform으로 생성하면 개인키가 state에 남아 여기서는 관리하지 않는다.
+# 실행 모듈 간 키 공유가 전제라 아래 파라미터를 사람이 직접 등재한다:
+#   /{project}/{env}/api/AUTH_JWT_PRIVATE_KEY  (SecureString, PKCS8 PEM) — api만 발급+검증
+#   /{project}/{env}/api/AUTH_JWT_PUBLIC_KEY   (String, PEM)
+#   /{project}/{env}/seller/AUTH_JWT_PUBLIC_KEY (String, PEM) — api 공개키와 같은 값이어야 api 발급 토큰을 검증한다
+# 누락 시 부팅은 되지만 임시 키 폴백으로 갈라져 모듈 간 검증이 전부 401이 된다.
+# 검증 전용 실행 모듈이 늘면(admin 등) 그 모듈 경로에도 공개키를 같은 값으로 등재한다.

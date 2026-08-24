@@ -1,6 +1,6 @@
 # dev 자동 배포: develop 푸시 → 바뀐 것 감지 → 인프라(terraform apply) 먼저, 그 다음 바뀐 모듈 배포
 # 수동 재배포는 deploy-dev-<모듈>.yml. terraform 수동 apply는 급한 장애 대응 때만 (기본은 이 파이프라인)
-# 새 배포물(예: batch) 추가 = detect filters에 경로 추가 + deploy-dev-<모듈>.yml 생성 + deploy-<모듈> job 복사
+# 새 배포물(예: batch) 추가 = detect filters에 경로 추가 + deploy-dev-<모듈>.yml 생성 + deploy-<모듈> job 복사 (seller-api가 그 선례)
 
 name: deploy-dev
 
@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       api: ${{ steps.filter.outputs.api }}
+      seller-api: ${{ steps.filter.outputs.seller-api }}
       infra: ${{ steps.filter.outputs.infra }}
     steps:
       - uses: actions/checkout@v4
@@ -33,12 +34,33 @@ jobs:
           filters: |
             infra:
               - 'terraform/**'
+            # 공유 코드는 그걸 싣는 모든 모듈 필터에 넣는다 — 빠지면 그 코드만 바뀐 푸시가 배포를 안 태운다
             api:
               - 'boot/api/**'
               - 'domain/**'
               - 'application/**'
               - 'common/**'
               - 'web-common/**'
+              - 'web-security/**'
+              - 'message/**'
+              - 'pii/**'
+              - 'infra/**'
+              - 'gradle/**'
+              - 'gradlew*'
+              - 'gradle.properties'
+              - 'settings.gradle.kts'
+              - 'build-logic/**'
+              - 'Dockerfile'
+              - '.dockerignore'
+              - '.github/workflows/deploy-module.yml'
+            seller-api:
+              - 'boot/seller/**'
+              - 'domain/**'
+              - 'application/**'
+              - 'common/**'
+              - 'web-common/**'
+              - 'web-security/**'
+              - 'pii/**'
               - 'infra/**'
               - 'gradle/**'
               - 'gradlew*'
@@ -92,3 +114,12 @@ jobs:
       contents: read
     uses: ./.github/workflows/deploy-dev-api.yml # 수동 배포와 같은 정의 — 배포 파라미터는 저 파일에만 존재
     secrets: inherit # 재사용 워크플로는 secrets 자동 상속이 안 됨 — 없으면 role ARN이 빈 값으로 넘어가 AWS 인증 실패
+
+  deploy-seller-api:
+    needs: [detect, deploy-infra]
+    if: ${{ !cancelled() && needs.deploy-infra.result != 'failure' && (needs.detect.outputs.seller-api == 'true' || needs.detect.outputs.infra == 'true') }}
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/deploy-dev-seller-api.yml
+    secrets: inherit

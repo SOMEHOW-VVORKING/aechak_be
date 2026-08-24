@@ -3,12 +3,11 @@ package com.aechak.seller.product
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.enums.UploadPurpose
-import com.aechak.application.product.usecase.ProductUseCase
-import com.aechak.application.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.usecase.ProductUseCase
+import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.enums.CategoryStatus
 import com.aechak.domain.product.product.enums.ProductImageType
-import com.aechak.domain.product.version.enums.VersionChangeType
 import com.aechak.domain.product.version.enums.VersionChangedBy
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.seller.seller.enums.SellerStatus
@@ -88,7 +87,7 @@ class SellerProductRegisterIntegrationTest : IntegrationTestBase() {
     fun `등록한 상품은 검수 게이트 없이 구매자 목록에 바로 노출된다`() {
         val productId = registerAndReadProductId()
 
-        val listed = productUseCase.getProducts(ProductSearchQuery()).items
+        val listed = productUseCase.getProducts(ProductSearchQuery(), null).items
         assertTrue(listed.any { it.productId == productId }, "등록 직후 목록에 보여야 한다: $listed")
     }
 
@@ -139,7 +138,7 @@ class SellerProductRegisterIntegrationTest : IntegrationTestBase() {
             tx.execute {
                 em
                     .createQuery(
-                        "select v.versionNo, v.nameSnapshot, v.priceSnapshot, v.thumbnailKeySnapshot, v.changeType, v.changedBy " +
+                        "select v.versionNo, v.nameSnapshot, v.priceSnapshot, v.thumbnailKeySnapshot, v.changedBy " +
                             "from ProductVersion v",
                         Array<Any>::class.java,
                     ).singleResult
@@ -148,8 +147,7 @@ class SellerProductRegisterIntegrationTest : IntegrationTestBase() {
         assertEquals("연어 건사료 2kg", version[1], "등록 시점 상품명을 그대로 굳혀야 한다")
         assertEquals(25000L, version[2], "스냅샷 가격은 할인가가 아니라 정가여야 한다")
         assertEquals("products/thumbnail.png", version[3], "승격된 정식 키를 굳혀야 한다")
-        assertEquals(VersionChangeType.INFO, version[4], "등록은 정보 변경으로 남아야 한다")
-        assertEquals(VersionChangedBy.SELLER, version[5], "등록 주체는 셀러여야 한다")
+        assertEquals(VersionChangedBy.SELLER, version[4], "등록 주체는 셀러여야 한다")
     }
 
     @Test

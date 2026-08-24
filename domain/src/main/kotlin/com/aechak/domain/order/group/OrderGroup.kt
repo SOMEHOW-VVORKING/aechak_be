@@ -6,6 +6,7 @@ import com.aechak.domain.order.group.enums.OrderGroupStatus
 import com.aechak.domain.support.AggregateRoot
 import com.aechak.domain.support.Ulid
 import jakarta.persistence.Column
+import jakarta.persistence.Embedded
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
@@ -26,11 +27,14 @@ import java.time.LocalDateTime
 )
 class OrderGroup protected constructor(
     buyerId: Long,
+    deliveryAddressId: Long,
+    deliveryAddress: DeliveryAddressSnapshot,
     usedPoint: Long,
     totalProductAmount: Long,
     totalShippingFee: Long,
     finalPaymentAmount: Long,
     idempotencyKey: String,
+    expiresAt: LocalDateTime,
 ) : AggregateRoot() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -43,32 +47,10 @@ class OrderGroup protected constructor(
     val buyerId: Long = buyerId
 
     @Column
-    var deliveryAddressId: Long? = null
-        protected set
+    val deliveryAddressId: Long? = deliveryAddressId
 
-    @Column(length = 255)
-    var receiverNameEnc: String? = null
-        protected set
-
-    @Column(length = 255)
-    var contactNumberEnc: String? = null
-        protected set
-
-    @Column(length = 255)
-    var zipCode: String? = null
-        protected set
-
-    @Column(length = 512)
-    var baseAddress: String? = null
-        protected set
-
-    @Column(length = 512)
-    var detailAddress: String? = null
-        protected set
-
-    @Column(length = 255)
-    var deliveryMemo: String? = null
-        protected set
+    @Embedded
+    val deliveryAddress: DeliveryAddressSnapshot = deliveryAddress
 
     @Column
     var appliedCouponId: Long? = null
@@ -100,29 +82,63 @@ class OrderGroup protected constructor(
         protected set
 
     @Column
-    var expiresAt: LocalDateTime? = null
-        protected set
+    val expiresAt: LocalDateTime? = expiresAt
 
     @Column(name = "idempotency_key", nullable = false, length = 100)
     val idempotencyKey: String = idempotencyKey
 
     fun isExpired(now: LocalDateTime = LocalDateTime.now()): Boolean = expiresAt?.isBefore(now) ?: false
 
+    /** 웹훅 재전달을 통과시키려고 이미 PAID면 아무것도 안 함. 취소된 그룹에 온 결제는 환불이 필요한 사건이라 갈라서 막음 */
     fun markPaid() {
+        if (status == OrderGroupStatus.PAID) return
+        transitionFromPending(OrderGroupStatus.PAID)
+    }
+
+    /** 만료 배치 재실행을 통과시키려고 이미 CANCELLED면 아무것도 안 함 */
+    fun cancelUnpaid() {
+        if (status == OrderGroupStatus.CANCELLED) return
+        transitionFromPending(OrderGroupStatus.CANCELLED)
+    }
+
+    /** 상태 규칙만 강제함. 동시 선점은 저장소 조건부 UPDATE가 가름 */
+    private fun transitionFromPending(next: OrderGroupStatus) {
         if (status != OrderGroupStatus.PENDING_PAYMENT) {
             throw BusinessException(OrderErrorCode.INVALID_ORDER_GROUP_STATUS_TRANSITION)
         }
-        status = OrderGroupStatus.PAID
+        status = next
     }
 
     companion object {
         fun create(
             buyerId: Long,
+            deliveryAddressId: Long,
+            deliveryAddress: DeliveryAddressSnapshot,
             usedPoint: Long,
             totalProductAmount: Long,
             totalShippingFee: Long,
-            finalPaymentAmount: Long,
             idempotencyKey: String,
-        ): OrderGroup = OrderGroup(buyerId, usedPoint, totalProductAmount, totalShippingFee, finalPaymentAmount, idempotencyKey)
+            expiresAt: LocalDateTime,
+        ): OrderGroup {
+            if (totalProductAmount < 0 || totalShippingFee < 0 || usedPoint < 0) {
+                throw BusinessException(OrderErrorCode.INVALID_ORDER_GROUP_AMOUNT)
+            }
+            val payableAmount = totalProductAmount + totalShippingFee // 쿠폰이 들어오면 couponDiscountAmount를 여기서 뺌
+            if (usedPoint > payableAmount) {
+                throw BusinessException(OrderErrorCode.POINT_EXCEEDS_PAYABLE_AMOUNT)
+            }
+            val finalPaymentAmount = payableAmount - usedPoint
+            return OrderGroup(
+                buyerId = buyerId,
+                deliveryAddressId = deliveryAddressId,
+                deliveryAddress = deliveryAddress,
+                usedPoint = usedPoint,
+                totalProductAmount = totalProductAmount,
+                totalShippingFee = totalShippingFee,
+                finalPaymentAmount = finalPaymentAmount,
+                idempotencyKey = idempotencyKey,
+                expiresAt = expiresAt,
+            )
+        }
     }
 }

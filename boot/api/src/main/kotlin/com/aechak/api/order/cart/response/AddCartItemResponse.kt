@@ -8,7 +8,6 @@ data class AddCartItemResponse(
     val optionCombinationId: Long,
     val quantity: Int,
     val itemStatus: String,
-    val cartItemCount: Int,
 ) {
     companion object {
         fun from(result: AddCartItemResult): AddCartItemResponse =
@@ -18,7 +17,6 @@ data class AddCartItemResponse(
                 optionCombinationId = result.optionCombinationId,
                 quantity = result.quantity,
                 itemStatus = result.itemStatus.name,
-                cartItemCount = result.cartItemCount,
             )
     }
 }

@@ -1,6 +1,6 @@
 package com.aechak.seller.product.response
 
-import com.aechak.application.product.usecase.result.SellerProductOptionsResult
+import com.aechak.application.product.product.usecase.result.SellerProductOptionsResult
 
 data class SellerProductOptionsResponse(
     val optionCombinations: List<OptionCombinationResponse>,
