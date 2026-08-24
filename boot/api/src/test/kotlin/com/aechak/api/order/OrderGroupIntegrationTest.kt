@@ -7,7 +7,6 @@ import com.aechak.domain.product.option.OptionCombination
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.product.version.ProductVersion
-import com.aechak.domain.product.version.enums.VersionChangeType
 import com.aechak.domain.product.version.enums.VersionChangedBy
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.user.address.DeliveryAddress
@@ -82,7 +81,6 @@ class OrderGroupIntegrationTest : IntegrationTestBase() {
                         priceSnapshot = price,
                         statusSnapshot = SaleStatus.ON_SALE,
                         thumbnailKeySnapshot = "thumb-$sig",
-                        changeType = VersionChangeType.INFO,
                         changedBy = VersionChangedBy.SELLER,
                     ),
                 )
