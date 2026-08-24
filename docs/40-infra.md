@@ -74,7 +74,7 @@ infra/kafka/src/main/kotlin/com/aechak/infra/kafka/
 ```kotlin
 data class OrderPlacedMessage(
     val orderId: Long,
-    override val aggregateId: String,                        // 파티션 키 = 순서 단위
+    override val orderingKey: String,                        // 파티션 키 = 순서 단위. 애그리거트 id일 필요는 없다
     override val occurredAt: Instant = Instant.now(),
 ) : GuaranteedMessage {
     override val aggregateType = "order"                     // 토픽 라우팅
@@ -88,7 +88,7 @@ data class OrderPlacedMessage(
 allowedDelay를 넘기면 HOLD로 전이돼 수동 재개를 기다린다(재개: `status=PENDING` 복귀 + `expired_at` 해제·연장).
 
 소비는 핸들러 시작에서 `processedMessages.markProcessed(컨슈머명, eventId)`가 false면 스킵(중복 배달).
-처리와 인박스 기록은 같은 트랜잭션으로 묶는다. 실물: boot/api의 SyntheticConsumer.
+처리와 인박스 기록은 같은 트랜잭션으로 묶는다. 실물: boot/api의 `ReviewRatingProjectionConsumer`.
 
 ## 3. infra/client
 

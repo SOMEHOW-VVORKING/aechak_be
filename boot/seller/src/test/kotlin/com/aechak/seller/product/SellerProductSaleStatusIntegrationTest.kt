@@ -324,6 +324,7 @@ class SellerProductSaleStatusIntegrationTest : IntegrationTestBase() {
                 OrderItem.of(
                     productId = internalProductId(),
                     optionCombinationId = combinationId(),
+                    optionNameSnapshot = combinationName(),
                     quantity = 1,
                     unitPriceSnapshot = 25_000L,
                     discountAllocatedAmount = 0L,
@@ -360,6 +361,8 @@ class SellerProductSaleStatusIntegrationTest : IntegrationTestBase() {
 
     private fun combinationId(): Long =
         em.createQuery("select c.id from OptionCombination c", Long::class.javaObjectType).resultList.first()
+
+    private fun combinationName(): String = em.createQuery("select c.name from OptionCombination c", String::class.java).resultList.first()
 
     private fun firstVersionId(): Long =
         em

@@ -44,6 +44,12 @@ class PointControllerTest {
                 capturedUserId = userId
                 return PointBalanceResult(balance = 1200L)
             }
+
+            override fun earnReviewReward(
+                buyerUserId: Long,
+                reviewId: Long,
+                hasPhoto: Boolean,
+            ) = Unit
         }
 
     private val statusReader =

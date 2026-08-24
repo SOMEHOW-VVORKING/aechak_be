@@ -2,6 +2,9 @@
 
 > 성격: 유스케이스 조율 계층. 트랜잭션 경계, 도메인 간 조합, 입출력 계약(Command/Result/View)의 소유자.
 > 허용 의존: common, domain, spring-context, spring-tx.
+> 예외 — 순수 인메모리 계산 라이브러리: I/O도 프레임워크도 없는 순수 알고리즘 라이브러리는 유스케이스 로직에서 직접 써도 된다
+> (domain의 ulid-creator와 같은 결). 다만 라이브러리를 이 모듈 밖에 두고 싶으면 포트로 감싸 실행 모듈에서 구현한다 — 리뷰 금칙어 판정은 ProfanityScanner 포트로 두고 api 모듈이 아호코라식으로 구현한다.
+> I/O가 섞이는 순간(외부 API·저장소·메시지 브로커 등)은 포트로 감싸 infra로 내린다.
 > A-1 결정(L2): 리포지토리는 domain의 포트를 주입받는다 — 이 모듈에 Spring Data 없음 (§5).
 > 금지: web-common, spring-web, infra/*. — HTTP도 기술 구현도 모른다.
 
