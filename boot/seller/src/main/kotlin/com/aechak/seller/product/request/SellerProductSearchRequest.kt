@@ -37,16 +37,16 @@ data class SellerProductSearchRequest(
     val size: Int = SellerProductSearchQuery.DEFAULT_SIZE,
 ) {
     fun toQuery(sellerId: Long): SellerProductSearchQuery {
-        val from = createdFrom?.let(::parseDate)
-        val to = createdTo?.let(::parseDate)
+        val from = createdFrom?.let { parseDate("createdFrom", it) }
+        val to = createdTo?.let { parseDate("createdTo", it) }
         if (from != null && to != null && from.isAfter(to)) {
-            throw BusinessException(CommonErrorCode.INVALID_REQUEST)
+            throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "등록일 시작일은 종료일보다 늦을 수 없습니다.")
         }
         return SellerProductSearchQuery(
             sellerId = sellerId,
             keyword = keyword?.trim()?.takeIf { it.isNotEmpty() },
-            saleStatuses = saleStatus.map { parseEnum<SaleStatus>(it) },
-            inspectionStatuses = inspectionStatus.map { parseEnum<InspectionStatus>(it) },
+            saleStatuses = saleStatus.map { parseEnum<SaleStatus>("saleStatus", it) },
+            inspectionStatuses = inspectionStatus.map { parseEnum<InspectionStatus>("inspectionStatus", it) },
             categoryId = category,
             createdFrom = from,
             createdTo = to,
@@ -57,25 +57,31 @@ data class SellerProductSearchRequest(
         )
     }
 
-    private inline fun <reified E : Enum<E>> parseEnum(value: String): E =
+    private inline fun <reified E : Enum<E>> parseEnum(
+        field: String,
+        value: String,
+    ): E =
         try {
             enumValueOf<E>(value)
         } catch (e: IllegalArgumentException) {
-            throw BusinessException(CommonErrorCode.INVALID_REQUEST)
+            throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "$field: 지원하지 않는 값입니다.")
         }
 
-    private fun parseDate(value: String): LocalDate =
+    private fun parseDate(
+        field: String,
+        value: String,
+    ): LocalDate =
         try {
             LocalDate.parse(value)
         } catch (e: DateTimeParseException) {
-            throw BusinessException(CommonErrorCode.INVALID_REQUEST)
+            throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "$field: 날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
         }
 
     private fun parseStock(value: String): SellerProductStockFilter =
         when (value) {
             "in_stock" -> SellerProductStockFilter.IN_STOCK
             "sold_out" -> SellerProductStockFilter.SOLD_OUT
-            else -> throw BusinessException(CommonErrorCode.INVALID_REQUEST)
+            else -> throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "stock: 재고 있음 또는 품절만 지원합니다.")
         }
 
     private fun parseSort(value: String): SellerProductSort =
@@ -83,6 +89,6 @@ data class SellerProductSearchRequest(
             "latest" -> SellerProductSort.LATEST
             "price_asc" -> SellerProductSort.PRICE_ASC
             "price_desc" -> SellerProductSort.PRICE_DESC
-            else -> throw BusinessException(CommonErrorCode.INVALID_REQUEST)
+            else -> throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "sort: 최신순, 가격 낮은순, 가격 높은순만 지원합니다.")
         }
 }

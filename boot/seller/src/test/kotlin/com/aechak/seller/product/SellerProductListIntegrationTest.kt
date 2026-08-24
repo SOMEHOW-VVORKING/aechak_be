@@ -207,6 +207,7 @@ class SellerProductListIntegrationTest : IntegrationTestBase() {
         list("createdFrom" to "2026-02-01", "createdTo" to "2026-01-01")
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90001))
+            .andExpect(jsonPath("$.message").value("등록일 시작일은 종료일보다 늦을 수 없습니다."))
     }
 
     @Test
@@ -266,12 +267,12 @@ class SellerProductListIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `잘못된 필터 값은 90001을 반환한다`() {
-        assertBadRequest("saleStatus" to "WRONG")
-        assertBadRequest("inspectionStatus" to "wrong")
-        assertBadRequest("sort" to "priceasc")
-        assertBadRequest("stock" to "none")
-        assertBadRequest("createdFrom" to "2026-13-01")
+    fun `잘못된 필터 값은 90001과 필드별 사유를 반환한다`() {
+        assertBadRequest("saleStatus" to "WRONG", message = "saleStatus: 지원하지 않는 값입니다.")
+        assertBadRequest("inspectionStatus" to "wrong", message = "inspectionStatus: 지원하지 않는 값입니다.")
+        assertBadRequest("sort" to "priceasc", message = "sort: 최신순, 가격 낮은순, 가격 높은순만 지원합니다.")
+        assertBadRequest("stock" to "none", message = "stock: 재고 있음 또는 품절만 지원합니다.")
+        assertBadRequest("createdFrom" to "2026-13-01", message = "createdFrom: 날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
     }
 
     @Test
@@ -308,10 +309,15 @@ class SellerProductListIntegrationTest : IntegrationTestBase() {
         list().andExpect(status().isOk).andExpect(jsonPath("$.data.products.length()").value(1))
     }
 
-    private fun assertBadRequest(param: Pair<String, String>) {
-        list(param)
-            .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.errorCode").value(90001))
+    private fun assertBadRequest(
+        param: Pair<String, String>,
+        message: String? = null,
+    ) {
+        val result =
+            list(param)
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.errorCode").value(90001))
+        message?.let { result.andExpect(jsonPath("$.message").value(it)) }
     }
 
     private fun openSeller(userId: Long) {
