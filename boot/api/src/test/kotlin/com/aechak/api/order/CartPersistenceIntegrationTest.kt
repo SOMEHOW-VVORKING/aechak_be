@@ -139,4 +139,62 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
                 .toInt()
         assertEquals(3, quantity, "1에 1씩 두 번 더했으므로 3이어야 한다. 2면 뒤 트랜잭션이 낡은 값을 덮어쓴 것")
     }
+
+    /**
+     * 수정 격리 수준의 회귀 방어. 담기와 같은 래치 구조이고 대상만 병합으로 바꿈.
+     * 두 줄을 같은 조합으로 각각 병합시키면 목적지 줄의 수량이 두 번 누적돼야 함.
+     * REPEATABLE READ면 뒤 트랜잭션이 낡은 목적지 수량을 읽어 앞의 병합이 유실됨.
+     */
+    @Test
+    fun `앞 트랜잭션이 병합한 수량을 뒤 트랜잭션이 보고 누적한다`() {
+        val buyerId = 42L
+        val destinationCombo = 10L
+        val (firstSourceId, secondSourceId) =
+            tx.execute {
+                val cart = Cart.create(buyerId)
+                cart.addItem(destinationCombo, 1)
+                val first = cart.addItem(11L, 2)
+                val second = cart.addItem(12L, 3)
+                em.persist(cart)
+                em.flush()
+                first.id to second.id
+            }!!
+
+        val readCommitted =
+            TransactionTemplate(transactionManager).apply {
+                isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
+            }
+        val snapshotTaken = CountDownLatch(1)
+        val firstCommitted = CountDownLatch(1)
+
+        val second =
+            thread {
+                readCommitted.execute {
+                    cartRepository.existsByBuyerId(buyerId) // 이 읽기로 스냅샷이 잡힘
+                    snapshotTaken.countDown()
+                    firstCommitted.await()
+
+                    val cart = cartRepository.findByBuyerIdForUpdate(buyerId)!!
+                    cart.changeItemOption(cart.findItem(secondSourceId)!!, destinationCombo)
+                    cartRepository.flush()
+                }
+            }
+
+        snapshotTaken.await()
+        readCommitted.execute {
+            val cart = cartRepository.findByBuyerIdForUpdate(buyerId)!!
+            cart.changeItemOption(cart.findItem(firstSourceId)!!, destinationCombo)
+            cartRepository.flush()
+        }
+        firstCommitted.countDown()
+        second.join()
+
+        val quantity =
+            em
+                .createQuery("select ci.quantity from CartItem ci where ci.optionCombinationId = :c", java.lang.Integer::class.java)
+                .setParameter("c", destinationCombo)
+                .singleResult
+                .toInt()
+        assertEquals(6, quantity, "1에 2와 3을 병합했으므로 6이어야 한다. 낡은 값을 읽으면 앞의 병합이 유실됨")
+    }
 }

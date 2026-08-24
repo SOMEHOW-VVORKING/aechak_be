@@ -3,6 +3,7 @@ package com.aechak.api.review
 import com.aechak.api.support.KafkaIntegrationTestBase
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.enums.UploadPurpose
+import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.OrderItem
@@ -107,6 +108,7 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                 .single()
         assertEquals(1L, outboxCount)
         assertEquals("PUBLIC", reviewStatus(reviewId))
+        awaitRewardProcessed(reviewId)
     }
 
     @Test
@@ -124,6 +126,7 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
         val reviewId = JsonPath.read<Int>(responseBody, "$.data.reviewId").toLong()
         assertEquals("MASKED", reviewStatus(reviewId))
         assertEquals("** 배송은 좋아요", displayContent(reviewId))
+        awaitRewardProcessed(reviewId)
     }
 
     @Test
@@ -141,9 +144,7 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
         val reviewId = JsonPath.read<Int>(responseBody, "$.data.reviewId").toLong()
         assertEquals("BLOCKED", reviewStatus(reviewId))
 
-        await().atMost(Duration.ofSeconds(20)).untilAsserted {
-            assertEquals(1L, processedCount("review-point-rewarder", "review-$reviewId:created"))
-        }
+        awaitRewardProcessed(reviewId)
         assertEquals(0L, rewardCount(reviewId))
         assertEquals(0L, pointBalance(buyerId))
     }
@@ -166,6 +167,7 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                 .getContentAsString(Charsets.UTF_8)
 
         assertEquals("블랙 / L", JsonPath.read<String>(responseBody, "$.data.optionName"))
+        awaitRewardProcessed(JsonPath.read<Int>(responseBody, "$.data.reviewId").toLong())
     }
 
     @Test
@@ -292,7 +294,12 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
         val buyerId = createActiveUser()
         val fixture = persistReviewableOrderItem(buyerId)
 
-        postReview(buyerId, reviewBody(fixture.orderItemId)).andExpect(status().isCreated)
+        val createdBody =
+            postReview(buyerId, reviewBody(fixture.orderItemId))
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
 
         val body =
             postReview(buyerId, reviewBody(fixture.orderItemId))
@@ -301,6 +308,7 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                 .response
                 .getContentAsString(Charsets.UTF_8)
         assertEquals(110004, JsonPath.read<Int>(body, "$.errorCode"))
+        awaitRewardProcessed(JsonPath.read<Int>(createdBody, "$.data.reviewId").toLong())
     }
 
     @Test
@@ -354,6 +362,7 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                 .response
                 .getContentAsString(Charsets.UTF_8)
         val reviewId = JsonPath.read<Int>(responseBody, "$.data.reviewId").toLong()
+        awaitRewardProcessed(reviewId)
 
         await().atMost(Duration.ofSeconds(20)).untilAsserted {
             val count =
@@ -443,6 +452,16 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
             .optional()
             .orElse(null)
 
+    /**
+     * 적립 컨슈머가 이 리뷰까지 처리하기를 기다린다.
+     * 처리가 테이블 정리 뒤로 밀리면 다음 테스트에 적립 행이 남는다.
+     */
+    private fun awaitRewardProcessed(reviewId: Long) {
+        await().atMost(Duration.ofSeconds(20)).untilAsserted {
+            assertEquals(1L, processedCount("review-point-rewarder", "review-$reviewId:created"))
+        }
+    }
+
     private fun processedCount(
         consumer: String,
         eventId: String,
@@ -508,11 +527,13 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
             val group =
                 OrderGroup.create(
                     buyerId = buyerUserId,
+                    deliveryAddressId = 0L,
+                    deliveryAddress = deliveryAddressSnapshot(),
                     usedPoint = 0L,
                     totalProductAmount = 10000L,
                     totalShippingFee = 3000L,
-                    finalPaymentAmount = 13000L,
                     idempotencyKey = "idem-${UUID.randomUUID()}",
+                    expiresAt = LocalDateTime.now().plusMinutes(10),
                 )
             em.persist(group)
             val item =
@@ -526,9 +547,10 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                     productVersionId = 1L,
                 )
             val order =
-                Order.place(
+                Order.create(
                     orderGroup = group,
                     sellerId = sellerId,
+                    sellerNameSnapshot = "store-$sellerId",
                     allocatedCouponDiscount = 0L,
                     sellerShippingFee = 3000L,
                     items = listOf(item),
@@ -550,6 +572,16 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                 optionCombinationId = optionCombination.id,
             )
         }!!
+
+    private fun deliveryAddressSnapshot() =
+        DeliveryAddressSnapshot(
+            receiverNameEnc = "enc-receiver",
+            contactNumberEnc = "enc-contact",
+            zipCode = "12345",
+            baseAddress = "서울시 애착구 멍냥로 1",
+            detailAddress = null,
+            deliveryMemo = null,
+        )
 
     private data class Fixture(
         val orderItemId: Long,

@@ -19,9 +19,16 @@ locals {
   api_domain   = var.env == "prod" ? "api.aechak.co.kr" : "api-${var.env}.aechak.co.kr"
   media_domain = var.env == "prod" ? "media.aechak.co.kr" : "media-${var.env}.aechak.co.kr"
 
+  # seller-api도 평평한 한 레이블 — 위 인증서 제약과 같은 이유 (SCRUM-193)
+  seller_api_domain = var.env == "prod" ? "seller-api.aechak.co.kr" : "seller-api-${var.env}.aechak.co.kr"
+
   # 프론트는 서비스 얼굴이라 서비스명을 빼고 env만 쓴다.
   # prod는 apex가 되는데 CNAME을 못 걸어서 그때 방식을 다시 정해야 한다.
   web_domain = var.env == "prod" ? "aechak.co.kr" : "${var.env}.aechak.co.kr"
+
+  # 셀러센터·어드민 콘솔 프론트 도메인. 콘솔이라 서비스명을 남긴다(prod도 서브도메인).
+  seller_domain = var.env == "prod" ? "seller.aechak.co.kr" : "seller-${var.env}.aechak.co.kr"
+  admin_domain  = var.env == "prod" ? "admin.aechak.co.kr" : "admin-${var.env}.aechak.co.kr"
 }
 
 resource "aws_route53_record" "api" {
@@ -34,6 +41,18 @@ resource "aws_route53_record" "api" {
     zone_id = aws_lb.main.zone_id
 
     # 단일 ALB라 페일오버 대상이 없다 — 헬스 평가로 얻는 게 없음
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "seller_api" {
+  zone_id = data.aws_route53_zone.root.zone_id
+  name    = local.seller_api_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
     evaluate_target_health = false
   }
 }
@@ -60,4 +79,21 @@ resource "aws_route53_record" "web" {
   type    = "CNAME"
   ttl     = 300
   records = ["aechak-fe.pages.dev"]
+}
+
+# web과 같은 Cloudflare Pages CNAME. Pages 프로젝트에 커스텀 도메인 등록이 선행돼야 검증된다.
+resource "aws_route53_record" "seller_web" {
+  zone_id = data.aws_route53_zone.root.zone_id
+  name    = local.seller_domain
+  type    = "CNAME"
+  ttl     = 300
+  records = ["aechak-seller.pages.dev"]
+}
+
+resource "aws_route53_record" "admin_web" {
+  zone_id = data.aws_route53_zone.root.zone_id
+  name    = local.admin_domain
+  type    = "CNAME"
+  ttl     = 300
+  records = ["aechak-admin.pages.dev"]
 }

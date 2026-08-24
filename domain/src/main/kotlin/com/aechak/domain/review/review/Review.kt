@@ -65,8 +65,10 @@ class Review protected constructor(
     var deletedAt: LocalDateTime? = null
         protected set
 
+    fun isDeleted(): Boolean = reviewStatus == ReviewStatus.DELETED
+
     fun delete() {
-        if (reviewStatus == ReviewStatus.DELETED) {
+        if (isDeleted()) {
             throw BusinessException(ReviewErrorCode.INVALID_REVIEW_STATUS_TRANSITION)
         }
         reviewStatus = ReviewStatus.DELETED

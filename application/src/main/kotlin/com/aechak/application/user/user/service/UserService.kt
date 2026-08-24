@@ -1,10 +1,11 @@
 package com.aechak.application.user.user.service
 
+import com.aechak.application.user.user.port.UserAuthorQueryPort
+import com.aechak.application.user.user.port.view.UserAuthorView
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.social.repository.SocialIdentityRepository
 import com.aechak.domain.user.user.User
-import com.aechak.domain.user.user.UserAuthor
 import com.aechak.domain.user.user.UserProfile
 import com.aechak.domain.user.user.repository.UserRepository
 import org.springframework.stereotype.Service
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service
 class UserService(
     private val userRepository: UserRepository,
     private val socialIdentityRepository: SocialIdentityRepository,
+    private val userAuthorQueryPort: UserAuthorQueryPort,
 ) {
     /** 조회 실패는 BusinessException + 도메인 ErrorCode로 던진다. */
     fun getById(userId: Long): User =
@@ -25,7 +27,7 @@ class UserService(
             ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
 
     /** 작성자 표시용 배치 조회 — 없는 id는 결과에서 빠진다. */
-    fun getAuthors(userIds: Collection<Long>): List<UserAuthor> = userRepository.findAuthorsByIds(userIds)
+    fun getAuthors(userIds: Collection<Long>): List<UserAuthorView> = userAuthorQueryPort.findAuthorsByIds(userIds)
 
     /** 소셜 가입 — 프로필 없는 PENDING_ONBOARDING 계정 생성. */
     fun registerFromSocial(): User = userRepository.save(User.preRegister())

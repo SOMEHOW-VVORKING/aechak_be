@@ -13,6 +13,7 @@ data class ReviewItemResult(
     val authorProfileImageUrl: String?,
     val createdAt: LocalDateTime,
     val images: List<ReviewImageItemResult>,
+    val isMine: Boolean,
 ) {
     companion object {
         fun from(
@@ -20,6 +21,7 @@ data class ReviewItemResult(
             images: List<ReviewImageItemResult>,
             authorNickname: String,
             authorProfileImageUrl: String?,
+            isMine: Boolean,
         ): ReviewItemResult =
             ReviewItemResult(
                 reviewId = view.id,
@@ -30,6 +32,7 @@ data class ReviewItemResult(
                 authorProfileImageUrl = authorProfileImageUrl,
                 createdAt = view.createdAt,
                 images = images,
+                isMine = isMine,
             )
 
         private fun resolveContent(view: ReviewView): String =

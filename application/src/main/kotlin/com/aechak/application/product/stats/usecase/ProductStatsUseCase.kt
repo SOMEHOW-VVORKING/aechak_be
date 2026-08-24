@@ -1,5 +1,7 @@
 package com.aechak.application.product.stats.usecase
 
+import com.aechak.application.product.stats.usecase.command.ApplyReviewStatsCommand
+
 interface ProductStatsUseCase {
-    fun recomputeReviewStats(productId: Long)
+    fun applyReviewStats(command: ApplyReviewStatsCommand)
 }

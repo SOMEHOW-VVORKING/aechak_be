@@ -30,7 +30,8 @@
 | 결제 Payment | 60000 | 2 | `payment` | PG 결제·취소 — **헥사고날 L3 예외 적용** (10 §6) |
 | 정산 Settlement | 70000 | 4 | `settlement` | 정산 원장·지급(D+5 자동이체)·집행 배치·계좌 |
 | 검색 Search | 80000 | 2 | `search` | 최근 검색어·추천 검색어 (상품 검색은 DB 검색) |
-| 운영·인프라 Ops/Platform | — | 6 | (도메인 아님) | `outbox_events`·`processed_events` = 이벤트 백본 핵심. 배너·공지·문의는 오프 |
+| 문의 Inquiry | 120000 | 1 | `inquiry` | 앱 서비스 문의 접수(CRQ-CS-05) + 이메일 통지. 어드민 처리(ADM-10) 후속 |
+| 운영·인프라 Ops/Platform | — | 6 | (도메인 아님) | `outbox_events`·`processed_events` = 이벤트 백본 핵심. 배너·공지는 오프(문의 접수 CRQ-CS-05는 앞당겨 inquiry BC로 포함) |
 
 - 채팅은 제외 도메인(§1)이라 대역을 예약하지 않는다 — 80000은 검색이 받는다.
 - 이 표 밖의 대역(auth 20000 · 서버 공통 90000 · file 100000)은 05 §0-4 참조.

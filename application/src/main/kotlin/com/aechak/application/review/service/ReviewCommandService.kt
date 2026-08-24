@@ -72,8 +72,10 @@ class ReviewCommandService(
         if (review.authorUserId != userId) {
             throw BusinessException(ReviewErrorCode.REVIEW_ACCESS_DENIED)
         }
-        val affected = reviewRepository.markDeletedIfNotDeleted(reviewId, userId)
-        return if (affected > 0) review.productId else null
+        if (review.isDeleted()) return null
+        review.delete()
+        reviewRepository.save(review)
+        return review.productId
     }
 
     companion object {

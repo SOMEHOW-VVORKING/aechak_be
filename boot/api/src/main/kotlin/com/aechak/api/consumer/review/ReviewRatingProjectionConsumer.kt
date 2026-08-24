@@ -1,7 +1,7 @@
 package com.aechak.api.consumer.review
 
 import com.aechak.application.messaging.ProcessedMessages
-import com.aechak.application.product.stats.usecase.ProductStatsUseCase
+import com.aechak.application.review.usecase.ReviewRatingUseCase
 import com.aechak.infra.kafka.Topics
 import com.aechak.infra.kafka.config.MessagingJacksonConfig.Companion.MESSAGING_OBJECT_MAPPER
 import com.aechak.message.Envelope
@@ -20,7 +20,7 @@ import tools.jackson.databind.ObjectMapper
 class ReviewRatingProjectionConsumer(
     @Qualifier(MESSAGING_OBJECT_MAPPER) private val objectMapper: ObjectMapper,
     private val processedMessages: ProcessedMessages,
-    private val productStatsUseCase: ProductStatsUseCase,
+    private val reviewRatingUseCase: ReviewRatingUseCase,
 ) {
     @KafkaListener(topics = [Topics.REVIEW], groupId = GROUP)
     @Transactional
@@ -30,7 +30,7 @@ class ReviewRatingProjectionConsumer(
 
         if (!processedMessages.markProcessed(GROUP, envelope.eventId)) return
 
-        productStatsUseCase.recomputeReviewStats(productId)
+        reviewRatingUseCase.recomputeProductRating(productId)
     }
 
     private fun productIdOf(envelope: Envelope): Long? =

@@ -1,7 +1,7 @@
 package com.aechak.api.review
 
 import com.aechak.api.support.IntegrationTestBase
-import com.aechak.application.product.stats.usecase.ProductStatsUseCase
+import com.aechak.application.review.usecase.ReviewRatingUseCase
 import com.aechak.application.user.point.usecase.PointUseCase
 import com.aechak.domain.product.stats.repository.ProductStatsRepository
 import com.aechak.domain.review.review.Review
@@ -18,7 +18,7 @@ import java.math.BigDecimal
  */
 class ReviewProjectionIntegrationTest : IntegrationTestBase() {
     @Autowired
-    private lateinit var productStatsUseCase: ProductStatsUseCase
+    private lateinit var reviewRatingUseCase: ReviewRatingUseCase
 
     @Autowired
     private lateinit var pointUseCase: PointUseCase
@@ -31,7 +31,7 @@ class ReviewProjectionIntegrationTest : IntegrationTestBase() {
         val productId = 100L
         persistReviews(productId, ratings = listOf(5, 4, 3), authorUserId = 1L)
 
-        productStatsUseCase.recomputeReviewStats(productId)
+        reviewRatingUseCase.recomputeProductRating(productId)
 
         val stats = productStatsRepository.findAllByProductIds(listOf(productId)).single()
         assertEquals(3, stats.reviewCount)
@@ -44,8 +44,8 @@ class ReviewProjectionIntegrationTest : IntegrationTestBase() {
         val productId = 200L
         persistReviews(productId, ratings = listOf(5, 5), authorUserId = 2L)
 
-        productStatsUseCase.recomputeReviewStats(productId)
-        productStatsUseCase.recomputeReviewStats(productId)
+        reviewRatingUseCase.recomputeProductRating(productId)
+        reviewRatingUseCase.recomputeProductRating(productId)
 
         val stats = productStatsRepository.findAllByProductIds(listOf(productId)).single()
         assertEquals(2, stats.reviewCount)

@@ -42,6 +42,10 @@ package com.aechak.application.order.usecase
  *
  * [규칙 — 진입점]
  * - 도메인당 인터페이스 1개. 메서드가 10개를 넘어 비대해지면 그때 기능별 분리를 논의한다.
+ * - 단 **소비하는 실행 모듈이 갈리고 쓰는 메서드가 겹치지 않으면 개수와 무관하게 나눈다.**
+ *   구매자 앱만 쓰는 조회와 셀러센터만 쓰는 쓰기를 한 타입에 두면 양쪽이 안 쓰는 절반을 주입받는다
+ *   (ProductUseCase / SellerProductUseCase). Facade는 하나로 두고 두 인터페이스를 함께 구현한다 —
+ *   쪼개면 같은 Service 주입이 양쪽에 복제된다(선례: AuthFacade가 4개 구현).
  * - 이 인터페이스만이 외부(Controller / Consumer / Batch / 타 도메인 Facade)에 노출된다.
  * - 타 도메인이 order를 부를 때도 반드시 이 인터페이스로만 — OrderService 직접 호출 금지.
  *
@@ -65,7 +69,8 @@ interface OrderUseCase {
  * [규칙]
  * - UseCase 구현은 항상 Facade다. Service가 UseCase를 직접 구현하는 것 금지 (규칙은 하나만).
  * - 트랜잭션 경계의 소유자는 Facade (상세 §2-1). Service/도메인 메서드에 트랜잭션 어노테이션 금지.
- * - 도메인이 수집한 이벤트(aggregate.events)를 커밋 전 publisher로 발행하고 clearEvents().
+ * - 도메인이 수집한 이벤트(aggregate.events)는 커밋 전에 발행하고 clearEvents(). 애그리거트를 들고 있는 쪽이 발행한다 —
+ *   Facade까지 나오면 Facade가, Service 안에서 끝나면 Service가 발행하고 Result만 돌려준다.
  * - 타 도메인 협력이 필요하면 그쪽 UseCase를 주입받는다. 순환 의존 발생 = 이벤트 전환 신호.
  */
 @Service

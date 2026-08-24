@@ -20,6 +20,7 @@ springdoc = "3.0.3"              # OpenAPI 3/Swagger UI
 spring-cloud-aws = "4.0.2"       # Boot 4.x 호환 계열(4.0.x) 최신 패치 — 3.x는 Boot 4에서 미동작
 querydsl = "7.0"                 # OpenFeign 포크 — JPA 3.2/Hibernate 7 타깃(원조 com.querydsl는 Hibernate 7 미지원)
 ksp = "2.2.21-2.0.5"             # QueryDSL Q클래스 생성 — Kotlin 2.2.21 정합 버전
+solapi = "1.1.0"                 # CoolSMS 발송 SDK — nurigo v4(아카이브)의 공식 후속, 도메인만 coolsms로 지정해 사용
 ahocorasick = "0.6.3"            # 금칙어 다중 패턴 매칭(리뷰 마스킹) — robert-bor/aho-corasick, Apache-2.0
 
 [libraries]
@@ -60,6 +61,12 @@ spring-data-redis = { module = "org.springframework.data:spring-data-redis" }
 
 # --- infra:s3-client ---
 spring-cloud-aws-starter-s3 = { module = "io.awspring.cloud:spring-cloud-aws-starter-s3" }
+
+# --- infra:ses-client ---
+spring-cloud-aws-starter-ses = { module = "io.awspring.cloud:spring-cloud-aws-starter-ses" }  # 버전은 위 spring-cloud-aws-bom이 해석
+
+# --- infra:sms-client: CoolSMS 발송 ---
+solapi-sdk = { module = "com.solapi:sdk", version.ref = "solapi" }  # Retrofit·OkHttp 동봉 — sms-client 밖으로 새지 않는다
 
 # --- infra:kafka ---
 spring-kafka = { module = "org.springframework.kafka:spring-kafka" }   # Boot BOM 버전

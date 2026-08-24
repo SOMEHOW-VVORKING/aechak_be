@@ -40,7 +40,7 @@ import org.springframework.transaction.support.TransactionTemplate
         "spring.kafka.listener.ack-mode=RECORD",
     ],
 )
-@Import(IntegrationTestConfig::class)
+@Import(IntegrationTestConfig::class, FlywayCleanMigrateConfig::class)
 @EmbeddedKafka(partitions = 1, topics = [Topics.ORDER, Topics.ORDER_DLT])
 abstract class KafkaIntegrationTestBase {
     @Autowired

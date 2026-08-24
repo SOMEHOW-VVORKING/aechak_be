@@ -1,7 +1,10 @@
 package com.aechak.api.review.controller
 
 import com.aechak.api.review.request.CreateReviewRequest
+import com.aechak.api.review.request.ReviewListRequest
 import com.aechak.api.review.response.CreateReviewResponse
+import com.aechak.api.review.response.ReviewListResponse
+import com.aechak.application.review.usecase.ProductReviewUseCase
 import com.aechak.application.review.usecase.ReviewCommandUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
@@ -10,18 +13,31 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@RequestMapping("/reviews")
 class ReviewController(
+    private val productReviewUseCase: ProductReviewUseCase,
     private val reviewCommandUseCase: ReviewCommandUseCase,
 ) {
-    @PostMapping
+    @GetMapping("/products/{productId}/reviews")
+    fun getProductReviews(
+        @PathVariable productId: String,
+        @Valid @ModelAttribute request: ReviewListRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<ReviewListResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(
+                ReviewListResponse.from(productReviewUseCase.getProductReviews(request.toQuery(productId), principal.userId)),
+            ),
+        )
+
+    @PostMapping("/reviews")
     fun createReview(
         @Valid @RequestBody request: CreateReviewRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
@@ -30,7 +46,7 @@ class ReviewController(
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.of(CreateReviewResponse.from(result)))
     }
 
-    @DeleteMapping("/{reviewId}")
+    @DeleteMapping("/reviews/{reviewId}")
     fun deleteReview(
         @PathVariable reviewId: Long,
         @AuthenticationPrincipal principal: AuthPrincipal,

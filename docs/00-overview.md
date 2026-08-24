@@ -18,11 +18,13 @@ aechak/                              # A-4 확정: 루트 패키지 com.aechak
 ├── build-logic/                     # 컨벤션 플러그인 (includeBuild — 애플리케이션 코드 아님) → 50 문서
 ├── common/                          # 순수 규약. Spring 의존 없음 → 05 문서
 ├── web-common/                      # HTTP 번역 계층 (응답 규격, 전역 핸들러, TraceId) → 05 문서
+├── pii/                             # PII 암호화 엔진·키 조립 공용 모듈 (web-security 계열) → 40 문서 §1-1
 ├── domain/                          # 도메인 모델 (단일 모듈, 내부는 도메인별 패키지) → 10 문서
 ├── application/                     # UseCase/Facade/Service, Command/Result → 20 문서
 ├── message/                         # Kafka 통합 메시지 계약 모듈 (의존 0 — 순수 계약)
 ├── boot/                            # 그룹핑 디렉토리 (자체는 모듈 아님) → 30 문서
-│   ├── api/                         # 실행 모듈. 컨트롤러 + consumer 패키지 동거
+│   ├── api/                         # 실행 모듈(구매자 앱). 컨트롤러 + consumer 패키지 동거
+│   ├── seller/                      # :seller-api — 셀러센터 실행 모듈(웹). 호스트 분리 전제, 선별 스캔
 │   ├── admin/                       # A-5 결정: MVP 제외 — 필요 시점에 생성
 │   └── batch/                       # 실행 모듈. Spring Batch
 └── infra/                           # 그룹핑 폴더 — 기술 분류 폴더 아래 구체 모듈 (40 문서)
@@ -37,14 +39,15 @@ aechak/                              # A-4 확정: 루트 패키지 com.aechak
 pluginManagement { includeBuild("build-logic") }
 rootProject.name = "aechak"          // A-4 확정
 include(
-    "common", "web-common",
+    "common", "web-common", "pii",
     "domain", "application",
     "message",                       // 통합 메시지 계약 (의존 0)
-    "api", "batch",                  // "admin" — A-5: MVP 제외
+    "api", "seller-api", "batch",    // "admin" — A-5: MVP 제외
     "jpa-persistence", "pg-client",     // A-1 결정(L2). kafka·redis는 어댑터 생길 때 추가
 )
 // boot/·infra/{분류}는 모듈이 아닌 폴더 — 모듈 이름은 평평하게, projectDir로 위치만 매핑
 project(":api").projectDir = file("boot/api")
+project(":seller-api").projectDir = file("boot/seller")
 project(":batch").projectDir = file("boot/batch")
 project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
 project(":pg-client").projectDir = file("infra/client/pg-client")
@@ -58,11 +61,12 @@ project(":pg-client").projectDir = file("infra/client/pg-client")
 | --- | --- | --- |
 | common | (없음) | 모든 Spring |
 | web-common | common, spring-web/webmvc, servlet-api, slf4j | domain, application |
+| pii | application(포트·라벨), spring-context/boot, spring-security-crypto | web-common, infra/* |
 | domain | common, jakarta.persistence-api (불활성 어노테이션 스펙 — A-1 결정) | 모든 Spring, web-common |
 | application | common, domain, message(순수 계약 — 발행 포트 시그니처), spring-context, spring-tx (A-1 결정 L2 — 리포지토리 포트는 domain 소유, 구현은 infra/persistence) | web-common, spring-web, infra/* |
 | message | (없음 — 순수 DTO) | 전부 |
 | infra/* | common, domain, application, message, 각 기술 스택 | web-common, 다른 infra 모듈, boot |
-| api / admin | web-common, application, domain, infra/* (조립), message | — |
+| api / seller-api / admin | web-common, application, domain, infra/* (조립), message | — |
 | batch | common, application, domain, infra/* (조립), spring-batch | **web-common** |
 
 **전역 불변 규칙**

@@ -1,7 +1,6 @@
 package com.aechak.application.review.usecase
 
-import com.aechak.application.review.usecase.result.ReviewRatingAggregateResult
-
 interface ReviewRatingUseCase {
-    fun getReviewRatingStats(productId: Long): ReviewRatingAggregateResult
+    /** 상품의 리뷰 평점을 다시 세어 상품 통계에 반영한다. */
+    fun recomputeProductRating(productId: Long)
 }

@@ -9,4 +9,7 @@ interface CartCatalogQueryPort {
 
     /** 조회 화면용 복수 */
     fun findItems(optionCombinationIds: Collection<Long>): List<CartCatalogItemView>
+
+    /** 수정 시점 검증용 복수 */
+    fun findApprovedItems(optionCombinationIds: Collection<Long>): List<CartCatalogItemView>
 }
