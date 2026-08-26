@@ -58,21 +58,20 @@ class OrderService(
         if (pricing.finalPaymentAmount(command.usedPoint) != command.expectedFinalAmount) {
             throw BusinessException(OrderErrorCode.ORDER_AMOUNT_CHANGED)
         }
-        deductStock(selected)
-
+        // 적립금 정책(최소 사용액·전액 결제 차단) 포함 도메인 검증 — 자산(재고·적립금)을 건드리기 전에 끝낸다
         val orderGroup =
-            orderGroupRepository.save(
-                OrderGroup.create(
-                    buyerId = command.buyerId,
-                    deliveryAddressId = address.addressId,
-                    deliveryAddress = snapshotOf(address),
-                    usedPoint = command.usedPoint,
-                    totalProductAmount = pricing.totalProductAmount,
-                    totalShippingFee = pricing.totalShippingFee,
-                    idempotencyKey = command.idempotencyKey,
-                    expiresAt = now.plusMinutes(PAYMENT_WINDOW_MINUTES),
-                ),
+            OrderGroup.create(
+                buyerId = command.buyerId,
+                deliveryAddressId = address.addressId,
+                deliveryAddress = snapshotOf(address),
+                usedPoint = command.usedPoint,
+                totalProductAmount = pricing.totalProductAmount,
+                totalShippingFee = pricing.totalShippingFee,
+                idempotencyKey = command.idempotencyKey,
+                expiresAt = now.plusMinutes(PAYMENT_WINDOW_MINUTES),
             )
+        deductStock(selected)
+        orderGroupRepository.save(orderGroup)
         orderRepository.saveAll(createOrders(orderGroup, pricing))
         return CreateOrderGroupResult.from(orderGroup)
     }
