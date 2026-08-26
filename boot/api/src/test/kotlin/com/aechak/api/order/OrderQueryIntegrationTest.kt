@@ -204,7 +204,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         query: String = "",
     ): String =
         mockMvc
-            .perform(get("/api/v1/orders$query").bearer(token))
+            .perform(get("/api/v1/order-groups$query").bearer(token))
             .andExpect(status().isOk)
             .andReturn()
             .response
@@ -221,9 +221,9 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         )
 
         mockMvc
-            .perform(get("/api/v1/orders").bearer(token))
+            .perform(get("/api/v1/order-groups").bearer(token))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.orders").isEmpty)
+            .andExpect(jsonPath("$.data.orderGroups").isEmpty)
             .andExpect(jsonPath("$.data.totalCount").value(0))
     }
 
@@ -242,8 +242,8 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
 
         val body = listBody(token)
 
-        assertEquals(1, JsonPath.read<List<*>>(body, "$.data.orders").size, "배송중 주문이 있으니 그룹 자체는 목록에 남아야 한다")
-        val sellers = JsonPath.read<List<String>>(body, "$.data.orders[0].sellerOrders[*].sellerName")
+        assertEquals(1, JsonPath.read<List<*>>(body, "$.data.orderGroups").size, "배송중 주문이 있으니 그룹 자체는 목록에 남아야 한다")
+        val sellers = JsonPath.read<List<String>>(body, "$.data.orderGroups[0].sellerOrders[*].sellerName")
         assertEquals(1, sellers.size, "결제대기 셀러 주문은 카드 안에도 실리면 안 된다: $sellers")
         assertTrue(sellers.contains("냥이상점"), "결제가 끝난 셀러 주문만 남아야 한다: $sellers")
     }
@@ -263,10 +263,10 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
 
         val body = listBody(token)
 
-        assertEquals(1, JsonPath.read<List<*>>(body, "$.data.orders").size, "주문그룹 하나가 한 행이어야 한다")
-        val statuses = JsonPath.read<List<String>>(body, "$.data.orders[0].sellerOrders[*].status")
+        assertEquals(1, JsonPath.read<List<*>>(body, "$.data.orderGroups").size, "주문그룹 하나가 한 행이어야 한다")
+        val statuses = JsonPath.read<List<String>>(body, "$.data.orderGroups[0].sellerOrders[*].status")
         assertTrue(statuses.containsAll(listOf("SHIPPING", "PREPARING")), "셀러별 상태가 그대로 나와야 한다: $statuses")
-        assertEquals(84000, JsonPath.read<Int>(body, "$.data.orders[0].totalProductAmount"), "그룹 상품 금액은 두 셀러 합계여야 한다")
+        assertEquals(84000, JsonPath.read<Int>(body, "$.data.orderGroups[0].totalProductAmount"), "그룹 상품 금액은 두 셀러 합계여야 한다")
     }
 
     @Test
@@ -281,11 +281,11 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
 
         val body = listBody(token)
 
-        val item = "$.data.orders[0].sellerOrders[0].representativeItem"
+        val item = "$.data.orderGroups[0].sellerOrders[0].representativeItem"
         assertEquals("고양이 자동 급식기 스마트 5L", JsonPath.read<String>(body, "$item.productName"), "상품명은 주문 시점 버전 스냅샷이어야 한다")
         assertEquals("용량 5L / 화이트", JsonPath.read<String>(body, "$item.optionName"), "옵션명은 옵션조합 현재값이어야 한다")
         assertEquals(64000, JsonPath.read<Int>(body, "$item.unitPrice"), "단가는 주문 시점 스냅샷이어야 한다")
-        assertEquals(1, JsonPath.read<Int>(body, "$.data.orders[0].sellerOrders[0].itemCount"), "품목 종류 수가 맞아야 한다")
+        assertEquals(1, JsonPath.read<Int>(body, "$.data.orderGroups[0].sellerOrders[0].itemCount"), "품목 종류 수가 맞아야 한다")
     }
 
     @Test
@@ -300,9 +300,9 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         )
 
         mockMvc
-            .perform(get("/api/v1/orders").bearer(token))
+            .perform(get("/api/v1/order-groups").bearer(token))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.orders").isEmpty)
+            .andExpect(jsonPath("$.data.orderGroups").isEmpty)
     }
 
     @Test
@@ -330,10 +330,10 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         val cancelled = listBody(token, "?status=cancelled")
         val all = listBody(token, "?status=all")
 
-        assertEquals(1, JsonPath.read<List<*>>(ongoing, "$.data.orders").size, "진행중은 배송중 하나여야 한다")
-        assertEquals(1, JsonPath.read<List<*>>(completed, "$.data.orders").size, "완료는 배송완료 하나여야 한다")
-        assertEquals(1, JsonPath.read<List<*>>(cancelled, "$.data.orders").size, "취소는 취소 하나여야 한다")
-        assertEquals(3, JsonPath.read<List<*>>(all, "$.data.orders").size, "전체는 셋 다여야 한다")
+        assertEquals(1, JsonPath.read<List<*>>(ongoing, "$.data.orderGroups").size, "진행중은 배송중 하나여야 한다")
+        assertEquals(1, JsonPath.read<List<*>>(completed, "$.data.orderGroups").size, "완료는 배송완료 하나여야 한다")
+        assertEquals(1, JsonPath.read<List<*>>(cancelled, "$.data.orderGroups").size, "취소는 취소 하나여야 한다")
+        assertEquals(3, JsonPath.read<List<*>>(all, "$.data.orderGroups").size, "전체는 셋 다여야 한다")
     }
 
     @Test
@@ -354,7 +354,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         do {
             val query = if (cursor == null) "?size=2" else "?size=2&cursor=$cursor"
             val body = listBody(token, query)
-            seen += JsonPath.read<List<String>>(body, "$.data.orders[*].orderGroupId")
+            seen += JsonPath.read<List<String>>(body, "$.data.orderGroups[*].orderGroupId")
             cursor = JsonPath.read<String?>(body, "$.data.nextCursor")
             pages++
         } while (cursor != null && pages < 10)
@@ -389,9 +389,9 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         val token = mintAccessToken(createActiveUser())
 
         mockMvc
-            .perform(get("/api/v1/orders").bearer(token))
+            .perform(get("/api/v1/order-groups").bearer(token))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.orders").isEmpty)
+            .andExpect(jsonPath("$.data.orderGroups").isEmpty)
             .andExpect(jsonPath("$.data.hasNext").value(false))
             .andExpect(jsonPath("$.data.nextCursor").doesNotExist())
     }
@@ -410,7 +410,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         val cursor = JsonPath.read<String>(listBody(token, "?status=all&size=1"), "$.data.nextCursor")
 
         mockMvc
-            .perform(get("/api/v1/orders?status=ongoing&size=1&cursor=$cursor").bearer(token))
+            .perform(get("/api/v1/order-groups?status=ongoing&size=1&cursor=$cursor").bearer(token))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90002))
     }
@@ -420,7 +420,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         val token = mintAccessToken(createActiveUser())
 
         mockMvc
-            .perform(get("/api/v1/orders?cursor=%25%25broken").bearer(token))
+            .perform(get("/api/v1/order-groups?cursor=%25%25broken").bearer(token))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90002))
     }
@@ -430,7 +430,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         val token = mintAccessToken(createActiveUser())
 
         mockMvc
-            .perform(get("/api/v1/orders?status=nope").bearer(token))
+            .perform(get("/api/v1/order-groups?status=nope").bearer(token))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90001))
     }
@@ -440,7 +440,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         val token = mintAccessToken(createActiveUser())
 
         mockMvc
-            .perform(get("/api/v1/orders?size=101").bearer(token))
+            .perform(get("/api/v1/order-groups?size=101").bearer(token))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90001))
     }
@@ -532,7 +532,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
     @Test
     fun `토큰 없이 목록을 부르면 401이다`() {
         mockMvc
-            .perform(get("/api/v1/orders"))
+            .perform(get("/api/v1/order-groups"))
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.errorCode").value(20004))
     }

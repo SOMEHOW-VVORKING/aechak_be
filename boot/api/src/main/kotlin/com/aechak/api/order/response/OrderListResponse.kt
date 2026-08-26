@@ -8,7 +8,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 
 data class OrderListResponse(
-    val orders: List<OrderGroupItemResponse>,
+    val orderGroups: List<OrderGroupItemResponse>,
     val totalCount: Long?,
     val nextCursor: String?,
     val hasNext: Boolean,
@@ -16,7 +16,7 @@ data class OrderListResponse(
     companion object {
         fun from(result: OrderListResult): OrderListResponse =
             OrderListResponse(
-                orders = result.page.items.map(OrderGroupItemResponse::from),
+                orderGroups = result.page.items.map(OrderGroupItemResponse::from),
                 totalCount = result.page.totalCount,
                 nextCursor = result.page.nextCursor,
                 hasNext = result.page.hasNext,

@@ -12,16 +12,14 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PathVariable
-import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@RequestMapping("/orders")
 class OrderController(
     private val orderQueryUseCase: OrderQueryUseCase,
 ) {
-    @GetMapping
-    fun getOrders(
+    @GetMapping("/order-groups")
+    fun getOrderGroups(
         @Valid @ModelAttribute request: OrderListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<OrderListResponse>> =
@@ -29,7 +27,7 @@ class OrderController(
             ApiResponse.of(OrderListResponse.from(orderQueryUseCase.getOrders(request.toQuery(principal.userId)))),
         )
 
-    @GetMapping("/{orderId}")
+    @GetMapping("/orders/{orderId}")
     fun getOrderDetail(
         @PathVariable orderId: String,
         @AuthenticationPrincipal principal: AuthPrincipal,
