@@ -35,7 +35,6 @@ class ReviewCommandService(
         }
     }
 
-    /** 중복 키를 걸러낸 뒤 첨부 개수 상한을 확인한다. 승격은 되돌릴 수 없어 그 전에 호출한다 */
     fun resolveImageKeys(command: CreateReviewCommand): List<String> {
         val imageKeys = command.imageKeys.distinct()
         if (imageKeys.size > Review.MAX_IMAGES) {
@@ -63,7 +62,7 @@ class ReviewCommandService(
         }
     }
 
-    /** 삭제 처리 후 실제로 삭제가 발생했으면 재집계 대상인 productId를 반환 */
+    /** 삭제 상태 변경 시 재집계 대상 productId 반환 */
     fun delete(
         userId: Long,
         reviewId: Long,
