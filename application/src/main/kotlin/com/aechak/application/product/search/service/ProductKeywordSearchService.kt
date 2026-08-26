@@ -8,6 +8,7 @@ import com.aechak.application.product.search.port.ProductKeywordSearchSort
 import com.aechak.application.product.search.support.ProductKeywordSearchCursorCodec
 import com.aechak.application.product.search.usecase.query.ProductKeywordSearchQuery
 import com.aechak.application.support.CursorPageResult
+import com.aechak.application.support.CursorPageSize
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.product.category.Category
@@ -38,19 +39,16 @@ class ProductKeywordSearchService(
                     lastId = anchor?.lastId,
                     lastReviewCount = anchor?.lastReviewCount,
                     lastPrice = anchor?.lastPrice,
-                    limit = query.size + 1,
+                    limit = CursorPageSize.fetchLimit(query.size),
                     now = queryNow,
                 ),
             )
-        val hasNext = fetched.size > query.size
-        val page = if (hasNext) fetched.take(query.size) else fetched
-        return CursorPageResult(
-            items = page,
+        return CursorPageResult.of(
+            fetched = fetched,
+            size = query.size,
             // 첫 페이지에서만 총개수 계산
             totalCount = if (query.cursor == null) productKeywordSearchPort.countMatching(filter, queryNow) else null,
-            nextCursor = if (hasNext) encodeCursor(query.sort, filter, page.last(), queryNow) else null,
-            hasNext = hasNext,
-        )
+        ) { last -> encodeCursor(query.sort, filter, last, queryNow) }
     }
 
     private fun toFilter(query: ProductKeywordSearchQuery): ProductKeywordFilter =

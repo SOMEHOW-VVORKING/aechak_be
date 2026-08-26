@@ -2,6 +2,7 @@ package com.aechak.api.product.search.request
 
 import com.aechak.application.product.search.port.ProductKeywordSearchSort
 import com.aechak.application.product.search.usecase.query.ProductKeywordSearchQuery
+import com.aechak.application.support.CursorPageSize
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.webcommon.validation.NotBlankUnicode
@@ -34,11 +35,11 @@ data class ProductKeywordSearchRequest(
     val excludeSoldOut: Boolean = false,
     val cursor: String? = null,
     @field:Range(
-        min = ProductKeywordSearchQuery.SIZE_MIN,
-        max = ProductKeywordSearchQuery.SIZE_MAX,
+        min = CursorPageSize.MIN,
+        max = CursorPageSize.MAX,
         message = "size는 {min}~{max} 사이여야 합니다.",
     )
-    val size: Int = ProductKeywordSearchQuery.DEFAULT_SIZE,
+    val size: Int = CursorPageSize.DEFAULT,
 ) {
     @get:AssertTrue(message = "minPrice는 maxPrice 이하여야 합니다.")
     val isPriceRangeValid: Boolean

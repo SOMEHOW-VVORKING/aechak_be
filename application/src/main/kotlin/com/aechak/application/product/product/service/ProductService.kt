@@ -19,6 +19,7 @@ import com.aechak.application.product.product.usecase.result.OptionCombinationCh
 import com.aechak.application.product.product.usecase.result.ProductSaleStatusChangeResult
 import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.application.support.CursorPageResult
+import com.aechak.application.support.CursorPageSize
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.product.category.Category
@@ -248,31 +249,24 @@ class ProductService(
                     sort = query.sort,
                     lastId = anchor?.lastId,
                     lastPrice = anchor?.lastPrice,
-                    limit = query.size + 1,
+                    limit = CursorPageSize.fetchLimit(query.size),
                     now = queryNow,
                 ),
             )
-        val hasNext = fetched.size > query.size
-        val page = if (hasNext) fetched.take(query.size) else fetched
-        return CursorPageResult(
-            items = page,
-            // 첫 페이지에서만 총개수 게산
+        return CursorPageResult.of(
+            fetched = fetched,
+            size = query.size,
+            // 첫 페이지에서만 총개수 계산
             totalCount = if (query.cursor == null) productCatalogQueryPort.countVisible(query.categoryId) else null,
-            nextCursor =
-                if (hasNext) {
-                    val last = page.last()
-                    ProductCursorCodec.encode(
-                        query.sort,
-                        query.categoryId,
-                        last.publicId,
-                        last.sortPriceAtAnchor,
-                        queryNow,
-                    )
-                } else {
-                    null
-                },
-            hasNext = hasNext,
-        )
+        ) { last ->
+            ProductCursorCodec.encode(
+                query.sort,
+                query.categoryId,
+                last.publicId,
+                last.sortPriceAtAnchor,
+                queryNow,
+            )
+        }
     }
 
     /** 노출 조건을 통과한 상세 조회 */

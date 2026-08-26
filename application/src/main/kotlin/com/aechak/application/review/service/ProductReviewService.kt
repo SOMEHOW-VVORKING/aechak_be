@@ -9,6 +9,7 @@ import com.aechak.application.review.port.view.ReviewView
 import com.aechak.application.review.support.ReviewCursorCodec
 import com.aechak.application.review.usecase.query.ProductReviewListQuery
 import com.aechak.application.support.CursorPageResult
+import com.aechak.application.support.CursorPageSize
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import org.springframework.stereotype.Service
@@ -30,7 +31,7 @@ class ProductReviewService(
                     photoOnly = query.photoOnly,
                     lastId = anchor?.lastId,
                     lastRating = anchor?.lastRating,
-                    limit = query.size + 1,
+                    limit = CursorPageSize.fetchLimit(query.size),
                 ),
             )
         val hasNext = fetched.size > query.size
