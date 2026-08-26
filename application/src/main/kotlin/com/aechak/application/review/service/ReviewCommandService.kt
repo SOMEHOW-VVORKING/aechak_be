@@ -24,7 +24,7 @@ class ReviewCommandService(
         if (!orderItem.isPurchaseConfirmed || confirmedAt == null) {
             throw BusinessException(ReviewErrorCode.REVIEW_NOT_PURCHASE_CONFIRMED)
         }
-        if (confirmedAt.plusDays(REVIEW_WINDOW_DAYS).isBefore(LocalDateTime.now())) {
+        if (!Review.isWithinWriteWindow(confirmedAt, LocalDateTime.now())) {
             throw BusinessException(ReviewErrorCode.REVIEW_WINDOW_EXPIRED)
         }
         if (!orderItem.isItemReviewable) {
@@ -76,9 +76,5 @@ class ReviewCommandService(
         review.delete()
         reviewRepository.save(review)
         return review.productId
-    }
-
-    companion object {
-        const val REVIEW_WINDOW_DAYS = 30L
     }
 }
