@@ -92,7 +92,7 @@ data class OrderResponse(
 | --- | --- | --- |
 | 도메인 불변식 | 엔티티 companion | `CartItem.MAX_QUANTITY` — 병합 합산 상한에도 같은 값을 씀 |
 | 저장 한계(컬럼 길이) | 그 컬럼을 선언한 엔티티 companion | `ProductImage.STORAGE_KEY_MAX` — `@Column(length = ...)`과 DTO가 같은 값을 봄 |
-| 조회 계약 | application의 Query companion | `ProductSearchQuery.SIZE_MIN` — 도메인이 알 이유가 없음 |
+| 조회 계약 | application의 공용 상수나 Query companion | `CursorPageSize.MIN` — 목록마다 다를 이유가 없어 공용으로 두고, 도메인은 알 이유가 없음 |
 
 **개념의 규칙인지 저장의 한계인지를 먼저 가른다.** 상품이 성립하는 가격 범위나 가질 수 있는
 이미지 수는 상품이라는 개념의 규칙이므로 애그리거트가 소유하고 팩토리가 거절한다. 반면 상품명
