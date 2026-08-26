@@ -2,6 +2,7 @@ package com.aechak.domain.product.option
 
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.error.ProductErrorCode
+import com.aechak.domain.product.option.event.OptionCombinationChangedEvent
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.support.AggregateRoot
 import jakarta.persistence.CascadeType
@@ -42,7 +43,7 @@ class OptionCombination protected constructor(
     var additionalPrice: Long = additionalPrice
         protected set
 
-    /** 저장소 조건부 원자 UPDATE(WHERE stock_quantity >= ?)로만 갱신, 쿼리에 updated_at = NOW() 동반 SET. */
+    @Column(nullable = false, columnDefinition = "int unsigned")
     var stockQuantity: Int = stockQuantity
         protected set
 
@@ -54,8 +55,25 @@ class OptionCombination protected constructor(
     private val _values: MutableList<OptionCombinationValue> = mutableListOf()
     val values: List<OptionCombinationValue> get() = _values.toList()
 
+    /**
+     * 잔량보다 큰 차감 -> 거절하지 않고 0에서 멈추고 반영한 값을 리턴.
+     */
+    fun changeStock(delta: Int): Int {
+        val before = stockQuantity
+        stockQuantity = (before.toLong() + delta).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+        return stockQuantity - before
+    }
+
+    fun activate() {
+        isActive = true
+    }
+
     fun deactivate() {
         isActive = false
+    }
+
+    fun registerChangedEvent() {
+        registerEvent(OptionCombinationChangedEvent(product.id, id))
     }
 
     companion object {
@@ -68,6 +86,7 @@ class OptionCombination protected constructor(
             additionalPrice: Long,
             stockQuantity: Int,
             valueSignature: String,
+            optionValues: List<OptionValue> = emptyList(),
         ): OptionCombination {
             if (additionalPrice < 0L) {
                 throw BusinessException(ProductErrorCode.INVALID_OPTION_ADDITIONAL_PRICE)
@@ -76,6 +95,7 @@ class OptionCombination protected constructor(
                 throw BusinessException(ProductErrorCode.INVALID_OPTION_STOCK)
             }
             return OptionCombination(product, name, additionalPrice, stockQuantity, valueSignature)
+                .apply { optionValues.forEach { _values += OptionCombinationValue.of(it) } }
         }
     }
 }

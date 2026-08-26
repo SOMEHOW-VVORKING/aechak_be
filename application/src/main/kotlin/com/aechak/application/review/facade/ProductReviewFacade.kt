@@ -21,7 +21,10 @@ class ProductReviewFacade(
     private val fileUseCase: FileUseCase,
 ) : ProductReviewUseCase {
     @Transactional(readOnly = true)
-    override fun getProductReviews(query: ProductReviewListQuery): ProductReviewListResult {
+    override fun getProductReviews(
+        query: ProductReviewListQuery,
+        viewerId: Long,
+    ): ProductReviewListResult {
         val productId = productUseCase.getVisibleProductId(query.productPublicId)
         // 요약은 페이지마다 같으니 첫 페이지에서만 계산한다(totalCount와 동일).
         val summary =
@@ -45,7 +48,13 @@ class ProductReviewFacade(
                     imagesByReviewId[view.id]
                         .orEmpty()
                         .map { ReviewImageItemResult(fileUseCase.resolveMediaUrl(it.storageKey)!!, it.sortOrder) }
-                ReviewItemResult.from(view, images, author.nickname, author.profileImageUrl)
+                ReviewItemResult.from(
+                    view = view,
+                    images = images,
+                    authorNickname = author.nickname,
+                    authorProfileImageUrl = author.profileImageUrl,
+                    isMine = view.authorUserId == viewerId,
+                )
             }
 
         return ProductReviewListResult(summary = summary, page = itemPage)

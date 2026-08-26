@@ -1,4 +1,4 @@
-package com.aechak.infra.persistence.product
+package com.aechak.infra.persistence.product.option
 
 import com.aechak.application.product.product.port.ProductOptionsQueryPort
 import com.aechak.application.product.product.port.view.ProductOptionsView
@@ -6,6 +6,8 @@ import com.aechak.domain.product.option.QOptionCombination
 import com.aechak.domain.product.option.QOptionCombinationValue
 import com.aechak.domain.product.option.QOptionGroup
 import com.aechak.domain.product.option.QOptionValue
+import com.aechak.infra.persistence.product.product
+import com.aechak.infra.persistence.product.visibleProductQuery
 import com.querydsl.core.Tuple
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.springframework.stereotype.Repository

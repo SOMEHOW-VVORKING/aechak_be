@@ -27,4 +27,5 @@ dependencies {
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.testcontainers)
     testImplementation(libs.testcontainers.mysql)
+    testImplementation(libs.awaitility)                 // 품절 전환 리스너가 별도 스레드라 비동기 단언 필요
 }

@@ -1,4 +1,4 @@
-package com.aechak.infra.persistence.product
+package com.aechak.infra.persistence.product.stats
 
 import com.aechak.domain.product.stats.ProductStats
 import com.aechak.domain.product.stats.repository.ProductStatsRepository
@@ -41,6 +41,8 @@ class ProductStatsRepositoryAdapter(
 ) : ProductStatsRepository {
     override fun findAllByProductIds(productIds: Collection<Long>): List<ProductStats> =
         if (productIds.isEmpty()) emptyList() else jpaRepository.findAllByProductIdIn(productIds)
+
+    override fun save(productStats: ProductStats): ProductStats = jpaRepository.save(productStats)
 
     override fun increaseLikeCount(productId: Long): Int = jpaRepository.increaseLikeCount(productId)
 

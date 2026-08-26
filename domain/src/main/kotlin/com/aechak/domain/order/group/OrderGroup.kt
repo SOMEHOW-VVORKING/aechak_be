@@ -111,6 +111,7 @@ class OrderGroup protected constructor(
 
     companion object {
         const val IDEMPOTENCY_KEY_MAX_LENGTH = 100
+        const val MIN_POINT_USAGE = 1_000L
 
         fun create(
             buyerId: Long,
@@ -125,11 +126,18 @@ class OrderGroup protected constructor(
             if (totalProductAmount < 0 || totalShippingFee < 0 || usedPoint < 0) {
                 throw BusinessException(OrderErrorCode.INVALID_ORDER_GROUP_AMOUNT)
             }
+            if (usedPoint in 1 until MIN_POINT_USAGE) {
+                throw BusinessException(OrderErrorCode.POINT_BELOW_MINIMUM_USAGE)
+            }
             val payableAmount = totalProductAmount + totalShippingFee // 쿠폰이 들어오면 couponDiscountAmount를 여기서 뺌
             if (usedPoint > payableAmount) {
                 throw BusinessException(OrderErrorCode.POINT_EXCEEDS_PAYABLE_AMOUNT)
             }
             val finalPaymentAmount = payableAmount - usedPoint
+            // 0원 그룹은 결제 준비(사전등록)가 거절해 영영 결제할 수 없다 — 생성 단계에서 막는다
+            if (finalPaymentAmount == 0L) {
+                throw BusinessException(OrderErrorCode.FULL_POINT_PAYMENT_NOT_ALLOWED)
+            }
             return OrderGroup(
                 buyerId = buyerId,
                 deliveryAddressId = deliveryAddressId,

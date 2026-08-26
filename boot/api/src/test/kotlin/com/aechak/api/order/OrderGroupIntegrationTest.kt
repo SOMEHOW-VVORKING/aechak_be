@@ -7,10 +7,11 @@ import com.aechak.domain.product.option.OptionCombination
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.product.version.ProductVersion
-import com.aechak.domain.product.version.enums.VersionChangeType
 import com.aechak.domain.product.version.enums.VersionChangedBy
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.user.address.DeliveryAddress
+import com.aechak.domain.user.point.PointTransaction
+import com.aechak.domain.user.point.enums.PointTransactionType
 import com.aechak.domain.user.user.User
 import com.jayway.jsonpath.JsonPath
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -82,7 +83,6 @@ class OrderGroupIntegrationTest : IntegrationTestBase() {
                         priceSnapshot = price,
                         statusSnapshot = SaleStatus.ON_SALE,
                         thumbnailKeySnapshot = "thumb-$sig",
-                        changeType = VersionChangeType.INFO,
                         changedBy = VersionChangedBy.SELLER,
                     ),
                 )
@@ -133,6 +133,29 @@ class OrderGroupIntegrationTest : IntegrationTestBase() {
                 .executeUpdate()
         }
     }
+
+    /** 잔액 갱신 경로(주문 도메인)를 거치지 않고 캐시 컬럼을 직접 심는다 — 조회 API 테스트와 같은 방식 */
+    private fun seedPointBalance(
+        userId: Long,
+        balance: Long,
+    ) {
+        tx.execute {
+            em
+                .createQuery("update User u set u.pointBalance = :balance, u.updatedAt = CURRENT_TIMESTAMP where u.id = :id")
+                .setParameter("balance", balance)
+                .setParameter("id", userId)
+                .executeUpdate()
+        }
+    }
+
+    private fun pointBalanceOf(userId: Long): Long =
+        em
+            .createQuery("select u.pointBalance from User u where u.id = :id", java.lang.Long::class.java)
+            .setParameter("id", userId)
+            .singleResult
+            .toLong()
+
+    private fun pointTxCount(): Long = countOf("select count(pt) from PointTransaction pt")
 
     private fun stockOf(comboId: Long): Int =
         em
@@ -219,6 +242,8 @@ class OrderGroupIntegrationTest : IntegrationTestBase() {
         assertEquals("PENDING_PAYMENT", em.createQuery("select g.status from OrderGroup g", Any::class.java).singleResult.toString())
         // 장바구니 정리는 결제 확정 이후 — 생성 시점에는 남아 있어야 함
         assertEquals(2L, cartItemCount())
+        // 적립금 미사용이면 원장에 아무것도 남지 않아야 함
+        assertEquals(0L, pointTxCount())
     }
 
     @Test
@@ -311,17 +336,134 @@ class OrderGroupIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `적립금 사용은 아직 막혀 있다`() {
+    fun `적립금을 사용하면 잔액이 깎이고 USE 원장이 남는다`() {
         val buyerId = createActiveUser()
         val token = mintAccessToken(buyerId)
         val combo = seedSellerProduct(71L, "멍멍상회", 3000L, 10000L, 10, "a")
         val cartItemIds = seedCart(buyerId, listOf(combo to 1))
         val addressId = seedAddress(buyerId)
+        seedPointBalance(buyerId, 5_000L)
+
+        val body =
+            mockMvc
+                .perform(postOrderGroup(token, orderGroupJson(cartItemIds, addressId, 11_000L, usedPoint = 2_000), "key-point-use"))
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.data.usedPoint").value(2000))
+                .andExpect(jsonPath("$.data.finalPaymentAmount").value(11000))
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+
+        assertEquals(3_000L, pointBalanceOf(buyerId))
+        assertEquals(1L, pointTxCount())
+        val ledger = em.createQuery("select pt from PointTransaction pt", PointTransaction::class.java).singleResult
+        assertEquals(2_000L, ledger.amount)
+        assertEquals(PointTransactionType.USE, ledger.transactionType)
+        assertEquals("USE:ORDER:" + JsonPath.read<String>(body, "$.data.orderGroupId"), ledger.idempotencyKey)
+        assertEquals("ORDER_GROUP", ledger.sourceType)
+        // 내부 id는 UseCase 결과로 노출하지 않으므로 sourceId는 비운다 — 원장→주문 추적은 멱등키의 publicId로
+        assertEquals(null, ledger.sourceId)
+    }
+
+    @Test
+    fun `적립금 잔액이 부족하면 거절되고 재고 차감도 롤백된다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val combo = seedSellerProduct(71L, "멍멍상회", 3000L, 10000L, 10, "a")
+        val cartItemIds = seedCart(buyerId, listOf(combo to 1))
+        val addressId = seedAddress(buyerId)
+        seedPointBalance(buyerId, 1_500L)
 
         mockMvc
-            .perform(postOrderGroup(token, orderGroupJson(cartItemIds, addressId, 12500L, usedPoint = 500), "key-point"))
+            .perform(postOrderGroup(token, orderGroupJson(cartItemIds, addressId, 11_000L, usedPoint = 2_000), "key-point-short"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(30101))
+
+        assertEquals(0L, orderGroupCount())
+        assertEquals(10, stockOf(combo)) // 잔액 검증은 재고 차감 뒤 — 같은 트랜잭션이라 함께 롤백돼야 함
+        assertEquals(1_500L, pointBalanceOf(buyerId))
+        assertEquals(0L, pointTxCount())
+    }
+
+    @Test
+    fun `적립금 1000원 미만 사용은 거절한다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val combo = seedSellerProduct(71L, "멍멍상회", 3000L, 10000L, 10, "a")
+        val cartItemIds = seedCart(buyerId, listOf(combo to 1))
+        val addressId = seedAddress(buyerId)
+        seedPointBalance(buyerId, 5_000L)
+
+        mockMvc
+            .perform(postOrderGroup(token, orderGroupJson(cartItemIds, addressId, 12_001L, usedPoint = 999), "key-point-min"))
             .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.errorCode").value(90001))
+            .andExpect(jsonPath("$.errorCode").value(50103))
+
+        assertEquals(0L, orderGroupCount())
+        assertEquals(10, stockOf(combo))
+        assertEquals(5_000L, pointBalanceOf(buyerId))
+    }
+
+    @Test
+    fun `적립금 전액 결제는 생성부터 거절한다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val combo = seedSellerProduct(71L, "멍멍상회", 3000L, 10000L, 10, "a")
+        val cartItemIds = seedCart(buyerId, listOf(combo to 1))
+        val addressId = seedAddress(buyerId)
+        seedPointBalance(buyerId, 20_000L)
+
+        mockMvc
+            .perform(postOrderGroup(token, orderGroupJson(cartItemIds, addressId, 0L, usedPoint = 13_000), "key-point-full"))
+            .andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.errorCode").value(50110))
+
+        assertEquals(0L, orderGroupCount())
+        assertEquals(20_000L, pointBalanceOf(buyerId))
+        assertEquals(0L, pointTxCount())
+    }
+
+    @Test
+    fun `멱등 재요청은 적립금을 두 번 깎지 않는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val combo = seedSellerProduct(71L, "멍멍상회", 3000L, 10000L, 10, "a")
+        val cartItemIds = seedCart(buyerId, listOf(combo to 1))
+        val addressId = seedAddress(buyerId)
+        seedPointBalance(buyerId, 5_000L)
+        val json = orderGroupJson(cartItemIds, addressId, 11_000L, usedPoint = 2_000)
+
+        perform201(token, json, "key-point-replay")
+        perform201(token, json, "key-point-replay")
+
+        assertEquals(1L, orderGroupCount())
+        assertEquals(3_000L, pointBalanceOf(buyerId))
+        assertEquals(1L, pointTxCount())
+    }
+
+    @Test
+    fun `같은 잔액을 두 주문이 다투면 한 쪽만 성공한다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val comboA = seedSellerProduct(71L, "멍멍상회", 3000L, 10000L, 5, "a")
+        val comboB = seedSellerProduct(72L, "야옹샵", 2500L, 8000L, 5, "b")
+        val cartItemIds = seedCart(buyerId, listOf(comboA to 1, comboB to 1))
+        val addressId = seedAddress(buyerId)
+        seedPointBalance(buyerId, 2_000L)
+        val requests =
+            listOf(
+                postOrderGroup(token, orderGroupJson(listOf(cartItemIds[0]), addressId, 11_000L, usedPoint = 2_000), "key-point-race-a"),
+                postOrderGroup(token, orderGroupJson(listOf(cartItemIds[1]), addressId, 8_500L, usedPoint = 2_000), "key-point-race-b"),
+            )
+
+        val results = raceTwo(requests[0]) { requests[1] }
+
+        assertEquals(listOf(201, 409), results.map { it.first }.sorted())
+        val loser = results.first { it.first == 409 }
+        assertEquals(30101, JsonPath.read<Int>(loser.second, "$.errorCode"))
+        assertEquals(0L, pointBalanceOf(buyerId)) // 잔액은 정확히 한 번만 깎임
+        assertEquals(1L, pointTxCount())
+        assertEquals(1L, orderGroupCount())
     }
 
     @Test

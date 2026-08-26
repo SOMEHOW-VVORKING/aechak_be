@@ -46,10 +46,39 @@ class OrderGroupTest {
     }
 
     @Test
-    fun `적립금으로 전액을 덮으면 결제금액이 0원이 된다`() {
-        val group = orderGroup(usedPoint = 13_000L)
+    fun `적립금으로 전액을 덮으면 50110으로 차단된다`() {
+        val e = assertFailsWith<BusinessException> { orderGroup(usedPoint = 13_000L) }
 
-        assertEquals(0L, group.finalPaymentAmount, "적립금이 결제 가능액과 같으면 0원까지는 허용해야 한다")
+        assertEquals(
+            OrderErrorCode.FULL_POINT_PAYMENT_NOT_ALLOWED,
+            e.errorCode,
+            "0원 그룹은 결제 준비가 거절해 영영 결제할 수 없다 — 생성부터 50110으로 막아야 한다",
+        )
+    }
+
+    @Test
+    fun `결제 금액이 1원만 남아도 생성은 허용된다`() {
+        val group = orderGroup(usedPoint = 12_999L)
+
+        assertEquals(1L, group.finalPaymentAmount, "전액 차단은 정확히 0원만 막아야 한다 — 1원부터는 결제 가능")
+    }
+
+    @Test
+    fun `적립금 1000원 미만 사용은 50103으로 차단된다`() {
+        val e = assertFailsWith<BusinessException> { orderGroup(usedPoint = 999L) }
+
+        assertEquals(
+            OrderErrorCode.POINT_BELOW_MINIMUM_USAGE,
+            e.errorCode,
+            "최소 사용액(1,000원) 미만이면 50103이어야 한다. 0원(미사용)은 이 검증을 타지 않는다",
+        )
+    }
+
+    @Test
+    fun `적립금은 정확히 1000원부터 사용할 수 있다`() {
+        val group = orderGroup(usedPoint = 1_000L)
+
+        assertEquals(12_000L, group.finalPaymentAmount, "경계값 1,000원은 허용돼야 한다")
     }
 
     @Test
