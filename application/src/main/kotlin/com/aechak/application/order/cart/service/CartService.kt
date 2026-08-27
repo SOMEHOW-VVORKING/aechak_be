@@ -156,6 +156,26 @@ class CartService(
         return itemStatus
     }
 
+    /**
+     * 결제 확정 뒤 주문한 항목을 장바구니에서 걷어냄 — 장바구니나 해당 항목이 없으면 0.
+     * 수량까지 일치하는 항목만 지운다 — 주문과 결제 사이에 다시 담아 수량이 달라진 항목은 남긴다(과잉 삭제 방지).
+     */
+    fun removeOrderedItems(
+        buyerId: Long,
+        orderedQuantities: Map<Long, Int>,
+    ): Int {
+        if (orderedQuantities.isEmpty()) return 0
+        // 장바구니 쓰기(담기·수정·삭제)와 같은 락으로 직렬화 — 무잠금 읽기면 읽은 직후 커밋된 수량 변경을 지워버린다
+        val cart = cartRepository.findByBuyerIdForUpdate(buyerId) ?: return 0
+        val targetIds =
+            cart.items
+                .filter { orderedQuantities[it.optionCombinationId] == it.quantity }
+                .map { it.id }
+                .toSet()
+        if (targetIds.isEmpty()) return 0
+        return cart.removeItems(targetIds)
+    }
+
     fun cartExists(buyerId: Long): Boolean = cartRepository.existsByBuyerId(buyerId)
 
     fun findCartItems(buyerId: Long): List<CartItem> = cartRepository.findByBuyerIdWithItems(buyerId)?.items.orEmpty()
