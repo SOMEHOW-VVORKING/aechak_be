@@ -1,6 +1,6 @@
 package com.aechak.application.review.service
 
-import com.aechak.application.order.usecase.result.ReviewOrderItemResult
+import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 import com.aechak.application.review.moderation.service.ReviewModerationDecision
 import com.aechak.application.review.usecase.command.CreateReviewCommand
 import com.aechak.common.error.BusinessException
@@ -18,7 +18,7 @@ class ReviewCommandService(
 ) {
     fun ensureCanCreateReview(
         command: CreateReviewCommand,
-        orderItem: ReviewOrderItemResult,
+        orderItem: OrderItemForReviewResult,
     ) {
         val confirmedAt = orderItem.purchaseConfirmedAt
         if (!orderItem.isPurchaseConfirmed || confirmedAt == null) {
@@ -45,7 +45,7 @@ class ReviewCommandService(
 
     fun create(
         command: CreateReviewCommand,
-        orderItem: ReviewOrderItemResult,
+        orderItem: OrderItemForReviewResult,
         images: List<ReviewImage>,
         moderationDecision: ReviewModerationDecision,
     ): Review {

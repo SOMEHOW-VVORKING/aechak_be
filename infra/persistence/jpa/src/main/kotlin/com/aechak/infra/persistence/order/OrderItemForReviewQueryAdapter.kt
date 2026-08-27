@@ -1,7 +1,7 @@
 package com.aechak.infra.persistence.order
 
-import com.aechak.application.order.port.OrderItemReviewQueryPort
-import com.aechak.application.order.port.view.OrderItemReviewView
+import com.aechak.application.order.port.OrderItemForReviewQueryPort
+import com.aechak.application.order.port.view.OrderItemForReviewView
 import com.aechak.domain.order.group.QOrderGroup
 import com.aechak.domain.order.order.QOrder
 import com.aechak.domain.order.order.QOrderItem
@@ -14,17 +14,17 @@ private val orderItem = QOrderItem.orderItem
 private val orderGroup = QOrderGroup.orderGroup
 
 @Repository
-class OrderItemReviewQueryAdapter(
+class OrderItemForReviewQueryAdapter(
     private val queryFactory: JPAQueryFactory,
-) : OrderItemReviewQueryPort {
+) : OrderItemForReviewQueryPort {
     override fun findOrderItemForReview(
         orderItemId: Long,
         buyerId: Long,
-    ): OrderItemReviewView? =
+    ): OrderItemForReviewView? =
         queryFactory
             .select(
                 Projections.constructor(
-                    OrderItemReviewView::class.java,
+                    OrderItemForReviewView::class.java,
                     orderItem.id,
                     order.status,
                     orderItem.itemStatus,

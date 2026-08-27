@@ -1,6 +1,6 @@
 package com.aechak.application.review.usecase.command
 
-import com.aechak.application.order.usecase.result.ReviewOrderItemResult
+import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 import com.aechak.domain.review.review.Review
 import com.aechak.domain.review.review.ReviewImage
 
@@ -13,7 +13,7 @@ data class CreateReviewCommand(
     val imageKeys: List<String> = emptyList(),
 ) {
     fun toEntity(
-        orderItem: ReviewOrderItemResult,
+        orderItem: OrderItemForReviewResult,
         images: List<ReviewImage>,
     ): Review =
         Review.write(

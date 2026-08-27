@@ -5,7 +5,7 @@ import com.aechak.domain.order.order.enums.OrderStatus
 import java.time.LocalDateTime
 
 /** 리뷰 작성 자격 판정용 주문품목 읽기 모델 */
-data class OrderItemReviewView(
+data class OrderItemForReviewView(
     val orderItemId: Long,
     val orderStatus: OrderStatus,
     val itemStatus: OrderItemStatus,
