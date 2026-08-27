@@ -94,6 +94,7 @@ class PortOneAdapter(
             paidAmount = response.amount.paid,
             pgTxId = response.pgTxId,
             paidAt = response.paidAt?.atZoneSameInstant(KST)?.toLocalDateTime(),
+            failureCode = response.failure?.pgCode ?: response.failure?.reason,
         )
     }
 
@@ -205,10 +206,17 @@ private data class PaymentResponse(
     val amount: Amount,
     val pgTxId: String?,
     val paidAt: OffsetDateTime?,
+    val failure: Failure? = null,
 ) {
     data class Amount(
         val total: Long,
         val paid: Long,
+    )
+
+    /** FAILED 응답에만 실림 — 포트원 공식 스키마 PaymentFailure(reason·pgCode·pgMessage)의 부분 매핑 */
+    data class Failure(
+        val reason: String? = null,
+        val pgCode: String? = null,
     )
 }
 

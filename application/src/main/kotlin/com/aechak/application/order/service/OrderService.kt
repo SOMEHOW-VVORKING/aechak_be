@@ -3,6 +3,7 @@ package com.aechak.application.order.service
 import com.aechak.application.order.port.OrderCatalogQueryPort
 import com.aechak.application.order.port.view.OrderCatalogItemView
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
+import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
 import com.aechak.application.pii.port.PiiCrypto
 import com.aechak.application.user.address.usecase.result.DeliveryAddressResult
@@ -11,6 +12,7 @@ import com.aechak.domain.order.cart.CartItem
 import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
+import com.aechak.domain.order.group.enums.OrderGroupStatus
 import com.aechak.domain.order.group.repository.OrderGroupRepository
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.OrderItem
@@ -94,6 +96,39 @@ class OrderService(
             shippingFees = linesBySeller.mapValues { (_, sellerLines) -> shippingFee(sellerLines) },
         )
     }
+
+    /** 결제 확정의 선점 — 조건부 UPDATE가 심판이고, 진 쪽은 현재 상태로 행동을 정한다 */
+    fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult {
+        if (orderGroupRepository.markPaidIfPending(orderGroupId)) {
+            orderRepository.markAllPaidByOrderGroupId(orderGroupId)
+            return ConfirmGroupPaidResult.CONFIRMED
+        }
+        val group =
+            requireNotNull(orderGroupRepository.findById(orderGroupId)) {
+                "선점을 시도한 주문그룹은 존재해야 합니다 (orderGroupId=$orderGroupId)"
+            }
+        return when (group.status) {
+            OrderGroupStatus.PAID -> {
+                ConfirmGroupPaidResult.ALREADY_PAID
+            }
+
+            OrderGroupStatus.CANCELLED, OrderGroupStatus.PARTIALLY_CANCELLED -> {
+                ConfirmGroupPaidResult.ALREADY_CANCELLED
+            }
+
+            OrderGroupStatus.PENDING_PAYMENT -> {
+                error("선점에 진 직후에는 결제대기일 수 없습니다 (orderGroupId=$orderGroupId)")
+            }
+        }
+    }
+
+    /** 옵션 조합별 주문 수량 — 장바구니 정리가 "주문한 그대로인 항목"만 걷어내는 기준 */
+    fun orderedQuantities(orderGroupId: Long): Map<Long, Int> =
+        orderRepository
+            .findAllByOrderGroupId(orderGroupId)
+            .flatMap { order -> order.items }
+            .groupBy({ it.optionCombinationId }, { it.quantity })
+            .mapValues { (_, quantities) -> quantities.sum() }
 
     /** 최종 재고 판정은 조건부 원자 UPDATE. id 오름차순으로 깎아 교차 주문 간 데드락을 예방한다 */
     private fun deductStock(selected: List<CartItem>) {
