@@ -2,8 +2,10 @@ package com.aechak.api.payment
 
 import com.aechak.api.payment.config.PaymentStoreProperties
 import com.aechak.api.payment.request.PreparePaymentRequest
+import com.aechak.api.payment.response.CompletePaymentResponse
 import com.aechak.api.payment.response.PreparePaymentResponse
 import com.aechak.application.payment.usecase.PaymentUseCase
+import com.aechak.application.payment.usecase.command.CompletePaymentCommand
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.payment.error.PaymentErrorCode
 import com.aechak.webcommon.response.ApiResponse
@@ -36,6 +38,16 @@ class PaymentController(
         validateStoreConfig()
         val result = paymentUseCase.preparePayment(request.toCommand(principal.userId, orderGroupId))
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.of(PreparePaymentResponse.of(result, store)))
+    }
+
+    /** 결제창이 닫힌 뒤 FE가 부르는 확정 콜백 — 본문 없음, 진실은 서버가 포트원에 직접 확인한다 */
+    @PostMapping("/{orderGroupId}/payment/complete")
+    fun completePayment(
+        @PathVariable orderGroupId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<CompletePaymentResponse>> {
+        val result = paymentUseCase.completePayment(CompletePaymentCommand(principal.userId, orderGroupId))
+        return ResponseEntity.ok(ApiResponse.of(CompletePaymentResponse.from(result)))
     }
 
     private fun validateStoreConfig() {
