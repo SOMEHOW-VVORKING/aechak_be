@@ -12,6 +12,7 @@ import com.aechak.application.product.product.usecase.command.ChangeProductSaleS
 import com.aechak.application.product.product.usecase.command.RegisterProductCommand
 import com.aechak.application.product.product.usecase.command.UpdateProductCommand
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.usecase.query.SellerProductSearchQuery
 import com.aechak.application.product.product.usecase.result.OptionCombinationChangeResult
 import com.aechak.application.product.product.usecase.result.ProductOptionsResult
 import com.aechak.application.product.product.usecase.result.ProductRegisterResult
@@ -19,11 +20,15 @@ import com.aechak.application.product.product.usecase.result.ProductResult
 import com.aechak.application.product.product.usecase.result.ProductSaleStatusChangeResult
 import com.aechak.application.product.product.usecase.result.ProductSummaryResult
 import com.aechak.application.product.product.usecase.result.ProductUpdateResult
+import com.aechak.application.product.product.usecase.result.SellerProductOptionsResult
+import com.aechak.application.product.product.usecase.result.SellerProductSummaryResult
 import com.aechak.application.product.stats.service.ProductStatsService
 import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.application.support.CursorPageResult
+import com.aechak.application.support.OffsetPageResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.error.ProductErrorCode
+import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.Transactional
@@ -100,9 +105,32 @@ class ProductFacade(
         return productService.changeOptionCombination(command)
     }
 
+    @Transactional(readOnly = true)
+    override fun getMyProducts(query: SellerProductSearchQuery): OffsetPageResult<SellerProductSummaryResult> {
+        requireProductReadableSeller(query.sellerId)
+        val now = LocalDateTime.now()
+        return productService.getSellerPage(query, now).map { SellerProductSummaryResult.from(view = it, now = now) }
+    }
+
+    @Transactional(readOnly = true)
+    override fun getMyProductOptions(
+        sellerId: Long,
+        publicId: String,
+    ): SellerProductOptionsResult {
+        requireProductReadableSeller(sellerId)
+        return SellerProductOptionsResult.from(productService.getOwnedOptions(sellerId, publicId))
+    }
+
     private fun requireActiveSeller(sellerId: Long) {
         if (!sellerUseCase.isActiveSeller(sellerId)) {
             throw BusinessException(ProductErrorCode.PRODUCT_SELLER_NOT_ACTIVE)
+        }
+    }
+
+    /** 조회 자격 게이트 — 자격 소멸(탈퇴)과 제재(정지)만 막는다. 휴점·탈퇴신청 셀러는 자기 상품을 본다 */
+    private fun requireProductReadableSeller(sellerId: Long) {
+        if (sellerUseCase.getSellerStatus(sellerId) !in PRODUCT_READABLE_SELLER_STATUSES) {
+            throw BusinessException(ProductErrorCode.PRODUCT_SELLER_READ_FORBIDDEN)
         }
     }
 
@@ -144,4 +172,9 @@ class ProductFacade(
         sellerId: Long,
         tmpKey: String,
     ): String = fileUseCase.promote(PromoteFileCommand(tmpKey, sellerId, UploadPurpose.PRODUCT)).key
+
+    companion object {
+        private val PRODUCT_READABLE_SELLER_STATUSES =
+            setOf(SellerStatus.ACTIVE, SellerStatus.PAUSED, SellerStatus.WITHDRAWAL_REQUESTED)
+    }
 }

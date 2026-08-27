@@ -1,5 +1,6 @@
 package com.aechak.application.seller.service
 
+import com.aechak.domain.seller.seller.enums.SellerStatus
 import com.aechak.domain.seller.seller.repository.SellerRepository
 import org.springframework.stereotype.Service
 
@@ -12,4 +13,6 @@ class SellerService(
     private val sellerRepository: SellerRepository,
 ) {
     fun isActive(userId: Long): Boolean = sellerRepository.existsActiveByUserId(userId)
+
+    fun getStatus(userId: Long): SellerStatus? = sellerRepository.findStatusByUserId(userId)
 }
