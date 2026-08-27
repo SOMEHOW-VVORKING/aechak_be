@@ -28,6 +28,8 @@ data class PaymentGatewayView(
     val paidAmount: Long,
     val pgTxId: String?,
     val paidAt: LocalDateTime?,
+    /** FAILED일 때 PG 원본 실패 코드(없으면 사유 문자열). 포트원 응답에 없으면 null */
+    val failureCode: String? = null,
 )
 
 /** 현재는 포트원 결제 상태를 기반으로 함 */
