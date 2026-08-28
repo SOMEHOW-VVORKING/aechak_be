@@ -13,6 +13,7 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
@@ -20,6 +21,9 @@ import java.time.LocalDateTime
 @Entity
 @Table(
     name = "order_groups",
+    indexes = [
+        Index(name = "idx_order_groups_buyer_id", columnList = "buyer_id, id"),
+    ],
     uniqueConstraints = [
         UniqueConstraint(name = "uk_order_group_public_id", columnNames = ["public_id"]),
         UniqueConstraint(name = "uk_order_group_idempotency_key", columnNames = ["idempotency_key"]),
