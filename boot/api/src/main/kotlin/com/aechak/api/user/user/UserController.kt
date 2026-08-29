@@ -1,17 +1,23 @@
 package com.aechak.api.user.user
 
+import com.aechak.api.auth.cookie.RefreshCookieFactory
 import com.aechak.api.user.user.request.NicknameRequest
 import com.aechak.api.user.user.request.SubmitConsentsRequest
 import com.aechak.api.user.user.request.UpdateProfileRequest
 import com.aechak.api.user.user.response.NicknameCheckResponse
 import com.aechak.api.user.user.response.UserMeResponse
+import com.aechak.api.user.user.response.WithdrawalCheckResponse
 import com.aechak.application.user.term.usecase.ConsentUseCase
 import com.aechak.application.user.user.usecase.UserUseCase
+import com.aechak.application.user.withdrawal.usecase.WithdrawalUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
+import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -29,10 +35,12 @@ import org.springframework.web.bind.annotation.RestController
  * - 성공 응답은 ApiResponse로 감싸고, 반환할 데이터 없는 성공은 빈 본문 + 상태코드로만 표현한다.
  */
 @RestController
-@RequestMapping("/users") // 접두(api.base-path)는 WebConfig가 일괄 부착
+@RequestMapping("/users")
 class UserController(
     private val userUseCase: UserUseCase,
     private val consentUseCase: ConsentUseCase,
+    private val withdrawalUseCase: WithdrawalUseCase,
+    private val refreshCookieFactory: RefreshCookieFactory,
 ) {
     /** 닉네임 사용 가능 검사 — UX 보조(예약 아님, 최종 판정은 PUT의 DB UNIQUE). 본인 현재 닉네임은 available=true. */
     @GetMapping("/nickname/check")
@@ -79,5 +87,27 @@ class UserController(
     ): ResponseEntity<Void> {
         consentUseCase.submitConsents(request.toCommand(principal.userId))
         return ResponseEntity.noContent().build()
+    }
+
+    /** 탈퇴 가능 여부 조회 */
+    @GetMapping("/me/withdrawal/check")
+    fun checkWithdrawal(
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<WithdrawalCheckResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(WithdrawalCheckResponse.from(withdrawalUseCase.checkWithdrawal(principal.userId))),
+        )
+
+    /** 회원 탈퇴 */
+    @DeleteMapping("/me")
+    fun withdraw(
+        @AuthenticationPrincipal principal: AuthPrincipal,
+        request: HttpServletRequest,
+    ): ResponseEntity<Void> {
+        withdrawalUseCase.withdraw(principal.userId)
+        return ResponseEntity
+            .noContent()
+            .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.expire(request).toString()) // 쿠키를 만료 시켜 refresh 쿠키 삭제
+            .build()
     }
 }

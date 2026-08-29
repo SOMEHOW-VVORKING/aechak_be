@@ -18,8 +18,14 @@ interface FileStorage {
         purpose: UploadPurpose,
     ): String
 
-    /** 저장된 key → 표시용 공개 URL(CDN) — 응답 조립 시 사용. */
+    /** 저장된 키를 클라이언트에 전달할 공개 URL로 변환 */
     fun publicUrlOf(key: String): String
+
+    /** 저장된 객체를 삭제 */
+    fun delete(
+        key: String,
+        purpose: UploadPurpose,
+    )
 }
 
 data class IssueFileUrl(

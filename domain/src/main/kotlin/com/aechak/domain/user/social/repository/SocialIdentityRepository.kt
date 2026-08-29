@@ -11,6 +11,10 @@ interface SocialIdentityRepository {
 
     fun save(identity: SocialIdentity): SocialIdentity
 
-    /** 유저의 소셜 연결 — MVP는 유저당 1개 전제, 복수면 최초 연결분. */
+    /** 사용자의 첫 번째 소셜 연결을 조회 */
     fun findByUserId(userId: Long): SocialIdentity?
+
+    fun delete(identity: SocialIdentity)
+
+    fun flush()
 }

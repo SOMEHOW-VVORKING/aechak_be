@@ -17,16 +17,14 @@ import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.social.enums.SocialProvider
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 
 /**
- * auth 유스케이스들의 유일한 구현 Facade — 트랜잭션 경계 소유는 Facade 고정 규칙 그대로.
- *
- * login만 @Transactional 대신 TransactionTemplate(프로그램적 경계)을 쓴다:
- * 동시 가입 race의 재조회 폴백은 "실패(롤백)한 트랜잭션 밖에서 새 트랜잭션으로 재시도"가 필요해
- * 선언적 경계로는 표현할 수 없다. refresh/logout은 Redis만 만지므로 DB 트랜잭션이 없다.
+ * 로그인은 동시 가입 충돌로 트랜잭션이 롤백된 뒤 새 트랜잭션에서 다시 조회해야 하므로
+ * TransactionTemplate을, 토큰 갱신과 로그아웃은 Redis 사용
  */
 @Service
 class AuthFacade(
@@ -48,6 +46,8 @@ class AuthFacade(
 
     override fun logout(refreshToken: String) = tokenService.revoke(refreshToken)
 
+    override fun revokeAll(userId: Long) = tokenService.revokeAll(userId)
+
     override fun prepareLogin(
         provider: SocialProvider,
         returnUrl: String,
@@ -65,7 +65,7 @@ class AuthFacade(
 
         if (code == null) {
             // provider 측 거부(사용자 취소 등) — code 없이 콜백만 옴
-            log.warn("웹 로그인 콜백에 code 없음 — provider={} (사용자 취소 또는 provider 거부)", provider)
+            log.warn("웹 로그인 콜백에 code 없음: provider={} (사용자 취소 또는 provider 거부)", provider)
             return WebLoginCompletion.Failure(returnUrl, AuthErrorCode.AUTHORIZATION_CODE_MISSING)
         }
 
@@ -75,17 +75,19 @@ class AuthFacade(
             WebLoginCompletion.Success(returnUrl, login.tokens.refreshToken, login.userStatus, login.isNew)
         } catch (e: BusinessException) {
             // 콜백 응답에는 body 수신자가 없다 — 실패도 (검증된) return으로 실어 보낸다.
-            // 예외가 여기서 소멸하므로 원인(cause에 provider 거절 사유 포함)은 이 로그가 유일한 단서다.
-            log.warn("웹 로그인 실패 — provider={}, errorCode={}", provider, e.errorCode.code, e)
+            log.warn("웹 로그인 실패: provider={}, errorCode={}", provider, e.errorCode.code, e)
             WebLoginCompletion.Failure(returnUrl, e.errorCode)
         }
     }
 
     private fun loginWithRetry(command: SocialLoginCommand): SocialLoginResult =
         try {
-            tx.execute { socialLoginService.login(command) }!!
+            tx.execute { socialLoginService.login(command) }
         } catch (e: DataIntegrityViolationException) {
-            // 동시 가입 race — 승자의 identity를 새 트랜잭션에서 재조회(폴백)
-            tx.execute { socialLoginService.login(command) }!!
+            // 가입 요청이 겹친 경우 먼저 생성된 소셜 연결을 새 트랜잭션에서 조회
+            tx.execute { socialLoginService.login(command) }
+        } catch (e: OptimisticLockingFailureException) {
+            // 재가입이 겹쳐 옛 연결을 다른 요청이 먼저 지운 경우 새 트랜잭션에서 다시 조회
+            tx.execute { socialLoginService.login(command) }
         }
 }

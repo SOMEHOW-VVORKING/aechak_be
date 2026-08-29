@@ -1,5 +1,7 @@
 package com.aechak.api.user.user
 
+import com.aechak.api.auth.cookie.RefreshCookieFactory
+import com.aechak.application.auth.service.TokenPolicy
 import com.aechak.application.user.term.usecase.ConsentUseCase
 import com.aechak.application.user.term.usecase.command.SubmitConsentsCommand
 import com.aechak.application.user.term.usecase.result.TermResult
@@ -10,6 +12,8 @@ import com.aechak.application.user.user.usecase.query.UserSearchQuery
 import com.aechak.application.user.user.usecase.result.UserAuthorResult
 import com.aechak.application.user.user.usecase.result.UserMeResult
 import com.aechak.application.user.user.usecase.result.UserSummaryResult
+import com.aechak.application.user.withdrawal.usecase.WithdrawalUseCase
+import com.aechak.application.user.withdrawal.usecase.result.WithdrawalCheckResult
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.user.enums.UserRole
 import com.aechak.domain.user.user.enums.UserStatus
@@ -33,6 +37,7 @@ import org.springframework.web.method.support.HandlerMethodArgumentResolver
 import org.springframework.web.method.support.ModelAndViewContainer
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.kotlinModule
+import java.time.Duration
 
 class UserControllerTest {
     private var capturedConsents: SubmitConsentsCommand? = null
@@ -109,9 +114,26 @@ class UserControllerTest {
             ): Any = AuthPrincipal(userId = 7L, role = UserRole.GENERAL)
         }
 
+    private val fakeWithdrawalUseCase =
+        object : WithdrawalUseCase {
+            override fun checkWithdrawal(userId: Long): WithdrawalCheckResult = error("not used")
+
+            override fun withdraw(userId: Long) = error("not used")
+        }
+
+    private val refreshCookieFactory =
+        RefreshCookieFactory(
+            TokenPolicy(
+                accessTtl = Duration.ofMinutes(30),
+                refreshTtl = Duration.ofDays(7),
+                rotationGrace = Duration.ofSeconds(60),
+            ),
+            basePath = "/api/v1",
+        )
+
     private val mockMvc: MockMvc =
         MockMvcBuilders
-            .standaloneSetup(UserController(fakeUserUseCase, fakeConsentUseCase))
+            .standaloneSetup(UserController(fakeUserUseCase, fakeConsentUseCase, fakeWithdrawalUseCase, refreshCookieFactory))
             .setCustomArgumentResolvers(principalResolver)
             // 런타임(Boot)과 동일하게 Kotlin 모듈 매퍼 사용 — is-접두 필드명 보존·필수 필드 누락을 파싱 단계에서 거른다
             .setMessageConverters(JacksonJsonHttpMessageConverter(JsonMapper.builder().addModule(kotlinModule()).build()))
