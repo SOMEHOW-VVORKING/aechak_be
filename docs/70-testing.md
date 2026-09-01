@@ -76,7 +76,9 @@ application·boot의 코드도 스프링 없이 검증 가능하면 순수 단�
 **규칙**: 모든 통합 테스트는 **자기 모듈의 베이스**를 상속한다. boot/api에서는 `IntegrationTestBase`, 내장 Kafka가 필요하면 `KafkaIntegrationTestBase`(§3.0). 개별 테스트 클래스에서
 `@SpringBootTest(properties=...)`·`@MockitoBean`·`@DirtiesContext`·자체 `@Testcontainers`/`@Container`를 선언하지 않는다.
 
-**모듈 경계 주의**: 테스트 소스셋은 모듈 사설이라 baseline을 다른 모듈에서 상속할 수 없다(현재 `java-test-fixtures` 등 공유 장치 없음). 다른 실행 모듈에 첫 통합 테스트를 넣는 커밋에서는 **그 모듈의 베이스를 함께 만들거나** 공유 방식을 먼저 결정한다(§9). 베이스 수는 모듈당 최소로 유지한다.
+**모듈 경계 주의**: 테스트 소스셋은 모듈 사설이라 베이스를 다른 모듈에서 그냥 상속할 수 없다 — 공유 장치는 `:api`의 java-test-fixtures 하나뿐이다(SCRUM-192). 다른 실행 모듈에 첫 통합 테스트를 넣는 커밋에서는 **그 모듈의 베이스를 함께 만든다.** 베이스 수는 모듈당 최소로 유지한다.
+
+**공유할지 자체로 갈지의 기준**: `:api` fixtures를 소비하면 `:api`와 그것이 물고 있는 `:web-common`이 테스트 런타임에 함께 딸려 온다. 그러니 웹 계층을 이미 쓰는 실행 모듈만 소비한다(현재 seller-api). 웹 응답 규격을 안 쓰기로 선언한 모듈이 fixtures를 당기면 프로덕션에서 끊어 둔 의존이 테스트에서만 되살아나므로, 그런 모듈은 자체 베이스를 둔다 — `boot/batch`의 `BatchIntegrationTestBase`가 그 실물이다(SCRUM-218).
 
 **근거**: Spring 테스트 컨텍스트 캐시는 프로퍼티·bean override·`@AutoConfigure*` 등 설정 전부를 캐시 키에 넣는다. 클래스마다 설정이 조금이라도 다르면 컨텍스트가 갈라져 부팅이
 반복된다(실행 시간 증가 + 같은 DB에 스키마 생성 중복). 전원이 같은 베이스를 상속하면 부팅은 JVM당 1회로 상수화된다. 캐시 논리 설명은 이 절에만 둔다 — 다른 절의 금지 규칙들은 전부 여기로 귀결된다.
@@ -145,7 +147,7 @@ AFTER_COMMIT 리스너가 발화하지 않고, 이벤트/outbox 흐름이 조용
 
 - 이미지 태그는 운영 DB 버전으로 고정한다(`latest` 금지). 현재 태그 값은 코드가 들고 있다.
 - 스키마는 지금 `ddl-auto=create`로 만든다(ERD 확정 전 과도기).
-- 알려진 예외: `boot/batch`는 아웃박스 스위퍼가 실 outbox 테이블을 읽어야 해서 런타임 DB가 MySQL이다(H2 제거 완료, SCRUM-143). 테스트는 아직 착수하지 않았다 — 착수하는 커밋에서 재사용 가능한 베이스(§3 예외)부터 만들고 같은 패턴으로 정렬한다. 그 전까지 batch 테스트 작성 금지.
+- 알려진 예외: `boot/batch`는 아웃박스 스위퍼가 실 outbox 테이블을 읽어야 해서 런타임 DB가 MySQL이다(H2 제거 완료, SCRUM-143). 테스트는 `:api` test-fixtures를 소비하지 않고 자체 베이스 `BatchIntegrationTestBase`를 상속한다(SCRUM-218, §3). MySQL 컨테이너는 빈 수명에서 분리(수동 start)하고 스키마는 `ddl-auto=create`로 만든다 — 다른 베이스와 같은 패턴이다.
 
 ## 7. 스타일
 
@@ -195,7 +197,7 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
   소비 모듈은 `testImplementation(testFixtures(project(":api")))`로 공유한다. KafkaIntegrationTestBase는 api 전용(컨슈머가 api에만 있음)이라 api src/test 잔류.
 - **MongoDB**: 도입 시 공용 베이스에 `@ServiceConnection` Mongo 컨테이너를 추가한다 — 별도 베이스를 만들지 않는다.
 - **병렬 실행**: 테스트별 스키마/DB 분리로 격리가 강화되면 재검토.
-- **모듈 간 테스트 베이스 공유**: boot/batch·infra에 통합 테스트가 필요해지는 커밋에서 결정한다 — 위 `:api` test-fixtures를 그대로 소비할지, 모듈마다 자체 베이스를 둘지. 공유 장치 자체는 SCRUM-192에서 `:api` java-test-fixtures로 도입됐고, 현재 소비자는 seller-api뿐이다.
+- ~~**모듈 간 테스트 베이스 공유**~~ → **본문 승격 완료(§3, SCRUM-218, 2026-08-27)**. `:api` test-fixtures는 웹 계층을 쓰는 실행 모듈만 소비하고, 그렇지 않은 모듈은 자체 베이스를 둔다. boot/batch가 첫 사례. infra는 통합 테스트가 필요해지는 커밋에서 같은 기준으로 정한다.
 - **운영 MySQL 버전 확정 시**: 컨테이너 태그를 그 버전으로 맞춘다.
 
 ## 10. PR 전 체크리스트
