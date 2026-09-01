@@ -24,4 +24,9 @@ interface UserRepository {
         userId: Long,
         amount: Long,
     ): Boolean
+
+    fun addPointBalance(
+        userId: Long,
+        amount: Long,
+    ): Boolean
 }

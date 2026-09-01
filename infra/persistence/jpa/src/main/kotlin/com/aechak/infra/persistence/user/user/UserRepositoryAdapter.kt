@@ -49,6 +49,18 @@ interface UserJpaRepository : JpaRepository<User, Long> {
         @Param("amount") amount: Long,
         @Param("now") now: LocalDateTime,
     ): Int
+
+    @Modifying
+    @Query(
+        "update User u " +
+            "set u.pointBalance = u.pointBalance + :amount, u.updatedAt = :now " +
+            "where u.id = :userId",
+    )
+    fun addPointBalance(
+        @Param("userId") userId: Long,
+        @Param("amount") amount: Long,
+        @Param("now") now: LocalDateTime,
+    ): Int
 }
 
 /**
@@ -77,4 +89,9 @@ class UserRepositoryAdapter(
         userId: Long,
         amount: Long,
     ): Boolean = jpaRepository.deductPointBalance(userId, amount, LocalDateTime.now()) == 1
+
+    override fun addPointBalance(
+        userId: Long,
+        amount: Long,
+    ): Boolean = jpaRepository.addPointBalance(userId, amount, LocalDateTime.now()) == 1
 }

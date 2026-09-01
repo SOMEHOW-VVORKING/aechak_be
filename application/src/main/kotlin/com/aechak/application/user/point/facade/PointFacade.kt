@@ -1,6 +1,8 @@
 package com.aechak.application.user.point.facade
 
+import com.aechak.application.user.point.service.PointService
 import com.aechak.application.user.point.usecase.PointUseCase
+import com.aechak.application.user.point.usecase.command.ReleasePointCommand
 import com.aechak.application.user.point.usecase.command.UsePointCommand
 import com.aechak.application.user.point.usecase.result.PointBalanceResult
 import com.aechak.application.user.user.service.UserService
@@ -22,6 +24,7 @@ class PointFacade(
     private val userService: UserService,
     private val userRepository: UserRepository,
     private val pointTransactionRepository: PointTransactionRepository,
+    private val pointService: PointService,
 ) : PointUseCase {
     @Transactional(readOnly = true)
     override fun getMyPointBalance(userId: Long): PointBalanceResult =
@@ -47,5 +50,11 @@ class PointFacade(
                 sourceId = command.sourceId,
             ),
         )
+    }
+
+    @Transactional
+    override fun releasePoint(command: ReleasePointCommand) {
+        val buyer = userService.getById(command.userId)
+        pointService.releasePoint(command, buyer)
     }
 }
