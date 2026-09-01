@@ -24,6 +24,7 @@ enum class OrderErrorCode(
     IDEMPOTENCY_KEY_ACCESS_DENIED(50108, "본인의 요청만 재시도할 수 있습니다.", 403),
     INVALID_IDEMPOTENCY_KEY(50109, "멱등키가 올바르지 않습니다.", 400),
     FULL_POINT_PAYMENT_NOT_ALLOWED(50110, "적립금 전액 결제는 지원되지 않습니다. 결제 금액이 1원 이상 남아야 합니다.", 422),
+    ORDER_GROUP_NOT_FOUND(50111, "주문 정보를 찾을 수 없습니다.", 404),
 
     // 장바구니
     INVALID_CART_ITEM_QUANTITY(50200, "장바구니 담을 수량은 1 이상이어야 합니다.", 400),

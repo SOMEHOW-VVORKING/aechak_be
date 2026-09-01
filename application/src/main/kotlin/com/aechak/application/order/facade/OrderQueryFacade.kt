@@ -1,10 +1,13 @@
 package com.aechak.application.order.facade
 
 import com.aechak.application.file.usecase.FileUseCase
+import com.aechak.application.order.service.OrderGroupService
 import com.aechak.application.order.service.OrderQueryService
+import com.aechak.application.order.service.OrderService
 import com.aechak.application.order.usecase.OrderQueryUseCase
 import com.aechak.application.order.usecase.query.OrderListQuery
 import com.aechak.application.order.usecase.result.OrderDetailResult
+import com.aechak.application.order.usecase.result.OrderGroupDetailResult
 import com.aechak.application.order.usecase.result.OrderGroupItemResult
 import com.aechak.application.order.usecase.result.OrderListResult
 import com.aechak.application.order.usecase.result.SellerOrderItemResult
@@ -13,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional
 
 @Service
 class OrderQueryFacade(
+    private val orderService: OrderService,
+    private val orderGroupService: OrderGroupService,
     private val orderQueryService: OrderQueryService,
     private val fileUseCase: FileUseCase,
 ) : OrderQueryUseCase {
@@ -41,6 +46,22 @@ class OrderQueryFacade(
                 )
             }
         return OrderListResult(page = page)
+    }
+
+    @Transactional(readOnly = true)
+    override fun getOrderGroup(
+        buyerId: Long,
+        orderGroupPublicId: String,
+    ): OrderGroupDetailResult {
+        val orderGroup = orderGroupService.getOwnedOrderGroup(buyerId, orderGroupPublicId)
+        val orders = orderService.findOrders(orderGroup.id)
+        return OrderGroupDetailResult.of(
+            orderGroup = orderGroup,
+            orders = orders,
+            lines = orderQueryService.getLines(orders.map { it.id }),
+            deliveryAddress = orderGroupService.decryptDeliveryAddress(orderGroup.deliveryAddress),
+            resolveThumbnail = fileUseCase::resolveMediaUrl,
+        )
     }
 
     @Transactional(readOnly = true)

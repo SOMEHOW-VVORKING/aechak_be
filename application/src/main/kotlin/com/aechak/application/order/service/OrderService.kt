@@ -32,6 +32,8 @@ class OrderService(
     private val orderCatalogQueryPort: OrderCatalogQueryPort,
     private val piiCrypto: PiiCrypto,
 ) {
+    fun findOrders(orderGroupId: Long): List<Order> = orderRepository.findAllByOrderGroupId(orderGroupId)
+
     /** 멱등 재요청이면 최초 생성 결과. 남의 키면 응답 유출을 막으려 거부한다. */
     fun findByIdempotencyKey(
         idempotencyKey: String,
