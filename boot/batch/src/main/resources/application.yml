@@ -1,9 +1,22 @@
 spring:
   application:
     name: aechak-batch
+  main:
+    lazy-initialization: true
   jpa:
     hibernate:
       ddl-auto: none   # 스키마 관리는 api(Flyway)만
+
+  batch:
+    job:
+      enabled: false   # 기동 시 자동 실행을 막음. 실행은 스케줄이 JobOperator로 함
+    # 잡 저장소는 기본값(Resourceless)이라 실행 이력을 기록하지 않는다. 조건부 전이라 재시작 개념이 필요 없어
+    # 지금은 충분하고, 이력이 필요해지면 @EnableJdbcJobRepository와 BATCH_* 테이블 Flyway 등재(재채번 후)로 켠다.
+
+  task:
+    scheduling:
+      pool:
+        size: 2   # 기본값 1이면 아웃박스 스위퍼와 만료 배치가 한 스레드를 직렬로 나눠 씀
 
   # 정책값은 api application.yml과 동일하게 유지. 브로커 주소만 프로파일 yml 소유
   kafka:
@@ -20,3 +33,18 @@ spring:
 logging:
   pattern:
     level: "%5p [%X{traceId:-}]"
+
+# 포트원 결제 게이트웨이. api와 동일 정책. 시크릿이 비면 부팅은 되고 어댑터가 호출 전에 게이트웨이 오류로
+# 끊어 만료 잡이 해당 건을 상한까지 건너뛰다 스텝 실패로 끝나고 다음 주기에 재시도한다. dev/prod는 SSM 주입.
+payment:
+  portone:
+    base-url: https://api.portone.io
+    api-secret: ${PORTONE_API_SECRET:}
+
+# PII 암호화 키. api와 동일 정책. 미주입이면 부팅 실패(fail-fast), dev·prod는 SSM 주입, local은 프로파일 고정 키.
+aechak:
+  pii:
+    active-version: 1
+    aes-keys:
+      1: ${PII_AES_KEY_V1}
+    hmac-key: ${PII_HMAC_KEY}

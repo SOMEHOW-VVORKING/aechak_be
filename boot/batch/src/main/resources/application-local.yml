@@ -5,3 +5,10 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:local}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+# LOCAL 전용 고정 PII 키. 실환경 사용 금지 (api application-local.yml과 동일 값)
+aechak:
+  pii:
+    aes-keys:
+      1: ${PII_AES_KEY_V1:dxeyFW4YgkgYreLe9IX7laeZPHaP3Eada2M9yuBCA+Q=}
+    hmac-key: ${PII_HMAC_KEY:Jtk5KHlAG6nnDtIBDhqoDXIs7FovvRs0kOckZP6cl7k=}
