@@ -25,6 +25,18 @@ interface OptionCombinationJpaRepository : JpaRepository<OptionCombination, Long
         @Param("now") now: LocalDateTime,
     ): Int
 
+    @Modifying
+    @Query(
+        "update OptionCombination oc " +
+            "set oc.stockQuantity = oc.stockQuantity + :quantity, oc.updatedAt = :now " +
+            "where oc.id = :id",
+    )
+    fun restoreStock(
+        @Param("id") id: Long,
+        @Param("quantity") quantity: Int,
+        @Param("now") now: LocalDateTime,
+    ): Int
+
     @Query(
         "select count(c) > 0 from OptionCombination c " +
             "where c.product.id = :productId and c.isActive = true and c.stockQuantity > 0",
@@ -63,4 +75,9 @@ class OptionCombinationRepositoryAdapter(
         optionCombinationId: Long,
         quantity: Int,
     ): Boolean = jpaRepository.deductStock(optionCombinationId, quantity, LocalDateTime.now()) == 1
+
+    override fun restoreStock(
+        optionCombinationId: Long,
+        quantity: Int,
+    ): Boolean = jpaRepository.restoreStock(optionCombinationId, quantity, LocalDateTime.now()) == 1
 }

@@ -5,11 +5,13 @@ import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.product.like.service.ProductLikeStatusService
 import com.aechak.application.product.product.service.ProductService
+import com.aechak.application.product.product.usecase.ProductStockUseCase
 import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.product.product.usecase.SellerProductUseCase
 import com.aechak.application.product.product.usecase.command.ChangeOptionCombinationCommand
 import com.aechak.application.product.product.usecase.command.ChangeProductSaleStatusCommand
 import com.aechak.application.product.product.usecase.command.RegisterProductCommand
+import com.aechak.application.product.product.usecase.command.RestoreStockCommand
 import com.aechak.application.product.product.usecase.command.UpdateProductCommand
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.application.product.product.usecase.result.OptionCombinationChangeResult
@@ -39,8 +41,12 @@ class ProductFacade(
     private val fileUseCase: FileUseCase,
     transactionManager: PlatformTransactionManager,
 ) : ProductUseCase,
-    SellerProductUseCase {
+    SellerProductUseCase,
+    ProductStockUseCase {
     private val tx = TransactionTemplate(transactionManager)
+
+    @Transactional
+    override fun restoreStock(command: RestoreStockCommand) = productService.restoreStock(command.items)
 
     @Transactional(readOnly = true)
     override fun getProducts(

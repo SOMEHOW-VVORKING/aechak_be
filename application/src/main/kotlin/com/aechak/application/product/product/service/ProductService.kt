@@ -13,6 +13,7 @@ import com.aechak.application.product.product.support.ProductCursorCodec
 import com.aechak.application.product.product.usecase.command.ChangeOptionCombinationCommand
 import com.aechak.application.product.product.usecase.command.ChangeProductSaleStatusCommand
 import com.aechak.application.product.product.usecase.command.RegisterProductCommand
+import com.aechak.application.product.product.usecase.command.RestoreStockCommand
 import com.aechak.application.product.product.usecase.command.UpdateProductCommand
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.application.product.product.usecase.result.OptionCombinationChangeResult
@@ -152,6 +153,17 @@ class ProductService(
         combination.registerChangedEvent()
         publish(combination)
         return OptionCombinationChangeResult.of(combination, appliedStockDelta)
+    }
+
+    fun restoreStock(items: List<RestoreStockCommand.Item>) {
+        items
+            .groupBy { it.optionCombinationId }
+            .toSortedMap() // 데드락 방지를 위해 정렬해서 락을 잡는 순서를 지키도록 함
+            .forEach { (optionCombinationId, grouped) ->
+                check(optionCombinationRepository.restoreStock(optionCombinationId, grouped.sumOf { it.quantity })) {
+                    "재고를 되돌릴 옵션 조합이 없습니다 (optionCombinationId=$optionCombinationId)"
+                }
+            }
     }
 
     /** 커밋 전에 발행해야 AFTER_COMMIT 리스너가 커밋 뒤로 미뤄짐. */
