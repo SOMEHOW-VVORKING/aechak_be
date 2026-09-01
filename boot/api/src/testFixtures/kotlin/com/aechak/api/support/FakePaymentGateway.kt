@@ -21,8 +21,20 @@ class FakePaymentGateway : PaymentGatewayPort {
     private val preRegisterCalls = CopyOnWriteArrayList<String>()
     private val cancelled = CopyOnWriteArrayList<String>()
     private val failOnce = AtomicBoolean(false)
+    private val failingFinds = ConcurrentHashMap.newKeySet<String>()
+    private val failAllFinds = AtomicBoolean(false)
 
     val cancelledPaymentIds: List<String> get() = cancelled.toList()
+
+    /** 해당 결제건 조회를 게이트웨이 오류로 만듦. 만료 배치의 건별 격리 검증용 */
+    fun failFindFor(paymentId: String) {
+        failingFinds += paymentId
+    }
+
+    /** 모든 조회를 게이트웨이 오류로 만듦. 포트원 장애 상황 재현용 */
+    fun failAllFinds() {
+        failAllFinds.set(true)
+    }
 
     /** preRegister 호출 순서대로 쌓임. 실패 주입으로 끊긴 호출도 남김 */
     val preRegisteredPaymentIds: List<String> get() = preRegisterCalls.toList()
@@ -47,6 +59,8 @@ class FakePaymentGateway : PaymentGatewayPort {
         preRegisterCalls.clear()
         cancelled.clear()
         failOnce.set(false)
+        failingFinds.clear()
+        failAllFinds.set(false)
     }
 
     override fun preRegister(
@@ -61,6 +75,9 @@ class FakePaymentGateway : PaymentGatewayPort {
     }
 
     override fun find(paymentId: String): PaymentGatewayView? {
+        if (failAllFinds.get() || paymentId in failingFinds) {
+            throw BusinessException(PaymentErrorCode.PAYMENT_GATEWAY_ERROR)
+        }
         stubbed[paymentId]?.let { return it }
         val amount = registered[paymentId] ?: return null
         return PaymentGatewayView(
