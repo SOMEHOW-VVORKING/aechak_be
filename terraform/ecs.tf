@@ -72,6 +72,8 @@ data "aws_iam_policy_document" "ecs_task_runtime" {
       "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/api/*",
       "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/seller",
       "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/seller/*",
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/admin",
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/admin/*",
     ]
   }
 
@@ -267,6 +269,83 @@ resource "aws_ecs_service" "seller_api" {
   health_check_grace_period_seconds = 90
 
   # 오토스케일링 없음 — 고정 1대. desired_count를 ignore하지 않는 이유이기도 하다(TF가 관리)
+  lifecycle {
+    ignore_changes = [task_definition] # CI가 새 리비전 등록 — TF가 되돌리지 않게
+  }
+}
+
+# ── admin (SCRUM-229): 어드민 실행 모듈 ────────────────
+# 롤·서브넷·SG는 api와 공유 — seller-api와 같은 근거(같은 버킷·SSM 트리를 쓰는 동일 신뢰 수준의 웹 모듈).
+resource "aws_cloudwatch_log_group" "admin" {
+  name              = "/ecs/${var.project}-admin-${var.env}"
+  retention_in_days = 30
+}
+
+resource "aws_ecs_task_definition" "admin" {
+  family                   = "${var.project}-admin-${var.env}"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = 512 # 운영자 소수만 쓰는 모듈 — seller-api와 같은 최소 사양
+  memory                   = 1024
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
+  }
+
+  container_definitions = jsonencode([{
+    name      = "admin"
+    image     = "${aws_ecr_repository.admin.repository_url}:bootstrap" # 첫 CI 배포가 실제 태그로 교체
+    essential = true
+
+    portMappings = [{ containerPort = var.app_port, protocol = "tcp" }]
+
+    environment = [
+      { name = "SPRING_PROFILES_ACTIVE", value = var.env },
+      { name = "AWS_REGION", value = var.region },
+    ]
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.admin.name
+        awslogs-region        = var.region
+        awslogs-stream-prefix = "admin"
+      }
+    }
+  }])
+}
+
+resource "aws_ecs_service" "admin" {
+  name            = "${var.project}-admin-${var.env}"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.admin.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  network_configuration {
+    subnets          = [aws_subnet.app_a.id]
+    security_groups  = [aws_security_group.app.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.admin.arn
+    container_name   = "admin"
+    container_port   = var.app_port
+  }
+
+  # 부팅(이미지 pull + Spring 기동 ≈ 2분) 완료 전에 unhealthy 판정이 확정되지 않게 넉넉히
+  health_check_grace_period_seconds = 300
+
+  # 오토스케일링 없음 — 고정 1대(TF가 desired_count 관리)
   lifecycle {
     ignore_changes = [task_definition] # CI가 새 리비전 등록 — TF가 되돌리지 않게
   }

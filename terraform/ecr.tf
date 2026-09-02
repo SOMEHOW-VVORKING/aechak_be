@@ -48,3 +48,28 @@ resource "aws_ecr_lifecycle_policy" "seller_api" {
     }]
   })
 }
+
+resource "aws_ecr_repository" "admin" {
+  name = "${var.project}-admin" # boot/admin 모듈 배포용 (SCRUM-229)
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "admin" {
+  repository = aws_ecr_repository.admin.name
+
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "keep last 10"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
+      }
+      action = { type = "expire" }
+    }]
+  })
+}

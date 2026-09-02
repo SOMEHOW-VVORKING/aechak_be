@@ -162,7 +162,16 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 - 예외 소비 방식: web-common의 핸들러가 아니라 SkipPolicy/Listener에서 errorCode 기준 처리.
 - 배치가 자체 발신하는 에러 코드의 status는 500 고정 (05 문서 ErrorCode 컨벤션).
 
-## 7. admin — A-5 결정: MVP 제외
+## 7. admin
 
-- MVP에서는 만들지 않는다 (입점 심사·신고 처리 등 운영은 DB/API 수동 — 60 문서).
-- 생성 시점이 오면 api와 동일 구조/규칙(JSON API 기반)으로 만들고, web-common의 GlobalExceptionHandler를 재사용한다.
+```
+boot/admin/src/main/java/com/aechak/admin/
+├── AdminApplication.java
+├── config/          # JpaConfig · OpenApiConfig · WebConfig
+└── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
+```
+
+- 팀 결정에 따라 Java(+Lombok)로 작성한다 — api와 같은 웹 규격(web-common)을 쓰되 어드민이 소비하는 조각만 조립.
+- 인증: RS256 검증 전용(공개키만 주입) + ADMIN 역할 게이트 — 토큰 발급은 api 소관.
+- 스키마 소유권 없음 — Flyway는 api만 실행, admin은 `ddl-auto: none`으로 접속만 한다(batch 결).
+- 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.

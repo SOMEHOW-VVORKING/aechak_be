@@ -1,0 +1,24 @@
+# dev 서버 — 값은 부팅 시 SSM /aechak/dev/admin/ 에서 로드(아래 import). yml은 어떤 값이 필요한지 명시하는 계약서
+spring:
+  config:
+    import: aws-parameterstore:/aechak/dev/admin/   # SSM 접근 실패(권한·네트워크) 시 부팅 실패
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}           # RDS - 필수, 미존재 시 부팅 실패(fail-fast)
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+
+api:
+  cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}       # 어드민 웹 오리진 (쉼표 구분) — FE 미착수라 당분간 빈 값
+
+aws:
+  s3:
+    media-bucket: ${AWS_S3_MEDIA_BUCKET}    # 필수 — 공통 yml의 빈 기본값을 덮어 fail-fast로 만든다
+    docs-bucket: ${AWS_S3_DOCS_BUCKET}
+
+auth:
+  jwt:
+    # 공개키만 주입 = 검증 전용 모드 — 토큰 발급은 api 소관이라 admin은 서명 키를 보유하지 않는다
+    public-key: ${AUTH_JWT_PUBLIC_KEY}      # 필수 — 없으면 임시 키 폴백으로 api 토큰 전부 401이 된다
+
+server:
+  forward-headers-strategy: framework   # LB가 TLS를 종료해도 원 요청 스킴 기준으로 동작
