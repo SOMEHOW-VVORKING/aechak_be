@@ -4,6 +4,7 @@ import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.product.like.service.ProductLikeStatusService
+import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.application.product.product.service.ProductService
 import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.product.product.usecase.SellerProductUseCase
@@ -14,6 +15,7 @@ import com.aechak.application.product.product.usecase.command.UpdateProductComma
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.application.product.product.usecase.query.SellerProductSearchQuery
 import com.aechak.application.product.product.usecase.result.OptionCombinationChangeResult
+import com.aechak.application.product.product.usecase.result.ProductCurationResult
 import com.aechak.application.product.product.usecase.result.ProductOptionsResult
 import com.aechak.application.product.product.usecase.result.ProductRegisterResult
 import com.aechak.application.product.product.usecase.result.ProductResult
@@ -56,6 +58,19 @@ class ProductFacade(
         val page = productService.getVisiblePage(query, now)
         val likedIds = productLikeStatusService.likedProductIds(userId, page.items.map { it.id })
         return ProductSummaryResult.fromPage(page, likedIds, now)
+    }
+
+    @Transactional(readOnly = true)
+    override fun getCuration(userId: Long?): ProductCurationResult {
+        val now = LocalDateTime.now()
+        val ranking = productService.getPopular(now)
+        val recommended = productService.getRandomOnSale(now)
+        val likedIds =
+            productLikeStatusService.likedProductIds(userId, (ranking + recommended).map { it.id }.distinct())
+
+        fun cards(views: List<ProductCatalogView>) = views.map { ProductSummaryResult.from(it, now, it.id in likedIds) }
+
+        return ProductCurationResult(recommended = cards(recommended), ranking = cards(ranking))
     }
 
     @Transactional(readOnly = true)
