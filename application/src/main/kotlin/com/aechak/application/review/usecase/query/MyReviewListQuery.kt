@@ -1,12 +1,15 @@
 package com.aechak.application.review.usecase.query
 
-import com.aechak.application.review.port.ReviewListSort
 import com.aechak.application.support.CursorPageSize
 
-data class ProductReviewListQuery(
-    val productPublicId: String,
-    val sort: ReviewListSort = ReviewListSort.LATEST,
-    val photoOnly: Boolean = false,
+enum class MyReviewTab {
+    WRITTEN,
+    UNREVIEWED,
+}
+
+data class MyReviewListQuery(
+    val userId: Long,
+    val tab: MyReviewTab,
     val cursor: String? = null,
     val size: Int = CursorPageSize.DEFAULT,
 ) {

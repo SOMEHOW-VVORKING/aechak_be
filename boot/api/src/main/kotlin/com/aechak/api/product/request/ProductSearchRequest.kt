@@ -2,6 +2,7 @@ package com.aechak.api.product.request
 
 import com.aechak.application.product.product.port.ProductCatalogSort
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
+import com.aechak.application.support.CursorPageSize
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import org.hibernate.validator.constraints.Range
@@ -12,11 +13,11 @@ data class ProductSearchRequest(
     val sort: String = "latest",
     val cursor: String? = null,
     @field:Range(
-        min = ProductSearchQuery.SIZE_MIN,
-        max = ProductSearchQuery.SIZE_MAX,
+        min = CursorPageSize.MIN,
+        max = CursorPageSize.MAX,
         message = "size는 {min}~{max} 사이여야 합니다.",
     )
-    val size: Int = ProductSearchQuery.DEFAULT_SIZE,
+    val size: Int = CursorPageSize.DEFAULT,
 ) {
     fun toQuery() =
         ProductSearchQuery(

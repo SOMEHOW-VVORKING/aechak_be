@@ -26,7 +26,6 @@ import org.springframework.web.context.WebApplicationContext
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
-/** 상품 리뷰 목록 API(GET /products/{publicId}/reviews) 통합 테스트. */
 class ProductReviewIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var context: WebApplicationContext
@@ -63,11 +62,9 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
 
         val body = getReviews(publicId)
 
-        // 최신순 = id desc = 등록 역순
         assertEquals(listOf("초코", "코코"), JsonPath.read<List<String>>(body, "$.data.reviews[*].authorNickname"))
         assertEquals(2, JsonPath.read<Int>(body, "$.data.totalCount"))
         assertEquals(2, JsonPath.read<Int>(body, "$.data.summary.reviewCount"))
-        // (5 + 3) / 2 = 4.00
         assertEquals(0, BigDecimal("4.00").compareTo(readBigDecimal(body, "$.data.summary.averageRating")))
         assertEquals(1, JsonPath.read<Int>(body, "$.data.summary.ratingDistribution['5']"))
         assertEquals(1, JsonPath.read<Int>(body, "$.data.summary.ratingDistribution['3']"))
@@ -242,7 +239,7 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
                 product.publicId
             }!!
 
-        // rating desc, id desc → 리뷰3, 리뷰2, 리뷰1, 리뷰4 (같은 별점 5가 페이지 경계 리뷰2→리뷰1로 이어짐)
+        // 별점 내림차순, 동일 별점은 리뷰 ID 내림차순으로 순서 고정
         val page1 = getReviews(publicId, sort = "rating_desc", size = 2)
         assertEquals(listOf("리뷰3", "리뷰2"), JsonPath.read<List<String>>(page1, "$.data.reviews[*].content"))
 
@@ -456,7 +453,6 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
         return review
     }
 
-    /** 상태 세터가 없어 bulk update로 상태를 바꾼다. */
     private fun softDeleteReview(reviewId: Long) {
         em
             .createQuery("update Review r set r.reviewStatus = :st, r.deletedAt = :now where r.id = :id")
@@ -489,7 +485,6 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
             .executeUpdate()
     }
 
-    /** 이미지 추가 경로가 없어 native insert로 넣는다. */
     private fun insertReviewImage(
         reviewId: Long,
         storageKey: String,

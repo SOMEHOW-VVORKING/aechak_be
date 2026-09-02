@@ -1,11 +1,13 @@
 package com.aechak.api.review.controller
 
 import com.aechak.api.review.request.CreateReviewRequest
+import com.aechak.api.review.request.MyReviewListRequest
 import com.aechak.api.review.request.ReviewListRequest
 import com.aechak.api.review.response.CreateReviewResponse
+import com.aechak.api.review.response.MyReviewListResponse
 import com.aechak.api.review.response.ReviewListResponse
-import com.aechak.application.review.usecase.ProductReviewUseCase
 import com.aechak.application.review.usecase.ReviewCommandUseCase
+import com.aechak.application.review.usecase.ReviewQueryUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
@@ -22,19 +24,30 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 class ReviewController(
-    private val productReviewUseCase: ProductReviewUseCase,
+    private val reviewQueryUseCase: ReviewQueryUseCase,
     private val reviewCommandUseCase: ReviewCommandUseCase,
 ) {
     @GetMapping("/products/{productId}/reviews")
     fun getProductReviews(
-        @PathVariable productId: String,
+        @PathVariable("productId") productPublicId: String,
         @Valid @ModelAttribute request: ReviewListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<ReviewListResponse>> =
         ResponseEntity.ok(
             ApiResponse.of(
-                ReviewListResponse.from(productReviewUseCase.getProductReviews(request.toQuery(productId), principal.userId)),
+                ReviewListResponse.from(
+                    reviewQueryUseCase.getProductReviews(request.toQuery(productPublicId), principal.userId),
+                ),
             ),
+        )
+
+    @GetMapping("/users/me/reviews")
+    fun getMyReviews(
+        @Valid @ModelAttribute request: MyReviewListRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<MyReviewListResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(MyReviewListResponse.from(reviewQueryUseCase.getMyReviews(request.toQuery(principal.userId)))),
         )
 
     @PostMapping("/reviews")
