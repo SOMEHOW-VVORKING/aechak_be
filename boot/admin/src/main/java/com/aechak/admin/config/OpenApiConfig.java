@@ -15,8 +15,8 @@ public class OpenApiConfig {
 
     @Bean
     public OpenAPI openAPI() {
-        return new OpenAPI().info(
-                new Info()
+        return new OpenAPI()
+                .info(new Info()
                         .title("aechak ADMIN API")
                         .version("v1")
                         .description("애착 어드민 API 문서 — 운영자(role=ADMIN) 전용"));

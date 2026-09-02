@@ -16,6 +16,8 @@ jakarta-validation = "3.1.1"     # web-common 커스텀 제약 컴파일 전용 
 slf4j = "2.0.17"
 ktlint-gradle = "14.2.0"         # org.jlleitschuh.gradle.ktlint 래퍼
 ktlint = "1.8.0"                 # ktlint 코어
+spotless = "7.0.4"               # com.diffplug.spotless 래퍼 — 자바 포맷 실행기
+palantir-java-format = "2.68.0"  # 자바 포매터 코어 — google-java-format 포크(4칸 들여쓰기·120컬럼)
 springdoc = "3.0.3"              # OpenAPI 3/Swagger UI
 spring-cloud-aws = "4.0.2"       # Boot 4.x 호환 계열(4.0.x) 최신 패치 — 3.x는 Boot 4에서 미동작
 querydsl = "7.0"                 # OpenFeign 포크 — JPA 3.2/Hibernate 7 타깃(원조 com.querydsl는 Hibernate 7 미지원)
@@ -104,4 +106,5 @@ gradleplugin-kotlin-allopen = { module = "org.jetbrains.kotlin:kotlin-allopen", 
 gradleplugin-kotlin-noarg = { module = "org.jetbrains.kotlin:kotlin-noarg", version.ref = "kotlin" }
 gradleplugin-spring-boot = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "spring-boot" }
 gradleplugin-ktlint = { module = "org.jlleitschuh.gradle:ktlint-gradle", version.ref = "ktlint-gradle" }
+gradleplugin-spotless = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref = "spotless" }
 gradleplugin-ksp = { module = "com.google.devtools.ksp:symbol-processing-gradle-plugin", version.ref = "ksp" }
