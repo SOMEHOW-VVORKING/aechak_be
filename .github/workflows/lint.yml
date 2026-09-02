@@ -1,4 +1,4 @@
-name: Ktlint
+name: Lint
 
 on:
   pull_request:
@@ -7,14 +7,14 @@ on:
 
 # 같은 브랜치에서 새 푸시가 오면 이전 실행은 취소
 concurrency:
-  group: ktlint-${{ github.ref }}
+  group: lint-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  ktlint:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,5 +23,7 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Run ktlintCheck
+      - name: ktlint
         run: ./gradlew ktlintCheck
+      - name: spotless
+        run: ./gradlew spotlessCheck
