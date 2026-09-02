@@ -1,5 +1,6 @@
 package com.aechak.application.file.usecase
 
+import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.file.usecase.result.IssuePresignedUrlResult
@@ -13,4 +14,10 @@ interface FileUseCase {
 
     // 저장된 key → 표시용 URL(응답 조립용). null 키는 null 그대로 — "이미지 없음"
     fun resolveMediaUrl(key: String?): String?
+
+    // 저장된 key → 단기 다운로드 URL(어드민 서류 열람). presign은 로컬 서명이라 조회 트랜잭션 안 호출 허용
+    fun issueDownloadUrl(
+        key: String,
+        purpose: UploadPurpose,
+    ): String
 }

@@ -115,6 +115,11 @@ class FileServiceTest {
         ): String = PROMOTED_SENTINEL
 
         override fun publicUrlOf(key: String): String = "https://fake-cdn/$key"
+
+        override fun issueDownloadUrl(
+            key: String,
+            purpose: UploadPurpose,
+        ): String = "https://fake-download/$key"
     }
 
     companion object {
