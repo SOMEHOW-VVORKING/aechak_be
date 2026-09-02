@@ -1,5 +1,6 @@
 package com.aechak.application.seller.service
 
+import com.aechak.domain.seller.seller.enums.SellerStatus
 import com.aechak.domain.seller.seller.repository.SellerRepository
 import org.springframework.stereotype.Service
 
@@ -8,6 +9,10 @@ import org.springframework.stereotype.Service
  * 리포지토리는 domain의 포트(SellerRepository)를 주입받는다 — 어댑터가 생기는 시점에 연결.
  */
 @Service
-class SellerService {
-    // TODO: 기능 구현 시 로직 추가
+class SellerService(
+    private val sellerRepository: SellerRepository,
+) {
+    fun isActive(userId: Long): Boolean = sellerRepository.existsActiveByUserId(userId)
+
+    fun getStatus(userId: Long): SellerStatus? = sellerRepository.findStatusByUserId(userId)
 }

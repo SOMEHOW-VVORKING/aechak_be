@@ -11,6 +11,9 @@ object Topics {
     const val ORDER = "$PREFIX.order.$SUFFIX"
     const val ORDER_DLT = "$ORDER$DLT_SUFFIX"
 
+    const val REVIEW = "$PREFIX.review.$SUFFIX"
+    const val REVIEW_DLT = "$REVIEW$DLT_SUFFIX"
+
     /** 릴레이가 아웃박스 행의 aggregate_type으로 목적지 토픽 이름을 만든다. */
     fun of(aggregateType: String) = "$PREFIX.$aggregateType.$SUFFIX"
 

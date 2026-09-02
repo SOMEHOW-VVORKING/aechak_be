@@ -11,6 +11,11 @@ enum class ProductErrorCode(
     PRODUCT_NOT_FOUND(40000, "상품을 찾을 수 없습니다.", 404),
     INVALID_PRODUCT_PRICE(40001, "상품 가격이 올바르지 않습니다.", 400),
     INVALID_DISCOUNT_PERIOD(40002, "할인 기간이 올바르지 않습니다.", 400),
+    TOO_MANY_PRODUCT_IMAGES(40003, "상품 이미지 수가 허용 범위를 넘었습니다.", 400),
+    PRODUCT_SELLER_NOT_ACTIVE(40004, "활성 상태의 셀러만 상품을 등록할 수 있습니다.", 403),
+    INVALID_PRODUCT_OPTIONS(40005, "옵션 구성이 올바르지 않습니다.", 400),
+    PRODUCT_SELLER_READ_FORBIDDEN(40006, "탈퇴하거나 정지된 셀러는 상품을 조회할 수 없습니다.", 403),
+    PRODUCT_ACCESS_DENIED(40007, "본인의 상품만 조회할 수 있습니다.", 403),
 
     // 카테고리
     INVALID_CATEGORY_DEPTH(40100, "카테고리 단계와 부모 참조가 일치하지 않습니다.", 400),

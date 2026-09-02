@@ -53,7 +53,7 @@ data "aws_iam_policy_document" "github_deploy" {
       "ecr:BatchGetImage",
       "ecr:GetDownloadUrlForLayer",
     ]
-    resources = [aws_ecr_repository.app.arn]
+    resources = [aws_ecr_repository.app.arn, aws_ecr_repository.seller_api.arn]
   }
 
   # ECS 배포: 새 taskdef 리비전 등록 + 서비스 갱신
@@ -66,8 +66,11 @@ data "aws_iam_policy_document" "github_deploy" {
   }
 
   statement {
-    actions   = ["ecs:UpdateService", "ecs:DescribeServices"]
-    resources = ["arn:aws:ecs:${var.region}:${data.aws_caller_identity.me.account_id}:service/${var.project}-${var.env}/${var.project}-api-${var.env}"]
+    actions = ["ecs:UpdateService", "ecs:DescribeServices"]
+    resources = [
+      "arn:aws:ecs:${var.region}:${data.aws_caller_identity.me.account_id}:service/${var.project}-${var.env}/${var.project}-api-${var.env}",
+      "arn:aws:ecs:${var.region}:${data.aws_caller_identity.me.account_id}:service/${var.project}-${var.env}/${var.project}-seller-api-${var.env}",
+    ]
   }
 
   # taskdef 등록 시 execution/task 롤을 ECS에 넘겨줄 권한

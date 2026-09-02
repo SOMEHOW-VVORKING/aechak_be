@@ -19,6 +19,7 @@ data class ProductSummaryResponse(
     val isViewable: Boolean,
     @get:JsonProperty("isPurchasable")
     val isPurchasable: Boolean,
+    val isLiked: Boolean,
 ) {
     companion object {
         fun from(result: ProductSummaryResult): ProductSummaryResponse =
@@ -35,6 +36,7 @@ data class ProductSummaryResponse(
                 reviewCount = result.reviewCount,
                 isViewable = result.isViewable,
                 isPurchasable = result.isPurchasable,
+                isLiked = result.isLiked,
             )
     }
 }

@@ -13,9 +13,15 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToMany
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 
 @Entity
-@Table(name = "option_groups")
+@Table(
+    name = "option_groups",
+    uniqueConstraints = [
+        UniqueConstraint(name = "uk_option_group_product_name", columnNames = ["product_id", "name"]),
+    ],
+)
 class OptionGroup protected constructor(
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
@@ -27,7 +33,7 @@ class OptionGroup protected constructor(
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
 
-    @Column(length = 100, nullable = false)
+    @Column(length = NAME_MAX, nullable = false)
     var name: String = name
         protected set
 
@@ -43,10 +49,16 @@ class OptionGroup protected constructor(
     val values: List<OptionValue> get() = _values.toList()
 
     companion object {
+        const val NAME_MAX = 100
+
         fun create(
             product: Product,
             name: String,
             sortOrder: Int,
-        ): OptionGroup = OptionGroup(product, name, sortOrder)
+            valueNames: List<String> = emptyList(),
+        ): OptionGroup =
+            OptionGroup(product, name, sortOrder).apply {
+                valueNames.forEachIndexed { index, valueName -> _values += OptionValue.of(valueName, index) }
+            }
     }
 }
