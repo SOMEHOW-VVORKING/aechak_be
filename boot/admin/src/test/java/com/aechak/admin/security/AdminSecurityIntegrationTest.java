@@ -35,16 +35,14 @@ class AdminSecurityIntegrationTest extends IntegrationTestBase {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders
-                .webAppContextSetup(context)
+        mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .addFilters(securityFilterChain)
                 .build();
     }
 
     @Test
     void 토큰_없이_호출하면_401_20004_을_반환한다() throws Exception {
-        mockMvc
-                .perform(get(PROBE))
+        mockMvc.perform(get(PROBE))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value(20004));
     }
@@ -52,8 +50,7 @@ class AdminSecurityIntegrationTest extends IntegrationTestBase {
     @Test
     void 일반_GENERAL_토큰은_403_20011_으로_거부한다() throws Exception {
         long userId = createUser(UserStatus.ACTIVE);
-        mockMvc
-                .perform(bearer(get(PROBE), mintAccessToken(userId, UserRole.GENERAL)))
+        mockMvc.perform(bearer(get(PROBE), mintAccessToken(userId, UserRole.GENERAL)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value(20011));
     }
@@ -61,8 +58,7 @@ class AdminSecurityIntegrationTest extends IntegrationTestBase {
     @Test
     void ADMIN_토큰은_게이트를_통과한다() throws Exception {
         long adminId = createUser(UserStatus.ACTIVE);
-        mockMvc
-                .perform(bearer(get(PROBE), mintAccessToken(adminId)))
+        mockMvc.perform(bearer(get(PROBE), mintAccessToken(adminId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true));
     }
@@ -70,8 +66,7 @@ class AdminSecurityIntegrationTest extends IntegrationTestBase {
     @Test
     void 정지된_계정은_ADMIN_토큰이라도_403_20005_으로_거부한다() throws Exception {
         long suspendedId = createUser(UserStatus.SUSPENDED);
-        mockMvc
-                .perform(bearer(get(PROBE), mintAccessToken(suspendedId)))
+        mockMvc.perform(bearer(get(PROBE), mintAccessToken(suspendedId)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value(20005));
     }
@@ -79,17 +74,14 @@ class AdminSecurityIntegrationTest extends IntegrationTestBase {
     @Test
     void 온보딩_미완_계정은_403_20006_으로_거부한다_어드민엔_온보딩_허용_경로가_없다() throws Exception {
         long pendingId = createUser(UserStatus.PENDING_ONBOARDING);
-        mockMvc
-                .perform(bearer(get(PROBE), mintAccessToken(pendingId)))
+        mockMvc.perform(bearer(get(PROBE), mintAccessToken(pendingId)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value(20006));
     }
 
     @Test
     void 헬스체크는_토큰_없이_접근할_수_있다() throws Exception {
-        mockMvc
-                .perform(get("/actuator/health"))
-                .andExpect(status().isOk());
+        mockMvc.perform(get("/actuator/health")).andExpect(status().isOk());
     }
 
     private MockHttpServletRequestBuilder bearer(MockHttpServletRequestBuilder builder, String token) {

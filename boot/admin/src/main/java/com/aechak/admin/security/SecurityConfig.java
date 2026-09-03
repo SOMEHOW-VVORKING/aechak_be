@@ -51,26 +51,20 @@ public class SecurityConfig {
             UserStatusReader userStatusReader,
             ObjectMapper objectMapper)
             throws Exception {
-        http
-                .cors(cors -> {}) // corsConfigurationSource 빈 자동 적용
+        http.cors(cors -> {}) // corsConfigurationSource 빈 자동 적용
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
                                 // springdoc — 접두(api.base-path) 미부착 경로(우리 컨트롤러가 아님). prod는 springdoc 자체 비활성
-                                "/swagger-ui.html",
-                                "/swagger-ui/**",
-                                "/v3/api-docs",
-                                "/v3/api-docs/**")
+                                "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**")
                         .permitAll()
                         .requestMatchers("/actuator/health")
                         .permitAll()
                         .anyRequest()
                         .hasRole("ADMIN"))
                 .oauth2ResourceServer(resourceServer -> resourceServer
-                        .jwt(jwt -> jwt
-                                .decoder(jwtDecoder)
-                                .jwtAuthenticationConverter(new AuthPrincipalConverter()))
+                        .jwt(jwt -> jwt.decoder(jwtDecoder).jwtAuthenticationConverter(new AuthPrincipalConverter()))
                         .authenticationEntryPoint(unauthenticatedEntryPoint))
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(unauthenticatedEntryPoint)

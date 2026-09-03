@@ -24,6 +24,6 @@ dependencies {
     testCompileOnly(libs.lombok)
     testAnnotationProcessor(libs.lombok)
     testImplementation(libs.spring.boot.starter.test)
-    testImplementation(libs.spring.boot.testcontainers) // @ServiceConnection 없이 companion start 방식(70 §9) — api 결
+    testImplementation(libs.spring.boot.testcontainers) // 통합 테스트 DB를 실 MySQL 컨테이너로 배선 — api와 같이 컨테이너는 static에서 직접 start
     testImplementation(libs.testcontainers.mysql)       // 통합 테스트 DB는 실 MySQL 컨테이너. H2 폴백 금지
 }
