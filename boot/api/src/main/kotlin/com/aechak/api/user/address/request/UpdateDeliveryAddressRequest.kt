@@ -1,6 +1,7 @@
 package com.aechak.api.user.address.request
 
 import com.aechak.application.user.address.usecase.command.UpdateDeliveryAddressCommand
+import com.aechak.domain.user.address.DeliveryAddress
 import com.aechak.webcommon.validation.NotBlankUnicode
 import com.fasterxml.jackson.annotation.JsonProperty
 import jakarta.validation.constraints.NotBlank
@@ -12,7 +13,7 @@ import jakarta.validation.constraints.Size
  */
 data class UpdateDeliveryAddressRequest(
     @field:NotBlankUnicode(message = "수령인 이름은 필수입니다.")
-    @field:Size(max = 255, message = "수령인 이름은 {max}자를 넘을 수 없습니다.")
+    @field:Size(max = DeliveryAddress.RECEIVER_NAME_MAX_LENGTH, message = "수령인 이름은 {max}자를 넘을 수 없습니다.")
     val receiverName: String,
     @field:NotBlank(message = "연락처는 필수입니다.")
     @field:Pattern(

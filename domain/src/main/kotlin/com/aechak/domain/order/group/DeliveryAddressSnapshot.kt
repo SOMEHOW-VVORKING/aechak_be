@@ -9,6 +9,7 @@ import jakarta.persistence.Embeddable
  */
 @Embeddable
 class DeliveryAddressSnapshot(
+    // 암호문 컬럼은 평문 상한(DeliveryAddress.RECEIVER_NAME_MAX_LENGTH)의 팽창 후 길이가 들어가야 함 — 정합은 PiiCryptoAdapterTest가 고정
     @Column(name = "receiver_name_enc", length = 255)
     val receiverNameEnc: String,
     @Column(name = "contact_number_enc", length = 255)
