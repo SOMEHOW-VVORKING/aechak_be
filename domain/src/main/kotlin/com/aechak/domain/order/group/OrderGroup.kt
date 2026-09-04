@@ -125,7 +125,10 @@ class OrderGroup protected constructor(
             idempotencyKey: String,
             expiresAt: LocalDateTime,
         ): OrderGroup {
-            if (totalProductAmount < 0 || totalShippingFee < 0 || usedPoint < 0) {
+            // 상품금액·배송비는 서버 계산값 — 음수면 가격 데이터·계산 버그라 요청 오류로 위장하지 않고 500으로 드러낸다
+            require(totalProductAmount >= 0) { "상품 금액 합계가 음수입니다 (totalProductAmount=$totalProductAmount)" }
+            require(totalShippingFee >= 0) { "배송비 합계가 음수입니다 (totalShippingFee=$totalShippingFee)" }
+            if (usedPoint < 0) {
                 throw BusinessException(OrderErrorCode.INVALID_ORDER_GROUP_AMOUNT)
             }
             val payableAmount = totalProductAmount + totalShippingFee // 쿠폰이 들어오면 couponDiscountAmount를 여기서 뺌

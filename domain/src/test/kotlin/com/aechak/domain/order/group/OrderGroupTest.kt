@@ -74,10 +74,17 @@ class OrderGroupTest {
     }
 
     @Test
-    fun `음수 금액은 50101로 차단된다`() {
-        val e = assertFailsWith<BusinessException> { orderGroup(totalProductAmount = -1L) }
+    fun `음수 적립금은 50101로 차단된다`() {
+        val e = assertFailsWith<BusinessException> { orderGroup(usedPoint = -1L) }
 
-        assertEquals(OrderErrorCode.INVALID_ORDER_GROUP_AMOUNT, e.errorCode, "입력 금액이 음수면 50101이어야 한다")
+        assertEquals(OrderErrorCode.INVALID_ORDER_GROUP_AMOUNT, e.errorCode, "사용자 입력 금액이 음수면 50101이어야 한다")
+    }
+
+    @Test
+    fun `서버 계산 금액이 음수면 불변식 위반으로 터진다`() {
+        // BusinessException(4xx)이 아니라 500 경로 — 가격 계산 버그를 요청 오류로 위장하지 않는다
+        assertFailsWith<IllegalArgumentException> { orderGroup(totalProductAmount = -1L) }
+        assertFailsWith<IllegalArgumentException> { orderGroup(totalShippingFee = -1L) }
     }
 
     @Test
