@@ -6,6 +6,7 @@ import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.group.OrderGroup
+import com.aechak.webcommon.http.CustomHttpHeaders
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
@@ -25,7 +26,7 @@ class OrderGroupController(
 ) {
     @PostMapping
     fun createOrderGroup(
-        @RequestHeader(IDEMPOTENCY_KEY_HEADER) idempotencyKey: String,
+        @RequestHeader(CustomHttpHeaders.IDEMPOTENCY_KEY) idempotencyKey: String,
         @Valid @RequestBody request: CreateOrderGroupRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<CreateOrderGroupResponse>> {
@@ -39,9 +40,5 @@ class OrderGroupController(
         if (key.isBlank() || key.length > OrderGroup.IDEMPOTENCY_KEY_MAX_LENGTH) {
             throw BusinessException(OrderErrorCode.INVALID_IDEMPOTENCY_KEY)
         }
-    }
-
-    companion object {
-        const val IDEMPOTENCY_KEY_HEADER = "Idempotency-Key"
     }
 }
