@@ -4,7 +4,7 @@ import com.aechak.application.order.port.OrderCatalogQueryPort
 import com.aechak.application.order.port.view.OrderCatalogItemView
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
-import com.aechak.application.pii.port.PiiCrypto
+import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.application.user.address.usecase.result.DeliveryAddressResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.cart.CartItem
@@ -18,7 +18,6 @@ import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.product.option.repository.OptionCombinationRepository
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
-import java.util.Base64
 
 /**
  * order 도메인 비즈니스 로직 보관함 — Facade에서만 호출된다.
@@ -30,7 +29,7 @@ class OrderService(
     private val orderRepository: OrderRepository,
     private val optionCombinationRepository: OptionCombinationRepository,
     private val orderCatalogQueryPort: OrderCatalogQueryPort,
-    private val piiCrypto: PiiCrypto,
+    private val piiStringCodec: PiiStringCodec,
 ) {
     /** 멱등 재요청이면 최초 생성 결과. 남의 키면 응답 유출을 막으려 거부한다. */
     fun findByIdempotencyKey(
@@ -172,15 +171,13 @@ class OrderService(
     /** 수령인명과 연락처는 여기서 처음 암호화됨(AES 후 Base64) — 스냅샷 컬럼 계약 */
     private fun snapshotOf(address: DeliveryAddressResult): DeliveryAddressSnapshot =
         DeliveryAddressSnapshot(
-            receiverNameEnc = encrypt(address.receiverName),
-            contactNumberEnc = encrypt(address.contactNumber),
+            receiverNameEnc = piiStringCodec.encrypt(address.receiverName),
+            contactNumberEnc = piiStringCodec.encrypt(address.contactNumber),
             zipCode = address.zipCode,
             baseAddress = address.baseAddress,
             detailAddress = address.detailAddress,
             deliveryMemo = address.deliveryMemo,
         )
-
-    private fun encrypt(plain: String): String = Base64.getEncoder().encodeToString(piiCrypto.encrypt(plain))
 
     private data class OrderLine(
         val view: OrderCatalogItemView,
