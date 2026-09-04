@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS order_groups
     delivery_address_id   BIGINT       NULL,                  -- 원본 배송지(값 참조). 스냅샷이 진실이고 이건 추적용
     receiver_name_enc     VARCHAR(255) NOT NULL,              -- 배송지 스냅샷. AES 암호문 Base64. 평문 상한 50자(150B)+프레임 29B → 240자
     contact_number_enc    VARCHAR(255) NOT NULL,              -- 배송지 스냅샷. AES 암호문 Base64. 평문 숫자 11자리면 56자라 여유
-    zip_code              VARCHAR(255) NOT NULL,
+    zip_code              VARCHAR(10)  NOT NULL,              -- 원본(delivery_addresses)과 동일 계약. 값은 5자리 숫자
     base_address          VARCHAR(512) NOT NULL,
     detail_address        VARCHAR(512) NULL,
     delivery_memo         VARCHAR(255) NULL,
