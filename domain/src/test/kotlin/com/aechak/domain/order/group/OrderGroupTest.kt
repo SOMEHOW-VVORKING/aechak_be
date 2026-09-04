@@ -46,10 +46,20 @@ class OrderGroupTest {
     }
 
     @Test
-    fun `적립금으로 전액을 덮으면 결제금액이 0원이 된다`() {
-        val group = orderGroup(usedPoint = 13_000L)
+    fun `최종 결제금액이 최소 결제 금액 미만이면 50108로 차단된다`() {
+        // 0원(적립금 전액)과 1~99원 모두 — PG가 승인하지 못하는 금액은 생성 단계에서 거른다
+        val zero = assertFailsWith<BusinessException> { orderGroup(usedPoint = 13_000L) }
+        assertEquals(OrderErrorCode.ORDER_AMOUNT_BELOW_MINIMUM, zero.errorCode)
 
-        assertEquals(0L, group.finalPaymentAmount, "적립금이 결제 가능액과 같으면 0원까지는 허용해야 한다")
+        val below = assertFailsWith<BusinessException> { orderGroup(usedPoint = 12_901L) }
+        assertEquals(OrderErrorCode.ORDER_AMOUNT_BELOW_MINIMUM, below.errorCode)
+    }
+
+    @Test
+    fun `최종 결제금액이 정확히 최소 결제 금액이면 생성된다`() {
+        val group = orderGroup(usedPoint = 12_900L)
+
+        assertEquals(OrderGroup.MIN_PAYMENT_AMOUNT, group.finalPaymentAmount)
     }
 
     @Test

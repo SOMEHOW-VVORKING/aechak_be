@@ -112,6 +112,9 @@ class OrderGroup protected constructor(
     companion object {
         const val IDEMPOTENCY_KEY_MAX_LENGTH = 100
 
+        /** 국내 PG 신용카드 최소 결제 금액 */
+        const val MIN_PAYMENT_AMOUNT = 100L
+
         fun create(
             buyerId: Long,
             deliveryAddressId: Long,
@@ -130,6 +133,11 @@ class OrderGroup protected constructor(
                 throw BusinessException(OrderErrorCode.POINT_EXCEEDS_PAYABLE_AMOUNT)
             }
             val finalPaymentAmount = payableAmount - usedPoint
+            // PG(포트원) 신용카드 최소 결제 금액 미만이면 결제할 수 없는 유령 그룹이 되므로 생성 자체를 막음.
+            // 0원(적립금 전액)도 MVP에선 미지원이라 함께 거절 — 지원 시점에 결제 생략 특례를 여기서 연다
+            if (finalPaymentAmount < MIN_PAYMENT_AMOUNT) {
+                throw BusinessException(OrderErrorCode.ORDER_AMOUNT_BELOW_MINIMUM)
+            }
             return OrderGroup(
                 buyerId = buyerId,
                 deliveryAddressId = deliveryAddressId,
