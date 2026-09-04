@@ -27,13 +27,12 @@ data class OrderCatalogItemView(
     val freeShippingThreshold: Long?,
 ) {
     /**
-     * 셀러는 ACTIVE가 아닌 값을 전부 막고(상태가 늘 때 구멍 방지), 판매 상태는 막을 값만 열거함.
+     * 셀러는 ACTIVE가 아닌 값을 전부 막음(상태가 늘 때 구멍 방지).
      * 재고는 빠른 실패용 검증일 뿐 최종 판정은 저장소의 조건부 원자 UPDATE가 함.
      */
     fun orderable(quantity: Int): Boolean =
         sellerStatus == SellerStatus.ACTIVE &&
-            saleStatus != SaleStatus.ENDED &&
-            saleStatus != SaleStatus.SUSPENDED &&
+            saleStatus.canOrder() &&
             optionActive &&
             inspectionStatus == InspectionStatus.APPROVED &&
             stockQuantity >= quantity
