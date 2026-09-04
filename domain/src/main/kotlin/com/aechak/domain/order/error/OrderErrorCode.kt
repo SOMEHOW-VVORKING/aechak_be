@@ -21,8 +21,6 @@ enum class OrderErrorCode(
     ORDER_PRODUCT_VERSION_NOT_READY(50105, "상품 정보가 준비되지 않아 주문할 수 없습니다.", 409),
     ORDER_AMOUNT_CHANGED(50106, "주문 금액이 변경되었습니다. 주문서를 다시 확인해 주세요.", 409),
     INSUFFICIENT_STOCK(50107, "재고가 부족한 상품이 포함되어 있습니다.", 409),
-    IDEMPOTENCY_KEY_ACCESS_DENIED(50108, "본인의 요청만 재시도할 수 있습니다.", 403),
-    INVALID_IDEMPOTENCY_KEY(50109, "멱등키가 올바르지 않습니다.", 400),
 
     // 장바구니
     INVALID_CART_ITEM_QUANTITY(50200, "장바구니 담을 수량은 1 이상이어야 합니다.", 400),

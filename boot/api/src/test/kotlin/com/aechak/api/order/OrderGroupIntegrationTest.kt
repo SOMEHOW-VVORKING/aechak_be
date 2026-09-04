@@ -1,6 +1,7 @@
 package com.aechak.api.order
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.order.cart.Cart
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.option.OptionCombination
@@ -259,7 +260,7 @@ class OrderGroupIntegrationTest : IntegrationTestBase() {
                     "key-owner",
                 ),
             ).andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(50108))
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.IDEMPOTENCY_KEY_ACCESS_DENIED.code))
     }
 
     @Test

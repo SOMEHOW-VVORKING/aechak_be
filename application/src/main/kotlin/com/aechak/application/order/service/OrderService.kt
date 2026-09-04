@@ -7,6 +7,7 @@ import com.aechak.application.order.usecase.result.CreateOrderGroupResult
 import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.application.user.address.usecase.result.DeliveryAddressResult
 import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.order.cart.CartItem
 import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -38,7 +39,7 @@ class OrderService(
     ): CreateOrderGroupResult? {
         val existing = orderGroupRepository.findByIdempotencyKey(idempotencyKey) ?: return null
         if (existing.buyerId != buyerId) {
-            throw BusinessException(OrderErrorCode.IDEMPOTENCY_KEY_ACCESS_DENIED)
+            throw BusinessException(CommonErrorCode.IDEMPOTENCY_KEY_ACCESS_DENIED)
         }
         return CreateOrderGroupResult.from(existing)
     }
