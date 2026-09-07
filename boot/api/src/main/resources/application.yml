@@ -80,6 +80,8 @@ payment:
   portone:
     base-url: https://api.portone.io
     api-secret: ${PORTONE_API_SECRET:}
+    # 웹훅 서명 검증 키(whsec_ 접두). 비면 웹훅을 검증 없이 받지 않고 게이트웨이 오류로 끊는다.
+    webhook-secret: ${PORTONE_WEBHOOK_SECRET:}
   store: # 결제 준비 응답으로 FE에 나가는 상점 정보. 비면 컨트롤러가 게이트웨이 오류로 끊는다.
     id: ${PORTONE_STORE_ID:}
     channel-key: ${PORTONE_CHANNEL_KEY:}

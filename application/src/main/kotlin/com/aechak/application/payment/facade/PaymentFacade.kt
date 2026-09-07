@@ -5,8 +5,12 @@ import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.payment.port.PaymentGatewayPort
 import com.aechak.application.payment.port.PaymentGatewayStatus
 import com.aechak.application.payment.port.PaymentGatewayView
+import com.aechak.application.payment.port.PaymentWebhookNotificationType
+import com.aechak.application.payment.port.PaymentWebhookRequest
+import com.aechak.application.payment.port.PaymentWebhookVerifier
 import com.aechak.application.payment.service.PaymentService
 import com.aechak.application.payment.usecase.PaymentUseCase
+import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentCommand
 import com.aechak.application.payment.usecase.command.PreparePaymentCommand
 import com.aechak.application.payment.usecase.result.CompletePaymentResult
@@ -21,21 +25,28 @@ import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.support.TransactionTemplate
 
 /**
- * 확정 로직의 단일 진입점 — 콜백(이 EP)·웹훅·만료 배치가 전부 이 흐름을 태운다.
+ * 확정 로직의 단일 진입점 — 콜백·웹훅·만료 배치가 전부 이 흐름을 태운다.
  * 진실은 포트원에 있으므로 조회는 트랜잭션 밖, 전이는 트랜잭션 안(주문그룹 선점이 심판).
  */
 @Service
 class PaymentFacade(
     private val paymentService: PaymentService,
     private val paymentGateway: PaymentGatewayPort,
+    private val webhookVerifier: PaymentWebhookVerifier,
     private val orderUseCase: OrderUseCase,
     transactionManager: PlatformTransactionManager,
 ) : PaymentUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
-    private val tx = TransactionTemplate(transactionManager)
+
+    /** 선점에 진 쪽의 후속 조회가 승자 커밋을 봐야 해서 문장마다 최신 스냅샷을 읽는다 */
+    private val tx =
+        TransactionTemplate(transactionManager).apply {
+            isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
+        }
 
     override fun preparePayment(command: PreparePaymentCommand): PreparePaymentResult {
         val payment =
@@ -48,14 +59,48 @@ class PaymentFacade(
         return PreparePaymentResult.from(payment)
     }
 
-    override fun completePayment(command: CompletePaymentCommand): CompletePaymentResult {
-        val target = paymentService.loadCompletionTarget(command)
+    override fun completePayment(command: CompletePaymentCommand): CompletePaymentResult =
+        complete(paymentService.loadCompletionTarget(command), command.buyerId)
+
+    override fun completePaymentByWebhook(command: CompletePaymentByWebhookCommand): CompletePaymentResult? {
+        val notification =
+            webhookVerifier.verify(
+                PaymentWebhookRequest(
+                    rawBody = command.rawBody,
+                    id = command.webhookId,
+                    timestamp = command.webhookTimestamp,
+                    signature = command.webhookSignature,
+                ),
+            ) ?: return null
+        val target = paymentService.findCompletionTargetByPaymentId(notification.paymentId)
+        if (target == null) {
+            log.warn("모르는 결제의 웹훅이라 무시함. paymentId={}, type={}", notification.paymentId, notification.type)
+            return null
+        }
+        log.info("결제 웹훅 수신. paymentId={}, type={}", notification.paymentId, notification.type)
+        if (notification.type == PaymentWebhookNotificationType.PAID && target.group.status == OrderGroupStatus.CANCELLED) {
+            // 취소 커밋 뒤 뒤늦게 승인된 흔한 순서 — 아래 확정 본체는 조회 없이 접으므로 여기서만 잡을 수 있다
+            log.error(
+                "취소된 주문그룹에 승인 통보가 도착 — 환불 필요 여부 확인 요망. orderGroupPublicId={}, paymentId={}",
+                target.group.publicId,
+                notification.paymentId,
+            )
+        }
+        // 구매자는 그룹에서 읽는다 — 확정 뒤 장바구니 정리가 주인을 알아야 하기 때문이다
+        return complete(target, target.group.buyerId)
+    }
+
+    /** 콜백·웹훅이 공유하는 확정 본체. 대상을 어떻게 찾았는지(로그인 대조냐 서명이냐)만 입구가 다르다 */
+    private fun complete(
+        target: PaymentService.CompletionTarget,
+        buyerId: Long,
+    ): CompletePaymentResult {
         // 1단계: 포트원에 물어보지 않아도 답이 정해지는 경우를 먼저 끝낸다
         completeWithoutGateway(target)?.let { return it }
         val payment = requireNotNull(target.payment) { "1단계를 지나왔으면 결제 행이 있어야 합니다 (orderGroupPublicId=${target.group.publicId})" }
         // 2단계: 결제가 실제로 어떻게 됐는지는 포트원만 안다 — 물어보고(트랜잭션 밖) 대답대로 처리한다
         val view = paymentGateway.find(payment.paymentId)
-        return completeByGatewayStatus(command, target.group, payment, view)
+        return completeByGatewayStatus(buyerId, target.group, payment, view)
     }
 
     /**
@@ -92,7 +137,7 @@ class PaymentFacade(
      * 미완료 대답이면 상태만 알려주고, 재시도는 FE가 prepare부터 다시 밟는다.
      */
     private fun completeByGatewayStatus(
-        command: CompletePaymentCommand,
+        buyerId: Long,
         group: OrderGroup,
         payment: Payment,
         view: PaymentGatewayView?,
@@ -108,12 +153,14 @@ class PaymentFacade(
             }
 
             PaymentGatewayStatus.PAID -> {
-                completeAsPaid(command, group, payment, view)
+                completeAsPaid(buyerId, group, payment, view)
             }
 
             PaymentGatewayStatus.FAILED -> {
                 tx.execute {
-                    CompletePaymentResult.of(CompletePaymentStatus.FAILED, group, paymentService.markFailed(payment, view))
+                    // 밖에서 로딩한 결제 행은 낡았을 수 있어 저장 직전에 다시 읽는다 — 그새 승인됐다면 fail()이 막는다
+                    val current = paymentService.getByOrderGroupId(group.id)
+                    CompletePaymentResult.of(CompletePaymentStatus.FAILED, group, paymentService.markFailed(current, view))
                 }!!
             }
 
@@ -122,32 +169,45 @@ class PaymentFacade(
             }
         }
 
-    /** "승인됐다"는 대답의 마무리 — 금액 대조를 통과하면 한 트랜잭션에서 주문·결제를 결제완료로 만들고, 커밋 뒤 장바구니를 정리한다 */
+    /** "승인됐다"는 대답의 마무리 — 금액 대조를 통과하면 한 트랜잭션에서 주문·결제를 결제완료로 만들고, 확정을 성사시킨 쪽만 커밋 뒤 장바구니를 정리한다 */
     private fun completeAsPaid(
-        command: CompletePaymentCommand,
+        buyerId: Long,
         group: OrderGroup,
         payment: Payment,
         view: PaymentGatewayView,
     ): CompletePaymentResult {
         paymentService.assertAmountsMatch(group, payment, view)
-        val result =
+        val (confirmation, result) =
             tx.execute {
-                when (orderUseCase.confirmGroupPaid(group.id)) {
+                when (val confirmation = orderUseCase.confirmGroupPaid(group.id)) {
                     ConfirmGroupPaidResult.CONFIRMED -> {
-                        CompletePaymentResult.of(CompletePaymentStatus.PAID, group, paymentService.approve(payment, view))
+                        // 밖에서 로딩한 결제 행은 낡았을 수 있어 저장 직전에 다시 읽는다
+                        val current = paymentService.getByOrderGroupId(group.id)
+                        confirmation to
+                            CompletePaymentResult.of(CompletePaymentStatus.PAID, group, paymentService.approve(current, view))
                     }
 
                     ConfirmGroupPaidResult.ALREADY_PAID -> {
                         // 다른 입구가 승인 기록까지 마치고 커밋한 뒤에만 선점에 지므로, 기록을 다시 만들지 않는다
-                        CompletePaymentResult.of(CompletePaymentStatus.PAID, group, paymentService.getByOrderGroupId(group.id))
+                        confirmation to
+                            CompletePaymentResult.of(CompletePaymentStatus.PAID, group, paymentService.getByOrderGroupId(group.id))
                     }
 
                     ConfirmGroupPaidResult.ALREADY_CANCELLED -> {
+                        // 돈은 나갔는데 주문은 취소된 사건 — 환불 배선 전까지는 이 로그가 유일한 흔적이다
+                        log.error(
+                            "승인된 결제의 주문그룹이 취소됨 — 환불 필요. orderGroupPublicId={}, paymentId={}, pgTxId={}, paidAmount={}",
+                            group.publicId,
+                            payment.paymentId,
+                            view.pgTxId,
+                            view.paidAmount,
+                        )
                         throw BusinessException(PaymentErrorCode.PAYMENT_ORDER_GROUP_CANCELLED)
                     }
                 }
             }!!
-        clearCart(command.buyerId, group)
+        // 패자까지 정리하면 확정 직후 같은 조합·수량으로 다시 담은 항목을 지울 수 있다 — 정리는 승자의 후처리
+        if (confirmation == ConfirmGroupPaidResult.CONFIRMED) clearCart(buyerId, group)
         return result
     }
 
