@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.support.TransactionTemplate
 
 /**
@@ -35,7 +36,12 @@ class PaymentFacade(
     transactionManager: PlatformTransactionManager,
 ) : PaymentUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
-    private val tx = TransactionTemplate(transactionManager)
+
+    /** 선점에 진 쪽의 후속 조회가 승자 커밋을 봐야 해서 문장마다 최신 스냅샷을 읽는다 */
+    private val tx =
+        TransactionTemplate(transactionManager).apply {
+            isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
+        }
 
     override fun preparePayment(command: PreparePaymentCommand): PreparePaymentResult {
         val payment =
@@ -113,7 +119,9 @@ class PaymentFacade(
 
             PaymentGatewayStatus.FAILED -> {
                 tx.execute {
-                    CompletePaymentResult.of(CompletePaymentStatus.FAILED, group, paymentService.markFailed(payment, view))
+                    // 밖에서 로딩한 결제 행은 낡았을 수 있어 저장 직전에 다시 읽는다 — 그새 승인됐다면 fail()이 막는다
+                    val current = paymentService.getByOrderGroupId(group.id)
+                    CompletePaymentResult.of(CompletePaymentStatus.FAILED, group, paymentService.markFailed(current, view))
                 }!!
             }
 
@@ -122,7 +130,7 @@ class PaymentFacade(
             }
         }
 
-    /** "승인됐다"는 대답의 마무리 — 금액 대조를 통과하면 한 트랜잭션에서 주문·결제를 결제완료로 만들고, 커밋 뒤 장바구니를 정리한다 */
+    /** "승인됐다"는 대답의 마무리 — 금액 대조를 통과하면 한 트랜잭션에서 주문·결제를 결제완료로 만들고, 확정을 성사시킨 쪽만 커밋 뒤 장바구니를 정리한다 */
     private fun completeAsPaid(
         command: CompletePaymentCommand,
         group: OrderGroup,
@@ -130,24 +138,35 @@ class PaymentFacade(
         view: PaymentGatewayView,
     ): CompletePaymentResult {
         paymentService.assertAmountsMatch(group, payment, view)
-        val result =
+        val (confirmation, result) =
             tx.execute {
-                when (orderUseCase.confirmGroupPaid(group.id)) {
+                when (val confirmation = orderUseCase.confirmGroupPaid(group.id)) {
                     ConfirmGroupPaidResult.CONFIRMED -> {
-                        CompletePaymentResult.of(CompletePaymentStatus.PAID, group, paymentService.approve(payment, view))
+                        // 밖에서 로딩한 결제 행은 낡았을 수 있어 저장 직전에 다시 읽는다
+                        val current = paymentService.getByOrderGroupId(group.id)
+                        confirmation to CompletePaymentResult.of(CompletePaymentStatus.PAID, group, paymentService.approve(current, view))
                     }
 
                     ConfirmGroupPaidResult.ALREADY_PAID -> {
                         // 다른 입구가 승인 기록까지 마치고 커밋한 뒤에만 선점에 지므로, 기록을 다시 만들지 않는다
-                        CompletePaymentResult.of(CompletePaymentStatus.PAID, group, paymentService.getByOrderGroupId(group.id))
+                        confirmation to CompletePaymentResult.of(CompletePaymentStatus.PAID, group, paymentService.getByOrderGroupId(group.id))
                     }
 
                     ConfirmGroupPaidResult.ALREADY_CANCELLED -> {
+                        // 돈은 나갔는데 주문은 취소된 사건 — 환불 배선 전까지는 이 로그가 유일한 흔적이다
+                        log.error(
+                            "승인된 결제의 주문그룹이 취소됨 — 환불 필요. orderGroupPublicId={}, paymentId={}, pgTxId={}, paidAmount={}",
+                            group.publicId,
+                            payment.paymentId,
+                            view.pgTxId,
+                            view.paidAmount,
+                        )
                         throw BusinessException(PaymentErrorCode.PAYMENT_ORDER_GROUP_CANCELLED)
                     }
                 }
             }!!
-        clearCart(command.buyerId, group)
+        // 패자까지 정리하면 확정 직후 같은 조합·수량으로 다시 담은 항목을 지울 수 있다 — 정리는 승자의 후처리
+        if (confirmation == ConfirmGroupPaidResult.CONFIRMED) clearCart(command.buyerId, group)
         return result
     }
 
