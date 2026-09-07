@@ -183,12 +183,14 @@ class PaymentFacade(
                     ConfirmGroupPaidResult.CONFIRMED -> {
                         // 밖에서 로딩한 결제 행은 낡았을 수 있어 저장 직전에 다시 읽는다
                         val current = paymentService.getByOrderGroupId(group.id)
-                        confirmation to CompletePaymentResult.of(CompletePaymentStatus.PAID, group, paymentService.approve(current, view))
+                        confirmation to
+                            CompletePaymentResult.of(CompletePaymentStatus.PAID, group, paymentService.approve(current, view))
                     }
 
                     ConfirmGroupPaidResult.ALREADY_PAID -> {
                         // 다른 입구가 승인 기록까지 마치고 커밋한 뒤에만 선점에 지므로, 기록을 다시 만들지 않는다
-                        confirmation to CompletePaymentResult.of(CompletePaymentStatus.PAID, group, paymentService.getByOrderGroupId(group.id))
+                        confirmation to
+                            CompletePaymentResult.of(CompletePaymentStatus.PAID, group, paymentService.getByOrderGroupId(group.id))
                     }
 
                     ConfirmGroupPaidResult.ALREADY_CANCELLED -> {
