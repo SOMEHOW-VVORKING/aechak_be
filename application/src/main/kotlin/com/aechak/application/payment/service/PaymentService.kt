@@ -77,6 +77,22 @@ class PaymentService(
     }
 
     /**
+     * 웹훅 경로의 확정 대상 로딩 — 결제 행이 진입점이고 구매자는 그룹에서 읽는다.
+     * 소유권 검사가 없는 이유는 대조할 로그인 주체가 없기 때문이고, 대신 서명이 발신자를 보증한다.
+     * 우리가 모르는 결제(다른 상점·테스트 발신)면 null.
+     */
+    fun findCompletionTargetByPaymentId(paymentId: String): CompletionTarget? {
+        val payment = paymentRepository.findByPaymentId(paymentId) ?: return null
+        val group = orderGroupRepository.findById(payment.orderGroupId)
+        if (group == null) {
+            // 결제 행은 항상 그룹을 가리키므로 여기 오면 데이터가 깨진 것 — 웹훅을 다시 받아도 못 고친다
+            log.error("결제 행이 가리키는 주문그룹이 없음. paymentId={}, orderGroupId={}", paymentId, payment.orderGroupId)
+            return null
+        }
+        return CompletionTarget(group, payment)
+    }
+
+    /**
      * 3중 대조 — 주문금액·등록금액·실결제액이 전부 같아야 한다.
      * 등록금액과 실결제액만 대조하면 사전등록에 잘못 실린 금액이 그대로 통과한다.
      * 불일치는 확정도 실패 처리도 하지 않는다 — 돈은 받았는데 금액이 이상한 사건이라 사람이 확인해야 한다.
