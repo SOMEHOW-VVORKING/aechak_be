@@ -23,7 +23,6 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
-      - name: ktlint
-        run: ./gradlew ktlintCheck
-      - name: spotless
-        run: ./gradlew spotlessCheck
+      # --continue: ktlint가 실패해도 spotless까지 돌려 코틀린·자바 위반을 한 번에 보여준다
+      - name: lint
+        run: ./gradlew ktlintCheck spotlessCheck --continue
