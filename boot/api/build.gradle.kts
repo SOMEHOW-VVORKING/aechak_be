@@ -13,6 +13,7 @@ dependencies {
     implementation(project(":sms-client"))              // SMS 발송 어댑터(전화 인증)
     implementation(project(":redis"))                   // refresh token 저장소 어댑터(ACC-01)
     implementation(project(":s3-client"))               // presigned URL 발급·승격 어댑터
+    implementation(project(":ses-client"))              // 이메일 발송 어댑터(문의 통지)
     implementation(kotlin("reflect"))                   // Spring(Data)의 Kotlin 리플렉션 지원에 런타임 필수
     implementation(project(":kafka"))                   // 릴레이·퍼블리셔 빈 조립
     implementation(project(":message"))
@@ -24,6 +25,7 @@ dependencies {
     implementation(libs.spring.boot.starter.oauth2.resource.server) // 자체 RS256 토큰 검증 필터 + JwtEncoder/Decoder
     implementation(libs.spring.boot.starter.data.redis) // Redis 자동 구성 — :redis 어댑터의 커넥션 제공
     implementation(libs.springdoc.webmvc.ui)            // OpenAPI 3 문서 + Swagger UI
+    implementation(libs.ahocorasick)                    // ProfanityScanner 포트의 아호코라식 구현(리뷰 금칙어 마스킹)
     implementation(libs.spring.boot.starter.actuator)   // ALB 헬스체크 /actuator/health — ECS 롤링·롤백의 생사판단 기준 (health만 노출)
     implementation(platform(libs.spring.cloud.aws.bom)) // Spring Cloud AWS 계열 버전 정렬 — 개별 버전 지정 시 SDK 버전 충돌
     implementation(libs.spring.cloud.aws.starter.parameter.store) // dev 설정을 부팅 시 SSM에서 로드 — import 미선언 프로파일에선 비활성
@@ -44,4 +46,5 @@ dependencies {
     testImplementation(libs.testcontainers.mysql)       // MySQL 컨테이너 모듈. H2는 두지 않는다 — 폴백 통과(false confidence) 차단
     testImplementation(libs.spring.kafka.test)          // EmbeddedKafka — 이벤트 백본 통합 테스트
     testImplementation(libs.awaitility)                 // 릴레이·컨슈머가 별도 스레드라 비동기 단언 필요
+    testImplementation(libs.spring.boot.starter.flyway) // FlywayMigrationStrategy 참조 — 본체는 runtimeOnly
 }

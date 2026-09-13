@@ -1,10 +1,57 @@
 package com.aechak.application.product.product.usecase.command
 
-/**
- * 상품 등록(쓰기) 입력 골격. Command/Query/스칼라 인자 구분 규칙과 예시는
- * user 템플릿(UserUseCase·RegisterUserCommand·UserSearchQuery) 참조.
- */
+import com.aechak.domain.product.category.Category
+import com.aechak.domain.product.option.ProductOptions
+import com.aechak.domain.product.product.Product
+import java.time.LocalDateTime
+
 data class RegisterProductCommand(
     val sellerId: Long,
-    // TODO: 기능 확정 시 필드 추가 (옵션·재고·할인 등)
-)
+    val categoryId: Long,
+    val productName: String,
+    val description: String?,
+    val regularPrice: Long,
+    val discountPrice: Long?,
+    val discountStartAt: LocalDateTime?,
+    val discountEndAt: LocalDateTime?,
+    val thumbnailImageKey: String,
+    val additionalImageKeys: List<String>,
+    val detailImageKeys: List<String>,
+    val optionGroups: List<OptionGroupCommand>,
+    val optionCombinations: List<OptionCombinationCommand>,
+) {
+    fun toEntity(category: Category): Product =
+        Product.register(
+            category = category,
+            sellerId = sellerId,
+            name = productName,
+            description = description,
+            representativeImageKey = thumbnailImageKey,
+            regularPrice = regularPrice,
+            discountPrice = discountPrice,
+            discountStartAt = discountStartAt,
+            discountEndAt = discountEndAt,
+            additionalImageKeys = additionalImageKeys,
+            detailImageKeys = detailImageKeys,
+        )
+
+    fun toProductOptions(): ProductOptions =
+        ProductOptions.of(
+            groups = optionGroups.map { ProductOptions.GroupSpec(it.name, it.values) },
+            combinations =
+                optionCombinations.map {
+                    ProductOptions.CombinationSpec(it.optionValues, it.additionalPrice, it.stockQuantity)
+                },
+        )
+
+    data class OptionGroupCommand(
+        val name: String,
+        val values: List<String>,
+    )
+
+    data class OptionCombinationCommand(
+        val optionValues: List<String>,
+        val additionalPrice: Long,
+        val stockQuantity: Int,
+    )
+}

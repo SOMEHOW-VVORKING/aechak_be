@@ -7,6 +7,7 @@ import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.application.user.user.usecase.command.SetNicknameCommand
 import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
 import com.aechak.application.user.user.usecase.query.UserSearchQuery
+import com.aechak.application.user.user.usecase.result.UserAuthorResult
 import com.aechak.application.user.user.usecase.result.UserMeResult
 import com.aechak.application.user.user.usecase.result.UserSummaryResult
 import com.aechak.common.error.CommonErrorCode
@@ -89,6 +90,8 @@ class UserControllerTest {
             }
 
             override fun searchUsers(query: UserSearchQuery): List<UserSummaryResult> = error("not used")
+
+            override fun getAuthors(userIds: Collection<Long>): Map<Long, UserAuthorResult> = error("not used")
 
             override fun registerFromSocial(): Long = error("not used")
         }

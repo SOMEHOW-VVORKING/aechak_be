@@ -1,9 +1,11 @@
 package com.aechak.infra.persistence.user.user
 
+import com.aechak.application.user.user.port.view.UserAuthorView
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.domain.user.user.repository.UserRepository
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
@@ -17,6 +19,15 @@ interface UserJpaRepository : JpaRepository<User, Long> {
         @Param("id") id: Long,
     ): UserStatus?
 
+    /** 작성자 표시용 배치 프로젝션 — 프로필 없어도 포함되도록 left join. */
+    @Query(
+        "select new com.aechak.application.user.user.port.view.UserAuthorView(u.id, u.status, p.nickname, p.profileImageKey) " +
+            "from User u left join UserProfile p on p.userId = u.id where u.id in :ids",
+    )
+    fun findAuthorsByIds(
+        @Param("ids") ids: Collection<Long>,
+    ): List<UserAuthorView>
+
     /** 닉네임 선점 검사 — 비교는 nickname 컬럼 collation(utf8mb4 ci)을 그대로 탄다. */
     @Query("select count(p) > 0 from UserProfile p where p.nickname = :nickname and p.userId <> :excludeUserId")
     fun existsNickname(
@@ -25,6 +36,13 @@ interface UserJpaRepository : JpaRepository<User, Long> {
     ): Boolean
 
     fun findByPhoneHmac(phoneHmac: ByteArray): User?
+
+    @Modifying
+    @Query("update User u set u.pointBalance = u.pointBalance + :amount where u.id = :id")
+    fun addPointBalance(
+        @Param("id") id: Long,
+        @Param("amount") amount: Long,
+    ): Int
 }
 
 /**
@@ -38,6 +56,11 @@ class UserRepositoryAdapter(
     override fun findById(id: Long): User? = jpaRepository.findByIdOrNull(id)
 
     override fun save(user: User): User = jpaRepository.save(user)
+
+    override fun addPointBalance(
+        userId: Long,
+        amount: Long,
+    ): Int = jpaRepository.addPointBalance(userId, amount)
 
     override fun isNicknameTaken(
         nickname: String,

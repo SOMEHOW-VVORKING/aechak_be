@@ -17,6 +17,7 @@ import org.springframework.boot.runApplication
         "com.aechak.application.seller", // 입점 신청 유스케이스
         "com.aechak.application.user",   // 휴대폰 인증 게이트(requirePhoneVerified)가 UserUseCase 경유
         "com.aechak.application.file",   // 서류 승격
+        "com.aechak.application.product", // 상품 등록·카테고리 조회
         "com.aechak.infra.persistence",  // JPA 어댑터 (QuerydslConfig 포함)
         "com.aechak.infra.s3",           // FileStorage 어댑터
         "com.aechak.infra.redis",        // 인증 코드 저장소

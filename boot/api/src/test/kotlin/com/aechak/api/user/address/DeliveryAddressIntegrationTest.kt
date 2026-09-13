@@ -115,7 +115,7 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
             // {max} 인터폴레이션이 실제 숫자로 렌더되는지까지 고정
-            .andExpect(jsonPath("$.message").value("receiverName: 수령인 이름은 255자를 넘을 수 없습니다."))
+            .andExpect(jsonPath("$.message").value("수령인 이름은 255자를 넘을 수 없습니다."))
     }
 
     @Test

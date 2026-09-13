@@ -12,16 +12,26 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.OneToMany
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
 
 @Entity
-@Table(name = "reviews")
+@Table(
+    name = "reviews",
+    indexes = [
+        Index(name = "ix_reviews_product_status_id", columnList = "product_id, review_status, id"),
+        Index(name = "ix_reviews_product_status_rating_id", columnList = "product_id, review_status, rating, id"),
+    ],
+    uniqueConstraints = [UniqueConstraint(name = Review.UK_ORDER_ITEM_ID, columnNames = ["order_item_id"])],
+)
 class Review protected constructor(
     val productId: Long,
-    val optionCombinationId: Long,
+    // 구매 시점 옵션명 스냅샷
+    val optionNameSnapshot: String,
     val orderItemId: Long,
     val authorUserId: Long,
     rating: Int,
@@ -55,27 +65,55 @@ class Review protected constructor(
     var deletedAt: LocalDateTime? = null
         protected set
 
+    fun isDeleted(): Boolean = reviewStatus == ReviewStatus.DELETED
+
     fun delete() {
-        if (reviewStatus == ReviewStatus.DELETED) {
+        if (isDeleted()) {
             throw BusinessException(ReviewErrorCode.INVALID_REVIEW_STATUS_TRANSITION)
         }
         reviewStatus = ReviewStatus.DELETED
         deletedAt = LocalDateTime.now()
     }
 
+    fun mask(displayContent: String) {
+        if (reviewStatus != ReviewStatus.PUBLIC) {
+            throw BusinessException(ReviewErrorCode.INVALID_REVIEW_STATUS_TRANSITION)
+        }
+        reviewStatus = ReviewStatus.MASKED
+        this.displayContent = displayContent
+    }
+
+    fun block() {
+        if (reviewStatus != ReviewStatus.PUBLIC) {
+            throw BusinessException(ReviewErrorCode.INVALID_REVIEW_STATUS_TRANSITION)
+        }
+        reviewStatus = ReviewStatus.BLOCKED
+    }
+
     companion object {
+        // UNIQUE 제약명
+        const val UK_ORDER_ITEM_ID = "uk_reviews_order_item_id"
+
+        /** 포토리뷰 내 이미지 첨부 개수 상한 */
+        const val MAX_IMAGES = 5
+
         fun write(
             productId: Long,
-            optionCombinationId: Long,
+            optionNameSnapshot: String,
             orderItemId: Long,
             authorUserId: Long,
             rating: Int,
             content: String,
+            images: List<ReviewImage> = emptyList(),
         ): Review {
             if (rating !in 1..5) {
                 throw BusinessException(ReviewErrorCode.INVALID_REVIEW_RATING)
             }
-            return Review(productId, optionCombinationId, orderItemId, authorUserId, rating, content)
+            if (images.size > MAX_IMAGES) {
+                throw BusinessException(ReviewErrorCode.REVIEW_TOO_MANY_IMAGES)
+            }
+            return Review(productId, optionNameSnapshot, orderItemId, authorUserId, rating, content)
+                .apply { _images.addAll(images) }
         }
     }
 }

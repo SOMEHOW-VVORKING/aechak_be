@@ -3,6 +3,7 @@ package com.aechak.application.user.user.usecase
 import com.aechak.application.user.user.usecase.command.SetNicknameCommand
 import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
 import com.aechak.application.user.user.usecase.query.UserSearchQuery
+import com.aechak.application.user.user.usecase.result.UserAuthorResult
 import com.aechak.application.user.user.usecase.result.UserMeResult
 import com.aechak.application.user.user.usecase.result.UserSummaryResult
 
@@ -47,6 +48,9 @@ interface UserUseCase {
     fun updateProfile(command: UpdateProfileCommand): UserMeResult
 
     fun searchUsers(query: UserSearchQuery): List<UserSummaryResult>
+
+    /** 작성자 표시용 배치 조회 */
+    fun getAuthors(userIds: Collection<Long>): Map<Long, UserAuthorResult>
 
     /**
      * 소셜 가입 — 프로필(닉네임) 없는 PENDING_ONBOARDING 계정을 만든다(닉네임은 온보딩에서).
