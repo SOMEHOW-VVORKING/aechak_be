@@ -24,7 +24,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 @SpringBootTest(
         properties = {
-                "spring.jpa.hibernate.ddl-auto=create",
+            "spring.jpa.hibernate.ddl-auto=create",
         })
 @Import(IntegrationTestConfig.class)
 public abstract class IntegrationTestBase {
