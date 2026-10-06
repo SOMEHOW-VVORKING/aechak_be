@@ -1,15 +1,14 @@
 package com.aechak.api.review.request
 
-import com.aechak.application.review.port.ReviewListSort
-import com.aechak.application.review.usecase.query.ProductReviewListQuery
+import com.aechak.application.review.usecase.query.MyReviewListQuery
+import com.aechak.application.review.usecase.query.MyReviewTab
 import com.aechak.application.support.CursorPageSize
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import org.hibernate.validator.constraints.Range
 
-data class ReviewListRequest(
-    val sort: String = "latest",
-    val photoOnly: Boolean = false,
+data class MyReviewListRequest(
+    val tab: String? = null,
     val cursor: String? = null,
     @field:Range(
         min = CursorPageSize.MIN,
@@ -18,19 +17,18 @@ data class ReviewListRequest(
     )
     val size: Int = CursorPageSize.DEFAULT,
 ) {
-    fun toQuery(productPublicId: String) =
-        ProductReviewListQuery(
-            productPublicId = productPublicId,
-            sort = parseSort(sort),
-            photoOnly = photoOnly,
+    fun toQuery(userId: Long) =
+        MyReviewListQuery(
+            userId = userId,
+            tab = parseTab(),
             cursor = cursor,
             size = size,
         )
 
-    private fun parseSort(value: String): ReviewListSort =
-        when (value) {
-            "latest" -> ReviewListSort.LATEST
-            "rating_desc" -> ReviewListSort.RATING_DESC
+    private fun parseTab(): MyReviewTab =
+        when (tab) {
+            "written" -> MyReviewTab.WRITTEN
+            "unreviewed" -> MyReviewTab.UNREVIEWED
             else -> throw BusinessException(CommonErrorCode.INVALID_REQUEST)
         }
 }
