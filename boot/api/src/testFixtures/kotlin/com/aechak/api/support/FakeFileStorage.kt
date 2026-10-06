@@ -8,13 +8,17 @@ import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.domain.support.Ulid
 
 /**
- * 실 S3 대신 키 규칙만 흉내냄.
- * promotedKeys는 거절된 요청이 스토리지에 복사본을 남기지 않는지 보려고 기록함.
+ * S3를 호출하지 않고 운영 코드와 같은 키 형식으로 동작한다.
+ * promotedKeys와 deletedKeys로 테스트 중 실행된 스토리지 작업을 확인할 수 있다.
  */
 class FakeFileStorage : FileStorage {
     private val promoted = mutableListOf<String>()
+    private val deleted = mutableListOf<String>()
 
     val promotedKeys: List<String> get() = promoted.toList()
+
+    /** 테스트 중 삭제된 스토리지 키. */
+    val deletedKeys: List<String> get() = deleted.toList()
 
     fun clearPromoted() = promoted.clear()
 
@@ -37,4 +41,11 @@ class FakeFileStorage : FileStorage {
     }
 
     override fun publicUrlOf(key: String): String = "https://fake-cdn.local/$key"
+
+    override fun delete(
+        key: String,
+        purpose: UploadPurpose,
+    ) {
+        deleted += key
+    }
 }

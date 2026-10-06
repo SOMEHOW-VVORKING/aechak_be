@@ -45,6 +45,17 @@ class FileStorageAdapter(
 
     override fun publicUrlOf(key: String): String = "${s3Properties.mediaPublicBaseUrl.trimEnd('/')}/${key.trimStart('/')}"
 
+    override fun delete(
+        key: String,
+        purpose: UploadPurpose,
+    ) {
+        s3Client.deleteObject { delete ->
+            delete
+                .bucket(bucketOf(purpose.category))
+                .key(key)
+        }
+    }
+
     private fun bucketOf(category: StorageCategory): String =
         when (category) {
             StorageCategory.MEDIA -> s3Properties.mediaBucket
