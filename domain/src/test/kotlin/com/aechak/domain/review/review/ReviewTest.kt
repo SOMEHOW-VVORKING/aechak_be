@@ -3,11 +3,14 @@ package com.aechak.domain.review.review
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.review.error.ReviewErrorCode
 import com.aechak.domain.review.review.enums.ReviewStatus
+import java.time.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ReviewTest {
     private fun aReview(rating: Int = 5): Review =
@@ -122,5 +125,53 @@ class ReviewTest {
         val e = assertFailsWith<BusinessException> { review.delete() }
 
         assertEquals(ReviewErrorCode.INVALID_REVIEW_STATUS_TRANSITION, e.errorCode)
+    }
+
+    @Test
+    fun `마스킹된 리뷰는 대체 본문을, 대체 본문이 없으면 블라인드 문구를 노출한다`() {
+        assertEquals(
+            "이 **럼아",
+            Review.visibleContent(ReviewStatus.MASKED, content = "이 씨발럼아", displayContent = "이 **럼아"),
+        )
+        assertEquals(
+            "블라인드 처리된 리뷰입니다.",
+            Review.visibleContent(ReviewStatus.MASKED, content = "이 씨발럼아", displayContent = null),
+        )
+    }
+
+    @Test
+    fun `마스킹이 아닌 상태는 본문을 그대로 노출한다`() {
+        listOf(ReviewStatus.PUBLIC, ReviewStatus.BLOCKED, ReviewStatus.HIDDEN, ReviewStatus.DELETED).forEach { status ->
+            assertEquals(
+                "원문입니다",
+                Review.visibleContent(status, content = "원문입니다", displayContent = "대체 본문"),
+                "$status 는 본문을 그대로 둬야 한다",
+            )
+        }
+    }
+
+    @Test
+    fun `작성 마감은 구매확정일로부터 30일째 되는 날의 끝이다`() {
+        val confirmedAt = LocalDateTime.of(2026, 1, 1, 12, 0)
+
+        assertEquals(LocalDateTime.of(2026, 1, 31, 23, 59, 59, 999_999_999), Review.writeDeadline(confirmedAt))
+    }
+
+    @Test
+    fun `같은 날 구매확정이면 시각이 달라도 마감이 같다`() {
+        val deadline = Review.writeDeadline(LocalDateTime.of(2026, 1, 1, 0, 0))
+
+        assertEquals(deadline, Review.writeDeadline(LocalDateTime.of(2026, 1, 1, 23, 59, 59)))
+    }
+
+    @Test
+    fun `마감일 오후에도 작성할 수 있고 자정을 넘기면 못 쓴다`() {
+        val confirmedAt = LocalDateTime.of(2026, 1, 1, 12, 0)
+        val deadline = Review.writeDeadline(confirmedAt)
+
+        assertTrue(Review.isWithinWriteWindow(confirmedAt, confirmedAt))
+        assertTrue(Review.isWithinWriteWindow(confirmedAt, LocalDateTime.of(2026, 1, 31, 23, 0)))
+        assertTrue(Review.isWithinWriteWindow(confirmedAt, deadline))
+        assertFalse(Review.isWithinWriteWindow(confirmedAt, deadline.plusNanos(1)))
     }
 }

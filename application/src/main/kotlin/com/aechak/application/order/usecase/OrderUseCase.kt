@@ -1,6 +1,6 @@
 package com.aechak.application.order.usecase
 
-import com.aechak.application.order.usecase.result.ReviewOrderItemResult
+import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 
 /**
  * order 도메인의 유일한 진입점 계약. 규칙은 user 도메인 템플릿(UserUseCase) 참조.
@@ -11,5 +11,5 @@ interface OrderUseCase {
     fun getOrderItemForReview(
         orderItemId: Long,
         buyerId: Long,
-    ): ReviewOrderItemResult?
+    ): OrderItemForReviewResult?
 }
