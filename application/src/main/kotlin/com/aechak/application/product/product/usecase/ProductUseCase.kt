@@ -21,4 +21,7 @@ interface ProductUseCase {
 
     /** 상품 옵션 조회 */
     fun getProductOptions(publicId: String): ProductOptionsResult
+
+    /** 공개 상품의 내부 id 해석 — 없거나 미노출이면 404. */
+    fun getVisibleProductId(publicId: String): Long
 }

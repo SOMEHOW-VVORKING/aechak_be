@@ -73,6 +73,7 @@ project(":pg-client").projectDir = file("infra/client/pg-client")
 1. 화살표는 항상 안쪽(common/domain)을 향한다. boot를 의존하는 모듈은 없다. infra를 의존하는 모듈은 boot뿐이다(조립 지점).
 2. 도메인/애플리케이션 코드가 web-common을 참조하는 순간 리뷰에서 반려한다.
 3. infra 모듈끼리는 서로 모른다. 조합이 필요하면 application의 포트 뒤에서 boot가 조립한다.
+4. 순수 인메모리 계산 라이브러리(I/O·프레임워크 없음)는 domain·application이 직접 써도 된다 — infra 어댑터가 아니라 계산 도구다(domain의 ulid-creator). I/O가 섞이면 포트로 감싸 infra로 내린다. 순수 계산이어도 모듈에서 라이브러리를 떼어두려면 포트로 감쌀 수 있다(리뷰 금칙어 판정의 ProfanityScanner는 포트만 application에 두고 api 모듈이 아호코라식으로 구현).
 
 ---
 

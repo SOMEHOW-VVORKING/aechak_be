@@ -25,5 +25,7 @@ enum class AuthErrorCode(
     /** 콜백의 302 응답에 error 쿼리 파라미터로 전달하며 status 값은 직접 사용하지 않는다. */
     AUTHORIZATION_CODE_MISSING(20010, "소셜 로그인이 완료되지 않았습니다.", 401),
 
-    REJOIN_BLOCKED(20011, "탈퇴한 계정입니다. 일정 기간이 지난 뒤 다시 가입할 수 있습니다.", 403),
+    /** role=ADMIN 자격 게이트 실패 — 어드민 모듈의 AccessDeniedHandler가 쓴다. */
+    FORBIDDEN(20011, "접근 권한이 없습니다.", 403),
+    REJOIN_BLOCKED(20012, "탈퇴한 계정입니다. 일정 기간이 지난 뒤 다시 가입할 수 있습니다.", 403),
 }

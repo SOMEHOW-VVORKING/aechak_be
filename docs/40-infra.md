@@ -74,7 +74,7 @@ infra/kafka/src/main/kotlin/com/aechak/infra/kafka/
 ```kotlin
 data class OrderPlacedMessage(
     val orderId: Long,
-    override val aggregateId: String,                        // 파티션 키 = 순서 단위
+    override val orderingKey: String,                        // 파티션 키 = 순서 단위. 애그리거트 id일 필요는 없다
     override val occurredAt: Instant = Instant.now(),
 ) : GuaranteedMessage {
     override val aggregateType = "order"                     // 토픽 라우팅
@@ -88,11 +88,12 @@ data class OrderPlacedMessage(
 allowedDelay를 넘기면 HOLD로 전이돼 수동 재개를 기다린다(재개: `status=PENDING` 복귀 + `expired_at` 해제·연장).
 
 소비는 핸들러 시작에서 `processedMessages.markProcessed(컨슈머명, eventId)`가 false면 스킵(중복 배달).
-처리와 인박스 기록은 같은 트랜잭션으로 묶는다. 실물: boot/api의 SyntheticConsumer.
+처리와 인박스 기록은 같은 트랜잭션으로 묶는다. 실물: boot/api의 `ReviewRatingProjectionConsumer`.
 
 ## 3. infra/client
 
-- 구체 모듈은 용도별로 추가한다 — 현재 `client/pg-client`(:pg-client).
+- 구체 모듈은 용도별로 추가한다 — 현재 `client/pg-client`·`client/social-client`·`client/s3-client`·`client/ses-client`·`client/sms-client`.
+- `sms-client`: SmsSender 포트(application 소유)의 어댑터. 실발송(CoolSMS)은 dev·staging·prod 프로필, 그 외는 발송 생략(로그) 어댑터가 뜬다 — 실발송 프로필에서 키 미주입이면 부팅 실패. SDK가 HTTP 타임아웃을 50초로 고정해 두어, 어댑터가 전용 풀(동시 발송 상한 = 격벽)에 발송을 맡기고 5초까지만 기다린다 — 초과·포화는 즉시 예외로 드러나 application의 보상 경로를 탄다. 단, 타임아웃은 대기 포기일 뿐 발송 취소가 아니다(SDK가 취소를 노출하지 않음) — 5초를 넘겨 완료된 발송은 소각된 코드로 도착할 수 있고, 어댑터가 warn 로그로 남긴다.
 
 ```kotlin
 package com.aechak.infra.client.payment

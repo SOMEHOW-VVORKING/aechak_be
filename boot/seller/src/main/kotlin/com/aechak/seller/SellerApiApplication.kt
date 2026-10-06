@@ -19,6 +19,7 @@ import org.springframework.boot.runApplication
         "com.aechak.application.user.term",         // UserFacade의 온보딩 동의 검증
         "com.aechak.application.user.verification", // 전화 인증
         "com.aechak.application.file",   // 서류 승격
+        "com.aechak.application.product", // 상품 등록·카테고리 조회
         "com.aechak.infra.persistence",  // JPA 어댑터 (QuerydslConfig 포함)
         "com.aechak.infra.s3",           // FileStorage 어댑터
         "com.aechak.infra.redis",        // 인증 코드 저장소
