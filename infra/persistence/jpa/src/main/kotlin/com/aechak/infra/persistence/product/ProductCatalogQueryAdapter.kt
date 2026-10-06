@@ -4,11 +4,15 @@ import com.aechak.application.product.product.port.ProductCatalogCondition
 import com.aechak.application.product.product.port.ProductCatalogQueryPort
 import com.aechak.application.product.product.port.ProductCatalogSort
 import com.aechak.application.product.product.port.view.ProductCatalogView
+import com.aechak.domain.product.product.enums.SaleStatus
 import com.querydsl.core.types.OrderSpecifier
 import com.querydsl.core.types.Predicate
+import com.querydsl.core.types.dsl.Expressions
 import com.querydsl.core.types.dsl.NumberExpression
+import com.querydsl.jpa.impl.JPAQuery
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.springframework.stereotype.Repository
+import java.time.LocalDateTime
 
 /**
  * application이 요청한 공개 상품 카탈로그 목록 조회를 QueryDSL로 수행한다.
@@ -27,9 +31,7 @@ class ProductCatalogQueryAdapter(
      */
     override fun findVisiblePage(condition: ProductCatalogCondition): List<ProductCatalogView> {
         val effectivePrice = effectivePrice(condition.now)
-        return visibleProductQuery(queryFactory, catalogViewProjection(effectivePrice))
-            .leftJoin(productStats)
-            .on(productStats.productId.eq(product.id))
+        return catalogQuery(effectivePrice)
             .where(categoryFilter(condition.categoryId), keyset(condition, effectivePrice))
             .orderBy(*orderBy(condition.sort, effectivePrice))
             .limit(condition.limit.toLong())
@@ -51,6 +53,42 @@ class ProductCatalogQueryAdapter(
         visibleProductQuery(queryFactory, product.id)
             .where(product.publicId.eq(publicId))
             .fetchOne()
+
+    /**
+     * 인기 랭킹에 노출할 상위 상품 반환
+     *
+     * 리뷰 수, 찜 수, id 내림차순을 기준으로 정렬
+     */
+    override fun findPopular(
+        limit: Int,
+        now: LocalDateTime,
+    ): List<ProductCatalogView> =
+        catalogQuery(effectivePrice(now))
+            .orderBy(productStats.reviewCount.desc(), productStats.likeCount.desc(), product.id.desc())
+            .limit(limit.toLong())
+            .fetch()
+
+    /** 추천에 노출할 판매중 상품을 무작위로 뽑아 반환 */
+    override fun findRandomOnSale(
+        limit: Int,
+        now: LocalDateTime,
+    ): List<ProductCatalogView> {
+        val ids =
+            visibleProductQuery(queryFactory, product.id)
+                .where(product.saleStatus.eq(SaleStatus.ON_SALE))
+                .orderBy(RANDOM_ORDER.asc())
+                .limit(limit.toLong())
+                .fetch()
+        if (ids.isEmpty()) return emptyList()
+        return catalogQuery(effectivePrice(now))
+            .where(product.id.`in`(ids))
+            .fetch()
+    }
+
+    private fun catalogQuery(effectivePrice: NumberExpression<Long>): JPAQuery<ProductCatalogView> =
+        visibleProductQuery(queryFactory, catalogViewProjection(effectivePrice))
+            .leftJoin(productStats)
+            .on(productStats.productId.eq(product.id))
 
     /**
      * 중분류 필터가 있으면 해당 중분류와 그 아래 소분류의 상품만 조회하는 조건을 반환한다.
@@ -93,4 +131,9 @@ class ProductCatalogQueryAdapter(
             ProductCatalogSort.LATEST -> arrayOf(product.id.desc())
             ProductCatalogSort.PRICE_ASC -> arrayOf(effectivePrice.asc(), product.id.desc())
         }
+
+    private companion object {
+        /** 무작위 정렬키. JPQL function()으로 DB의 rand()를 부른다 */
+        val RANDOM_ORDER = Expressions.numberTemplate(Double::class.javaObjectType, "function('rand')")
+    }
 }
