@@ -6,6 +6,7 @@ import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.common.error.BusinessException
+import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.OrderItem
@@ -307,20 +308,50 @@ class SellerProductSaleStatusIntegrationTest : IntegrationTestBase() {
 
     private fun placeOrder(productVersionId: Long) {
         tx.execute {
-            val group = OrderGroup.create(9_999L, 0L, 25_000L, 0L, 25_000L, "idem-$productVersionId")
+            val group =
+                OrderGroup.create(
+                    buyerId = 9_999L,
+                    deliveryAddressId = 0L,
+                    deliveryAddress = deliveryAddressSnapshot(),
+                    usedPoint = 0L,
+                    totalProductAmount = 25_000L,
+                    totalShippingFee = 0L,
+                    idempotencyKey = "idem-$productVersionId",
+                    expiresAt = LocalDateTime.now().plusMinutes(10),
+                )
             em.persist(group)
             val item =
                 OrderItem.of(
                     productId = internalProductId(),
                     optionCombinationId = combinationId(),
+                    optionNameSnapshot = combinationName(),
                     quantity = 1,
                     unitPriceSnapshot = 25_000L,
                     discountAllocatedAmount = 0L,
                     productVersionId = productVersionId,
                 )
-            em.persist(Order.place(group, sellerUserId, 0L, 0L, listOf(item)))
+            em.persist(
+                Order.create(
+                    orderGroup = group,
+                    sellerId = sellerUserId,
+                    sellerNameSnapshot = "애착상회$sellerUserId",
+                    allocatedCouponDiscount = 0L,
+                    sellerShippingFee = 0L,
+                    items = listOf(item),
+                ),
+            )
         }
     }
+
+    private fun deliveryAddressSnapshot() =
+        DeliveryAddressSnapshot(
+            receiverNameEnc = "enc-receiver",
+            contactNumberEnc = "enc-contact",
+            zipCode = "12345",
+            baseAddress = "서울시 애착구 멍냥로 1",
+            detailAddress = null,
+            deliveryMemo = null,
+        )
 
     private fun internalProductId(): Long =
         em
@@ -330,6 +361,8 @@ class SellerProductSaleStatusIntegrationTest : IntegrationTestBase() {
 
     private fun combinationId(): Long =
         em.createQuery("select c.id from OptionCombination c", Long::class.javaObjectType).resultList.first()
+
+    private fun combinationName(): String = em.createQuery("select c.name from OptionCombination c", String::class.java).resultList.first()
 
     private fun firstVersionId(): Long =
         em

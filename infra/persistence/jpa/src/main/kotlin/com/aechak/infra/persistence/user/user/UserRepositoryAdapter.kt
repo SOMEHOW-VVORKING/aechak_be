@@ -5,6 +5,7 @@ import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.domain.user.user.repository.UserRepository
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
@@ -35,6 +36,13 @@ interface UserJpaRepository : JpaRepository<User, Long> {
     ): Boolean
 
     fun findByPhoneHmac(phoneHmac: ByteArray): User?
+
+    @Modifying
+    @Query("update User u set u.pointBalance = u.pointBalance + :amount where u.id = :id")
+    fun addPointBalance(
+        @Param("id") id: Long,
+        @Param("amount") amount: Long,
+    ): Int
 }
 
 /**
@@ -48,6 +56,11 @@ class UserRepositoryAdapter(
     override fun findById(id: Long): User? = jpaRepository.findByIdOrNull(id)
 
     override fun save(user: User): User = jpaRepository.save(user)
+
+    override fun addPointBalance(
+        userId: Long,
+        amount: Long,
+    ): Int = jpaRepository.addPointBalance(userId, amount)
 
     override fun isNicknameTaken(
         nickname: String,

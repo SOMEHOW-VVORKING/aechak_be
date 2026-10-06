@@ -26,4 +26,7 @@ enum class AuthErrorCode(
 
     /** HTTP 응답이 아니라 콜백 302의 ?error= 값으로만 나간다 — status는 명목값. */
     AUTHORIZATION_CODE_MISSING(20010, "소셜 로그인이 완료되지 않았습니다.", 401),
+
+    /** role=ADMIN 자격 게이트 실패 — 어드민 모듈의 AccessDeniedHandler가 쓴다. */
+    FORBIDDEN(20011, "접근 권한이 없습니다.", 403),
 }

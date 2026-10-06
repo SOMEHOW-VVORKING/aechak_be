@@ -3,7 +3,8 @@
 #
 # 접속 정보 7개는 기본값이 없어 하나라도 빠지면 앱이 기동에 실패한다.
 # 아래 웹 연동 3개는 기본값이 있어 없어도 뜨지만, 없으면 CORS와 소셜 로그인이 동작하지 않는다.
-# 카카오 키·JWT 키는 여기 없다 — terraform이 값을 알 수 없다(없어도 앱은 뜬다).
+# 카카오 키·JWT 키·CoolSMS 키(COOLSMS_API_KEY·COOLSMS_API_SECRET·COOLSMS_FROM)는 여기 없다 —
+# terraform이 값을 알 수 없어 수기 등재한다. 카카오·JWT는 없어도 앱이 뜨지만 COOLSMS_* 3개는 없으면 부팅 실패.
 
 resource "aws_ssm_parameter" "db_url" {
   name  = "/${var.project}/${var.env}/api/SPRING_DATASOURCE_URL"
@@ -83,14 +84,17 @@ resource "aws_ssm_parameter" "auth_return_urls" {
 }
 
 # ── 문의 통지(SES) ─────────────────────────────────────
-# enabled=true인데 from/recipients가 비면 앱이 fail-fast로 기동에 실패한다 — 셋을 함께 넣는다.
+# enabled=true인데 from/recipients가 비면 앱이 fail-fast로 기동에 실패한다.
 resource "aws_ssm_parameter" "ses_from" {
   name  = "/${var.project}/${var.env}/api/AWS_SES_FROM"
   type  = "String"
   value = local.ses_from_address
 }
 
+# 수신자 미설정이면 파라미터를 만들지 않는다 — SSM은 빈 값을 거절하고(길이 ≥ 1),
+# 앱은 경로 프리픽스 import라 파라미터가 없으면 기본값(빈 목록)으로 부팅한다.
 resource "aws_ssm_parameter" "inquiry_ops_recipients" {
+  count = length(var.inquiry_ops_recipients) > 0 ? 1 : 0
   name  = "/${var.project}/${var.env}/api/INQUIRY_OPS_RECIPIENTS"
   type  = "String"
   value = join(",", var.inquiry_ops_recipients)
