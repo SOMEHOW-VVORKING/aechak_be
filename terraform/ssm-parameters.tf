@@ -84,14 +84,17 @@ resource "aws_ssm_parameter" "auth_return_urls" {
 }
 
 # ── 문의 통지(SES) ─────────────────────────────────────
-# enabled=true인데 from/recipients가 비면 앱이 fail-fast로 기동에 실패한다 — 셋을 함께 넣는다.
+# enabled=true인데 from/recipients가 비면 앱이 fail-fast로 기동에 실패한다.
 resource "aws_ssm_parameter" "ses_from" {
   name  = "/${var.project}/${var.env}/api/AWS_SES_FROM"
   type  = "String"
   value = local.ses_from_address
 }
 
+# 수신자 미설정이면 파라미터를 만들지 않는다 — SSM은 빈 값을 거절하고(길이 ≥ 1),
+# 앱은 경로 프리픽스 import라 파라미터가 없으면 기본값(빈 목록)으로 부팅한다.
 resource "aws_ssm_parameter" "inquiry_ops_recipients" {
+  count = length(var.inquiry_ops_recipients) > 0 ? 1 : 0
   name  = "/${var.project}/${var.env}/api/INQUIRY_OPS_RECIPIENTS"
   type  = "String"
   value = join(",", var.inquiry_ops_recipients)
