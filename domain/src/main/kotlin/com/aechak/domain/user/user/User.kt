@@ -84,25 +84,29 @@ class User protected constructor() : AggregateRoot() {
     val profile: UserProfile
         get() = _profile ?: throw IllegalStateException("프로필이 로딩/생성되지 않았습니다 (userId=$id)")
 
+    /** 프로필 이미지 key */
+    val profileImageKey: String?
+        get() = _profile?.profileImageKey
+
+    /** 사용자를 탈퇴 상태로 바꾸고 닉네임과 전화번호 값을 삭제해 UNIQUE 제약에서 해제 */
     fun withdraw() {
         if (status == UserStatus.WITHDRAWN) {
             throw BusinessException(UserErrorCode.ALREADY_WITHDRAWN)
         }
         status = UserStatus.WITHDRAWN
         withdrawnAt = LocalDateTime.now()
+        _profile = null
+        unverifyPhone()
     }
 
-    /**
-     * 온보딩 완료 — 프로필(닉네임) 생성과 ACTIVE 전이는 반드시 함께 일어난다.
-     * 필수 동의 검증은 호출자(application)의 책임 — "ACTIVE ⇒ 필수 동의 존재" 게이트를 통과한 뒤에만 부른다.
-     */
+    /** 프로필을 생성하고 사용자를 ACTIVE 상태로 변경 */
     fun completeOnboarding(nickname: String) {
         check(status == UserStatus.PENDING_ONBOARDING) { "온보딩 완료 전이는 PENDING 상태에서만 가능합니다 (userId=$id)" }
         _profile = UserProfile.of(this, nickname)
         status = UserStatus.ACTIVE
     }
 
-    /** 프로필 전체 교체 — ACTIVE에서만. 비ACTIVE 도달은 UserStatusFilter가 걸렀어야 할 방어선 이상이라 500이 맞다. */
+    /** 프로필 전체 교체 - ACTIVE 사용자만 프로필을 수정할 수 있다. */
     fun updateProfile(
         nickname: String,
         bio: String?,
@@ -113,8 +117,8 @@ class User protected constructor() : AggregateRoot() {
     }
 
     /**
-     * 전화 인증 완료 — 암호문·해시 2종·인증 상태를 반드시 한 번에 세팅한다(반쪽 상태 차단).
-     * 파생값 생성·원문 검증은 호출자(application)의 책임 — 여기서는 불투명 바이트로만 다룬다.
+     * 전화 인증
+     * 전화번호 암호문, 검색용 해시, 인증 상태를 함께 저장
      */
     fun verifyPhone(
         encryptedPhone: ByteArray,
@@ -129,7 +133,7 @@ class User protected constructor() : AggregateRoot() {
         this.phoneVerifiedAt = LocalDateTime.now()
     }
 
-    /** 전화 점유 해제 — 점유 이전(같은 번호를 다른 계정이 인증)과 탈퇴 파기가 공용으로 쓴다. */
+    /** 다른 계정으로 전화번호를 이전하거나 탈퇴할 때 저장된 전화번호 정보를 삭제 */
     fun unverifyPhone() {
         phoneNumber = null
         phoneHmac = null
