@@ -94,3 +94,40 @@ resource "aws_lb_listener_rule" "seller_api" {
     target_group_arn = aws_lb_target_group.seller_api.arn
   }
 }
+
+# ── admin (SCRUM-229): host 기반 분기 ──────────────────
+# 인증서 추가 불필요 — 와일드카드 SAN이 admin-api-<env>.aechak.co.kr(한 레이블)을 덮는다.
+resource "aws_lb_target_group" "admin" {
+  name_prefix = "admin" # 교체 시 이름충돌 방지 (max 6자)
+  port        = var.app_port
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  deregistration_delay = 60 # dev는 요청이 짧고 드물어 드레이닝 60초면 충분 (기본 300초)
+
+  lifecycle { create_before_destroy = true }
+
+  health_check {
+    path                = "/actuator/health"
+    interval            = 30
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+}
+
+resource "aws_lb_listener_rule" "admin" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 20 # host 분기라 규칙 간 간섭 없음 — seller-api(10) 뒤 번호만 잇는다
+
+  condition {
+    host_header {
+      values = [local.admin_api_domain]
+    }
+  }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.admin.arn
+  }
+}
