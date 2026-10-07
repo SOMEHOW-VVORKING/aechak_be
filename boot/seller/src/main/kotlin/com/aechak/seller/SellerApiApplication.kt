@@ -14,6 +14,7 @@ import org.springframework.boot.runApplication
         "com.aechak.webcommon",          // 전역 예외 핸들러와 응답 규격
         "com.aechak.websecurity",        // JWT 디코더와 상태 필터 부품
         "com.aechak.pii",                // PII 암호화 엔진과 키 조립(PiiCryptoConfig)
+        "com.aechak.application.pii",    // 암호문 Base64 왕복 부품(PiiStringCodec) — 계좌번호 암·복호가 경유
         "com.aechak.application.seller", // 입점 신청 유스케이스
         "com.aechak.application.user.user",         // 휴대폰 인증 게이트(requirePhoneVerified)가 UserUseCase 경유
         "com.aechak.application.user.term",         // UserFacade의 온보딩 동의 검증
