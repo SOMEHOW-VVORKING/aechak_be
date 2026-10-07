@@ -1,4 +1,4 @@
-package com.aechak.infra.persistence.product
+package com.aechak.infra.persistence.product.version
 
 import com.aechak.domain.product.version.ProductVersion
 import com.aechak.domain.product.version.repository.ProductVersionRepository

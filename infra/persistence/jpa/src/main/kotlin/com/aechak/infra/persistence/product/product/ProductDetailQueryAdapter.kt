@@ -1,9 +1,15 @@
-package com.aechak.infra.persistence.product
+package com.aechak.infra.persistence.product.product
 
 import com.aechak.application.product.product.port.ProductDetailQueryPort
 import com.aechak.application.product.product.port.view.ProductCatalogDetailView
 import com.aechak.application.product.product.port.view.ProductImageView
 import com.aechak.domain.product.product.QProductImage
+import com.aechak.infra.persistence.product.category
+import com.aechak.infra.persistence.product.grandParent
+import com.aechak.infra.persistence.product.parent
+import com.aechak.infra.persistence.product.product
+import com.aechak.infra.persistence.product.seller
+import com.aechak.infra.persistence.product.visibleProductQuery
 import com.querydsl.core.types.Expression
 import com.querydsl.core.types.Projections
 import com.querydsl.jpa.impl.JPAQueryFactory

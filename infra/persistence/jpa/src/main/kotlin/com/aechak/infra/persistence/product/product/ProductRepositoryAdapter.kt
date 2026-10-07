@@ -1,4 +1,4 @@
-package com.aechak.infra.persistence.product
+package com.aechak.infra.persistence.product.product
 
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.repository.ProductRepository

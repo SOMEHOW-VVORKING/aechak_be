@@ -1,4 +1,4 @@
-package com.aechak.infra.persistence.product
+package com.aechak.infra.persistence.product.like
 
 import com.aechak.application.product.like.port.LikedProductCondition
 import com.aechak.application.product.like.port.LikedProductQueryPort
@@ -8,6 +8,14 @@ import com.aechak.domain.product.like.QProductLike
 import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.seller.seller.enums.SellerStatus
+import com.aechak.infra.persistence.product.category
+import com.aechak.infra.persistence.product.categoryChainActive
+import com.aechak.infra.persistence.product.grandParent
+import com.aechak.infra.persistence.product.parent
+import com.aechak.infra.persistence.product.product
+import com.aechak.infra.persistence.product.productStats
+import com.aechak.infra.persistence.product.reviewCountScore
+import com.aechak.infra.persistence.product.seller
 import com.querydsl.core.types.Expression
 import com.querydsl.core.types.Predicate
 import com.querydsl.core.types.Projections
