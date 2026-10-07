@@ -19,6 +19,7 @@ import com.aechak.domain.seller.application.SellerApplication;
 import com.aechak.domain.seller.application.enums.ApplicationStatus;
 import com.aechak.domain.seller.error.SellerErrorCode;
 import com.aechak.domain.seller.seller.Seller;
+import com.aechak.domain.settlement.account.SettlementAccount;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -136,12 +137,15 @@ public class AdminSellerReviewFacade implements AdminSellerReviewUseCase {
         try {
             block.run();
         } catch (OptimisticLockingFailureException e) {
+            // 신청 전이 UPDATE의 version 대조 실패 — 상대 결정이 먼저 커밋된 뒤 내 flush가 나간 경우
             throw new BusinessException(SellerErrorCode.APPLICATION_STATUS_TRANSITION_NOT_ALLOWED, e, null);
         } catch (DataIntegrityViolationException e) {
+            // version 대조에 닿기 전에 INSERT가 먼저 충돌한 경우 — 동시 승인의 개점(sellers PK)·정산계좌(UNIQUE) 중복
             String cause = e.getMostSpecificCause().getMessage() == null ? "" : e.getMostSpecificCause().getMessage();
-            if (cause.contains("sellers.PRIMARY") || cause.contains("uk_settlement_accounts_seller_id")) {
+            if (cause.contains(Seller.PK_CONFLICT_MARKER) || cause.contains(SettlementAccount.UK_SELLER_ID)) {
                 throw new BusinessException(SellerErrorCode.APPLICATION_STATUS_TRANSITION_NOT_ALLOWED, e, null);
             }
+            // 무관한 제약 위반은 동시 충돌로 오라벨하지 않고 그대로 전파한다
             throw e;
         }
     }
