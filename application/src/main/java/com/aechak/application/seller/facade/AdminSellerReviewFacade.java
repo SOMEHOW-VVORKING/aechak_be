@@ -140,7 +140,10 @@ public class AdminSellerReviewFacade implements AdminSellerReviewUseCase {
             // 신청 전이 UPDATE의 version 대조 실패 — 상대 결정이 먼저 커밋된 뒤 내 flush가 나간 경우
             throw new BusinessException(SellerErrorCode.APPLICATION_STATUS_TRANSITION_NOT_ALLOWED, e, null);
         } catch (DataIntegrityViolationException e) {
-            // version 대조에 닿기 전에 INSERT가 먼저 충돌한 경우 — 동시 승인의 개점(sellers PK)·정산계좌(UNIQUE) 중복
+            // version 대조에 닿기 전에 INSERT가 먼저 충돌한 경우 — 동시 승인의 개점(sellers PK)·정산계좌(UNIQUE) 중복.
+            // Seller는 할당 ID라 save()가 merge지만, 동시 승인은 양쪽 모두 행을 못 본 상태라 둘 다 INSERT를 스케줄한다.
+            // 기존 행이 있는데 승인이 들어오면 merge가 그 행을 덮어쓸 수 있으나, 그 상태로 가는 경로는
+            // 신청서 UNIQUE(user_id)·신청 단계 ALREADY_SELLER·requireDecidable이 겹겹이 막는다.
             String cause = e.getMostSpecificCause().getMessage() == null ? "" : e.getMostSpecificCause().getMessage();
             if (cause.contains(Seller.PK_CONFLICT_MARKER) || cause.contains(SettlementAccount.UK_SELLER_ID)) {
                 throw new BusinessException(SellerErrorCode.APPLICATION_STATUS_TRANSITION_NOT_ALLOWED, e, null);
