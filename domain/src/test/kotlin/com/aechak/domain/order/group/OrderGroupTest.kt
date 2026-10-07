@@ -63,6 +63,24 @@ class OrderGroupTest {
     }
 
     @Test
+    fun `적립금 1000원 미만 사용은 50103으로 차단된다`() {
+        val e = assertFailsWith<BusinessException> { orderGroup(usedPoint = 999L) }
+
+        assertEquals(
+            OrderErrorCode.POINT_BELOW_MINIMUM_USAGE,
+            e.errorCode,
+            "최소 사용액(1,000원) 미만이면 50103이어야 한다. 0원(미사용)은 이 검증을 타지 않는다",
+        )
+    }
+
+    @Test
+    fun `적립금은 정확히 1000원부터 사용할 수 있다`() {
+        val group = orderGroup(usedPoint = 1_000L)
+
+        assertEquals(12_000L, group.finalPaymentAmount, "경계값 1,000원은 허용돼야 한다")
+    }
+
+    @Test
     fun `적립금이 결제 가능액을 넘으면 50102로 차단된다`() {
         val e = assertFailsWith<BusinessException> { orderGroup(usedPoint = 13_001L) }
 

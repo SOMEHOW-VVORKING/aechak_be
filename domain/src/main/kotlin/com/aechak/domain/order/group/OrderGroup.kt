@@ -111,6 +111,7 @@ class OrderGroup protected constructor(
 
     companion object {
         const val IDEMPOTENCY_KEY_MAX_LENGTH = 100
+        const val MIN_POINT_USAGE = 1_000L
 
         /** 국내 PG 신용카드 최소 결제 금액 */
         const val MIN_PAYMENT_AMOUNT = 100L
@@ -130,6 +131,9 @@ class OrderGroup protected constructor(
             require(totalShippingFee >= 0) { "배송비 합계가 음수입니다 (totalShippingFee=$totalShippingFee)" }
             if (usedPoint < 0) {
                 throw BusinessException(OrderErrorCode.INVALID_ORDER_GROUP_AMOUNT)
+            }
+            if (usedPoint in 1 until MIN_POINT_USAGE) {
+                throw BusinessException(OrderErrorCode.POINT_BELOW_MINIMUM_USAGE)
             }
             val payableAmount = totalProductAmount + totalShippingFee // 쿠폰이 들어오면 couponDiscountAmount를 여기서 뺌
             if (usedPoint > payableAmount) {
