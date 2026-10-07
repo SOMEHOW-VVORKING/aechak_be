@@ -8,7 +8,9 @@ public record AdminApplicationListResponse(List<AdminApplicationSummaryResponse>
 
     public static AdminApplicationListResponse from(PageResult<AdminApplicationSummaryResult> result) {
         return new AdminApplicationListResponse(
-                result.getItems().stream().map(AdminApplicationSummaryResponse::from).toList(),
+                result.getItems().stream()
+                        .map(AdminApplicationSummaryResponse::from)
+                        .toList(),
                 result.getTotalCount());
     }
 }

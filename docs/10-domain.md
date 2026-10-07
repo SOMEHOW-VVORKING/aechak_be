@@ -137,12 +137,16 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
 ## 3. 이벤트 수집 패턴 (도메인은 발행 메커니즘을 모른다)
 
 domain은 Spring을 모르므로 ApplicationEventPublisher를 직접 못 쓴다.
-**애그리거트가 수집 → Facade가 발행.** `AbstractAggregateRoot`(spring-data-commons) 사용 금지 — domain에 Spring이 딸려온다.
+**애그리거트가 수집 → application이 발행.** `AbstractAggregateRoot`(spring-data-commons) 사용 금지 — domain에 Spring이 딸려온다.
+
+발행 지점은 Facade와 Service 중 애그리거트를 다루는 쪽이다. 트랜잭션 안이기만 하면 되므로,
+애그리거트가 Service 밖으로 안 나가는 흐름에서는 Service가 발행하고 Result만 돌려준다 —
+엔티티를 Facade까지 끌고 나가려고 반환 타입을 늘리지 않는다.
 
 ```kotlin
 package com.aechak.domain.support
 
-/** 도메인 이벤트 수집 베이스. 발행은 application(Facade)의 책임. */
+/** 도메인 이벤트 수집 베이스. 발행은 application의 책임. */
 abstract class AggregateRoot {
     @Transient
     private val _events = mutableListOf<Any>()

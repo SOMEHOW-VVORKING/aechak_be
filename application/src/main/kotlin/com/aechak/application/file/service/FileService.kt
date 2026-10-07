@@ -5,6 +5,7 @@ import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.enums.FileType
 import com.aechak.application.file.port.enums.UploadPurpose
+import com.aechak.application.file.usecase.command.DeleteFileCommand
 import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.file.usecase.result.IssuePresignedUrlResult
@@ -49,4 +50,6 @@ class FileService(
         key: String,
         purpose: UploadPurpose,
     ): String = fileStorage.issueDownloadUrl(key, purpose)
+
+    fun delete(command: DeleteFileCommand) = fileStorage.delete(command.key, command.purpose)
 }

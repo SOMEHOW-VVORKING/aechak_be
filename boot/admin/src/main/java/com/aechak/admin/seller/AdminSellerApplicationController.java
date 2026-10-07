@@ -41,18 +41,15 @@ public class AdminSellerApplicationController {
     /** 신청 상세 — 계좌 전체 표시·서류 다운로드 URL(단기)·심사 이력·동일 사업자번호 이력. */
     @GetMapping("/{applicationId}")
     public ResponseEntity<ApiResponse<AdminApplicationDetailResponse>> detail(
-            @PathVariable long applicationId,
-            @AuthenticationPrincipal AuthPrincipal principal) {
-        return ResponseEntity.ok(ApiResponse.Companion.of(
-                AdminApplicationDetailResponse.from(
-                        adminSellerReviewUseCase.detail(principal.getUserId(), applicationId))));
+            @PathVariable long applicationId, @AuthenticationPrincipal AuthPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.Companion.of(AdminApplicationDetailResponse.from(
+                adminSellerReviewUseCase.detail(principal.getUserId(), applicationId))));
     }
 
     /** 승인 — 한 트랜잭션으로 셀러 개점 + 정산계좌 이관(VERIFIED). 처리 불가 상태·동시 충돌은 409(10101). */
     @PostMapping("/{applicationId}/approve")
     public ResponseEntity<Void> approve(
-            @PathVariable long applicationId,
-            @AuthenticationPrincipal AuthPrincipal principal) {
+            @PathVariable long applicationId, @AuthenticationPrincipal AuthPrincipal principal) {
         adminSellerReviewUseCase.approve(principal.getUserId(), applicationId);
         return ResponseEntity.noContent().build();
     }

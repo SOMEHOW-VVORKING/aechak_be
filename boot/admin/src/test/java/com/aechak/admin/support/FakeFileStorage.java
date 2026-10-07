@@ -12,7 +12,8 @@ public class FakeFileStorage implements FileStorage {
 
     @Override
     public IssueFileUrl issueUploadUrl(UploadPurpose purpose, FileType fileType, long userId) {
-        String key = FileKey.INSTANCE.tmpPrefixOf(userId, purpose) + Ulid.INSTANCE.generate() + "." + fileType.getExtension();
+        String key = FileKey.INSTANCE.tmpPrefixOf(userId, purpose) + Ulid.INSTANCE.generate() + "."
+                + fileType.getExtension();
         return new IssueFileUrl("https://fake-presigned.local/" + key, key);
     }
 
@@ -30,4 +31,8 @@ public class FakeFileStorage implements FileStorage {
     public String issueDownloadUrl(String key, UploadPurpose purpose) {
         return "https://fake-download.local/" + key;
     }
+
+    /** 어드민은 서류를 지우지 않는다 — 포트 충족용 no-op. */
+    @Override
+    public void delete(String key, UploadPurpose purpose) {}
 }

@@ -17,8 +17,7 @@ class AdminSellerApplicationIntegrationTest extends SellerReviewIntegrationTestB
         long second = seedApplication(createUser(), true);
         seedApplication(createUser(), false); // DRAFT — 필터 밖
 
-        mockMvc
-                .perform(bearer(get(BASE).param("status", "SUBMITTED"), adminToken))
+        mockMvc.perform(bearer(get(BASE).param("status", "SUBMITTED"), adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalCount").value(2))
                 .andExpect(jsonPath("$.data.items[0].applicationId").value(second))
@@ -31,8 +30,7 @@ class AdminSellerApplicationIntegrationTest extends SellerReviewIntegrationTestB
             seedApplication(createUser(), true);
         }
 
-        mockMvc
-                .perform(bearer(get(BASE).param("page", "1").param("size", "2"), adminToken))
+        mockMvc.perform(bearer(get(BASE).param("page", "1").param("size", "2"), adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalCount").value(3))
                 .andExpect(jsonPath("$.data.items.length()").value(1));
@@ -43,23 +41,23 @@ class AdminSellerApplicationIntegrationTest extends SellerReviewIntegrationTestB
         long previousId = seedApplication(createUser(), true, "서류 재제출 요망");
         long applicationId = seedApplication(createUser(), true);
 
-        mockMvc
-                .perform(bearer(get(BASE + "/" + applicationId), adminToken))
+        mockMvc.perform(bearer(get(BASE + "/" + applicationId), adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.accountNumber").value(ACCOUNT_NUMBER))
                 .andExpect(jsonPath("$.data.documents[0].documentType").value("ID_CARD"))
-                .andExpect(jsonPath("$.data.documents[0].downloadUrl").value("https://fake-download.local/" + DOCUMENT_KEY))
+                .andExpect(jsonPath("$.data.documents[0].downloadUrl")
+                        .value("https://fake-download.local/" + DOCUMENT_KEY))
                 .andExpect(jsonPath("$.data.reviews.length()").value(0))
                 .andExpect(jsonPath("$.data.previousApplications.length()").value(1))
-                .andExpect(jsonPath("$.data.previousApplications[0].applicationId").value(previousId));
+                .andExpect(
+                        jsonPath("$.data.previousApplications[0].applicationId").value(previousId));
     }
 
     @Test
     void 반려된_신청_상세엔_심사_이력과_반려_사유가_실린다() throws Exception {
         long applicationId = seedApplication(createUser(), true, "통장사본 불일치");
 
-        mockMvc
-                .perform(bearer(get(BASE + "/" + applicationId), adminToken))
+        mockMvc.perform(bearer(get(BASE + "/" + applicationId), adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("REJECTED"))
                 .andExpect(jsonPath("$.data.rejectionReason").value("통장사본 불일치"))
@@ -69,16 +67,14 @@ class AdminSellerApplicationIntegrationTest extends SellerReviewIntegrationTestB
 
     @Test
     void 없는_신청_상세는_404_10100_를_반환한다() throws Exception {
-        mockMvc
-                .perform(bearer(get(BASE + "/999999"), adminToken))
+        mockMvc.perform(bearer(get(BASE + "/999999"), adminToken))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value(10100));
     }
 
     @Test
     void 일반_유저_토큰은_목록_접근이_403_20011_으로_막힌다() throws Exception {
-        mockMvc
-                .perform(bearer(get(BASE), mintAccessToken(createUser(), UserRole.GENERAL)))
+        mockMvc.perform(bearer(get(BASE), mintAccessToken(createUser(), UserRole.GENERAL)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.errorCode").value(20011));
     }

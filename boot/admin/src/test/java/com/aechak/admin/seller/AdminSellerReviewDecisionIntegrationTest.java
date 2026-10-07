@@ -33,8 +33,7 @@ class AdminSellerReviewDecisionIntegrationTest extends SellerReviewIntegrationTe
         long userId = createUser();
         long applicationId = seedApplication(userId, true);
 
-        mockMvc
-                .perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
+        mockMvc.perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
                 .andExpect(status().isNoContent());
 
         tx.executeWithoutResult(txStatus -> {
@@ -47,8 +46,7 @@ class AdminSellerReviewDecisionIntegrationTest extends SellerReviewIntegrationTe
             assertEquals("애착상회", seller.getStoreName());
             assertEquals(0L, seller.getBaseShippingFee());
 
-            SettlementAccount account = em
-                    .createQuery(
+            SettlementAccount account = em.createQuery(
                             "select a from SettlementAccount a where a.sellerId = :sellerId", SettlementAccount.class)
                     .setParameter("sellerId", userId)
                     .getSingleResult();
@@ -62,27 +60,23 @@ class AdminSellerReviewDecisionIntegrationTest extends SellerReviewIntegrationTe
         long userId = createUser();
         long applicationId = seedApplication(userId, true, null, BusinessType.PERSONAL_GENERAL, null, null);
 
-        mockMvc
-                .perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
+        mockMvc.perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
                 .andExpect(status().isNoContent());
 
-        tx.executeWithoutResult(txStatus ->
-                assertEquals("홍길동", em.find(Seller.class, userId).getStoreName()));
+        tx.executeWithoutResult(
+                txStatus -> assertEquals("홍길동", em.find(Seller.class, userId).getStoreName()));
     }
 
     @Test
     void 이미_처리된_신청의_재처리는_409_10101_를_반환한다() throws Exception {
         long applicationId = seedApplication(createUser(), true);
-        mockMvc
-                .perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
+        mockMvc.perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
                 .andExpect(status().isNoContent());
 
-        mockMvc
-                .perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
+        mockMvc.perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value(10101));
-        mockMvc
-                .perform(rejectRequest(applicationId, "이미 승인된 건"))
+        mockMvc.perform(rejectRequest(applicationId, "이미 승인된 건"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value(10101));
     }
@@ -100,8 +94,7 @@ class AdminSellerReviewDecisionIntegrationTest extends SellerReviewIntegrationTe
             pool.submit(() -> {
                 try {
                     start.await();
-                    statuses.add(mockMvc
-                            .perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
+                    statuses.add(mockMvc.perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
                             .andReturn()
                             .getResponse()
                             .getStatus());
@@ -118,8 +111,7 @@ class AdminSellerReviewDecisionIntegrationTest extends SellerReviewIntegrationTe
 
         assertEquals(List.of(204, 409), statuses.stream().sorted().toList(), "한쪽은 승인, 다른 쪽은 동시 처리 충돌이어야 한다");
         tx.executeWithoutResult(txStatus -> {
-            Long sellerCount = em
-                    .createQuery("select count(s) from Seller s where s.userId = :userId", Long.class)
+            Long sellerCount = em.createQuery("select count(s) from Seller s where s.userId = :userId", Long.class)
                     .setParameter("userId", userId)
                     .getSingleResult();
             assertEquals(1L, sellerCount);
@@ -130,12 +122,10 @@ class AdminSellerReviewDecisionIntegrationTest extends SellerReviewIntegrationTe
     void 반려_사유가_없거나_비면_400_10102_을_반환한다() throws Exception {
         long applicationId = seedApplication(createUser(), true);
 
-        mockMvc
-                .perform(rejectRequest(applicationId, "   "))
+        mockMvc.perform(rejectRequest(applicationId, "   "))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value(10102));
-        mockMvc
-                .perform(bearer(post(BASE + "/" + applicationId + "/reject"), adminToken)
+        mockMvc.perform(bearer(post(BASE + "/" + applicationId + "/reject"), adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest())
@@ -146,9 +136,7 @@ class AdminSellerReviewDecisionIntegrationTest extends SellerReviewIntegrationTe
     void 반려하면_REJECTED_전이와_사유_심사_이력이_남는다() throws Exception {
         long applicationId = seedApplication(createUser(), true);
 
-        mockMvc
-                .perform(rejectRequest(applicationId, "통장사본과 예금주가 다릅니다."))
-                .andExpect(status().isNoContent());
+        mockMvc.perform(rejectRequest(applicationId, "통장사본과 예금주가 다릅니다.")).andExpect(status().isNoContent());
 
         tx.executeWithoutResult(txStatus -> {
             SellerApplication application = em.find(SellerApplication.class, applicationId);
@@ -168,8 +156,7 @@ class AdminSellerReviewDecisionIntegrationTest extends SellerReviewIntegrationTe
             application.submit();
         });
 
-        mockMvc
-                .perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
+        mockMvc.perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
                 .andExpect(status().isNoContent());
 
         tx.executeWithoutResult(txStatus -> {

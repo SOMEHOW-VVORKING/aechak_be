@@ -68,6 +68,12 @@ class SocialIdentity protected constructor(
         refreshTokenEnc = null
     }
 
+    /** 탈퇴 시 삭제 필요. provider와 providerId는 재가입 제한 확인에 필요하기 때문에 지우지 않는다. */
+    fun clearEmailAndRefreshToken() {
+        email = null
+        clearRefreshToken()
+    }
+
     companion object {
         fun link(
             user: User,

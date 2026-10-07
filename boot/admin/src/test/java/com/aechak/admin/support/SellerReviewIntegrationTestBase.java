@@ -41,8 +41,7 @@ public abstract class SellerReviewIntegrationTestBase extends IntegrationTestBas
 
     @BeforeEach
     void setUpMockMvcAndAdminToken() {
-        mockMvc = MockMvcBuilders
-                .webAppContextSetup(context)
+        mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .addFilters(securityFilterChain)
                 .build();
         adminToken = mintAccessToken(createUser());
@@ -77,7 +76,8 @@ public abstract class SellerReviewIntegrationTestBase extends IntegrationTestBas
                     "004",
                     Base64.getEncoder().encodeToString(piiCrypto.encrypt(ACCOUNT_NUMBER)),
                     "홍길동");
-            application.registerDocument(ApplicationDocument.Companion.of(DocumentType.ID_CARD, DOCUMENT_KEY, "image/png"));
+            application.registerDocument(
+                    ApplicationDocument.Companion.of(DocumentType.ID_CARD, DOCUMENT_KEY, "image/png"));
             em.persist(application);
             if (submitted) {
                 application.submit();
