@@ -21,9 +21,11 @@ import com.aechak.application.product.product.usecase.command.UpdateProductComma
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.application.product.product.usecase.query.SellerProductSearchQuery
 import com.aechak.application.product.product.usecase.result.OptionCombinationChangeResult
+import com.aechak.application.product.product.usecase.result.ProductCurationResult
 import com.aechak.application.product.product.usecase.result.ProductSaleStatusChangeResult
 import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.application.support.CursorPageResult
+import com.aechak.application.support.CursorPageSize
 import com.aechak.application.support.OffsetPageResult
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
@@ -238,6 +240,13 @@ class ProductService(
         )
     }
 
+    /** 인기순 상위 상품 */
+    fun getPopular(now: LocalDateTime): List<ProductCatalogView> =
+        productCatalogQueryPort.findPopular(ProductCurationResult.RANKING_SIZE, now)
+
+    fun getRandomOnSale(now: LocalDateTime): List<ProductCatalogView> =
+        productCatalogQueryPort.findRandomOnSale(ProductCurationResult.RECOMMENDED_SIZE, now)
+
     fun getVisiblePage(
         query: ProductSearchQuery,
         now: LocalDateTime,
@@ -255,31 +264,24 @@ class ProductService(
                     sort = query.sort,
                     lastId = anchor?.lastId,
                     lastPrice = anchor?.lastPrice,
-                    limit = query.size + 1,
+                    limit = CursorPageSize.fetchLimit(query.size),
                     now = queryNow,
                 ),
             )
-        val hasNext = fetched.size > query.size
-        val page = if (hasNext) fetched.take(query.size) else fetched
-        return CursorPageResult(
-            items = page,
-            // 첫 페이지에서만 총개수 게산
+        return CursorPageResult.of(
+            fetched = fetched,
+            size = query.size,
+            // 첫 페이지에서만 총개수 계산
             totalCount = if (query.cursor == null) productCatalogQueryPort.countVisible(query.categoryId) else null,
-            nextCursor =
-                if (hasNext) {
-                    val last = page.last()
-                    ProductCursorCodec.encode(
-                        query.sort,
-                        query.categoryId,
-                        last.publicId,
-                        last.sortPriceAtAnchor,
-                        queryNow,
-                    )
-                } else {
-                    null
-                },
-            hasNext = hasNext,
-        )
+        ) { last ->
+            ProductCursorCodec.encode(
+                query.sort,
+                query.categoryId,
+                last.publicId,
+                last.sortPriceAtAnchor,
+                queryNow,
+            )
+        }
     }
 
     /** 셀러 본인 상품 한 페이지 — 노출 조건 없이 필터·정렬·오프셋만 적용 */

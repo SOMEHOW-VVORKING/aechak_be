@@ -2,6 +2,7 @@ package com.aechak.api.review.request
 
 import com.aechak.application.review.port.ReviewListSort
 import com.aechak.application.review.usecase.query.ProductReviewListQuery
+import com.aechak.application.support.CursorPageSize
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import org.hibernate.validator.constraints.Range
@@ -11,11 +12,11 @@ data class ReviewListRequest(
     val photoOnly: Boolean = false,
     val cursor: String? = null,
     @field:Range(
-        min = ProductReviewListQuery.SIZE_MIN,
-        max = ProductReviewListQuery.SIZE_MAX,
+        min = CursorPageSize.MIN,
+        max = CursorPageSize.MAX,
         message = "size는 {min}~{max} 사이여야 합니다.",
     )
-    val size: Int = ProductReviewListQuery.DEFAULT_SIZE,
+    val size: Int = CursorPageSize.DEFAULT,
 ) {
     fun toQuery(productPublicId: String) =
         ProductReviewListQuery(

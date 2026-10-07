@@ -106,6 +106,9 @@ class DeliveryAddress protected constructor(
     }
 
     companion object {
+        /** 수령인명 평문 상한(로직 제한). 법정 최장 이름·병기 관례를 덮고, 주문 스냅샷 암호문이 컬럼(255자)에 들어가는 상한이기도 하다 */
+        const val RECEIVER_NAME_MAX_LENGTH = 50
+
         fun register(
             user: User,
             receiverName: String,

@@ -25,7 +25,7 @@ aechak/                              # A-4 확정: 루트 패키지 com.aechak
 ├── boot/                            # 그룹핑 디렉토리 (자체는 모듈 아님) → 30 문서
 │   ├── api/                         # 실행 모듈(구매자 앱). 컨트롤러 + consumer 패키지 동거
 │   ├── seller/                      # :seller-api — 셀러센터 실행 모듈(웹). 호스트 분리 전제, 선별 스캔
-│   ├── admin/                       # A-5 결정: MVP 제외 — 필요 시점에 생성
+│   ├── admin/                       # :admin — 어드민 실행 모듈(운영자 전용, Java+Lombok). 셀러 심사 등
 │   └── batch/                       # 실행 모듈. Spring Batch
 └── infra/                           # 그룹핑 폴더 — 기술 분류 폴더 아래 구체 모듈 (40 문서)
     ├── persistence/jpa/             # :jpa-persistence — JPA 어댑터 (A-1 결정 L2)
@@ -42,12 +42,13 @@ include(
     "common", "web-common", "pii",
     "domain", "application",
     "message",                       // 통합 메시지 계약 (의존 0)
-    "api", "seller-api", "batch",    // "admin" — A-5: MVP 제외
+    "api", "seller-api", "admin", "batch",
     "jpa-persistence", "pg-client",     // A-1 결정(L2). kafka·redis는 어댑터 생길 때 추가
 )
 // boot/·infra/{분류}는 모듈이 아닌 폴더 — 모듈 이름은 평평하게, projectDir로 위치만 매핑
 project(":api").projectDir = file("boot/api")
 project(":seller-api").projectDir = file("boot/seller")
+project(":admin").projectDir = file("boot/admin")
 project(":batch").projectDir = file("boot/batch")
 project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
 project(":pg-client").projectDir = file("infra/client/pg-client")

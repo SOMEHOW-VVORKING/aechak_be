@@ -2,6 +2,7 @@ package com.aechak.api.user.address
 
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.common.error.CommonErrorCode
+import com.aechak.domain.user.address.DeliveryAddress
 import com.aechak.domain.user.address.enums.DeliveryAddressStatus
 import com.aechak.domain.user.error.UserErrorCode
 import com.jayway.jsonpath.JsonPath
@@ -111,11 +112,11 @@ class DeliveryAddressIntegrationTest : IntegrationTestBase() {
     @Test
     fun `필드 길이 초과는 400을 반환한다`() {
         mockMvc
-            .perform(postDeliveryAddress(ownerToken, addressJson(receiverName = "가".repeat(256))))
+            .perform(postDeliveryAddress(ownerToken, addressJson(receiverName = "가".repeat(DeliveryAddress.RECEIVER_NAME_MAX_LENGTH + 1))))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
             // {max} 인터폴레이션이 실제 숫자로 렌더되는지까지 고정
-            .andExpect(jsonPath("$.message").value("수령인 이름은 255자를 넘을 수 없습니다."))
+            .andExpect(jsonPath("$.message").value("수령인 이름은 50자를 넘을 수 없습니다."))
     }
 
     @Test
