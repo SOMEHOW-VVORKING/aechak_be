@@ -7,6 +7,12 @@ interface ProductLikeRepository {
         userId: Long,
     ): Boolean
 
+    /** 주어진 상품들 중 유저가 찜한 상품 id 모음 */
+    fun findLikedProductIds(
+        userId: Long,
+        productIds: Collection<Long>,
+    ): Set<Long>
+
     /** 찜 원자 삽입 */
     fun insertIfAbsent(
         productId: Long,

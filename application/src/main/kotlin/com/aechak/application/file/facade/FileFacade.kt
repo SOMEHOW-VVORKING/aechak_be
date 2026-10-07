@@ -3,6 +3,7 @@ package com.aechak.application.file.facade
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.service.FileService
 import com.aechak.application.file.usecase.FileUseCase
+import com.aechak.application.file.usecase.command.DeleteFileCommand
 import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.file.usecase.result.IssuePresignedUrlResult
@@ -23,4 +24,6 @@ class FileFacade(
         key: String,
         purpose: UploadPurpose,
     ): String = fileService.issueDownloadUrl(key, purpose)
+
+    override fun delete(command: DeleteFileCommand) = fileService.delete(command)
 }

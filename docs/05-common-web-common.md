@@ -26,6 +26,7 @@
    | 90000 | 서버 공통 | `CommonErrorCode` |
    | 100000 | file | `FileErrorCode` |
    | 110000 | review | `ReviewErrorCode` |
+   | 120000 | inquiry | `InquiryErrorCode` |
 
    - **애그리거트 100번대**: 대역 안에서 애그리거트 **루트** 하나가 100번대 하나를 받고, 그 안은 00번부터 채운다
      (`User` 30000~, `PointTransaction` 30100~, `DeliveryAddress` 30500~). 배정 단위는 패키지가 아니라 루트이고,

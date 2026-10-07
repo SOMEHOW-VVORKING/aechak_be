@@ -1,5 +1,6 @@
 package com.aechak.application.product.search.facade
 
+import com.aechak.application.product.like.service.ProductLikeStatusService
 import com.aechak.application.product.product.usecase.result.ProductSummaryResult
 import com.aechak.application.product.search.service.ProductKeywordSearchService
 import com.aechak.application.product.search.usecase.ProductKeywordSearchUseCase
@@ -16,6 +17,7 @@ import java.time.temporal.ChronoUnit
 @Service
 class ProductKeywordSearchFacade(
     private val productKeywordSearchService: ProductKeywordSearchService,
+    private val productLikeStatusService: ProductLikeStatusService,
     private val eventPublisher: ApplicationEventPublisher,
 ) : ProductKeywordSearchUseCase {
     @Transactional(readOnly = true)
@@ -26,13 +28,8 @@ class ProductKeywordSearchFacade(
         // 커서 앵커(밀리초)와 정밀도를 맞추려 첫 페이지부터 절삭
         val now = LocalDateTime.now().truncatedTo(ChronoUnit.MILLIS)
         val page = productKeywordSearchService.searchPage(query, now)
-        val result =
-            CursorPageResult(
-                items = page.items.map { ProductSummaryResult.from(view = it, now = now) },
-                totalCount = page.totalCount,
-                nextCursor = page.nextCursor,
-                hasNext = page.hasNext,
-            )
+        val likedIds = productLikeStatusService.likedProductIds(searcherId, page.items.map { it.id })
+        val result = ProductSummaryResult.fromPage(page, likedIds, now)
         publishSearchedIfNeeded(query, searcherId)
         return result
     }

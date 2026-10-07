@@ -14,6 +14,9 @@ enum class OrderErrorCode(
 
     // 주문그룹
     INVALID_ORDER_GROUP_STATUS_TRANSITION(50100, "허용되지 않은 주문그룹 상태 전이입니다.", 409),
+    INVALID_ORDER_GROUP_AMOUNT(50101, "주문 금액은 0원 이상이어야 합니다.", 400),
+    POINT_EXCEEDS_PAYABLE_AMOUNT(50102, "적립금은 결제 금액을 초과해 사용할 수 없습니다.", 422),
+    POINT_BELOW_MINIMUM_USAGE(50103, "적립금 최소 사용 금액에 미치지 못합니다.", 400),
 
     // 장바구니
     INVALID_CART_ITEM_QUANTITY(50200, "장바구니 담을 수량은 1 이상이어야 합니다.", 400),

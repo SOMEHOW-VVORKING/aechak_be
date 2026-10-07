@@ -34,7 +34,8 @@ class GlobalExceptionHandler {
         // 제약의 message가 그대로 실린다 — 기본 메시지는 JVM 로케일 의존이라 제약 쪽에 message 명시가 전제.
         val detail =
             e.bindingResult.fieldErrors
-                .joinToString(", ") { "${it.field}: ${it.defaultMessage}" }
+                .mapNotNull { it.defaultMessage }
+                .joinToString(", ")
                 .ifBlank { CommonErrorCode.INVALID_REQUEST.message }
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)

@@ -1,6 +1,7 @@
 package com.aechak.application.product.product.usecase
 
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.usecase.result.ProductCurationResult
 import com.aechak.application.product.product.usecase.result.ProductOptionsResult
 import com.aechak.application.product.product.usecase.result.ProductResult
 import com.aechak.application.product.product.usecase.result.ProductSummaryResult
@@ -8,7 +9,10 @@ import com.aechak.application.support.CursorPageResult
 
 interface ProductUseCase {
     /** 상품 목록 조회 — 카테고리(중분류) 필터 + 정렬 + 커서 페이지네이션 */
-    fun getProducts(query: ProductSearchQuery): CursorPageResult<ProductSummaryResult>
+    fun getProducts(
+        query: ProductSearchQuery,
+        userId: Long?,
+    ): CursorPageResult<ProductSummaryResult>
 
     /** 상품 상세 조회 */
     fun getProduct(
@@ -18,4 +22,10 @@ interface ProductUseCase {
 
     /** 상품 옵션 조회 */
     fun getProductOptions(publicId: String): ProductOptionsResult
+
+    /** 공개 상품의 내부 id 해석 — 없거나 미노출이면 404. */
+    fun getVisibleProductId(publicId: String): Long
+
+    /** 큐레이션 상품 조회(인기 랭킹 + 무작위 추천) */
+    fun getCuration(userId: Long?): ProductCurationResult
 }
