@@ -120,6 +120,7 @@ class OrderService(
                         OrderItem.of(
                             productId = line.view.productId,
                             optionCombinationId = line.view.optionCombinationId,
+                            optionNameSnapshot = line.view.optionName,
                             quantity = line.quantity,
                             unitPriceSnapshot = line.unitPrice,
                             discountAllocatedAmount = 0,

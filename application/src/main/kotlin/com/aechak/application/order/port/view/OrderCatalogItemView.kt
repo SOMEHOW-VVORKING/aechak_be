@@ -8,6 +8,8 @@ import java.time.LocalDateTime
 
 data class OrderCatalogItemView(
     val optionCombinationId: Long,
+    /** 주문 시점 옵션명. order_items에 스냅샷으로 보존해 이후 옵션 변경과 무관하게 한다 */
+    val optionName: String,
     val productId: Long,
     /** 상품별 최신 product_versions.id. 버전 행이 아직 없으면 null — 주문 불가로 처리 */
     val latestProductVersionId: Long?,

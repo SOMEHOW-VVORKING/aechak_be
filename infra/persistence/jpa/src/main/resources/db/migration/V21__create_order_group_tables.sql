@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS order_items
     order_id                  BIGINT      NOT NULL,
     product_id                BIGINT      NOT NULL,           -- 값 참조(product BC)
     option_combination_id     BIGINT      NOT NULL,           -- 값 참조. 재고 복원 대상
+    option_name_snapshot      VARCHAR(255) NOT NULL,          -- 주문 시점 옵션명. 옵션 변경·삭제와 무관하게 보존
     quantity                  INT         NOT NULL,           -- 재고 복원 근거
     unit_price_snapshot       BIGINT      NOT NULL,           -- 주문 시점 단가. 이후 가격 변경과 무관
     discount_allocated_amount BIGINT      NOT NULL,

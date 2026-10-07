@@ -1,15 +1,18 @@
 package com.aechak.application.order.facade
 
 import com.aechak.application.order.cart.service.CartService
+import com.aechak.application.order.port.OrderItemForReviewQueryPort
 import com.aechak.application.order.service.OrderService
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
+import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 import com.aechak.application.user.address.usecase.DeliveryAddressUseCase
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 
 /**
@@ -21,6 +24,7 @@ class OrderFacade(
     private val orderService: OrderService,
     private val cartService: CartService,
     private val deliveryAddressUseCase: DeliveryAddressUseCase,
+    private val orderItemForReviewQueryPort: OrderItemForReviewQueryPort,
     transactionManager: PlatformTransactionManager,
 ) : OrderUseCase {
     private val tx =
@@ -42,4 +46,11 @@ class OrderFacade(
             orderService.findByIdempotencyKey(command.idempotencyKey, command.buyerId) ?: throw e
         }
     }
+
+    @Transactional(readOnly = true)
+    override fun getOrderItemForReview(
+        orderItemId: Long,
+        buyerId: Long,
+    ): OrderItemForReviewResult? =
+        orderItemForReviewQueryPort.findOrderItemForReview(orderItemId, buyerId)?.let(OrderItemForReviewResult::from)
 }
