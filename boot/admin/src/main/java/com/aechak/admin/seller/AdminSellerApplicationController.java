@@ -37,10 +37,8 @@ public class AdminSellerApplicationController {
     /** 신청 상세 — 계좌 전체 표시·서류 다운로드 URL(단기)·심사 이력·동일 사업자번호 이력. */
     @GetMapping("/{applicationId}")
     public ResponseEntity<ApiResponse<AdminApplicationDetailResponse>> detail(
-            @PathVariable long applicationId,
-            @AuthenticationPrincipal AuthPrincipal principal) {
-        return ResponseEntity.ok(ApiResponse.Companion.of(
-                AdminApplicationDetailResponse.from(
-                        adminSellerReviewUseCase.detail(principal.getUserId(), applicationId))));
+            @PathVariable long applicationId, @AuthenticationPrincipal AuthPrincipal principal) {
+        return ResponseEntity.ok(ApiResponse.Companion.of(AdminApplicationDetailResponse.from(
+                adminSellerReviewUseCase.detail(principal.getUserId(), applicationId))));
     }
 }

@@ -44,8 +44,12 @@ public record AdminApplicationDetailResponse(
                 result.submittedAt(),
                 result.decidedAt(),
                 result.rejectionReason(),
-                result.documents().stream().map(AdminApplicationDocumentResponse::from).toList(),
+                result.documents().stream()
+                        .map(AdminApplicationDocumentResponse::from)
+                        .toList(),
                 result.reviews().stream().map(ApplicationReviewResponse::from).toList(),
-                result.previousApplications().stream().map(PreviousApplicationResponse::from).toList());
+                result.previousApplications().stream()
+                        .map(PreviousApplicationResponse::from)
+                        .toList());
     }
 }
