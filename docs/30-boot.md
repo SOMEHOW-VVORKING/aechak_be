@@ -164,9 +164,17 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 
 ## 7. admin — 어드민 실행 모듈 (SCRUM-170)
 
+```
+boot/admin/src/main/java/com/aechak/admin/
+├── AdminApplication.java
+├── config/          # JpaConfig · OpenApiConfig · WebConfig
+└── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
+```
+
 - A-5(MVP 제외)를 해소하고 신설 — 셀러 입점 심사부터 운영자 기능이 실제 API로 필요해졌다.
 - **Java(+Lombok)로 작성한다** (팀 결정) — 경계는 boot/admin과 `Admin*` 클래스까지. application의 어드민 전용 컴포넌트 구현체는 `Admin` 접두사를 쓰고, 구매자·셀러 실행 모듈은 그 구현체를 스캔에서 제외한다 — 심사처럼 운영자만 쓰는 유스케이스가 같은 BC 패키지에 사는데 컴포넌트 스캔은 패키지 단위라 가릴 수 없다(seller-api의 excludeFilters). 공용 모듈(application의 support 등)에 두는 코드는 Kotlin 유지. 빌드는 `aechak.java-spring-boot-app` 컨벤션(50 문서 §1).
 - api와 동일 구조/규칙(JSON API 기반) — web-common의 응답 봉투·GlobalExceptionHandler 재사용.
 - **자격 게이트는 모듈 SecurityConfig가 전역 강제**한다(role=ADMIN, 실패 시 20011·403). 컨트롤러별 `@PreAuthorize`를 쓰는 셀러측과 다른 점 — 모듈 전체가 운영자 전용이라 게이트가 하나면 된다. 전역 자원 접근이라 소유권 검증 계층도 없다.
 - 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(seller-api와 같은 검증 전용 모드).
 - DB 마이그레이션은 api 단일 소유 그대로 — admin은 접속만 한다.
+- 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.

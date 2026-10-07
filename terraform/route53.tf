@@ -22,6 +22,9 @@ locals {
   # seller-api도 평평한 한 레이블 — 위 인증서 제약과 같은 이유 (SCRUM-193)
   seller_api_domain = var.env == "prod" ? "seller-api.aechak.co.kr" : "seller-api-${var.env}.aechak.co.kr"
 
+  # admin API — admin-<env>는 어드민 웹(아래 admin_domain) 몫이라 api 레이블을 붙인다 (SCRUM-229)
+  admin_api_domain = var.env == "prod" ? "admin-api.aechak.co.kr" : "admin-api-${var.env}.aechak.co.kr"
+
   # 프론트는 서비스 얼굴이라 서비스명을 빼고 env만 쓴다.
   # prod는 apex가 되는데 CNAME을 못 걸어서 그때 방식을 다시 정해야 한다.
   web_domain = var.env == "prod" ? "aechak.co.kr" : "${var.env}.aechak.co.kr"
@@ -48,6 +51,18 @@ resource "aws_route53_record" "api" {
 resource "aws_route53_record" "seller_api" {
   zone_id = data.aws_route53_zone.root.zone_id
   name    = local.seller_api_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "admin_api" {
+  zone_id = data.aws_route53_zone.root.zone_id
+  name    = local.admin_api_domain
   type    = "A"
 
   alias {
