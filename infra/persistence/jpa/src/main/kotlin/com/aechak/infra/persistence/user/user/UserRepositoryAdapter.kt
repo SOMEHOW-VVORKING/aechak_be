@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
+import java.time.LocalDateTime
 
 /** Spring Data 인터페이스는 이 모듈 밖으로 노출되지 않는다 — 어댑터의 내부 부품. */
 interface UserJpaRepository : JpaRepository<User, Long> {
@@ -36,6 +37,18 @@ interface UserJpaRepository : JpaRepository<User, Long> {
     ): Boolean
 
     fun findByPhoneHmac(phoneHmac: ByteArray): User?
+
+    @Modifying
+    @Query(
+        "update User u " +
+            "set u.pointBalance = u.pointBalance - :amount, u.updatedAt = :now " +
+            "where u.id = :userId and u.pointBalance >= :amount",
+    )
+    fun deductPointBalance(
+        @Param("userId") userId: Long,
+        @Param("amount") amount: Long,
+        @Param("now") now: LocalDateTime,
+    ): Int
 
     @Modifying
     @Query("update User u set u.pointBalance = u.pointBalance + :amount where u.id = :id")
@@ -70,4 +83,10 @@ class UserRepositoryAdapter(
     override fun findByPhoneHmac(phoneHmac: ByteArray): User? = jpaRepository.findByPhoneHmac(phoneHmac)
 
     override fun flush() = jpaRepository.flush()
+
+    // 벌크 JPQL은 @PreUpdate를 우회하므로 updated_at을 쿼리에서 함께 SET한다
+    override fun deductPointBalance(
+        userId: Long,
+        amount: Long,
+    ): Boolean = jpaRepository.deductPointBalance(userId, amount, LocalDateTime.now()) == 1
 }
