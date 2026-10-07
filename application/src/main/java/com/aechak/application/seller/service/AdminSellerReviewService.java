@@ -34,6 +34,18 @@ public class AdminSellerReviewService {
         return sellerApplicationRepository.countAll(status);
     }
 
+    /** 승인 전이·리뷰 기록 — application 애그리거트만 다룬다. 셀러 개점·계좌 이관 조율은 Facade 소관. */
+    public SellerApplication approve(long adminId, long applicationId) {
+        SellerApplication application = getById(applicationId);
+        application.approve(adminId);
+        return application;
+    }
+
+    public void reject(long adminId, long applicationId, String reason) {
+        SellerApplication application = getById(applicationId);
+        application.reject(adminId, reason);
+    }
+
     /** 동일 사업자번호의 과거 신청 — 세탁 대조 보조(차단 아님). 자기 행은 빼고 최신순. */
     public List<SellerApplication> previousApplicationsOf(SellerApplication application) {
         String businessRegNo = application.getBusinessRegNo();

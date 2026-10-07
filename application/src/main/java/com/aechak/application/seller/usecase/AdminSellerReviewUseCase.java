@@ -20,4 +20,10 @@ public interface AdminSellerReviewUseCase {
      * adminId는 서류 URL 발급 감사 로그용.
      */
     AdminApplicationDetailResult detail(long adminId, long applicationId);
+
+    /** 승인 — 단일 tx로 전이·리뷰 기록·셀러 개점·정산계좌 이관(VERIFIED). 처리 불가 상태·동시 충돌은 10101. */
+    void approve(long adminId, long applicationId);
+
+    /** 반려 — 사유 필수(10102). REJECTED 전이·리뷰 누적, 신청자는 수정 후 재제출한다. */
+    void reject(long adminId, long applicationId, String reason);
 }
