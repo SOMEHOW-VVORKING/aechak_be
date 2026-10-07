@@ -92,7 +92,7 @@ data class OrderResponse(
 | --- | --- | --- |
 | 도메인 불변식 | 엔티티 companion | `CartItem.MAX_QUANTITY` — 병합 합산 상한에도 같은 값을 씀 |
 | 저장 한계(컬럼 길이) | 그 컬럼을 선언한 엔티티 companion | `ProductImage.STORAGE_KEY_MAX` — `@Column(length = ...)`과 DTO가 같은 값을 봄 |
-| 조회 계약 | application의 Query companion | `ProductSearchQuery.SIZE_MIN` — 도메인이 알 이유가 없음 |
+| 조회 계약 | application의 공용 상수나 Query companion | `CursorPageSize.MIN` — 목록마다 다를 이유가 없어 공용으로 두고, 도메인은 알 이유가 없음 |
 
 **개념의 규칙인지 저장의 한계인지를 먼저 가른다.** 상품이 성립하는 가격 범위나 가질 수 있는
 이미지 수는 상품이라는 개념의 규칙이므로 애그리거트가 소유하고 팩토리가 거절한다. 반면 상품명
@@ -162,7 +162,7 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 - 예외 소비 방식: web-common의 핸들러가 아니라 SkipPolicy/Listener에서 errorCode 기준 처리.
 - 배치가 자체 발신하는 에러 코드의 status는 500 고정 (05 문서 ErrorCode 컨벤션).
 
-## 7. admin
+## 7. admin — 어드민 실행 모듈 (SCRUM-170)
 
 ```
 boot/admin/src/main/java/com/aechak/admin/
@@ -171,7 +171,10 @@ boot/admin/src/main/java/com/aechak/admin/
 └── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
 ```
 
-- 팀 결정에 따라 Java(+Lombok)로 작성한다 — api와 같은 웹 규격(web-common)을 쓰되 어드민이 소비하는 조각만 조립.
-- 인증: RS256 검증 전용(공개키만 주입) + ADMIN 역할 게이트 — 토큰 발급은 api 소관.
-- 스키마 소유권 없음 — Flyway는 api만 실행, admin은 `ddl-auto: none`으로 접속만 한다(batch 결).
+- A-5(MVP 제외)를 해소하고 신설 — 셀러 입점 심사부터 운영자 기능이 실제 API로 필요해졌다.
+- **Java(+Lombok)로 작성한다** (팀 결정) — 경계는 boot/admin과 `Admin*` 클래스까지. 공용 모듈(application의 support 등)에 두는 코드는 Kotlin 유지. 빌드는 `aechak.java-spring-boot-app` 컨벤션(50 문서 §1).
+- api와 동일 구조/규칙(JSON API 기반) — web-common의 응답 봉투·GlobalExceptionHandler 재사용.
+- **자격 게이트는 모듈 SecurityConfig가 전역 강제**한다(role=ADMIN, 실패 시 20011·403). 컨트롤러별 `@PreAuthorize`를 쓰는 셀러측과 다른 점 — 모듈 전체가 운영자 전용이라 게이트가 하나면 된다. 전역 자원 접근이라 소유권 검증 계층도 없다.
+- 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(seller-api와 같은 검증 전용 모드).
+- DB 마이그레이션은 api 단일 소유 그대로 — admin은 접속만 한다.
 - 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.

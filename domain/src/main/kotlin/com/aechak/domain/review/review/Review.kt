@@ -18,6 +18,7 @@ import jakarta.persistence.OneToMany
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 @Entity
 @Table(
@@ -30,7 +31,6 @@ import java.time.LocalDateTime
 )
 class Review protected constructor(
     val productId: Long,
-    // 구매 시점 옵션명 스냅샷
     val optionNameSnapshot: String,
     val orderItemId: Long,
     val authorUserId: Long,
@@ -91,11 +91,35 @@ class Review protected constructor(
     }
 
     companion object {
-        // UNIQUE 제약명
         const val UK_ORDER_ITEM_ID = "uk_reviews_order_item_id"
 
-        /** 포토리뷰 내 이미지 첨부 개수 상한 */
         const val MAX_IMAGES = 5
+
+        const val WRITE_WINDOW_DAYS = 30L
+
+        // 구매확정일로부터 30일째 되는 날의 끝
+        fun writeDeadline(purchaseConfirmedAt: LocalDateTime): LocalDateTime =
+            purchaseConfirmedAt
+                .toLocalDate()
+                .plusDays(WRITE_WINDOW_DAYS)
+                .atTime(LocalTime.MAX)
+
+        fun isWithinWriteWindow(
+            purchaseConfirmedAt: LocalDateTime,
+            now: LocalDateTime,
+        ): Boolean = !writeDeadline(purchaseConfirmedAt).isBefore(now)
+
+        private const val BLINDED_CONTENT = "블라인드 처리된 리뷰입니다."
+
+        fun visibleContent(
+            reviewStatus: ReviewStatus,
+            content: String,
+            displayContent: String?,
+        ): String =
+            when (reviewStatus) {
+                ReviewStatus.MASKED -> displayContent ?: BLINDED_CONTENT
+                else -> content
+            }
 
         fun write(
             productId: Long,

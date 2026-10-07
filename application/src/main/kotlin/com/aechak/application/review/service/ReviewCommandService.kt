@@ -1,6 +1,6 @@
 package com.aechak.application.review.service
 
-import com.aechak.application.order.usecase.result.ReviewOrderItemResult
+import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 import com.aechak.application.review.moderation.service.ReviewModerationDecision
 import com.aechak.application.review.usecase.command.CreateReviewCommand
 import com.aechak.common.error.BusinessException
@@ -18,13 +18,13 @@ class ReviewCommandService(
 ) {
     fun ensureCanCreateReview(
         command: CreateReviewCommand,
-        orderItem: ReviewOrderItemResult,
+        orderItem: OrderItemForReviewResult,
     ) {
         val confirmedAt = orderItem.purchaseConfirmedAt
         if (!orderItem.isPurchaseConfirmed || confirmedAt == null) {
             throw BusinessException(ReviewErrorCode.REVIEW_NOT_PURCHASE_CONFIRMED)
         }
-        if (confirmedAt.plusDays(REVIEW_WINDOW_DAYS).isBefore(LocalDateTime.now())) {
+        if (!Review.isWithinWriteWindow(confirmedAt, LocalDateTime.now())) {
             throw BusinessException(ReviewErrorCode.REVIEW_WINDOW_EXPIRED)
         }
         if (!orderItem.isItemReviewable) {
@@ -35,7 +35,6 @@ class ReviewCommandService(
         }
     }
 
-    /** 중복 키를 걸러낸 뒤 첨부 개수 상한을 확인한다. 승격은 되돌릴 수 없어 그 전에 호출한다 */
     fun resolveImageKeys(command: CreateReviewCommand): List<String> {
         val imageKeys = command.imageKeys.distinct()
         if (imageKeys.size > Review.MAX_IMAGES) {
@@ -46,7 +45,7 @@ class ReviewCommandService(
 
     fun create(
         command: CreateReviewCommand,
-        orderItem: ReviewOrderItemResult,
+        orderItem: OrderItemForReviewResult,
         images: List<ReviewImage>,
         moderationDecision: ReviewModerationDecision,
     ): Review {
@@ -63,7 +62,7 @@ class ReviewCommandService(
         }
     }
 
-    /** 삭제 처리 후 실제로 삭제가 발생했으면 재집계 대상인 productId를 반환 */
+    /** 삭제 상태 변경 시 재집계 대상 productId 반환 */
     fun delete(
         userId: Long,
         reviewId: Long,
@@ -76,9 +75,5 @@ class ReviewCommandService(
         review.delete()
         reviewRepository.save(review)
         return review.productId
-    }
-
-    companion object {
-        const val REVIEW_WINDOW_DAYS = 30L
     }
 }
