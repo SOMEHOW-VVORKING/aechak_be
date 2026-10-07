@@ -4,5 +4,6 @@ dependencies {
     implementation(project(":application"))  // domain은 application의 api로 전이 — 포트·엔티티 참조용
     implementation(libs.spring.context)      // @Repository 스테레오타입
     implementation(libs.spring.data.jpa)
+    implementation(libs.hibernate.core)      // 제약 위반 종류·이름 판별(예외 메시지 파싱 금지)
     implementation(libs.querydsl.jpa)        // JPAQueryFactory + domain의 Q클래스 참조 (QueryDSL은 이 모듈에 가둔다)
 }

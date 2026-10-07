@@ -46,6 +46,12 @@ class PointControllerTest {
                 return PointBalanceResult(balance = 1200L)
             }
 
+            override fun earnReviewReward(
+                buyerUserId: Long,
+                reviewId: Long,
+                hasPhoto: Boolean,
+            ) = Unit
+
             override fun usePoint(command: UsePointCommand) = error("이 테스트는 잔액 조회 EP만 다룬다 — usePoint 호출은 계약 밖")
         }
 

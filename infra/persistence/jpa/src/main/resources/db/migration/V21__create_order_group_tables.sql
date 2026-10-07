@@ -7,9 +7,9 @@ CREATE TABLE IF NOT EXISTS order_groups
     public_id             VARCHAR(26)  NOT NULL,              -- ULID. 주문번호이자 포트원 paymentId로 재사용
     buyer_id              BIGINT       NOT NULL,              -- 값 참조(user BC)
     delivery_address_id   BIGINT       NULL,                  -- 원본 배송지(값 참조). 스냅샷이 진실이고 이건 추적용
-    receiver_name_enc     VARCHAR(255) NOT NULL,              -- 배송지 스냅샷. AES 암호문 Base64
-    contact_number_enc    VARCHAR(255) NOT NULL,              -- 배송지 스냅샷. AES 암호문 Base64
-    zip_code              VARCHAR(255) NOT NULL,
+    receiver_name_enc     VARCHAR(255) NOT NULL,              -- 배송지 스냅샷. AES 암호문 Base64. 평문 상한 50자(150B)+프레임 29B → 240자
+    contact_number_enc    VARCHAR(255) NOT NULL,              -- 배송지 스냅샷. AES 암호문 Base64. 평문 숫자 11자리면 56자라 여유
+    zip_code              VARCHAR(10)  NOT NULL,              -- 원본(delivery_addresses)과 동일 계약. 값은 5자리 숫자
     base_address          VARCHAR(512) NOT NULL,
     detail_address        VARCHAR(512) NULL,
     delivery_memo         VARCHAR(255) NULL,
@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS order_items
     order_id                  BIGINT      NOT NULL,
     product_id                BIGINT      NOT NULL,           -- 값 참조(product BC)
     option_combination_id     BIGINT      NOT NULL,           -- 값 참조. 재고 복원 대상
+    option_name_snapshot      VARCHAR(255) NOT NULL,          -- 주문 시점 옵션명. 옵션 변경·삭제와 무관하게 보존
     quantity                  INT         NOT NULL,           -- 재고 복원 근거
     unit_price_snapshot       BIGINT      NOT NULL,           -- 주문 시점 단가. 이후 가격 변경과 무관
     discount_allocated_amount BIGINT      NOT NULL,

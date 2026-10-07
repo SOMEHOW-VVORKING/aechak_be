@@ -46,21 +46,20 @@ class OrderGroupTest {
     }
 
     @Test
-    fun `적립금으로 전액을 덮으면 50110으로 차단된다`() {
-        val e = assertFailsWith<BusinessException> { orderGroup(usedPoint = 13_000L) }
+    fun `최종 결제금액이 최소 결제 금액 미만이면 50108로 차단된다`() {
+        // 0원(적립금 전액)과 1~99원 모두 — PG가 승인하지 못하는 금액은 생성 단계에서 거른다
+        val zero = assertFailsWith<BusinessException> { orderGroup(usedPoint = 13_000L) }
+        assertEquals(OrderErrorCode.ORDER_AMOUNT_BELOW_MINIMUM, zero.errorCode)
 
-        assertEquals(
-            OrderErrorCode.FULL_POINT_PAYMENT_NOT_ALLOWED,
-            e.errorCode,
-            "0원 그룹은 결제 준비가 거절해 영영 결제할 수 없다 — 생성부터 50110으로 막아야 한다",
-        )
+        val below = assertFailsWith<BusinessException> { orderGroup(usedPoint = 12_901L) }
+        assertEquals(OrderErrorCode.ORDER_AMOUNT_BELOW_MINIMUM, below.errorCode)
     }
 
     @Test
-    fun `결제 금액이 1원만 남아도 생성은 허용된다`() {
-        val group = orderGroup(usedPoint = 12_999L)
+    fun `최종 결제금액이 정확히 최소 결제 금액이면 생성된다`() {
+        val group = orderGroup(usedPoint = 12_900L)
 
-        assertEquals(1L, group.finalPaymentAmount, "전액 차단은 정확히 0원만 막아야 한다 — 1원부터는 결제 가능")
+        assertEquals(OrderGroup.MIN_PAYMENT_AMOUNT, group.finalPaymentAmount)
     }
 
     @Test
@@ -93,10 +92,17 @@ class OrderGroupTest {
     }
 
     @Test
-    fun `음수 금액은 50101로 차단된다`() {
-        val e = assertFailsWith<BusinessException> { orderGroup(totalProductAmount = -1L) }
+    fun `음수 적립금은 50101로 차단된다`() {
+        val e = assertFailsWith<BusinessException> { orderGroup(usedPoint = -1L) }
 
-        assertEquals(OrderErrorCode.INVALID_ORDER_GROUP_AMOUNT, e.errorCode, "입력 금액이 음수면 50101이어야 한다")
+        assertEquals(OrderErrorCode.INVALID_ORDER_GROUP_AMOUNT, e.errorCode, "사용자 입력 금액이 음수면 50101이어야 한다")
+    }
+
+    @Test
+    fun `서버 계산 금액이 음수면 불변식 위반으로 터진다`() {
+        // BusinessException(4xx)이 아니라 500 경로 — 가격 계산 버그를 요청 오류로 위장하지 않는다
+        assertFailsWith<IllegalArgumentException> { orderGroup(totalProductAmount = -1L) }
+        assertFailsWith<IllegalArgumentException> { orderGroup(totalShippingFee = -1L) }
     }
 
     @Test

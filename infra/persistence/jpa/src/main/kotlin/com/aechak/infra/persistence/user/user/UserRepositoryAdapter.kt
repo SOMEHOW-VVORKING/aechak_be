@@ -49,6 +49,13 @@ interface UserJpaRepository : JpaRepository<User, Long> {
         @Param("amount") amount: Long,
         @Param("now") now: LocalDateTime,
     ): Int
+
+    @Modifying
+    @Query("update User u set u.pointBalance = u.pointBalance + :amount where u.id = :id")
+    fun addPointBalance(
+        @Param("id") id: Long,
+        @Param("amount") amount: Long,
+    ): Int
 }
 
 /**
@@ -62,6 +69,11 @@ class UserRepositoryAdapter(
     override fun findById(id: Long): User? = jpaRepository.findByIdOrNull(id)
 
     override fun save(user: User): User = jpaRepository.save(user)
+
+    override fun addPointBalance(
+        userId: Long,
+        amount: Long,
+    ): Int = jpaRepository.addPointBalance(userId, amount)
 
     override fun isNicknameTaken(
         nickname: String,

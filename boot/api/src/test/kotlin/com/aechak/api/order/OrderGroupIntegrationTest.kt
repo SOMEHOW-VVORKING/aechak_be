@@ -1,6 +1,7 @@
 package com.aechak.api.order
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.order.cart.Cart
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.option.OptionCombination
@@ -286,7 +287,7 @@ class OrderGroupIntegrationTest : IntegrationTestBase() {
                     "key-owner",
                 ),
             ).andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(50108))
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.IDEMPOTENCY_KEY_ACCESS_DENIED.code))
     }
 
     @Test
@@ -413,10 +414,11 @@ class OrderGroupIntegrationTest : IntegrationTestBase() {
         val addressId = seedAddress(buyerId)
         seedPointBalance(buyerId, 20_000L)
 
+        // 전액 사용으로 0원이 되는 경우는 최소 결제 금액(100원) 미만 거절에 포함된다 — 50108
         mockMvc
             .perform(postOrderGroup(token, orderGroupJson(cartItemIds, addressId, 0L, usedPoint = 13_000), "key-point-full"))
             .andExpect(status().isUnprocessableEntity)
-            .andExpect(jsonPath("$.errorCode").value(50110))
+            .andExpect(jsonPath("$.errorCode").value(50108))
 
         assertEquals(0L, orderGroupCount())
         assertEquals(20_000L, pointBalanceOf(buyerId))

@@ -2,6 +2,7 @@ package com.aechak.application.file.facade
 
 import com.aechak.application.file.service.FileService
 import com.aechak.application.file.usecase.FileUseCase
+import com.aechak.application.file.usecase.command.DeleteFileCommand
 import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.file.usecase.result.IssuePresignedUrlResult
@@ -17,4 +18,6 @@ class FileFacade(
     override fun promote(command: PromoteFileCommand): PromoteFileResult = fileService.promote(command)
 
     override fun resolveMediaUrl(key: String?): String? = fileService.resolveMediaUrl(key)
+
+    override fun delete(command: DeleteFileCommand) = fileService.delete(command)
 }
