@@ -1,7 +1,9 @@
 package com.aechak.admin.support;
 
+import com.aechak.application.file.port.FileStorage;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.testcontainers.mysql.MySQLContainer;
@@ -30,6 +32,13 @@ public class IntegrationTestConfig {
     @Bean
     public DatabaseCleaner databaseCleaner(JdbcTemplate jdbcTemplate) {
         return new DatabaseCleaner(jdbcTemplate);
+    }
+
+    /** 실 어댑터면 다운로드 URL 발급이 자격증명 없는 AWS 서명 호출로 가서 깨진다. */
+    @Bean
+    @Primary
+    public FileStorage fakeFileStorage() {
+        return new FakeFileStorage();
     }
 
     /** 게이트 통과를 매핑된 핸들러로 검증하기 위한 고정 표적 — 미매핑 404는 catch-all(90000)로 새서 판별이 흐려진다. */

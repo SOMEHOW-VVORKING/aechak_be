@@ -42,6 +42,11 @@ class FakeFileStorage : FileStorage {
 
     override fun publicUrlOf(key: String): String = "https://fake-cdn.local/$key"
 
+    override fun issueDownloadUrl(
+        key: String,
+        purpose: UploadPurpose,
+    ): String = "https://fake-download.local/$key"
+
     override fun delete(
         key: String,
         purpose: UploadPurpose,
