@@ -160,7 +160,9 @@ resource "aws_ecs_service" "api" {
     container_port   = var.app_port
   }
 
-  health_check_grace_period_seconds = 90 # Spring 부팅 시간 유예
+  # 부팅(이미지 pull + Spring 기동 ≈ 2분) 완료 전에 unhealthy 판정이 확정되지 않을 만큼 넉넉히.
+  # 앱이 일찍 뜨면 그 즉시 healthy로 잡히므로 늘려도 배포가 느려지지 않는다.
+  health_check_grace_period_seconds = 300
 
   # task_definition: CI가 새 리비전 등록 → TF가 되돌리지 않게
   # desired_count: 오토스케일링이 관리
@@ -264,7 +266,7 @@ resource "aws_ecs_service" "seller_api" {
     container_port   = var.app_port
   }
 
-  health_check_grace_period_seconds = 90
+  health_check_grace_period_seconds = 300 # api와 동일 근거 — 부팅 완료 전 unhealthy 확정 방지
 
   # 오토스케일링 없음 — 고정 1대. desired_count를 ignore하지 않는 이유이기도 하다(TF가 관리)
   lifecycle {

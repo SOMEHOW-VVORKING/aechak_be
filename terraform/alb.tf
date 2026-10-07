@@ -12,6 +12,10 @@ resource "aws_lb_target_group" "app" {
   vpc_id      = aws_vpc.main.id
   target_type = "ip" # Fargate(awsvpc)는 인스턴스가 아니라 태스크 IP를 타겟으로
 
+  # 타깃 제거 시 진행 중 요청을 기다리는 드레이닝 시간 (기본 300초).
+  # dev는 요청이 짧고 드물어 60초면 충분 — 기본값이면 태스크 하나 정리마다 5분씩 대기한다.
+  deregistration_delay = 60
+
   lifecycle { create_before_destroy = true }
 
   health_check {
@@ -60,6 +64,8 @@ resource "aws_lb_target_group" "seller_api" {
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
   target_type = "ip"
+
+  deregistration_delay = 60 # app 타깃 그룹과 동일 근거 — dev 드레이닝 단축
 
   lifecycle { create_before_destroy = true }
 
