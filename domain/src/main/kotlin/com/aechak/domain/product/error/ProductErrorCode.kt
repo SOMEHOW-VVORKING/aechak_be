@@ -29,4 +29,6 @@ enum class ProductErrorCode(
     // 신고
     PRODUCT_REPORT_REASON_TEXT_REQUIRED(40300, "기타 사유 신고는 상세 사유가 필요합니다.", 400),
     INVALID_PRODUCT_REPORT_STATUS_TRANSITION(40301, "허용되지 않는 신고 처리 상태 전이입니다.", 400),
+    PRODUCT_SELF_REPORT_NOT_ALLOWED(40302, "본인 상품은 신고할 수 없습니다.", 400),
+    PRODUCT_ALREADY_REPORTED(40303, "이미 신고한 상품입니다.", 409),
 }

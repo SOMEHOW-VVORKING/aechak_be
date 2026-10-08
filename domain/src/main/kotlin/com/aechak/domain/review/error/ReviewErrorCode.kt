@@ -21,4 +21,7 @@ enum class ReviewErrorCode(
 
     // 리뷰 신고
     INVALID_REVIEW_REPORT_STATUS_TRANSITION(110100, "허용되지 않는 리뷰 신고 처리 상태 전이입니다.", 400),
+    REVIEW_SELF_REPORT_NOT_ALLOWED(110101, "본인 리뷰는 신고할 수 없습니다.", 400),
+    REVIEW_REPORT_REASON_TEXT_REQUIRED(110102, "기타 사유 신고는 상세 사유가 필요합니다.", 400),
+    REVIEW_ALREADY_REPORTED(110103, "이미 신고한 리뷰입니다.", 409),
 }

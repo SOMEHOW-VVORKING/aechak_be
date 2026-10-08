@@ -15,6 +15,9 @@ interface ProductRepository {
      */
     fun findByIdForUpdate(id: Long): Product?
 
+    /** 잠그지 않고 읽는다. */
+    fun findById(id: Long): Product?
+
     fun findByPublicIdAndSellerId(
         publicId: String,
         sellerId: Long,
