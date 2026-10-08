@@ -44,6 +44,10 @@ class OrderService(
         return CreateOrderGroupResult.from(existing)
     }
 
+    /** expiresAt을 쓸 때와 같은 JVM 시각으로 비교한다 */
+    fun countPendingPaymentOrderGroups(buyerId: Long): Long =
+        orderGroupRepository.countUnexpiredPendingPayment(buyerId, LocalDateTime.now())
+
     fun createOrderGroup(
         command: CreateOrderGroupCommand,
         cartItems: List<CartItem>,

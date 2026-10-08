@@ -17,4 +17,7 @@ interface OrderUseCase {
         orderItemId: Long,
         buyerId: Long,
     ): OrderItemForReviewResult?
+
+    /** 만료 전 결제대기 주문그룹 수 */
+    fun countPendingPaymentOrderGroups(buyerId: Long): Long
 }

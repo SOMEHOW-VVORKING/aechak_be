@@ -59,6 +59,9 @@ class OrderFacade(
     ): OrderItemForReviewResult? =
         orderItemForReviewQueryPort.findOrderItemForReview(orderItemId, buyerId)?.let(OrderItemForReviewResult::from)
 
+    @Transactional(readOnly = true)
+    override fun countPendingPaymentOrderGroups(buyerId: Long): Long = orderService.countPendingPaymentOrderGroups(buyerId)
+
     /** 적립금 확보도 주문 트랜잭션 안 — 실패(잔액 부족)면 재고 차감·주문 저장이 함께 롤백된다 */
     private fun usePoint(
         command: CreateOrderGroupCommand,
