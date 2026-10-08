@@ -79,6 +79,12 @@ aws:
     # SES에서 검증한 발신 주소. 값이 없으면 발송만 실패하며 dev와 prod에서는 SSM으로 주입한다.
     from: ${AWS_SES_FROM:}
 
+# 포트원 결제 게이트웨이. 계정 발급 전이라 시크릿 비면 어댑터가 호출 전에 게이트웨이 오류로 끊는다. dev/prod는 SSM 주입.
+payment:
+  portone:
+    base-url: https://api.portone.io
+    api-secret: ${PORTONE_API_SECRET:}
+
 # 문의 접수 알림. 기본 off라 로컬은 발송 생략하고 정상 기동.
 # dev와 prod에서만 enabled=true로 설정한다. 이때 recipients나 aws.ses.from이 없으면 애플리케이션이 시작되지 않는다.
 inquiry:

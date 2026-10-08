@@ -99,14 +99,14 @@ allowedDelay를 넘기면 HOLD로 전이돼 수동 재개를 기다린다(재개
 package com.aechak.infra.client.payment
 
 /**
- * 외부 API 어댑터 (TossPayments 등).
+ * 외부 API 어댑터 (PortOne 등).
  * [규칙]
  * - 포트(예: PaymentGatewayPort)는 application(또는 payment 도메인)이 정의, 구현만 여기.
  * - 외부사의 요청/응답 dto는 이 모듈 밖으로 새지 않는다 — 포트 시그니처는 우리 어휘로.
  * - 외부 장애는 BusinessException(결제 대역 60000번대 연동 실패 코드)으로 번역해 던진다.
  */
 @Component
-class TossPaymentsClient( /* RestClient 등 */ ) : PaymentGatewayPort { /* TODO */ }
+class PortOneAdapter( /* RestClient 등 */ ) : PaymentGatewayPort { /* TODO */ }
 ```
 
 ## 4. infra/redis

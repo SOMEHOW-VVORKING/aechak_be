@@ -2,6 +2,7 @@ package com.aechak.api.support
 
 import com.aechak.application.auth.port.SocialTokenVerifier
 import com.aechak.application.file.port.FileStorage
+import com.aechak.application.payment.port.PaymentGatewayPort
 import com.aechak.application.user.verification.support.VerificationCodeGenerator
 import com.aechak.domain.user.social.enums.SocialProvider
 import com.aechak.domain.user.social.vo.ProviderUser
@@ -51,6 +52,11 @@ class IntegrationTestConfig {
     @Bean
     @Primary
     fun fakeFileStorage(): FileStorage = FakeFileStorage()
+
+    /** 실 어댑터면 통합 테스트가 시크릿 없이 실 포트원으로 나가 게이트웨이 오류를 던짐 */
+    @Bean
+    @Primary
+    fun fakePaymentGateway(): PaymentGatewayPort = FakePaymentGateway()
 
     /** 인증번호 확인 단계까지 테스트할 수 있도록 항상 같은 인증번호를 생성한다. */
     @Bean
