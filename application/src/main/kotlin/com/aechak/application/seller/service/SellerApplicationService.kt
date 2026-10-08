@@ -107,6 +107,11 @@ class SellerApplicationService(
         application.submit()
     }
 
+    /** 신청서가 없으면 아무것도 하지 않는다 */
+    fun cancel(userId: Long) {
+        sellerApplicationRepository.findByUserId(userId)?.cancel()
+    }
+
     /** design #6 매핑 — 유형이 바뀌어도 서류는 유지되므로 제출 시점의 유형 기준으로 재평가한다. */
     private fun requireSubmittable(application: SellerApplication) {
         val missingFields =
