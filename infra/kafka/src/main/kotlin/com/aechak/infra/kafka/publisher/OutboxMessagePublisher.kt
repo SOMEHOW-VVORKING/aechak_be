@@ -58,12 +58,12 @@ internal class OutboxMessagePublisher(
         db
             .sql(
                 """
-            INSERT INTO outbox_message (event_id, aggregate_type, aggregate_id, event_type, trace_id, payload, occurred_at, expired_at)
-            VALUES (:eventId, :aggregateType, :aggregateId, :eventType, :traceId, :payload, :occurredAt, :expiredAt)
+            INSERT INTO outbox_message (event_id, aggregate_type, ordering_key, event_type, trace_id, payload, occurred_at, expired_at)
+            VALUES (:eventId, :aggregateType, :orderingKey, :eventType, :traceId, :payload, :occurredAt, :expiredAt)
             """,
             ).param("eventId", envelope.eventId)
             .param("aggregateType", envelope.aggregateType)
-            .param("aggregateId", envelope.aggregateId)
+            .param("orderingKey", envelope.orderingKey)
             .param("eventType", envelope.eventType)
             .param("traceId", envelope.traceId)
             .param("payload", payloadJson)  // 엔벨로프 전체가 payload 컬럼
@@ -86,7 +86,7 @@ internal class OutboxMessagePublisher(
             sender
                 .send(
                     envelope.aggregateType,
-                    envelope.aggregateId,
+                    envelope.orderingKey,
                     envelope.eventId,
                     envelope.eventType,
                     envelope.traceId,

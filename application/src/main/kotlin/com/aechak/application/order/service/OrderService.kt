@@ -4,9 +4,10 @@ import com.aechak.application.order.port.OrderCatalogQueryPort
 import com.aechak.application.order.port.view.OrderCatalogItemView
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
-import com.aechak.application.pii.port.PiiCrypto
+import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.application.user.address.usecase.result.DeliveryAddressResult
 import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.order.cart.CartItem
 import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -18,7 +19,6 @@ import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.product.option.repository.OptionCombinationRepository
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
-import java.util.Base64
 
 /**
  * order 도메인 비즈니스 로직 보관함 — Facade에서만 호출된다.
@@ -30,7 +30,7 @@ class OrderService(
     private val orderRepository: OrderRepository,
     private val optionCombinationRepository: OptionCombinationRepository,
     private val orderCatalogQueryPort: OrderCatalogQueryPort,
-    private val piiCrypto: PiiCrypto,
+    private val piiStringCodec: PiiStringCodec,
 ) {
     /** 멱등 재요청이면 최초 생성 결과. 남의 키면 응답 유출을 막으려 거부한다. */
     fun findByIdempotencyKey(
@@ -39,7 +39,7 @@ class OrderService(
     ): CreateOrderGroupResult? {
         val existing = orderGroupRepository.findByIdempotencyKey(idempotencyKey) ?: return null
         if (existing.buyerId != buyerId) {
-            throw BusinessException(OrderErrorCode.IDEMPOTENCY_KEY_ACCESS_DENIED)
+            throw BusinessException(CommonErrorCode.IDEMPOTENCY_KEY_ACCESS_DENIED)
         }
         return CreateOrderGroupResult.from(existing)
     }
@@ -58,21 +58,20 @@ class OrderService(
         if (pricing.finalPaymentAmount(command.usedPoint) != command.expectedFinalAmount) {
             throw BusinessException(OrderErrorCode.ORDER_AMOUNT_CHANGED)
         }
-        deductStock(selected)
-
+        // 적립금 정책(최소 사용액·전액 결제 차단) 포함 도메인 검증 — 자산(재고·적립금)을 건드리기 전에 끝낸다
         val orderGroup =
-            orderGroupRepository.save(
-                OrderGroup.create(
-                    buyerId = command.buyerId,
-                    deliveryAddressId = address.addressId,
-                    deliveryAddress = snapshotOf(address),
-                    usedPoint = command.usedPoint,
-                    totalProductAmount = pricing.totalProductAmount,
-                    totalShippingFee = pricing.totalShippingFee,
-                    idempotencyKey = command.idempotencyKey,
-                    expiresAt = now.plusMinutes(PAYMENT_WINDOW_MINUTES),
-                ),
+            OrderGroup.create(
+                buyerId = command.buyerId,
+                deliveryAddressId = address.addressId,
+                deliveryAddress = snapshotOf(address),
+                usedPoint = command.usedPoint,
+                totalProductAmount = pricing.totalProductAmount,
+                totalShippingFee = pricing.totalShippingFee,
+                idempotencyKey = command.idempotencyKey,
+                expiresAt = now.plusMinutes(PAYMENT_WINDOW_MINUTES),
             )
+        deductStock(selected)
+        orderGroupRepository.save(orderGroup)
         orderRepository.saveAll(createOrders(orderGroup, pricing))
         return CreateOrderGroupResult.from(orderGroup)
     }
@@ -120,6 +119,7 @@ class OrderService(
                         OrderItem.of(
                             productId = line.view.productId,
                             optionCombinationId = line.view.optionCombinationId,
+                            optionNameSnapshot = line.view.optionName,
                             quantity = line.quantity,
                             unitPriceSnapshot = line.unitPrice,
                             discountAllocatedAmount = 0,
@@ -172,15 +172,13 @@ class OrderService(
     /** 수령인명과 연락처는 여기서 처음 암호화됨(AES 후 Base64) — 스냅샷 컬럼 계약 */
     private fun snapshotOf(address: DeliveryAddressResult): DeliveryAddressSnapshot =
         DeliveryAddressSnapshot(
-            receiverNameEnc = encrypt(address.receiverName),
-            contactNumberEnc = encrypt(address.contactNumber),
+            receiverNameEnc = piiStringCodec.encrypt(address.receiverName),
+            contactNumberEnc = piiStringCodec.encrypt(address.contactNumber),
             zipCode = address.zipCode,
             baseAddress = address.baseAddress,
             detailAddress = address.detailAddress,
             deliveryMemo = address.deliveryMemo,
         )
-
-    private fun encrypt(plain: String): String = Base64.getEncoder().encodeToString(piiCrypto.encrypt(plain))
 
     private data class OrderLine(
         val view: OrderCatalogItemView,

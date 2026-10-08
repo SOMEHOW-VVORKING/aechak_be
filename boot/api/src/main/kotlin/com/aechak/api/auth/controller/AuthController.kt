@@ -17,12 +17,8 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
-/**
- * auth API — 컨트롤러는 형식 검증과 Request→Command / Result→Response 변환만 한다.
- * 탈퇴(DELETE /users/me)는 회원 탈퇴 기능에서 추가한다.
- */
 @RestController
-@RequestMapping("/auth") // 접두(api.base-path)는 WebConfig가 일괄 부착
+@RequestMapping("/auth")
 class AuthController(
     private val socialLoginUseCase: SocialLoginUseCase,
     private val tokenRefreshUseCase: TokenRefreshUseCase,

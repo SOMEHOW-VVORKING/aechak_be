@@ -1,7 +1,7 @@
 package com.aechak.application.review.usecase.result
 
 import com.aechak.application.review.port.view.ReviewView
-import com.aechak.domain.review.review.enums.ReviewStatus
+import com.aechak.domain.review.review.Review
 import java.time.LocalDateTime
 
 data class ReviewItemResult(
@@ -13,6 +13,7 @@ data class ReviewItemResult(
     val authorProfileImageUrl: String?,
     val createdAt: LocalDateTime,
     val images: List<ReviewImageItemResult>,
+    val isMine: Boolean,
 ) {
     companion object {
         fun from(
@@ -20,25 +21,19 @@ data class ReviewItemResult(
             images: List<ReviewImageItemResult>,
             authorNickname: String,
             authorProfileImageUrl: String?,
+            isMine: Boolean,
         ): ReviewItemResult =
             ReviewItemResult(
                 reviewId = view.id,
                 rating = view.rating,
-                content = resolveContent(view),
+                content = Review.visibleContent(view.reviewStatus, view.content, view.displayContent),
                 optionName = view.optionNameSnapshot,
                 authorNickname = authorNickname,
                 authorProfileImageUrl = authorProfileImageUrl,
                 createdAt = view.createdAt,
                 images = images,
+                isMine = isMine,
             )
-
-        private fun resolveContent(view: ReviewView): String =
-            when (view.reviewStatus) {
-                ReviewStatus.MASKED -> view.displayContent ?: BLINDED_CONTENT
-                else -> view.content
-            }
-
-        private const val BLINDED_CONTENT = "블라인드 처리된 리뷰입니다."
     }
 }
 

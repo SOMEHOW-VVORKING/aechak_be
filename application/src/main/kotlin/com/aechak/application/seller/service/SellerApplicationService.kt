@@ -1,7 +1,7 @@
 package com.aechak.application.seller.service
 
 import com.aechak.application.file.port.enums.FileType
-import com.aechak.application.pii.port.PiiCrypto
+import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.application.seller.usecase.command.SaveDraftCommand
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.seller.application.ApplicationDocument
@@ -13,14 +13,13 @@ import com.aechak.domain.seller.application.repository.SellerApplicationReposito
 import com.aechak.domain.seller.error.SellerErrorCode
 import com.aechak.domain.seller.seller.repository.SellerRepository
 import org.springframework.stereotype.Service
-import java.util.Base64
 
 /** 입점 신청 비즈니스 로직 보관함 — Facade에서만 호출된다. */
 @Service
 class SellerApplicationService(
     private val sellerApplicationRepository: SellerApplicationRepository,
     private val sellerRepository: SellerRepository,
-    private val piiCrypto: PiiCrypto,
+    private val piiStringCodec: PiiStringCodec,
 ) {
     /** 임시저장 — 신청서 한 건을 재사용해 폼과 서류를 얹는다. */
     fun saveDraft(
@@ -60,7 +59,7 @@ class SellerApplicationService(
             telesalesNumber = command.telesalesNumber,
             bankCode = command.bankCode,
             // 빈 문자열은 null로 접는다 — 암호문은 항상 non-blank라, 여기서 거르지 않으면 제출 필수 검증이 뚫린다.
-            accountNumberEnc = command.accountNumber?.takeIf { it.isNotBlank() }?.let(::encryptAccountNumber),
+            accountNumberEnc = command.accountNumber?.takeIf { it.isNotBlank() }?.let(piiStringCodec::encrypt),
             accountHolder = command.accountHolder,
         )
     }
@@ -180,8 +179,5 @@ class SellerApplicationService(
             ?: error("허용되지 않은 확장자의 승격 키 (key=$storageKey)")
 
     /** 표시(마스킹)·이체 등 사용 시점 복원 — 평문은 응답 조립 구간에만 존재한다. */
-    fun decryptAccountNumber(application: SellerApplication): String? =
-        application.accountNumberEnc?.let { piiCrypto.decrypt(Base64.getDecoder().decode(it)) }
-
-    private fun encryptAccountNumber(plain: String): String = Base64.getEncoder().encodeToString(piiCrypto.encrypt(plain))
+    fun decryptAccountNumber(application: SellerApplication): String? = application.accountNumberEnc?.let(piiStringCodec::decrypt)
 }

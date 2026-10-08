@@ -3,7 +3,8 @@
 #
 # 접속 정보 7개는 기본값이 없어 하나라도 빠지면 앱이 기동에 실패한다.
 # 아래 웹 연동 3개는 기본값이 있어 없어도 뜨지만, 없으면 CORS와 소셜 로그인이 동작하지 않는다.
-# 카카오 키·JWT 키는 여기 없다 — terraform이 값을 알 수 없다(없어도 앱은 뜬다).
+# 카카오 키·JWT 키·CoolSMS 키(COOLSMS_API_KEY·COOLSMS_API_SECRET·COOLSMS_FROM)는 여기 없다 —
+# terraform이 값을 알 수 없어 수기 등재한다. 카카오·JWT는 없어도 앱이 뜨지만 COOLSMS_* 3개는 없으면 부팅 실패.
 
 resource "aws_ssm_parameter" "db_url" {
   name  = "/${var.project}/${var.env}/api/SPRING_DATASOURCE_URL"
@@ -83,14 +84,17 @@ resource "aws_ssm_parameter" "auth_return_urls" {
 }
 
 # ── 문의 통지(SES) ─────────────────────────────────────
-# enabled=true인데 from/recipients가 비면 앱이 fail-fast로 기동에 실패한다 — 셋을 함께 넣는다.
+# enabled=true인데 from/recipients가 비면 앱이 fail-fast로 기동에 실패한다.
 resource "aws_ssm_parameter" "ses_from" {
   name  = "/${var.project}/${var.env}/api/AWS_SES_FROM"
   type  = "String"
   value = local.ses_from_address
 }
 
+# 수신자 미설정이면 파라미터를 만들지 않는다 — SSM은 빈 값을 거절하고(길이 ≥ 1),
+# 앱은 경로 프리픽스 import라 파라미터가 없으면 기본값(빈 목록)으로 부팅한다.
 resource "aws_ssm_parameter" "inquiry_ops_recipients" {
+  count = length(var.inquiry_ops_recipients) > 0 ? 1 : 0
   name  = "/${var.project}/${var.env}/api/INQUIRY_OPS_RECIPIENTS"
   type  = "String"
   value = join(",", var.inquiry_ops_recipients)
@@ -233,30 +237,81 @@ resource "aws_ssm_parameter" "seller_pii_hmac_key" {
   }
 }
 
-# --- JWT RS256 실키 (SCRUM-193) ---
-# 지금까지 dev는 키 미주입 → 프로세스마다 임시 키 생성이었다. 실행 모듈이 둘이 되면
-# api가 발급한 토큰을 seller가 다른 키로 검증해 전부 401이 되므로 실키 공유가 분리의 전제다.
-# 재생성돼도 전 세션 재로그인으로 끝나는 가역 사고라(PII와 달리) prevent_destroy는 걸지 않는다.
-resource "tls_private_key" "jwt" {
-  algorithm = "RSA"
-  rsa_bits  = 2048
+# ── admin (SCRUM-229): /aechak/{env}/admin/ ────────────
+# seller와 같은 결 — 값은 api와 같은 원천(tf 리소스)을 재참조하고 경로만 모듈 단위로 분리한다.
+# admin은 redis 미사용이라 해당 파라미터가 없다.
+
+resource "aws_ssm_parameter" "admin_db_url" {
+  name  = "/${var.project}/${var.env}/admin/SPRING_DATASOURCE_URL"
+  type  = "String"
+  value = "jdbc:mysql://${aws_db_instance.main.address}:3306/${var.project}"
 }
 
-# api = 발급+검증(양키), seller = 검증만(공개키) — seller가 뚫려도 토큰 위조는 불가한 구도
-resource "aws_ssm_parameter" "jwt_private_key" {
-  name  = "/${var.project}/${var.env}/api/AUTH_JWT_PRIVATE_KEY"
+resource "aws_ssm_parameter" "admin_db_username" {
+  name  = "/${var.project}/${var.env}/admin/SPRING_DATASOURCE_USERNAME"
+  type  = "String"
+  value = aws_db_instance.main.username
+}
+
+resource "aws_ssm_parameter" "admin_db_password" {
+  name  = "/${var.project}/${var.env}/admin/SPRING_DATASOURCE_PASSWORD"
   type  = "SecureString"
-  value = tls_private_key.jwt.private_key_pem_pkcs8 # 앱 파서가 PKCS8 전제
+  value = random_password.db.result
 }
 
-resource "aws_ssm_parameter" "jwt_public_key" {
-  name  = "/${var.project}/${var.env}/api/AUTH_JWT_PUBLIC_KEY"
+resource "aws_ssm_parameter" "admin_media_bucket" {
+  name  = "/${var.project}/${var.env}/admin/AWS_S3_MEDIA_BUCKET"
   type  = "String"
-  value = tls_private_key.jwt.public_key_pem
+  value = aws_s3_bucket.media.id
 }
 
-resource "aws_ssm_parameter" "seller_jwt_public_key" {
-  name  = "/${var.project}/${var.env}/seller/AUTH_JWT_PUBLIC_KEY"
+resource "aws_ssm_parameter" "admin_docs_bucket" {
+  name  = "/${var.project}/${var.env}/admin/AWS_S3_DOCS_BUCKET"
   type  = "String"
-  value = tls_private_key.jwt.public_key_pem
+  value = aws_s3_bucket.docs.id
 }
+
+resource "aws_ssm_parameter" "admin_media_public_base_url" {
+  name  = "/${var.project}/${var.env}/admin/AWS_S3_MEDIA_PUBLIC_BASE_URL"
+  type  = "String"
+  value = "https://${local.media_domain}"
+}
+
+# 어드민 웹 오리진 — 미설정이면 파라미터를 만들지 않는다(SSM은 빈 값을 거절, 앱은 기본값 빈 목록으로 부팅)
+resource "aws_ssm_parameter" "admin_cors_origins" {
+  count = length(var.admin_frontend_origins) > 0 ? 1 : 0
+  name  = "/${var.project}/${var.env}/admin/CORS_ALLOWED_ORIGINS"
+  type  = "String"
+  value = join(",", var.admin_frontend_origins)
+}
+
+# PII 키 — api·seller와 같은 random_bytes 재참조(같은 DB의 같은 암호문을 복호)
+resource "aws_ssm_parameter" "admin_pii_aes_key_v1" {
+  name  = "/${var.project}/${var.env}/admin/PII_AES_KEY_V1"
+  type  = "SecureString"
+  value = random_bytes.pii_aes_key_v1.base64
+
+  lifecycle {
+    prevent_destroy = true # 파라미터 삭제 = admin 부팅 fail-fast
+  }
+}
+
+resource "aws_ssm_parameter" "admin_pii_hmac_key" {
+  name  = "/${var.project}/${var.env}/admin/PII_HMAC_KEY"
+  type  = "SecureString"
+  value = random_bytes.pii_hmac_key.base64
+
+  lifecycle {
+    prevent_destroy = true # 파라미터 삭제 = admin 부팅 fail-fast
+  }
+}
+
+# --- JWT RS256 키: 수기 등재 (헤더의 카카오·JWT 키 방침과 동일) ---
+# terraform으로 생성하면 개인키가 state에 남아 여기서는 관리하지 않는다.
+# 실행 모듈 간 키 공유가 전제라 아래 파라미터를 사람이 직접 등재한다:
+#   /{project}/{env}/api/AUTH_JWT_PRIVATE_KEY  (SecureString, PKCS8 PEM) — api만 발급+검증
+#   /{project}/{env}/api/AUTH_JWT_PUBLIC_KEY   (String, PEM)
+#   /{project}/{env}/seller/AUTH_JWT_PUBLIC_KEY (String, PEM) — api 공개키와 같은 값이어야 api 발급 토큰을 검증한다
+#   /{project}/{env}/admin/AUTH_JWT_PUBLIC_KEY  (String, PEM) — 위 seller와 동일 근거 (SCRUM-229)
+# 누락 시 부팅은 되지만 임시 키 폴백으로 갈라져 모듈 간 검증이 전부 401이 된다.
+# 검증 전용 실행 모듈이 더 늘면 그 모듈 경로에도 공개키를 같은 값으로 등재한다.

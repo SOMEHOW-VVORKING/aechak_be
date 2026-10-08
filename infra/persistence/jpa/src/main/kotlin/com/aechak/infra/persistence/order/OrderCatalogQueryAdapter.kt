@@ -42,6 +42,7 @@ class OrderCatalogQueryAdapter(
         Projections.constructor(
             OrderCatalogItemView::class.java,
             optionCombination.id,
+            optionCombination.name,
             product.id,
             latestProductVersionId(),
             optionCombination.stockQuantity,
