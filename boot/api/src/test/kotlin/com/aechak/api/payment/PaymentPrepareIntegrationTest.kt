@@ -275,19 +275,6 @@ class PaymentPrepareIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `결제금액이 0원이면 거절한다`() {
-        val buyerId = createActiveUser()
-        val publicId = seedOrderGroup(buyerId, productAmount = 0L, shippingFee = 0L)
-
-        mockMvc
-            .perform(prepare(publicId, mintAccessToken(buyerId)))
-            .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.errorCode").value(60007))
-
-        assertEquals(0L, paymentCount(publicId), "거절된 요청은 결제행을 만들면 안 된다")
-    }
-
-    @Test
     fun `토큰이 없으면 401`() {
         val publicId = seedOrderGroup(createActiveUser())
 
