@@ -12,6 +12,7 @@ data class ReviewItemResponse(
     val authorProfileImageUrl: String?,
     val createdAt: LocalDateTime,
     val images: List<ReviewImageResponse>,
+    val isMine: Boolean,
 ) {
     companion object {
         fun from(result: ReviewItemResult): ReviewItemResponse =
@@ -24,6 +25,7 @@ data class ReviewItemResponse(
                 authorProfileImageUrl = result.authorProfileImageUrl,
                 createdAt = result.createdAt,
                 images = result.images.map(ReviewImageResponse::from),
+                isMine = result.isMine,
             )
     }
 }

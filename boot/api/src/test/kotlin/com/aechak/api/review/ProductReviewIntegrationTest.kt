@@ -26,7 +26,6 @@ import org.springframework.web.context.WebApplicationContext
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
-/** 상품 리뷰 목록 API(GET /products/{publicId}/reviews) 통합 테스트. */
 class ProductReviewIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var context: WebApplicationContext
@@ -36,6 +35,7 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
 
     private lateinit var mockMvc: MockMvc
     private val defaultSellerId = 77L
+    private var cachedViewerId: Long? = null
     private var cachedToken: String? = null
 
     @BeforeEach
@@ -62,11 +62,9 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
 
         val body = getReviews(publicId)
 
-        // 최신순 = id desc = 등록 역순
         assertEquals(listOf("초코", "코코"), JsonPath.read<List<String>>(body, "$.data.reviews[*].authorNickname"))
         assertEquals(2, JsonPath.read<Int>(body, "$.data.totalCount"))
         assertEquals(2, JsonPath.read<Int>(body, "$.data.summary.reviewCount"))
-        // (5 + 3) / 2 = 4.00
         assertEquals(0, BigDecimal("4.00").compareTo(readBigDecimal(body, "$.data.summary.averageRating")))
         assertEquals(1, JsonPath.read<Int>(body, "$.data.summary.ratingDistribution['5']"))
         assertEquals(1, JsonPath.read<Int>(body, "$.data.summary.ratingDistribution['3']"))
@@ -241,7 +239,7 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
                 product.publicId
             }!!
 
-        // rating desc, id desc → 리뷰3, 리뷰2, 리뷰1, 리뷰4 (같은 별점 5가 페이지 경계 리뷰2→리뷰1로 이어짐)
+        // 별점 내림차순, 동일 별점은 리뷰 ID 내림차순으로 순서 고정
         val page1 = getReviews(publicId, sort = "rating_desc", size = 2)
         assertEquals(listOf("리뷰3", "리뷰2"), JsonPath.read<List<String>>(page1, "$.data.reviews[*].content"))
 
@@ -311,10 +309,53 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
         assertEquals(0, JsonPath.read<Int>(body, "$.data.summary.ratingDistribution['1']"))
     }
 
+    @Test
+    fun `본인이 쓴 리뷰만 isMine이 true다`() {
+        val viewer = viewerId()
+        val publicId =
+            tx.execute {
+                val product = persistVisibleProduct("사료")
+                em.flush()
+                val other = persistAuthor("다른사람")
+                persistReview(product.id, other, rating = 4, orderItemId = 1L, content = "남이 쓴 리뷰")
+                persistReview(product.id, viewer, rating = 5, orderItemId = 2L, content = "내가 쓴 리뷰")
+                product.publicId
+            }!!
+
+        val body = getReviews(publicId)
+
+        assertEquals(
+            listOf("내가 쓴 리뷰", "남이 쓴 리뷰"),
+            JsonPath.read<List<String>>(body, "$.data.reviews[*].content"),
+        )
+        assertEquals(listOf(true, false), JsonPath.read<List<Boolean>>(body, "$.data.reviews[*].isMine"))
+    }
+
+    @Test
+    fun `본인이 쓴 리뷰는 MASKED여도 isMine이 true다`() {
+        val viewer = viewerId()
+        val publicId =
+            tx.execute {
+                val product = persistVisibleProduct("사료")
+                em.flush()
+                val masked = persistReview(product.id, viewer, rating = 3, orderItemId = 1L, content = "원문 내용")
+                em.flush()
+                maskReview(masked.id, displayContent = "노출용 대체 문구")
+                product.publicId
+            }!!
+
+        val body = getReviews(publicId)
+
+        assertEquals("노출용 대체 문구", JsonPath.read<String>(body, "$.data.reviews[0].content"))
+        assertTrue(JsonPath.read<Boolean>(body, "$.data.reviews[0].isMine"))
+    }
+
     private fun reviewsPath(publicId: String) = "/api/v1/products/$publicId/reviews"
 
+    private fun viewerId(): Long = cachedViewerId ?: tx.execute { persistAuthor("본인") }!!.also { cachedViewerId = it }
+
     private fun bearer(): String {
-        val token = cachedToken ?: mintAccessToken(createActiveUser()).also { cachedToken = it }
+        val token = cachedToken ?: mintAccessToken(viewerId()).also { cachedToken = it }
         return "Bearer $token"
     }
 
@@ -402,7 +443,6 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
         val review =
             Review.write(
                 productId = productId,
-                optionCombinationId = 1L,
                 optionNameSnapshot = optionName,
                 orderItemId = orderItemId,
                 authorUserId = authorUserId,
@@ -413,7 +453,6 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
         return review
     }
 
-    /** 상태 세터가 없어 bulk update로 상태를 바꾼다. */
     private fun softDeleteReview(reviewId: Long) {
         em
             .createQuery("update Review r set r.reviewStatus = :st, r.deletedAt = :now where r.id = :id")
@@ -446,7 +485,6 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
             .executeUpdate()
     }
 
-    /** 이미지 추가 경로가 없어 native insert로 넣는다. */
     private fun insertReviewImage(
         reviewId: Long,
         storageKey: String,

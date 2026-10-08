@@ -85,7 +85,7 @@ class DeliveryAddressService(
     }
 
     /** 내 배송지인지 확인*/
-    private fun loadOwnedActive(
+    fun loadOwnedActive(
         userId: Long,
         addressId: Long,
     ): DeliveryAddress {

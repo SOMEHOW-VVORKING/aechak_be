@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MethodArgumentNotValidException
+import org.springframework.web.bind.MissingRequestHeaderException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -34,7 +35,8 @@ class GlobalExceptionHandler {
         // 제약의 message가 그대로 실린다 — 기본 메시지는 JVM 로케일 의존이라 제약 쪽에 message 명시가 전제.
         val detail =
             e.bindingResult.fieldErrors
-                .joinToString(", ") { "${it.field}: ${it.defaultMessage}" }
+                .mapNotNull { it.defaultMessage }
+                .joinToString(", ")
                 .ifBlank { CommonErrorCode.INVALID_REQUEST.message }
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
@@ -52,6 +54,12 @@ class GlobalExceptionHandler {
         ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse(CommonErrorCode.INVALID_REQUEST.code, "${e.parameterName}: 필수 파라미터가 누락되었습니다."))
+
+    @ExceptionHandler(MissingRequestHeaderException::class)
+    fun handleMissingHeader(e: MissingRequestHeaderException): ResponseEntity<ErrorResponse> =
+        ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(CommonErrorCode.INVALID_REQUEST.code, "${e.headerName}: 필수 헤더가 누락되었습니다."))
 
     @ExceptionHandler(MethodArgumentTypeMismatchException::class)
     fun handleTypeMismatch(e: MethodArgumentTypeMismatchException): ResponseEntity<ErrorResponse> =

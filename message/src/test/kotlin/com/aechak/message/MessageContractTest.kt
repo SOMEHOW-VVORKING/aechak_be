@@ -10,7 +10,7 @@ class MessageContractTest {
     /** 계약이 권하는 모양 그대로의 표본. 멱등키·시각을 생성자에서 받는다 */
     private data class SampleMessage(
         val hello: String,
-        override val aggregateId: String = "test",
+        override val orderingKey: String = "test",
         override val eventId: String = UUID.randomUUID().toString(),
         override val occurredAt: Instant = Instant.now(),
     ) : GuaranteedMessage {

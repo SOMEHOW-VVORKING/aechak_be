@@ -25,7 +25,7 @@ aechak/                              # A-4 확정: 루트 패키지 com.aechak
 ├── boot/                            # 그룹핑 디렉토리 (자체는 모듈 아님) → 30 문서
 │   ├── api/                         # 실행 모듈(구매자 앱). 컨트롤러 + consumer 패키지 동거
 │   ├── seller/                      # :seller-api — 셀러센터 실행 모듈(웹). 호스트 분리 전제, 선별 스캔
-│   ├── admin/                       # A-5 결정: MVP 제외 — 필요 시점에 생성
+│   ├── admin/                       # :admin — 어드민 실행 모듈(운영자 전용, Java+Lombok). 셀러 심사 등
 │   └── batch/                       # 실행 모듈. Spring Batch
 └── infra/                           # 그룹핑 폴더 — 기술 분류 폴더 아래 구체 모듈 (40 문서)
     ├── persistence/jpa/             # :jpa-persistence — JPA 어댑터 (A-1 결정 L2)
@@ -42,12 +42,13 @@ include(
     "common", "web-common", "pii",
     "domain", "application",
     "message",                       // 통합 메시지 계약 (의존 0)
-    "api", "seller-api", "batch",    // "admin" — A-5: MVP 제외
+    "api", "seller-api", "admin", "batch",
     "jpa-persistence", "pg-client",     // A-1 결정(L2). kafka·redis는 어댑터 생길 때 추가
 )
 // boot/·infra/{분류}는 모듈이 아닌 폴더 — 모듈 이름은 평평하게, projectDir로 위치만 매핑
 project(":api").projectDir = file("boot/api")
 project(":seller-api").projectDir = file("boot/seller")
+project(":admin").projectDir = file("boot/admin")
 project(":batch").projectDir = file("boot/batch")
 project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
 project(":pg-client").projectDir = file("infra/client/pg-client")
@@ -73,6 +74,7 @@ project(":pg-client").projectDir = file("infra/client/pg-client")
 1. 화살표는 항상 안쪽(common/domain)을 향한다. boot를 의존하는 모듈은 없다. infra를 의존하는 모듈은 boot뿐이다(조립 지점).
 2. 도메인/애플리케이션 코드가 web-common을 참조하는 순간 리뷰에서 반려한다.
 3. infra 모듈끼리는 서로 모른다. 조합이 필요하면 application의 포트 뒤에서 boot가 조립한다.
+4. 순수 인메모리 계산 라이브러리(I/O·프레임워크 없음)는 domain·application이 직접 써도 된다 — infra 어댑터가 아니라 계산 도구다(domain의 ulid-creator). I/O가 섞이면 포트로 감싸 infra로 내린다. 순수 계산이어도 모듈에서 라이브러리를 떼어두려면 포트로 감쌀 수 있다(리뷰 금칙어 판정의 ProfanityScanner는 포트만 application에 두고 api 모듈이 아호코라식으로 구현).
 
 ---
 

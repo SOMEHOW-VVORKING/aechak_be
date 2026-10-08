@@ -80,6 +80,45 @@ data class OrderResponse(
 }
 ```
 
+### 3-1. 제약 상수의 소유와 참조
+
+**요청 DTO의 제약값은 리터럴로 두지 않고 원본을 참조한다.** 값을 복사하면 한쪽만 고쳐져 어긋나고,
+타입이 같아 컴파일도 테스트도 안 잡는다. (사고: 펫 체중 상한을 100→200으로 올릴 때 등록 DTO만
+고쳐져 등록 200 / 수정 100으로 갈림)
+
+**원본 위치는 그 값이 누구의 규칙인지로 정한다.**
+
+| 값의 성격 | 원본 | 예 |
+| --- | --- | --- |
+| 도메인 불변식 | 엔티티 companion | `CartItem.MAX_QUANTITY` — 병합 합산 상한에도 같은 값을 씀 |
+| 저장 한계(컬럼 길이) | 그 컬럼을 선언한 엔티티 companion | `ProductImage.STORAGE_KEY_MAX` — `@Column(length = ...)`과 DTO가 같은 값을 봄 |
+| 조회 계약 | application의 공용 상수나 Query companion | `CursorPageSize.MIN` — 목록마다 다를 이유가 없어 공용으로 두고, 도메인은 알 이유가 없음 |
+
+**개념의 규칙인지 저장의 한계인지를 먼저 가른다.** 상품이 성립하는 가격 범위나 가질 수 있는
+이미지 수는 상품이라는 개념의 규칙이므로 애그리거트가 소유하고 팩토리가 거절한다. 반면 상품명
+255자, S3 키 1024자는 컬럼이 못 담는다는 저장 한계일 뿐이라 요청 DTO에서 미리 거절한다.
+가르는 질문은 **다른 입구(배치·어드민·컨슈머)로 들어와도 지켜야 하는가**다.
+
+**Command companion에는 제약값을 두지 않는다.** Command는 형식 검증이 boot에서 끝났다는 것이
+계약인 객체다(20 문서 §4). 검증 수치를 들고 있으면 그 계약과 어긋나고, 원본이 도메인인지
+요청인지도 흐려진다.
+
+원본이 application에 있으면 boot가 자기 의존만 보면 되므로 문제가 없다. **원본이 도메인에 있으면
+boot가 domain을 참조하게 된다.** `application`이 domain을 `api`로 걸어 전이 노출하므로 컴파일은
+되지만 boot가 직접 선언한 의존은 아니다. 값이 어긋나는 쪽을 더 큰 위험으로 보아 현재는 이 참조를
+허용한다. 참조는 상수만 하고 도메인 메서드는 호출하지 않는다.
+
+**도메인이 소유한 규칙은 DTO에 거울을 두지 않는다.** 어노테이션이 먼저 걸리면 도메인이 던질
+에러코드 대신 검증 실패 코드가 나가고, 계약이 그 코드를 약속했다면 그대로 거짓말이 된다.
+필드별 메시지를 잃는 대신 클라이언트가 분기할 수 있는 코드를 얻는 쪽을 택한다.
+저장 한계는 반대다. 던질 도메인 코드가 없고 통과시키면 저장 단계에서 500이 되므로 DTO가 막는다.
+
+- 어노테이션 인자는 컴파일 상수여야 하므로 원본은 `const val`이어야 한다.
+- `@Max`·`@Range`의 속성은 `long`이라 Int 상수는 그대로 못 넘긴다. 원본 타입을 바꾸지 말고
+  참조 지점에서 변환하거나(`.toLong()`) 원본을 `Long`으로 두고 이유를 주석으로 남긴다.
+- 참조가 늘어 boot가 도메인 엔티티를 여럿 열게 되면 **제약 상수 전용 모듈을 분리한다.**
+  그때까지는 위 규칙을 따른다.
+
 ## 4. Consumer 동거 구역 (결정: api 내 consumer 패키지 — 승격 조건은 A-3)
 
 ```kotlin
@@ -123,7 +162,20 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 - 예외 소비 방식: web-common의 핸들러가 아니라 SkipPolicy/Listener에서 errorCode 기준 처리.
 - 배치가 자체 발신하는 에러 코드의 status는 500 고정 (05 문서 ErrorCode 컨벤션).
 
-## 7. admin — A-5 결정: MVP 제외
+## 7. admin — 어드민 실행 모듈 (SCRUM-170)
 
-- MVP에서는 만들지 않는다 (입점 심사·신고 처리 등 운영은 DB/API 수동 — 60 문서).
-- 생성 시점이 오면 api와 동일 구조/규칙(JSON API 기반)으로 만들고, web-common의 GlobalExceptionHandler를 재사용한다.
+```
+boot/admin/src/main/java/com/aechak/admin/
+├── AdminApplication.java
+├── config/          # JpaConfig · OpenApiConfig · WebConfig
+└── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
+```
+
+- A-5(MVP 제외)를 해소하고 신설 — 셀러 입점 심사부터 운영자 기능이 실제 API로 필요해졌다.
+- **Java(+Lombok)로 작성한다** (팀 결정) — 경계는 boot/admin과 `Admin*` 클래스까지. 공용 모듈(application의 support 등)에 두는 코드는 Kotlin 유지. 빌드는 `aechak.java-spring-boot-app` 컨벤션(50 문서 §1).
+- **application의 어드민 전용 컴포넌트 구현체는 `Admin` 접두사를 쓰고, 구매자·셀러 실행 모듈은 그 구현체를 스캔에서 제외한다**(seller-api의 excludeFilters). 심사처럼 운영자만 쓰는 유스케이스가 셀러와 같은 BC 패키지에 사는데 컴포넌트 스캔은 패키지 단위라 가릴 수 없다 — 제외하지 않으면 셀러센터가 쓰지도 않는 빈을 조립하다 의존을 못 찾고 부팅이 깨진다(SCRUM-208 선례).
+- api와 동일 구조/규칙(JSON API 기반) — web-common의 응답 봉투·GlobalExceptionHandler 재사용.
+- **자격 게이트는 모듈 SecurityConfig가 전역 강제**한다(role=ADMIN, 실패 시 20011·403). 컨트롤러별 `@PreAuthorize`를 쓰는 셀러측과 다른 점 — 모듈 전체가 운영자 전용이라 게이트가 하나면 된다. 전역 자원 접근이라 소유권 검증 계층도 없다.
+- 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(seller-api와 같은 검증 전용 모드).
+- DB 마이그레이션은 api 단일 소유 그대로 — admin은 접속만 한다.
+- 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.
