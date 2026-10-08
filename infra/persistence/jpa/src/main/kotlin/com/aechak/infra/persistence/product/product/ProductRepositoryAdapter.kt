@@ -6,6 +6,7 @@ import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 
@@ -36,6 +37,8 @@ class ProductRepositoryAdapter(
     override fun saveNow(product: Product): Product = jpaRepository.saveAndFlush(product)
 
     override fun findByIdForUpdate(id: Long): Product? = jpaRepository.findByIdForUpdate(id)
+
+    override fun findById(id: Long): Product? = jpaRepository.findByIdOrNull(id)
 
     override fun findByPublicIdAndSellerId(
         publicId: String,

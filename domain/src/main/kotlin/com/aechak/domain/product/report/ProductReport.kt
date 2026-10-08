@@ -5,6 +5,7 @@ import com.aechak.domain.product.error.ProductErrorCode
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.report.enums.ProductReportReason
 import com.aechak.domain.product.report.enums.ProductReportStatus
+import com.aechak.domain.product.report.event.ProductReportReceivedEvent
 import com.aechak.domain.support.AggregateRoot
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -17,9 +18,15 @@ import jakarta.persistence.Id
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
+import jakarta.persistence.UniqueConstraint
 
 @Entity
-@Table(name = "product_reports")
+@Table(
+    name = "product_reports",
+    uniqueConstraints = [
+        UniqueConstraint(name = ProductReport.UK_PRODUCT_ID_REPORTER_ID, columnNames = ["product_id", "reporter_id"]),
+    ],
+)
 class ProductReport protected constructor(
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_id", nullable = false)
@@ -28,7 +35,7 @@ class ProductReport protected constructor(
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     val reasonCode: ProductReportReason,
-    @Column(length = 500)
+    @Column(length = REASON_TEXT_MAX)
     val reasonText: String?,
 ) : AggregateRoot() {
     @Id
@@ -47,17 +54,36 @@ class ProductReport protected constructor(
         status = ProductReportStatus.FORWARDED
     }
 
+    /** 접수 사실 이벤트 등록. 저장해 id가 생긴 뒤 호출한다 */
+    fun registerReceived() =
+        registerEvent(
+            ProductReportReceivedEvent(
+                reportId = id,
+                productPublicId = product.publicId,
+                reasonCode = reasonCode,
+                reasonText = reasonText,
+                createdAt = createdAt,
+            ),
+        )
+
     companion object {
+        const val UK_PRODUCT_ID_REPORTER_ID = "uk_product_reports_product_id_reporter_id"
+        const val REASON_TEXT_MAX = 500
+
         fun report(
             product: Product,
             reporterId: Long,
             reasonCode: ProductReportReason,
             reasonText: String?,
         ): ProductReport {
-            if (reasonCode == ProductReportReason.OTHER && reasonText.isNullOrBlank()) {
+            if (product.sellerId == reporterId) {
+                throw BusinessException(ProductErrorCode.PRODUCT_SELF_REPORT_NOT_ALLOWED)
+            }
+            val text = reasonText?.trim()?.takeIf { it.isNotEmpty() }
+            if (reasonCode == ProductReportReason.OTHER && text == null) {
                 throw BusinessException(ProductErrorCode.PRODUCT_REPORT_REASON_TEXT_REQUIRED)
             }
-            return ProductReport(product, reporterId, reasonCode, reasonText)
+            return ProductReport(product, reporterId, reasonCode, text)
         }
     }
 }
