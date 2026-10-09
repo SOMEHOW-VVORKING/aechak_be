@@ -7,6 +7,7 @@ import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.payment.enums.PaymentMethod
 import com.jayway.jsonpath.JsonPath
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -59,6 +60,7 @@ class PaymentPrepareIntegrationTest : IntegrationTestBase() {
         buyerId: Long,
         productAmount: Long = 13_000L,
         shippingFee: Long = 0L,
+        usedPoint: Long = 0L,
         expiresAt: LocalDateTime = LocalDateTime.now().plusMinutes(10),
         mutate: (OrderGroup) -> Unit = {},
     ): String =
@@ -68,7 +70,7 @@ class PaymentPrepareIntegrationTest : IntegrationTestBase() {
                     buyerId = buyerId,
                     deliveryAddressId = 1L,
                     deliveryAddress = snapshot(),
-                    usedPoint = 0L,
+                    usedPoint = usedPoint,
                     totalProductAmount = productAmount,
                     totalShippingFee = shippingFee,
                     idempotencyKey = "key-${UUID.randomUUID()}",
@@ -79,6 +81,20 @@ class PaymentPrepareIntegrationTest : IntegrationTestBase() {
             em.flush()
             group.publicId
         }!!
+
+    private fun changeGroup(
+        publicId: String,
+        change: (OrderGroup) -> Unit,
+    ) {
+        tx.executeWithoutResult {
+            val group =
+                em
+                    .createQuery("select g from OrderGroup g where g.publicId = :pid", OrderGroup::class.java)
+                    .setParameter("pid", publicId)
+                    .singleResult
+            change(group)
+        }
+    }
 
     private fun snapshot() =
         DeliveryAddressSnapshot(
@@ -226,6 +242,23 @@ class PaymentPrepareIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(60008))
 
         assertEquals(0L, paymentCount(publicId), "거절된 요청은 결제행을 만들면 안 된다")
+        assertNull(paymentGateway.registeredAmount(publicId), "거절된 요청은 포트원에 금액을 등록하면 안 된다")
+    }
+
+    @Test
+    fun `남의 주문그룹이면 결제완료, 취소, 만료 상태여도 없는 주문과 같은 60008로 거절한다`() {
+        val ownerId = createActiveUser()
+        val strangerToken = mintAccessToken(createActiveUser())
+        val paid = seedOrderGroup(ownerId) { it.markPaid() }
+        val cancelled = seedOrderGroup(ownerId) { it.cancelUnpaid() }
+        val expired = seedOrderGroup(ownerId, expiresAt = LocalDateTime.now().minusMinutes(1))
+
+        listOf(paid, cancelled, expired).forEach { publicId ->
+            mockMvc
+                .perform(prepare(publicId, strangerToken))
+                .andExpect(status().isNotFound)
+                .andExpect(jsonPath("$.errorCode").value(60008))
+        }
     }
 
     @Test
@@ -249,6 +282,7 @@ class PaymentPrepareIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(60009))
 
         assertEquals(0L, paymentCount(publicId), "거절된 요청은 결제행을 만들면 안 된다")
+        assertNull(paymentGateway.registeredAmount(publicId), "거절된 요청은 포트원에 금액을 등록하면 안 된다")
     }
 
     @Test
@@ -261,6 +295,9 @@ class PaymentPrepareIntegrationTest : IntegrationTestBase() {
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.errorCode").value(60009))
             .andExpect(jsonPath("$.message").value("결제 가능 시간이 만료되었습니다."))
+
+        assertEquals(0L, paymentCount(publicId), "거절된 요청은 결제행을 만들면 안 된다")
+        assertNull(paymentGateway.registeredAmount(publicId), "거절된 요청은 포트원에 금액을 등록하면 안 된다")
     }
 
     @Test
@@ -272,6 +309,77 @@ class PaymentPrepareIntegrationTest : IntegrationTestBase() {
             .perform(prepare(publicId, mintAccessToken(buyerId)))
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.errorCode").value(60006))
+
+        assertEquals(0L, paymentCount(publicId), "거절된 요청은 결제행을 만들면 안 된다")
+        assertNull(paymentGateway.registeredAmount(publicId), "결제가 끝난 건을 포트원에 다시 등록하면 안 된다")
+    }
+
+    @Test
+    fun `결제완료 주문그룹은 만료 시각이 지나도 만료가 아니라 60006으로 거절한다`() {
+        val buyerId = createActiveUser()
+        val publicId = seedOrderGroup(buyerId, expiresAt = LocalDateTime.now().minusMinutes(1)) { it.markPaid() }
+
+        mockMvc
+            .perform(prepare(publicId, mintAccessToken(buyerId)))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(60006))
+    }
+
+    @Test
+    fun `결제행이 있어도 주문그룹이 결제완료되면 재사용하지 않고 60006으로 거절한다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val publicId = seedOrderGroup(buyerId)
+        perform201(publicId, token)
+        changeGroup(publicId) { it.markPaid() }
+
+        mockMvc
+            .perform(prepare(publicId, token))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(60006))
+
+        assertEquals(listOf(publicId), paymentGateway.preRegisteredPaymentIds, "결제가 끝난 건을 포트원에 다시 등록하면 안 된다")
+    }
+
+    @Test
+    fun `최소 결제 금액 100원짜리 주문그룹도 결제를 준비한다`() {
+        val buyerId = createActiveUser()
+        val publicId = seedOrderGroup(buyerId, productAmount = 100L)
+
+        mockMvc
+            .perform(prepare(publicId, mintAccessToken(buyerId)))
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.data.targetAmount").value(100))
+
+        assertEquals(100L, paymentGateway.registeredAmount(publicId), "주문그룹이 허용한 최저 금액은 결제 준비에서도 통과해야 한다")
+    }
+
+    @Test
+    fun `적립금을 쓴 주문그룹은 차감한 금액으로 사전등록한다`() {
+        val buyerId = createActiveUser()
+        val publicId = seedOrderGroup(buyerId, productAmount = 13_000L, shippingFee = 3_000L, usedPoint = 1_000L)
+
+        mockMvc
+            .perform(prepare(publicId, mintAccessToken(buyerId)))
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.data.targetAmount").value(15_000))
+
+        assertEquals(15_000L, paymentRow(publicId)[2], "결제행 금액은 적립금을 뺀 최종 결제금액이어야 한다")
+        assertEquals(15_000L, paymentGateway.registeredAmount(publicId), "상품금액과 배송비 합으로 등록하면 적립금만큼 더 결제된다")
+    }
+
+    @Test
+    fun `승인 전 결제행 여럿은 transaction_id가 비어 있어도 함께 저장된다`() {
+        val firstBuyer = createActiveUser()
+        val secondBuyer = createActiveUser()
+        val first = seedOrderGroup(firstBuyer)
+        val second = seedOrderGroup(secondBuyer)
+
+        perform201(first, mintAccessToken(firstBuyer))
+        perform201(second, mintAccessToken(secondBuyer))
+
+        assertEquals(1L, paymentCount(first), "첫 결제행이 저장돼야 한다")
+        assertEquals(1L, paymentCount(second), "uk_payments_transaction_id가 NULL끼리 충돌하면 두 번째 결제 준비부터 막힌다")
     }
 
     @Test

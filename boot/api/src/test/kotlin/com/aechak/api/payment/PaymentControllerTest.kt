@@ -113,6 +113,18 @@ class PaymentControllerTest {
     }
 
     @Test
+    fun `결제수단을 null로 보내도 파싱 단계에서 90001로 끊는다`() {
+        val store = PaymentStoreProperties("store-a", "channel-a")
+
+        mockMvc(store)
+            .perform(prepare("og-6", body = """{"method":null}"""))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+
+        assertNull(capturedCommand, "명시적 null도 키 누락과 같이 유스케이스 전에 끊어야 한다")
+    }
+
+    @Test
     fun `storeId나 channelKey 한쪽만 비어도 결제 준비를 60005로 끊는다`() {
         val noStore = PaymentStoreProperties(id = "", channelKey = "channel-a")
         val noChannel = PaymentStoreProperties(id = "store-a", channelKey = "")
