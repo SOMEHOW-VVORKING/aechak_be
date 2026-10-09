@@ -48,6 +48,7 @@ class PortOneAdapter(
                     logFailure(PRE_REGISTER_PAYMENT_OPERATION, paymentId, response)
                     throw BusinessException(PaymentErrorCode.PAYMENT_GATEWAY_ERROR)
                 }.toBodilessEntity() // 성공 본문은 빈 객체
+            log.info("포트원 {} 성공. paymentId={}, amount={}", PRE_REGISTER_PAYMENT_OPERATION, paymentId, amount)
         } catch (e: HttpMessageConversionException) {
             throw gatewayFailure(PRE_REGISTER_PAYMENT_OPERATION, paymentId, e)
         } catch (e: RestClientException) {

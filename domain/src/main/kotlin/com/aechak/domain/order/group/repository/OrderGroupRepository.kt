@@ -7,4 +7,6 @@ interface OrderGroupRepository {
 
     /** 멱등 재요청 판별용. 없으면 null. */
     fun findByIdempotencyKey(idempotencyKey: String): OrderGroup?
+
+    fun findByPublicId(publicId: String): OrderGroup?
 }
