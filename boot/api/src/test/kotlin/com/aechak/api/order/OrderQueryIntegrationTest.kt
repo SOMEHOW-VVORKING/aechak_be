@@ -132,6 +132,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
                                     OrderItem.of(
                                         productId = spec.productId,
                                         optionCombinationId = spec.optionCombinationId,
+                                        optionNameSnapshot = "용량 5L / 화이트",
                                         quantity = spec.quantity,
                                         unitPriceSnapshot = spec.unitPrice,
                                         discountAllocatedAmount = 0,
@@ -270,20 +271,24 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `목록의 대표 품목은 주문 시점 상품명과 현재 옵션명을 함께 싣는다`() {
+    fun `목록의 대표 품목은 셀러가 옵션명을 바꿔도 주문 시점 상품명과 옵션명을 싣는다`() {
         val buyerId = createActiveUser()
         val token = mintAccessToken(buyerId)
-        seedOrderGroup(
-            buyerId,
-            listOf(specOf(71L, "냥이상점", "고양이 자동 급식기 스마트 5L", 64000L, OrderStatus.DELIVERED)),
-            com.aechak.domain.order.group.enums.OrderGroupStatus.PAID,
-        )
+        val spec = specOf(71L, "냥이상점", "고양이 자동 급식기 스마트 5L", 64000L, OrderStatus.DELIVERED)
+        seedOrderGroup(buyerId, listOf(spec), com.aechak.domain.order.group.enums.OrderGroupStatus.PAID)
+        tx.executeWithoutResult {
+            em
+                .createQuery("update OptionCombination oc set oc.name = :name where oc.id = :id")
+                .setParameter("name", "용량 5L / 아이보리")
+                .setParameter("id", spec.optionCombinationId)
+                .executeUpdate()
+        }
 
         val body = listBody(token)
 
         val item = "$.data.orderGroups[0].sellerOrders[0].representativeItem"
         assertEquals("고양이 자동 급식기 스마트 5L", JsonPath.read<String>(body, "$item.productName"), "상품명은 주문 시점 버전 스냅샷이어야 한다")
-        assertEquals("용량 5L / 화이트", JsonPath.read<String>(body, "$item.optionName"), "옵션명은 옵션조합 현재값이어야 한다")
+        assertEquals("용량 5L / 화이트", JsonPath.read<String>(body, "$item.optionName"), "주문 뒤 옵션 개명이 지난 주문 표기에 번지면 안 된다")
         assertEquals(64000, JsonPath.read<Int>(body, "$item.unitPrice"), "단가는 주문 시점 스냅샷이어야 한다")
         assertEquals(1, JsonPath.read<Int>(body, "$.data.orderGroups[0].sellerOrders[0].itemCount"), "품목 종류 수가 맞아야 한다")
     }
