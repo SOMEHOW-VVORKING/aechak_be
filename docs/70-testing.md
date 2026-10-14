@@ -192,7 +192,8 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
 - **MockK**: Fake/`@MockitoBean`으로 안 풀리는 상호작용 검증이 실제로 필요해지면 카탈로그 추가.
 - ~~**테스트 지원 공유**~~ → **결정 완료(SCRUM-192, 2026-08-10)**. 실행 모듈 2개째(seller-api)부터 통합 테스트 지원
   (IntegrationTestBase·IntegrationTestConfig·DatabaseCleaner·FakeFileStorage)은 `:api`의 **java-test-fixtures**가 소유하고
-  소비 모듈은 `testImplementation(testFixtures(project(":api")))`로 공유한다. KafkaIntegrationTestBase는 api 전용(컨슈머가 api에만 있음)이라 api src/test 잔류.
+  소비 모듈은 `testImplementation(testFixtures(project(":api")))`로 공유한다. KafkaIntegrationTestBase는 api 전용(컨슈머가 api에만 있음)이라 api src/test 잔류이고,
+  Flyway clean-then-migrate 전략(`FlywayCleanMigrateConfig`)도 clean을 연 이 베이스만 import한다 — 공용 fixture에 두면 clean이 막힌 다른 실행 모듈 컨텍스트가 부팅에서 깨진다.
 - **MongoDB**: 도입 시 공용 베이스에 `@ServiceConnection` Mongo 컨테이너를 추가한다 — 별도 베이스를 만들지 않는다.
 - **병렬 실행**: 테스트별 스키마/DB 분리로 격리가 강화되면 재검토.
 - **모듈 간 테스트 베이스 공유**: boot/batch·infra에 통합 테스트가 필요해지는 커밋에서 결정한다 — 위 `:api` test-fixtures를 그대로 소비할지, 모듈마다 자체 베이스를 둘지. 공유 장치 자체는 SCRUM-192에서 `:api` java-test-fixtures로 도입됐고, 현재 소비자는 seller-api뿐이다.

@@ -24,7 +24,9 @@ class DatabaseCleaner(
                 connection.createStatement().use { st ->
                     st.execute("SET FOREIGN_KEY_CHECKS = 0")
                     try {
-                        tables.forEach { st.execute("TRUNCATE TABLE `$it`") }
+                        tables
+                            .filter { st.executeQuery("SELECT 1 FROM `$it` LIMIT 1").use { rs -> rs.next() } }
+                            .forEach { st.execute("TRUNCATE TABLE `$it`") }
                     } finally {
                         st.execute("SET FOREIGN_KEY_CHECKS = 1")
                     }

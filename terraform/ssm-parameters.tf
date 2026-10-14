@@ -84,14 +84,17 @@ resource "aws_ssm_parameter" "auth_return_urls" {
 }
 
 # ── 문의 통지(SES) ─────────────────────────────────────
-# enabled=true인데 from/recipients가 비면 앱이 fail-fast로 기동에 실패한다 — 셋을 함께 넣는다.
+# enabled=true인데 from/recipients가 비면 앱이 fail-fast로 기동에 실패한다.
 resource "aws_ssm_parameter" "ses_from" {
   name  = "/${var.project}/${var.env}/api/AWS_SES_FROM"
   type  = "String"
   value = local.ses_from_address
 }
 
+# 수신자 미설정이면 파라미터를 만들지 않는다 — SSM은 빈 값을 거절하고(길이 ≥ 1),
+# 앱은 경로 프리픽스 import라 파라미터가 없으면 기본값(빈 목록)으로 부팅한다.
 resource "aws_ssm_parameter" "inquiry_ops_recipients" {
+  count = length(var.inquiry_ops_recipients) > 0 ? 1 : 0
   name  = "/${var.project}/${var.env}/api/INQUIRY_OPS_RECIPIENTS"
   type  = "String"
   value = join(",", var.inquiry_ops_recipients)
@@ -102,6 +105,15 @@ resource "aws_ssm_parameter" "inquiry_notification_enabled" {
   type  = "String"
   value = tostring(var.inquiry_notification_enabled)
 }
+
+# --- 포트원 V2 결제 (SCRUM-205) ---
+# 넷 다 terraform이 만들지 않는다. 실값을 퍼블릭 레포에 두지 않기로 해 사람이 수기 등재한다.
+# 시크릿은 state에 남기지 않는 방침(JWT 키와 같은 결)과도 겹친다.
+#   /{project}/{env}/api/PORTONE_STORE_ID       (String)
+#   /{project}/{env}/api/PORTONE_CHANNEL_KEY    (String)
+#   /{project}/{env}/api/PORTONE_API_SECRET     (SecureString)
+#   /{project}/{env}/api/PORTONE_WEBHOOK_SECRET (SecureString)
+# 결제는 구매자 api만 호출하므로 seller 경로에는 넣지 않는다.
 
 # --- PII 암호화 키 (SCRUM-169) ---
 # 앱이 전화번호 등 민감정보를 암호화(AES-GCM)·검색 해시(HMAC)하는 데 쓴다. 키 분실 = 해당 데이터 영구 복호 불능이라
@@ -225,11 +237,81 @@ resource "aws_ssm_parameter" "seller_pii_hmac_key" {
   }
 }
 
+# ── admin (SCRUM-229): /aechak/{env}/admin/ ────────────
+# seller와 같은 결 — 값은 api와 같은 원천(tf 리소스)을 재참조하고 경로만 모듈 단위로 분리한다.
+# admin은 redis 미사용이라 해당 파라미터가 없다.
+
+resource "aws_ssm_parameter" "admin_db_url" {
+  name  = "/${var.project}/${var.env}/admin/SPRING_DATASOURCE_URL"
+  type  = "String"
+  value = "jdbc:mysql://${aws_db_instance.main.address}:3306/${var.project}"
+}
+
+resource "aws_ssm_parameter" "admin_db_username" {
+  name  = "/${var.project}/${var.env}/admin/SPRING_DATASOURCE_USERNAME"
+  type  = "String"
+  value = aws_db_instance.main.username
+}
+
+resource "aws_ssm_parameter" "admin_db_password" {
+  name  = "/${var.project}/${var.env}/admin/SPRING_DATASOURCE_PASSWORD"
+  type  = "SecureString"
+  value = random_password.db.result
+}
+
+resource "aws_ssm_parameter" "admin_media_bucket" {
+  name  = "/${var.project}/${var.env}/admin/AWS_S3_MEDIA_BUCKET"
+  type  = "String"
+  value = aws_s3_bucket.media.id
+}
+
+resource "aws_ssm_parameter" "admin_docs_bucket" {
+  name  = "/${var.project}/${var.env}/admin/AWS_S3_DOCS_BUCKET"
+  type  = "String"
+  value = aws_s3_bucket.docs.id
+}
+
+resource "aws_ssm_parameter" "admin_media_public_base_url" {
+  name  = "/${var.project}/${var.env}/admin/AWS_S3_MEDIA_PUBLIC_BASE_URL"
+  type  = "String"
+  value = "https://${local.media_domain}"
+}
+
+# 어드민 웹 오리진 — 미설정이면 파라미터를 만들지 않는다(SSM은 빈 값을 거절, 앱은 기본값 빈 목록으로 부팅)
+resource "aws_ssm_parameter" "admin_cors_origins" {
+  count = length(var.admin_frontend_origins) > 0 ? 1 : 0
+  name  = "/${var.project}/${var.env}/admin/CORS_ALLOWED_ORIGINS"
+  type  = "String"
+  value = join(",", var.admin_frontend_origins)
+}
+
+# PII 키 — api·seller와 같은 random_bytes 재참조(같은 DB의 같은 암호문을 복호)
+resource "aws_ssm_parameter" "admin_pii_aes_key_v1" {
+  name  = "/${var.project}/${var.env}/admin/PII_AES_KEY_V1"
+  type  = "SecureString"
+  value = random_bytes.pii_aes_key_v1.base64
+
+  lifecycle {
+    prevent_destroy = true # 파라미터 삭제 = admin 부팅 fail-fast
+  }
+}
+
+resource "aws_ssm_parameter" "admin_pii_hmac_key" {
+  name  = "/${var.project}/${var.env}/admin/PII_HMAC_KEY"
+  type  = "SecureString"
+  value = random_bytes.pii_hmac_key.base64
+
+  lifecycle {
+    prevent_destroy = true # 파라미터 삭제 = admin 부팅 fail-fast
+  }
+}
+
 # --- JWT RS256 키: 수기 등재 (헤더의 카카오·JWT 키 방침과 동일) ---
 # terraform으로 생성하면 개인키가 state에 남아 여기서는 관리하지 않는다.
 # 실행 모듈 간 키 공유가 전제라 아래 파라미터를 사람이 직접 등재한다:
 #   /{project}/{env}/api/AUTH_JWT_PRIVATE_KEY  (SecureString, PKCS8 PEM) — api만 발급+검증
 #   /{project}/{env}/api/AUTH_JWT_PUBLIC_KEY   (String, PEM)
 #   /{project}/{env}/seller/AUTH_JWT_PUBLIC_KEY (String, PEM) — api 공개키와 같은 값이어야 api 발급 토큰을 검증한다
+#   /{project}/{env}/admin/AUTH_JWT_PUBLIC_KEY  (String, PEM) — 위 seller와 동일 근거 (SCRUM-229)
 # 누락 시 부팅은 되지만 임시 키 폴백으로 갈라져 모듈 간 검증이 전부 401이 된다.
-# 검증 전용 실행 모듈이 늘면(admin 등) 그 모듈 경로에도 공개키를 같은 값으로 등재한다.
+# 검증 전용 실행 모듈이 더 늘면 그 모듈 경로에도 공개키를 같은 값으로 등재한다.

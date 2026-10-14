@@ -105,3 +105,9 @@ variable "seller_frontend_origins" {
   type        = list(string)
   default     = []
 }
+
+variable "admin_frontend_origins" {
+  description = "어드민 웹 오리진 — FE 착수 시 로컬 포트·배포 도메인을 추가한다"
+  type        = list(string)
+  default     = []
+}

@@ -6,5 +6,9 @@ dependencies {
     implementation(libs.spring.context)      // @Service, ApplicationEventPublisher
     implementation(libs.spring.tx)           // @Transactional — 경계는 Facade 고정
     implementation(libs.slf4j.api)           // 로깅 API만 — 구현(logback)은 실행 모듈이 공급
+    // 어드민 소유 클래스(Admin*)는 팀 결정에 따라 Java+Lombok — Kotlin 소스와 한 모듈에 혼재한다(kotlin.jvm이 src/main/java도 컴파일)
+    compileOnly(libs.lombok)
+    annotationProcessor(platform(libs.spring.boot.bom))  // annotationProcessor 경로에도 BOM 적용 — Lombok 버전 해석
+    annotationProcessor(libs.lombok)
     // 리포지토리는 domain의 포트를 주입받는다. Spring Data는 이 모듈에 두지 않는다.
 }

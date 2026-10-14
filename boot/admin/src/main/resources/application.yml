@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: aechak-admin
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  cloud:
+    aws:
+      region:
+        static: ap-northeast-2 # 리전 자동탐지 제거 — CI 러너처럼 AWS 설정 없는 환경에선 탐지 실패로 부팅이 깨짐
+  jpa:
+    hibernate:
+      ddl-auto: none   # 스키마 관리는 api(Flyway)만 — admin은 접속만 한다 (batch 결)
+
+# 로그 레벨 옆에 traceId를 찍는다 — api와 동일 포맷.
+logging:
+  pattern:
+    level: "%5p [%X{traceId:-}]"
+
+# ECS 롤링 시 SIGTERM을 받으면 처리 중 요청까지는 끝내고 종료
+server:
+  shutdown: graceful
+
+# ALB 헬스체크용. health 외 엔드포인트는 민감정보라 노출 금지
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never # 상세 상태는 숨김
+
+# 이 파일은 전 환경 공통(정책값·불변 엔드포인트)만 담는다.
+# datasource는 프로파일 yml 소유 (dev=SSM 로드, local=docker compose 표준값).
+# 시크릿(JWT 키, PII 키)은 파일에 두지 않고 환경변수로 주입한다 — local은 .env, prod는 SSM.
+
+api:
+  base-path: /api/v1         # 계약 경로는 api와 동일(/api/v1/admin/**) — 모듈 분리는 배포 토폴로지 관심사
+
+aws:
+  s3:
+    # 서류 다운로드 URL 발급에 사용. local은 .env로 dev 버킷을 지정한다 — dev/prod는 프로파일 yml이 fail-fast
+    media-bucket: ${AWS_S3_MEDIA_BUCKET:}
+    docs-bucket: ${AWS_S3_DOCS_BUCKET:}
+    media-public-base-url: ${AWS_S3_MEDIA_PUBLIC_BASE_URL:}
+
+auth:
+  token:
+    # api와 동일해야 한다 — 검증 조립(JwtConfig)이 같은 정책값을 쓴다. 어드민은 토큰을 발급하지 않는다.
+    access-ttl: 30m
+    refresh-ttl: 7d
+    rotation-grace: 60s
+  jwt:
+    # api와 같은 RS256 키 쌍이어야 api가 발급한 어드민 토큰이 검증된다 — prod는 SSM 주입.
+    # 비워두면 개발용 임시 키 생성(api 토큰 검증 불가 — local 한정).
+    private-key: ${AUTH_JWT_PRIVATE_KEY:}
+    public-key: ${AUTH_JWT_PUBLIC_KEY:}
+
+# PII 암호화 키 — api와 동일 키(같은 데이터를 복호). dev·prod는 SSM, local·test는 프로파일 파일의 고정 키가 덮는다.
+# 기본값을 주지 않는다: 미주입이면 부팅 실패(fail-fast).
+aechak:
+  pii:
+    active-version: 1
+    aes-keys:
+      1: ${PII_AES_KEY_V1}
+    hmac-key: ${PII_HMAC_KEY}

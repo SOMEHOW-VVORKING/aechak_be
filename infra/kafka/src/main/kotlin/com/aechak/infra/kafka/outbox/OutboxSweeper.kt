@@ -50,7 +50,7 @@ internal class OutboxSweeper(
                 .sql(
                     """
                 SELECT o.id, o.event_id, o.aggregate_type,
-                       o.aggregate_id, o.event_type, o.trace_id, o.payload, o.expired_at
+                       o.ordering_key, o.event_type, o.trace_id, o.payload, o.expired_at
                 FROM outbox_message o
                 WHERE o.status = ${OutboxStatus.PENDING}
                 ORDER BY o.occurred_at, o.id
@@ -62,7 +62,7 @@ internal class OutboxSweeper(
                         id = rs.getLong("id"),
                         eventId = rs.getString("event_id"),
                         aggregateType = rs.getString("aggregate_type"),
-                        aggregateId = rs.getString("aggregate_id"),
+                        orderingKey = rs.getString("ordering_key"),
                         eventType = rs.getString("event_type"),
                         // 재발행은 같은 사건이라 traceId를 새로 만들지 않음(만들면 엔벨로프 본문과 갈라짐)
                         traceId = rs.getString("trace_id") ?: "",
@@ -129,7 +129,7 @@ internal class OutboxSweeper(
      * 동기적으로 send.
      */
     private fun send(row: OutboxRow) {
-        sender.send(row.aggregateType, row.aggregateId, row.eventId, row.eventType, row.traceId, row.payload).get()
+        sender.send(row.aggregateType, row.orderingKey, row.eventId, row.eventType, row.traceId, row.payload).get()
     }
 
     companion object {
@@ -140,7 +140,7 @@ internal class OutboxSweeper(
         val id: Long,
         val eventId: String,
         val aggregateType: String,
-        val aggregateId: String,
+        val orderingKey: String,
         val eventType: String,
         val traceId: String,
         val payload: String,

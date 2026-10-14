@@ -16,8 +16,11 @@ sealed interface IntegrationMessage {
     /** 발행 도메인 이름('order' 등 소문자). 토픽 이름이 여기서 조립됨 */
     val aggregateType: String
 
-    /** 파티션 키(주문ID 등). 같은 키는 같은 파티션으로 감. 발행 순서는 보장 안 함 */
-    val aggregateId: String
+    /**
+     * 파티션 키(주문ID 등). 같은 키는 같은 파티션으로 감. 발행 순서는 보장 안 함.
+     * 순서를 맞출 단위가 기준이라 발행 애그리거트의 id와 다를 수 있음
+     */
+    val orderingKey: String
 }
 
 /** 유실 불가. 아웃박스에 기록해 발행될 때까지 재시도함 */

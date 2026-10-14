@@ -21,15 +21,14 @@ import org.springframework.security.web.SecurityFilterChain
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
-import tools.jackson.databind.ObjectMapper // Boot 4 = Jackson 3 (com.fasterxml → tools.jackson)
+import tools.jackson.databind.ObjectMapper // Spring Boot 4부터 Jackson 3의 tools.jackson 패키지를 사용한다.
 
 /**
- * API 보안 조립: stateless resource server(자체 RS256 JWT 검증) + 상태검증 필터.
- * "누가 무엇을 쓸 수 있나"(permitAll·401·403·상태 게이트)는 전부 이 파일에서 읽히도록 응집한다.
+ * RS256 JWT를 검증하는 stateless resource server와 사용자 상태 필터를 설정한다.
+ * 공개 경로와 인증 실패 응답, 사용자 상태별 접근 권한을 이 파일에서 관리한다.
  *
- * - permitAll: 로그인·토큰 갱신·actuator health(ALB 헬스체크)·API 문서(swagger — prod는 springdoc 자체 비활성). 로그아웃은 인증 필요.
- * - 401(20004): Security 필터 구간이라 @RestControllerAdvice 밖 — EntryPoint가 직접 실패 봉투를 쓴다.
- * - 403(20005/20006): 서명검증 뒤 UserStatusFilter가 users.status를 조회해 직접 쓴다.
+ * 로그인, 토큰 갱신, 헬스 체크, API 문서는 인증 없이 접근할 수 있다. 일반 로그아웃은 인증이 필요하다.
+ * JWT 인증 실패는 AuthenticationEntryPoint가 401로 응답하고, 계정 상태에 따른 제한은 UserStatusFilter가 403으로 응답한다.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableWebSecurity
@@ -57,10 +56,9 @@ class SecurityConfig {
                         "$basePath/auth/web/logout",    // 쿠키 채널 로그아웃 (쿠키가 자격증명, 멱등)
                     ).permitAll()
                     .requestMatchers(
-                        // springdoc — 접두(api.base-path) 미부착 경로(우리 컨트롤러가 아님)
                         "/swagger-ui.html",      // 진입점 (실제론 /swagger-ui/index.html로 redirect)
                         "/swagger-ui/**",        // UI 정적 리소스 (JS/CSS)
-                        "/v3/api-docs",          // OpenAPI JSON 본체
+                        "/v3/api-docs",          // OpenAPI JSON
                         "/v3/api-docs/**",       // swagger-config, 그룹별 스펙 등
                     ).permitAll()
                     .requestMatchers("/actuator/health")
@@ -85,10 +83,11 @@ class SecurityConfig {
         return http.build()
     }
 
-    /** PENDING_ONBOARDING 허용 경로 — permitAll과 함께, 인가 정책은 이 파일이 전부다. */
+    /** 온보딩을 마치지 않은 사용자(PENDING_ONBOARDING)에게 허용할 경로 */
     private fun onboardingAllowedPaths(basePath: String): Set<String> =
         setOf(
             "$basePath/users/me",
+            "$basePath/users/me/withdrawal/check",
             "$basePath/users/me/consents",
             "$basePath/users/me/nickname",
             "$basePath/users/nickname/check",
@@ -96,16 +95,15 @@ class SecurityConfig {
             "$basePath/breeds",
             "$basePath/products",
             "$basePath/auth/logout",
-            "$basePath/auth/web/refresh",   // PENDING 유저가 Authorization을 붙여 불러도 세션 유지·이탈은 허용
+            "$basePath/auth/web/refresh",
             "$basePath/auth/web/logout",
         )
 
     /**
-     * 브라우저 클라이언트(웹 FE·어드민) 허용 origin — 값은 환경 설정(api.cors-allowed-origins, 쉼표 구분).
-     * 비어 있으면 사실상 비활성(허용 origin 0개).
-     * allowCredentials=true인 이유: 웹 채널 refresh가 httpOnly 쿠키로 오가므로
-     * cross-origin fetch(credentials:'include')에 쿠키 왕복을 허용해야 한다. 와일드카드 origin 금지 제약은
-     * 명시 리스트라 충족. CSRF는 SameSite=Lax + 쿠키 Path 한정 + bearer 주 인증으로 방어.
+     * 웹과 관리자 클라이언트에서 허용할 origin을 api.cors-allowed-origins 설정으로 받는다.
+     * 값이 비어 있으면 어떤 origin도 허용하지 않는다.
+     * 웹 토큰 갱신에 httpOnly 쿠키를 사용하므로 allowCredentials를 활성화한다.
+     * origin을 명시적으로 제한하고 SameSite=Lax, 쿠키 Path, bearer 인증을 함께 사용한다.
      */
     @Bean
     fun corsConfigurationSource(
@@ -116,8 +114,8 @@ class SecurityConfig {
                 allowedOrigins = allowedOriginsProperty.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                 allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE")
                 allowedHeaders = listOf("*")
-                allowCredentials = true // 웹 채널 refresh 쿠키 왕복 — FE는 fetch에 credentials:'include'
-                maxAge = 3600 // preflight 캐시(초) — OPTIONS 왕복 절감
+                allowCredentials = true // 웹 클라이언트는 fetch 요청에 credentials: 'include'를 사용한다.
+                maxAge = 3600 // preflight 결과를 캐시할 시간(초)
             }
         return UrlBasedCorsConfigurationSource().apply {
             registerCorsConfiguration("/**", config)

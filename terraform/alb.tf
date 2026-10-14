@@ -12,6 +12,10 @@ resource "aws_lb_target_group" "app" {
   vpc_id      = aws_vpc.main.id
   target_type = "ip" # Fargate(awsvpc)는 인스턴스가 아니라 태스크 IP를 타겟으로
 
+  # 타깃 제거 시 진행 중 요청을 기다리는 드레이닝 시간 (기본 300초).
+  # dev는 요청이 짧고 드물어 60초면 충분 — 기본값이면 태스크 하나 정리마다 5분씩 대기한다.
+  deregistration_delay = 60
+
   lifecycle { create_before_destroy = true }
 
   health_check {
@@ -61,6 +65,8 @@ resource "aws_lb_target_group" "seller_api" {
   vpc_id      = aws_vpc.main.id
   target_type = "ip"
 
+  deregistration_delay = 60 # app 타깃 그룹과 동일 근거 — dev 드레이닝 단축
+
   lifecycle { create_before_destroy = true }
 
   health_check {
@@ -86,5 +92,42 @@ resource "aws_lb_listener_rule" "seller_api" {
   action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.seller_api.arn
+  }
+}
+
+# ── admin (SCRUM-229): host 기반 분기 ──────────────────
+# 인증서 추가 불필요 — 와일드카드 SAN이 admin-api-<env>.aechak.co.kr(한 레이블)을 덮는다.
+resource "aws_lb_target_group" "admin" {
+  name_prefix = "admin" # 교체 시 이름충돌 방지 (max 6자)
+  port        = var.app_port
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  deregistration_delay = 60 # dev는 요청이 짧고 드물어 드레이닝 60초면 충분 (기본 300초)
+
+  lifecycle { create_before_destroy = true }
+
+  health_check {
+    path                = "/actuator/health"
+    interval            = 30
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+}
+
+resource "aws_lb_listener_rule" "admin" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 20 # host 분기라 규칙 간 간섭 없음 — seller-api(10) 뒤 번호만 잇는다
+
+  condition {
+    host_header {
+      values = [local.admin_api_domain]
+    }
+  }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.admin.arn
   }
 }

@@ -6,7 +6,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * SaleStatus 판정 단위 테스트. 구매 가능 여부와 노출 대상, 셀러가 직접 지정할 수 있는 값을 고정한다.
+ * SaleStatus 판정 단위 테스트. 구매·주문 가능 여부와 노출 대상, 셀러가 직접 지정할 수 있는 값을 고정한다.
  * 깨지면 못 사는 상품이 구매 가능으로 열리거나, 셀러가 재고에서 파생하는 품절을 손으로 찍어 재고와 어긋난다.
  */
 class SaleStatusTest {
@@ -20,6 +20,18 @@ class SaleStatusTest {
         assertFalse(SaleStatus.OUT_OF_STOCK.canPurchase())
         assertFalse(SaleStatus.SUSPENDED.canPurchase())
         assertFalse(SaleStatus.ENDED.canPurchase())
+    }
+
+    @Test
+    fun `판매중과 품절은 주문 가능한 판매 상태다`() {
+        assertTrue(SaleStatus.ON_SALE.canOrder())
+        assertTrue(SaleStatus.OUT_OF_STOCK.canOrder(), "품절은 파생 캐시라 주문 게이트에서 안 막고 옵션 재고가 판정한다")
+    }
+
+    @Test
+    fun `판매중지_판매종료는 주문 불가하다`() {
+        assertFalse(SaleStatus.SUSPENDED.canOrder())
+        assertFalse(SaleStatus.ENDED.canOrder())
     }
 
     @Test

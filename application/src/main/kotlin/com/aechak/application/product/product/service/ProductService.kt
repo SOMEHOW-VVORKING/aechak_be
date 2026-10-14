@@ -5,20 +5,28 @@ import com.aechak.application.product.product.port.ProductCatalogQueryPort
 import com.aechak.application.product.product.port.ProductCatalogSort
 import com.aechak.application.product.product.port.ProductDetailQueryPort
 import com.aechak.application.product.product.port.ProductOptionsQueryPort
+import com.aechak.application.product.product.port.SellerProductCondition
+import com.aechak.application.product.product.port.SellerProductQueryPort
 import com.aechak.application.product.product.port.view.ProductCatalogDetailView
 import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.application.product.product.port.view.ProductImageView
 import com.aechak.application.product.product.port.view.ProductOptionsView
+import com.aechak.application.product.product.port.view.SellerProductOptionView
+import com.aechak.application.product.product.port.view.SellerProductView
 import com.aechak.application.product.product.support.ProductCursorCodec
 import com.aechak.application.product.product.usecase.command.ChangeOptionCombinationCommand
 import com.aechak.application.product.product.usecase.command.ChangeProductSaleStatusCommand
 import com.aechak.application.product.product.usecase.command.RegisterProductCommand
 import com.aechak.application.product.product.usecase.command.UpdateProductCommand
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
+import com.aechak.application.product.product.usecase.query.SellerProductSearchQuery
 import com.aechak.application.product.product.usecase.result.OptionCombinationChangeResult
+import com.aechak.application.product.product.usecase.result.ProductCurationResult
 import com.aechak.application.product.product.usecase.result.ProductSaleStatusChangeResult
 import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.application.support.CursorPageResult
+import com.aechak.application.support.CursorPageSize
+import com.aechak.application.support.OffsetPageResult
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.product.category.Category
@@ -48,6 +56,7 @@ class ProductService(
     private val productCatalogQueryPort: ProductCatalogQueryPort,
     private val productDetailQueryPort: ProductDetailQueryPort,
     private val productOptionsQueryPort: ProductOptionsQueryPort,
+    private val sellerProductQueryPort: SellerProductQueryPort,
     private val categoryRepository: CategoryRepository,
     private val productLikeRepository: ProductLikeRepository,
     private val productRepository: ProductRepository,
@@ -231,6 +240,13 @@ class ProductService(
         )
     }
 
+    /** 인기순 상위 상품 */
+    fun getPopular(now: LocalDateTime): List<ProductCatalogView> =
+        productCatalogQueryPort.findPopular(ProductCurationResult.RANKING_SIZE, now)
+
+    fun getRandomOnSale(now: LocalDateTime): List<ProductCatalogView> =
+        productCatalogQueryPort.findRandomOnSale(ProductCurationResult.RECOMMENDED_SIZE, now)
+
     fun getVisiblePage(
         query: ProductSearchQuery,
         now: LocalDateTime,
@@ -248,31 +264,67 @@ class ProductService(
                     sort = query.sort,
                     lastId = anchor?.lastId,
                     lastPrice = anchor?.lastPrice,
-                    limit = query.size + 1,
+                    limit = CursorPageSize.fetchLimit(query.size),
                     now = queryNow,
                 ),
             )
-        val hasNext = fetched.size > query.size
-        val page = if (hasNext) fetched.take(query.size) else fetched
-        return CursorPageResult(
-            items = page,
-            // 첫 페이지에서만 총개수 게산
+        return CursorPageResult.of(
+            fetched = fetched,
+            size = query.size,
+            // 첫 페이지에서만 총개수 계산
             totalCount = if (query.cursor == null) productCatalogQueryPort.countVisible(query.categoryId) else null,
-            nextCursor =
-                if (hasNext) {
-                    val last = page.last()
-                    ProductCursorCodec.encode(
-                        query.sort,
-                        query.categoryId,
-                        last.publicId,
-                        last.sortPriceAtAnchor,
-                        queryNow,
-                    )
-                } else {
-                    null
-                },
-            hasNext = hasNext,
+        ) { last ->
+            ProductCursorCodec.encode(
+                query.sort,
+                query.categoryId,
+                last.publicId,
+                last.sortPriceAtAnchor,
+                queryNow,
+            )
+        }
+    }
+
+    /** 셀러 본인 상품 한 페이지 — 노출 조건 없이 필터·정렬·오프셋만 적용 */
+    fun getSellerPage(
+        query: SellerProductSearchQuery,
+        now: LocalDateTime,
+    ): OffsetPageResult<SellerProductView> {
+        validateSellerCategoryFilter(query.categoryId)
+        val condition =
+            SellerProductCondition(
+                sellerId = query.sellerId,
+                keyword = query.keyword,
+                saleStatuses = query.saleStatuses,
+                inspectionStatuses = query.inspectionStatuses,
+                categoryId = query.categoryId,
+                createdFrom = query.createdFrom?.atStartOfDay(),
+                createdToExclusive = query.createdTo?.plusDays(1)?.atStartOfDay(),
+                stockFilter = query.stockFilter,
+                sort = query.sort,
+                offset = query.page.toLong() * query.size,
+                limit = query.size,
+                now = now,
+            )
+        return OffsetPageResult(
+            items = sellerProductQueryPort.findPage(condition),
+            totalCount = sellerProductQueryPort.count(condition),
+            page = query.page,
+            size = query.size,
         )
+    }
+
+    /** 본인 상품인지 판정 후 조합별 재고 조회 — 없으면 404, 남의 상품이면 403 */
+    fun getOwnedOptions(
+        sellerId: Long,
+        publicId: String,
+    ): List<SellerProductOptionView> {
+        val ownership =
+            sellerProductQueryPort.findOwnership(publicId)
+                ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+        if (ownership.sellerId != sellerId) {
+            throw BusinessException(ProductErrorCode.PRODUCT_ACCESS_DENIED)
+        }
+        return sellerProductQueryPort.findCombinations(ownership.id)
     }
 
     /** 노출 조건을 통과한 상세 조회 */
@@ -305,6 +357,13 @@ class ProductService(
             throw BusinessException(ProductErrorCode.INVALID_CATEGORY_DEPTH)
         }
         return category
+    }
+
+    /** 셀러 목록의 카테고리 필터 — 활성 카테고리면 깊이 무관 허용(하위 포함 조회) */
+    private fun validateSellerCategoryFilter(categoryId: Long?) {
+        if (categoryId == null) return
+        categoryRepository.findActiveById(categoryId)
+            ?: throw BusinessException(ProductErrorCode.CATEGORY_NOT_FOUND)
     }
 
     /** 카테고리 필터는 중분류(depth 2)까지만 허용 */
