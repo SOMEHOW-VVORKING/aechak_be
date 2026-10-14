@@ -313,5 +313,7 @@ resource "aws_ssm_parameter" "admin_pii_hmac_key" {
 #   /{project}/{env}/api/AUTH_JWT_PUBLIC_KEY   (String, PEM)
 #   /{project}/{env}/seller/AUTH_JWT_PUBLIC_KEY (String, PEM) — api 공개키와 같은 값이어야 api 발급 토큰을 검증한다
 #   /{project}/{env}/admin/AUTH_JWT_PUBLIC_KEY  (String, PEM) — 위 seller와 동일 근거 (SCRUM-229)
-# 누락 시 부팅은 되지만 임시 키 폴백으로 갈라져 모듈 간 검증이 전부 401이 된다.
+# 누락 시 결과가 모듈마다 다르다.
+#   api: 부팅은 되지만 임시 키 폴백으로 갈라져 모듈 간 검증이 전부 401이 된다
+#   seller, admin: dev에서 필수라 공개키 자리에 ${AUTH_JWT_PUBLIC_KEY} 글자가 그대로 들어가 base64 해석 오류로 부팅이 실패한다
 # 검증 전용 실행 모듈이 더 늘면 그 모듈 경로에도 공개키를 같은 값으로 등재한다.
