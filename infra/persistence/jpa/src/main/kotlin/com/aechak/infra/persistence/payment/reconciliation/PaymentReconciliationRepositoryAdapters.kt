@@ -6,7 +6,9 @@ import com.aechak.domain.payment.reconciliation.ReconciliationResolution
 import com.aechak.domain.payment.reconciliation.ReconciliationSource
 import com.aechak.domain.payment.reconciliation.repository.PaymentReconciliationItemRepository
 import com.aechak.domain.payment.reconciliation.repository.PaymentReconciliationRunRepository
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
@@ -15,6 +17,12 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 
 interface PaymentReconciliationRunJpaRepository : JpaRepository<PaymentReconciliationRunJpaEntity, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from PaymentReconciliationRunJpaEntity r where r.id = :id")
+    fun findByIdForUpdate(
+        @Param("id") id: Long,
+    ): PaymentReconciliationRunJpaEntity?
+
     fun findBySourceAndBaseDate(
         source: ReconciliationSource,
         baseDate: LocalDate,
@@ -87,6 +95,9 @@ class PaymentReconciliationRunRepositoryAdapter(
 
     override fun findById(id: Long): PaymentReconciliationRun? =
         jpaRepository.findByIdOrNull(id)?.let(PaymentReconciliationMapper::toDomain)
+
+    override fun findByIdForUpdate(id: Long): PaymentReconciliationRun? =
+        jpaRepository.findByIdForUpdate(id)?.let(PaymentReconciliationMapper::toDomain)
 
     override fun findLatestCompletedBaseDate(source: ReconciliationSource): LocalDate? = jpaRepository.findLatestCompletedBaseDate(source)
 

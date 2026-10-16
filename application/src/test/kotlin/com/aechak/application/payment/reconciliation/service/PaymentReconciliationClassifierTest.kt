@@ -324,4 +324,14 @@ class PaymentReconciliationClassifierTest {
             group(OrderGroupStatus.PARTIALLY_CANCELLED),
             pg(PaymentGatewayStatus.PARTIAL_CANCELLED, cancelled = 3_000L),
         )
+
+    @Test
+    fun `양쪽 승인이고 승인액은 같아도 취소가능액이 승인액과 다르면 금액 불일치다`() =
+        assertVerdict(
+            MismatchType.AMOUNT_MISMATCH,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.APPROVED, cancellable = 0L),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.PAID),
+        )
 }

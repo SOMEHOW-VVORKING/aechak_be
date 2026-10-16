@@ -66,6 +66,8 @@ object PaymentReconciliationClassifier {
         if (oursApproved) {
             // 승인 원장이 PG와 다르면 그룹 상태와 무관하게 사람 확인 — 확정 본체의 approve()는 이미 승인된 행을 고치지 않는다
             if (!approvedLedgerAgrees(group, payment, gateway)) return manual(MismatchType.AMOUNT_MISMATCH)
+            // 취소가능액도 원장의 일부다 — PG가 취소한 적 없으면 승인액 그대로 남아 있어야 한다
+            if (payment.cancellableAmount != gateway.paidAmount - gateway.cancelledAmount) return manual(MismatchType.AMOUNT_MISMATCH)
             if (group.status == OrderGroupStatus.PAID) return matched()
         }
         // 그룹이 결제대기 — 둘 다 못 들었거나 승인 기록만 남고 전이가 유실된 것. 확정 본체가 다시 PG에 묻고 금액을 대조한 뒤 선점한다

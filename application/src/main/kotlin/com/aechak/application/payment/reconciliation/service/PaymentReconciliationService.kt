@@ -159,9 +159,17 @@ class PaymentReconciliationService(
         now: LocalDateTime,
     ) {
         requireOwnership(runId, attempt)
+        val eligibleRuns = HashMap<Long, Boolean>()
         openItems.forEach { stale ->
             val current = itemRepository.findById(stale.id) ?: return@forEach
-            if (current.resolution.isOpen) itemRepository.save(current.markSuperseded(runId, now))
+            if (!current.resolution.isOpen) return@forEach
+            // 후보로 뽑은 뒤 옛 회차가 되살아났을 수 있다(죽은 줄 알았는데 이어받음). 살아 있으면 그 회차의 판정이 최신이라 닫지 않는다
+            val eligible =
+                eligibleRuns.getOrPut(current.runId) {
+                    val oldRun = runRepository.findByIdForUpdate(current.runId)
+                    oldRun == null || oldRun.status != ReconciliationRunStatus.RUNNING || oldRun.isStale(now, STALE_AFTER)
+                }
+            if (eligible) itemRepository.save(current.markSuperseded(runId, now))
         }
     }
 
@@ -270,11 +278,15 @@ class PaymentReconciliationService(
                 },
         )
 
+    /**
+     * run 행을 잠그고 내 세대인지 확인한다. 잠금은 호출한 트랜잭션이 끝날 때까지 유지되므로 그 안의 건 쓰기는
+     * 다른 실행의 이어받기와 직렬화된다 — 검사와 쓰기 사이에 소유권이 바뀌는 창이 없다.
+     */
     private fun requireOwnership(
         runId: Long,
         attempt: Int,
     ): PaymentReconciliationRun {
-        val run = runRepository.findById(runId) ?: throw BusinessException(PaymentErrorCode.RECONCILIATION_RUN_TAKEN_OVER)
+        val run = runRepository.findByIdForUpdate(runId) ?: throw BusinessException(PaymentErrorCode.RECONCILIATION_RUN_TAKEN_OVER)
         if (!run.isOwnedBy(attempt)) throw BusinessException(PaymentErrorCode.RECONCILIATION_RUN_TAKEN_OVER)
         return run
     }

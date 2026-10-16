@@ -15,6 +15,12 @@ interface PaymentReconciliationRunRepository {
 
     fun findById(id: Long): PaymentReconciliationRun?
 
+    /**
+     * 쓰기 트랜잭션용 — 행 잠금(SELECT ... FOR UPDATE)으로 읽는다. 이 트랜잭션이 끝날 때까지 다른 실행의 이어받기(run UPDATE)가
+     * 기다리므로, 잠근 뒤 확인한 소유권은 같은 트랜잭션 안의 건 쓰기까지 유효하다.
+     */
+    fun findByIdForUpdate(id: Long): PaymentReconciliationRun?
+
     /** 따라잡기의 출발점 — 완료된 회차 중 가장 늦은 기준일. 없으면 null */
     fun findLatestCompletedBaseDate(source: ReconciliationSource): LocalDate?
 

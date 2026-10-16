@@ -394,6 +394,58 @@ class PaymentReconciliationFacadeTest {
         assertTrue(results.all { it.outcome == ReconcileOutcome.COMPLETED })
     }
 
+    @Test
+    fun `확정 본체가 승인이라 해도 재판정이 일치가 아니면 자동 보정으로 적지 않는다`() {
+        seedPendingPayment("pay-12")
+        source.stub(pgPaid("pay-12"))
+        confirmations.respondWith(CompletePaymentStatus.PAID)
+        // 확정 뒤 단건 재조회가 다른 승인액을 돌려준다 — 원장과 PG가 어긋난 채 남는다
+        source.stubSingle(pgPaid("pay-12").copy(paidAmount = 12_000L))
+
+        val result = facade.reconcile(command())
+
+        val item = items.byKey("pay-12")
+        assertEquals(MismatchType.AMOUNT_MISMATCH, item.mismatchType)
+        assertEquals(ReconciliationResolution.MANUAL_REQUIRED, item.resolution, "PAID 결과만 믿고 AUTO_CONFIRMED로 닫으면 거짓 해결이다")
+        assertEquals(0, result.counts.autoResolved)
+    }
+
+    @Test
+    fun `이월 후보를 뽑은 뒤 옛 회차가 되살아났으면 그 회차의 건은 닫지 않는다`() {
+        val earlier = baseDate.minusDays(1)
+        val window = PaymentReconciliationService(runs, items, PaymentService(payments, groups)).windowOf(earlier)
+        val old =
+            runs.save(
+                PaymentReconciliationRun.start(
+                    ReconciliationSource.PORTONE,
+                    earlier,
+                    window.from,
+                    window.until,
+                    LocalDateTime.now().minusHours(3),
+                ),
+            )
+        items.save(
+            PaymentReconciliationItem.compare(
+                old.id,
+                ReconciliationSource.PORTONE,
+                "pay-13",
+                null,
+                null,
+                MismatchType.PG_ONLY_UNKNOWN,
+                ReconciliationResolution.MANUAL_REQUIRED,
+            ),
+        )
+        // 후보 조회 직후 옛 회차가 이어받아 살아난 상황을 흉내 낸다 — 단건 조회 시점에 되살린다
+        source.onFind = { runs.save(runs.findById(old.id)!!.resume(LocalDateTime.now())) }
+
+        facade.reconcile(command())
+
+        assertEquals(
+            ReconciliationResolution.MANUAL_REQUIRED,
+            items.all().single { it.runId == old.id && it.paymentKey == "pay-13" }.resolution,
+        )
+    }
+
     // ---------- 페이크 ----------
 
     private fun group(): OrderGroup =
@@ -445,6 +497,8 @@ class PaymentReconciliationFacadeTest {
         ): PaymentReconciliationRun? = rows.values.find { it.source == source && it.baseDate == baseDate }
 
         override fun findById(id: Long): PaymentReconciliationRun? = rows[id]
+
+        override fun findByIdForUpdate(id: Long): PaymentReconciliationRun? = rows[id]
 
         override fun findLatestCompletedBaseDate(source: ReconciliationSource): LocalDate? =
             rows.values.filter { it.source == source && it.status == ReconciliationRunStatus.COMPLETED }.maxOfOrNull { it.baseDate }
@@ -607,6 +661,7 @@ class PaymentReconciliationFacadeTest {
         private var failList = false
         val fetchWindows = mutableListOf<Pair<LocalDateTime, LocalDateTime>>()
         val findCalledWith = mutableListOf<String>()
+        var onFind: (() -> Unit)? = null
 
         override val coversInternalLedger = coversLedger
         override val supportsAutoConfirmation = autoConfirm
@@ -642,6 +697,7 @@ class PaymentReconciliationFacadeTest {
 
         override fun findByPaymentKey(paymentKey: String): GatewayPaymentRecord? {
             findCalledWith += paymentKey
+            onFind?.invoke()
             return singles[paymentKey]
         }
     }
