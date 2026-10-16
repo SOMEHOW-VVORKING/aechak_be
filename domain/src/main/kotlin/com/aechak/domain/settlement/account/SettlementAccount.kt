@@ -15,7 +15,7 @@ import jakarta.persistence.UniqueConstraint
 @Entity
 @Table(
     name = "settlement_accounts",
-    uniqueConstraints = [UniqueConstraint(name = "uk_settlement_accounts_seller_id", columnNames = ["seller_id"])],
+    uniqueConstraints = [UniqueConstraint(name = SettlementAccount.UK_SELLER_ID, columnNames = ["seller_id"])],
 )
 class SettlementAccount protected constructor(
     sellerId: Long,
@@ -51,6 +51,9 @@ class SettlementAccount protected constructor(
         protected set
 
     companion object {
+        /** 셀러당 계좌 1행 UNIQUE 제약명 — @Table 선언과 커밋 시점 예외 번역(제약명 분기)이 공유한다. */
+        const val UK_SELLER_ID = "uk_settlement_accounts_seller_id"
+
         /**
          * 검증을 마친 계좌 생성 — 입점 승인처럼 사람이 통장사본을 대조한 뒤 확정 상태로 만드는 경로.
          * 미검증(UNVERIFIED) 생성 경로는 필요한 흐름(계좌 변경 신청 등)이 생기는 시점에 추가한다.

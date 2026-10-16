@@ -40,7 +40,7 @@ class PaymentService(
         )
     }
 
-    fun validPrepare(
+    private fun validPrepare(
         group: OrderGroup,
         command: PreparePaymentCommand,
     ) {

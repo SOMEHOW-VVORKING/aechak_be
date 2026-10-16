@@ -6,11 +6,11 @@ import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
 
 /**
- * 발송 생략 어댑터 — 비운영 프로필 전용. 실제 발송 없이 로그만 남긴다.
+ * 발송 생략 어댑터 — 실발송 프로필(dev·staging·prod) 밖에서만 뜬다. 실제 발송 없이 로그만 남긴다.
  * 번호·코드는 로그에 싣지 않는다(PII·인증 정보).
  */
 @Component
-@Profile("!prod")
+@Profile("!dev & !staging & !prod")
 class TestSmsSender : SmsSender {
     private val log = LoggerFactory.getLogger(javaClass)
 

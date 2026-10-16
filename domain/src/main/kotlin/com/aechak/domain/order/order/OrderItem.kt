@@ -16,6 +16,7 @@ import jakarta.persistence.Table
 class OrderItem protected constructor(
     productId: Long,
     optionCombinationId: Long,
+    optionNameSnapshot: String,
     quantity: Int,
     unitPriceSnapshot: Long,
     discountAllocatedAmount: Long,
@@ -30,6 +31,9 @@ class OrderItem protected constructor(
 
     @Column(nullable = false)
     val optionCombinationId: Long = optionCombinationId
+
+    @Column(nullable = false, length = 255)
+    val optionNameSnapshot: String = optionNameSnapshot
 
     @Column(nullable = false)
     val quantity: Int = quantity
@@ -52,6 +56,7 @@ class OrderItem protected constructor(
         fun of(
             productId: Long,
             optionCombinationId: Long,
+            optionNameSnapshot: String,
             quantity: Int,
             unitPriceSnapshot: Long,
             discountAllocatedAmount: Long,
@@ -60,6 +65,7 @@ class OrderItem protected constructor(
             OrderItem(
                 productId,
                 optionCombinationId,
+                optionNameSnapshot,
                 quantity,
                 unitPriceSnapshot,
                 discountAllocatedAmount,

@@ -244,6 +244,7 @@ class PaymentWebhookIntegrationTest : IntegrationTestBase() {
                             OrderItem.of(
                                 productId = 1L,
                                 optionCombinationId = ORDERED_COMBO_ID,
+                                optionNameSnapshot = "기본",
                                 quantity = 1,
                                 unitPriceSnapshot = PRODUCT_AMOUNT,
                                 discountAllocatedAmount = 0L,

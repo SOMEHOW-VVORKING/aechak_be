@@ -14,13 +14,13 @@ internal class KafkaSender(
 ) {
     fun send(
         aggregateType: String,
-        aggregateId: String,
+        orderingKey: String,
         eventId: String,
         eventType: String,
         traceId: String,
         payload: String,
     ): CompletableFuture<SendResult<String, String>> {
-        val record = ProducerRecord(Topics.of(aggregateType), aggregateId, payload)
+        val record = ProducerRecord(Topics.of(aggregateType), orderingKey, payload)
         record.headers().add("event_id", eventId.toByteArray())
         record.headers().add("event_type", eventType.toByteArray())
         record.headers().add(TraceIdRecordInterceptor.TRACE_ID_HEADER, traceId.toByteArray())

@@ -7,6 +7,7 @@ import com.aechak.application.product.like.support.LikedProductCursorCodec
 import com.aechak.application.product.like.usecase.command.ProductLikeCommand
 import com.aechak.application.product.like.usecase.query.LikedProductListQuery
 import com.aechak.application.support.CursorPageResult
+import com.aechak.application.support.CursorPageSize
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.error.ProductErrorCode
 import com.aechak.domain.product.like.repository.ProductLikeRepository
@@ -47,19 +48,16 @@ class ProductLikeService(
                 LikedProductCondition(
                     userId = userId,
                     lastLikeId = lastLikeId,
-                    limit = query.size + 1,
+                    limit = CursorPageSize.fetchLimit(query.size),
                     now = now,
                 ),
             )
-        val hasNext = fetched.size > query.size
-        val page = if (hasNext) fetched.take(query.size) else fetched
-        return CursorPageResult(
-            items = page,
+        return CursorPageResult.of(
+            fetched = fetched,
+            size = query.size,
             // 첫 페이지에서만 총개수 계산
             totalCount = if (query.cursor == null) likedProductQueryPort.countLiked(userId) else null,
-            nextCursor = if (hasNext) LikedProductCursorCodec.encode(page.last().likeId) else null,
-            hasNext = hasNext,
-        )
+        ) { last -> LikedProductCursorCodec.encode(last.likeId) }
     }
 
     private fun resolveProductId(publicId: String): Long =

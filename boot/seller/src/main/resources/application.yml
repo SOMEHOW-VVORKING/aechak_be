@@ -3,6 +3,10 @@ spring:
     name: aechak-seller-api
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  task:
+    execution:
+      # 전용 실행기 빈이 있으면 기본 실행기를 안 만드는 게 기본값. 그러면 이름 없는 @Async가 전용 풀로 흘러듦
+      mode: force
 
   jpa:
     open-in-view: false
