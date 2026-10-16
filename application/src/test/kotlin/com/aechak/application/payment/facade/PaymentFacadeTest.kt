@@ -8,6 +8,9 @@ import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 import com.aechak.application.payment.port.PaymentCancelStatus
 import com.aechak.application.payment.port.PaymentGatewayPort
 import com.aechak.application.payment.port.PaymentGatewayView
+import com.aechak.application.payment.port.PaymentWebhookNotification
+import com.aechak.application.payment.port.PaymentWebhookRequest
+import com.aechak.application.payment.port.PaymentWebhookVerifier
 import com.aechak.application.payment.service.PaymentService
 import com.aechak.application.payment.usecase.command.PreparePaymentCommand
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -33,7 +36,14 @@ class PaymentFacadeTest {
     private val orderGroups = FakeOrderGroupRepository()
     private val payments = FakePaymentRepository()
     private val gateway = RecordingPaymentGateway()
-    private val facade = PaymentFacade(PaymentService(payments, orderGroups), gateway, UnusedOrderUseCase(), NoOpTransactionManager())
+    private val facade =
+        PaymentFacade(
+            PaymentService(payments, orderGroups),
+            gateway,
+            UnusedWebhookVerifier(),
+            UnusedOrderUseCase(),
+            NoOpTransactionManager(),
+        )
 
     @Test
     fun `저장에서 UNIQUE 경쟁에 지면 먼저 커밋된 결제행을 다시 읽어 그 행으로 사전등록한다`() {
@@ -125,6 +135,13 @@ private class FakePaymentRepository : PaymentRepository {
     }
 
     override fun findByOrderGroupId(orderGroupId: Long): Payment? = byOrderGroupId[orderGroupId]
+
+    override fun findByPaymentId(paymentId: String): Payment? = byOrderGroupId.values.find { it.paymentId == paymentId }
+}
+
+/** 결제 준비 흐름은 웹훅을 받지 않는다 — 호출되면 테스트 전제가 깨진 것 */
+private class UnusedWebhookVerifier : PaymentWebhookVerifier {
+    override fun verify(request: PaymentWebhookRequest): PaymentWebhookNotification? = throw UnsupportedOperationException()
 }
 
 private class RecordingPaymentGateway : PaymentGatewayPort {

@@ -1,5 +1,6 @@
 package com.aechak.application.payment.usecase
 
+import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentCommand
 import com.aechak.application.payment.usecase.command.PreparePaymentCommand
 import com.aechak.application.payment.usecase.result.CompletePaymentResult
@@ -14,4 +15,10 @@ interface PaymentUseCase {
      * 미완료(미시도·승인 대기)는 전이 없이 상태만 돌려준다. 재호출은 멱등.
      */
     fun completePayment(command: CompletePaymentCommand): CompletePaymentResult
+
+    /**
+     * 게이트웨이가 보낸 웹훅으로 하는 확정 — 콜백과 같은 흐름을 타되 신원은 로그인이 아니라 서명이 보증한다.
+     * 확정과 무관한 사건이거나 우리가 모르는 결제면 null.
+     */
+    fun completePaymentByWebhook(command: CompletePaymentByWebhookCommand): CompletePaymentResult?
 }

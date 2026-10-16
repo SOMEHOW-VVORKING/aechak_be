@@ -2,6 +2,7 @@ package com.aechak.api.payment
 
 import com.aechak.api.payment.config.PaymentStoreProperties
 import com.aechak.application.payment.usecase.PaymentUseCase
+import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentCommand
 import com.aechak.application.payment.usecase.command.PreparePaymentCommand
 import com.aechak.application.payment.usecase.result.CompletePaymentResult
@@ -45,6 +46,9 @@ class PaymentControllerTest {
 
             override fun completePayment(command: CompletePaymentCommand): CompletePaymentResult =
                 error("이 테스트는 결제 준비 EP만 다룬다 — completePayment 호출은 계약 밖")
+
+            override fun completePaymentByWebhook(command: CompletePaymentByWebhookCommand): CompletePaymentResult =
+                error("이 테스트는 결제 준비 EP만 다룬다 — 웹훅 확정 호출은 계약 밖")
         }
 
     private val principalResolver =

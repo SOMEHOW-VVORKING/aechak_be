@@ -28,6 +28,7 @@ import tools.jackson.databind.ObjectMapper // Spring Boot 4부터 Jackson 3의 t
  * 공개 경로와 인증 실패 응답, 사용자 상태별 접근 권한을 이 파일에서 관리한다.
  *
  * 로그인, 토큰 갱신, 헬스 체크, API 문서는 인증 없이 접근할 수 있다. 일반 로그아웃은 인증이 필요하다.
+ * 결제 웹훅(/webhooks/portone)도 인증 없이 받는다 — 신원은 JWT가 아니라 포트원 서명 검증이 보증한다.
  * JWT 인증 실패는 AuthenticationEntryPoint가 401로 응답하고, 계정 상태에 따른 제한은 UserStatusFilter가 403으로 응답한다.
  */
 @Configuration(proxyBeanMethods = false)
@@ -62,6 +63,8 @@ class SecurityConfig {
                         "/v3/api-docs/**",       // swagger-config, 그룹별 스펙 등
                     ).permitAll()
                     .requestMatchers("/actuator/health")
+                    .permitAll()
+                    .requestMatchers(HttpMethod.POST, "$basePath/webhooks/portone") // 신원은 JWT가 아니라 포트원 서명이 보증
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "$basePath/products")
                     .permitAll()

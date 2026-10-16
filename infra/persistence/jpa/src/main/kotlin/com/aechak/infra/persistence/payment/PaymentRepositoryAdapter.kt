@@ -7,6 +7,8 @@ import org.springframework.stereotype.Repository
 
 interface PaymentJpaRepository : JpaRepository<PaymentJpaEntity, Long> {
     fun findByOrderGroupId(orderGroupId: Long): PaymentJpaEntity?
+
+    fun findByPaymentId(paymentId: String): PaymentJpaEntity?
 }
 
 @Repository
@@ -21,5 +23,10 @@ class PaymentRepositoryAdapter(
     override fun findByOrderGroupId(orderGroupId: Long): Payment? =
         jpaRepository
             .findByOrderGroupId(orderGroupId)
+            ?.let(PaymentMapper::toDomain)
+
+    override fun findByPaymentId(paymentId: String): Payment? =
+        jpaRepository
+            .findByPaymentId(paymentId)
             ?.let(PaymentMapper::toDomain)
 }
