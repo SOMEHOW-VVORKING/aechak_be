@@ -83,7 +83,7 @@ class ProductLikeUseCaseTest : IntegrationTestBase() {
 
     /** likeCount 검증용 집계 행 시드 */
     private fun persistStats(productId: Long) {
-        em.persist(ProductStats.init(productId))
+        em.persist(ProductStats.create(productId))
     }
 
     private fun overrideSaleStatus(

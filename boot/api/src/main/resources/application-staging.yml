@@ -26,5 +26,12 @@ auth:
     return-urls: ${AUTH_WEB_RETURN_URLS:}
     callback-base-url: ${AUTH_WEB_CALLBACK_BASE_URL:}
 
+# 실발송(CoolSMS) 설정 — 3개 모두 필수, 미존재 시 부팅 실패(fail-fast). 값은 SSM 수기 등재
+sms:
+  coolsms:
+    api-key: ${COOLSMS_API_KEY}
+    api-secret: ${COOLSMS_API_SECRET}
+    from: ${COOLSMS_FROM}             # CoolSMS 콘솔에 등록·인증된 발신번호
+
 server:
   forward-headers-strategy: framework   # LB가 TLS를 종료해도 원 요청 스킴 기준으로 동작(Secure 쿠키·리다이렉트 URL)

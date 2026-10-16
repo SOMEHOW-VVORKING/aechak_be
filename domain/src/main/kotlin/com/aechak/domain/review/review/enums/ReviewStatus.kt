@@ -5,7 +5,6 @@ enum class ReviewStatus {
 
     /** 마스킹(display_content 대체 노출) */
     MASKED,
-
     BLOCKED,
     HIDDEN,
     DELETED,

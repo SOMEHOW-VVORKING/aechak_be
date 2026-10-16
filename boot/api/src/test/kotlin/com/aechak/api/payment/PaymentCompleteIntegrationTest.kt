@@ -89,6 +89,7 @@ class PaymentCompleteIntegrationTest : IntegrationTestBase() {
                             OrderItem.of(
                                 productId = 1L,
                                 optionCombinationId = ORDERED_COMBO_ID,
+                                optionNameSnapshot = "기본",
                                 quantity = 1,
                                 unitPriceSnapshot = productAmount,
                                 discountAllocatedAmount = 0L,

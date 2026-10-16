@@ -94,8 +94,9 @@ class ProductDetailUseCaseTest : IntegrationTestBase() {
     ) {
         em
             .createNativeQuery(
-                "insert into product_images (product_id, image_type, storage_key, sort_order, created_at, updated_at) " +
-                    "values (:productId, :imageType, :storageKey, :sortOrder, now(), now())",
+                "insert into product_images " +
+                    "(product_id, image_type, storage_key, sort_order, from_version_no, created_at, updated_at) " +
+                    "values (:productId, :imageType, :storageKey, :sortOrder, 1, now(), now())",
             ).setParameter("productId", productId)
             .setParameter("imageType", imageType.name)
             .setParameter("storageKey", storageKey)
@@ -166,7 +167,7 @@ class ProductDetailUseCaseTest : IntegrationTestBase() {
         reviewCount: Int,
         averageRating: BigDecimal,
     ) {
-        em.persist(ProductStats.init(productId))
+        em.persist(ProductStats.create(productId))
         em.flush()
         em
             .createQuery(
@@ -239,8 +240,8 @@ class ProductDetailUseCaseTest : IntegrationTestBase() {
                 val mid = persistMidCategory()
                 val product = persistProduct(mid, "이미지상품")
                 em.flush()
+                // 대표 이미지 행은 등록이 이미 만들어 둔다
                 insertImage(product.id, ProductImageType.DETAIL, "products/d1.jpg", 2)
-                insertImage(product.id, ProductImageType.REPRESENTATIVE, "products/rep.jpg", 0)
                 insertImage(product.id, ProductImageType.PRODUCT, "products/p1.jpg", 1)
                 product.publicId
             }!!
@@ -252,7 +253,7 @@ class ProductDetailUseCaseTest : IntegrationTestBase() {
             listOf(ProductImageType.REPRESENTATIVE, ProductImageType.PRODUCT, ProductImageType.DETAIL),
             images.map { it.imageType },
         )
-        assertEquals("products/rep.jpg", images.first().storageKey)
+        assertEquals("products/이미지상품.jpg", images.first().storageKey)
     }
 
     @Test
