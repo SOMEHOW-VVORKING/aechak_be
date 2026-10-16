@@ -1,5 +1,6 @@
 package com.aechak.application.payment.usecase
 
+import com.aechak.application.payment.usecase.command.CompletePaymentByGatewayCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentCommand
 import com.aechak.application.payment.usecase.command.PreparePaymentCommand
@@ -21,4 +22,10 @@ interface PaymentUseCase {
      * 확정과 무관한 사건이거나 우리가 모르는 결제면 null.
      */
     fun completePaymentByWebhook(command: CompletePaymentByWebhookCommand): CompletePaymentResult?
+
+    /**
+     * 결제 식별자만으로 하는 확정 — 대사·만료 배치처럼 서버 안에서 부르는 입구. 웹훅과 같은 흐름이고 서명 검증만 없다.
+     * 우리가 모르는 결제면 null. 결과 status가 PAID일 때만 확정이 성립한 것이다(그 외는 미성사 상태 보고).
+     */
+    fun completePaymentByGateway(command: CompletePaymentByGatewayCommand): CompletePaymentResult?
 }

@@ -76,6 +76,18 @@ class PaymentService(
         return CompletionTarget(group, paymentRepository.findByOrderGroupId(group.id))
     }
 
+    /** 대사용 — 결제 행과 그 그룹을 함께 읽는다. 결제가 없으면 null, 그룹이 없으면(깨진 데이터) group만 null */
+    fun findLedgerByPaymentId(paymentId: String): Ledger? {
+        val payment = paymentRepository.findByPaymentId(paymentId) ?: return null
+        return Ledger(payment, orderGroupRepository.findById(payment.orderGroupId))
+    }
+
+    /** 대사용 — 창 안에서 상태가 바뀐 결제 식별자 */
+    fun findPaymentIdsUpdatedBetween(
+        from: LocalDateTime,
+        until: LocalDateTime,
+    ): List<String> = paymentRepository.findPaymentIdsUpdatedBetween(from, until)
+
     /**
      * 웹훅 경로의 확정 대상 로딩 — 결제 행이 진입점이고 구매자는 그룹에서 읽는다.
      * 소유권 검사가 없는 이유는 대조할 로그인 주체가 없기 때문이고, 대신 서명이 발신자를 보증한다.
@@ -131,5 +143,10 @@ class PaymentService(
     data class CompletionTarget(
         val group: OrderGroup,
         val payment: Payment?,
+    )
+
+    data class Ledger(
+        val payment: Payment,
+        val group: OrderGroup?,
     )
 }

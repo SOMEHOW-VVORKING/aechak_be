@@ -10,6 +10,7 @@ import com.aechak.application.payment.port.PaymentWebhookRequest
 import com.aechak.application.payment.port.PaymentWebhookVerifier
 import com.aechak.application.payment.service.PaymentService
 import com.aechak.application.payment.usecase.PaymentUseCase
+import com.aechak.application.payment.usecase.command.CompletePaymentByGatewayCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentCommand
 import com.aechak.application.payment.usecase.command.PreparePaymentCommand
@@ -90,7 +91,12 @@ class PaymentFacade(
         return complete(target, target.group.buyerId)
     }
 
-    /** 콜백·웹훅이 공유하는 확정 본체. 대상을 어떻게 찾았는지(로그인 대조냐 서명이냐)만 입구가 다르다 */
+    override fun completePaymentByGateway(command: CompletePaymentByGatewayCommand): CompletePaymentResult? {
+        val target = paymentService.findCompletionTargetByPaymentId(command.paymentId) ?: return null
+        return complete(target, target.group.buyerId)
+    }
+
+    /** 콜백·웹훅·대사가 공유하는 확정 본체. 대상을 어떻게 찾았는지(로그인 대조냐 서명이냐 서버 내부냐)만 입구가 다르다 */
     private fun complete(
         target: PaymentService.CompletionTarget,
         buyerId: Long,
