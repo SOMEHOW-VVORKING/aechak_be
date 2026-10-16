@@ -1,9 +1,17 @@
 spring:
   application:
     name: aechak-batch
+  cloud:
+    aws:
+      region:
+        static: ap-northeast-2 # 리전 자동탐지 제거 — CI 러너처럼 AWS 설정 없는 환경에선 탐지 실패로 부팅이 깨짐
   jpa:
     hibernate:
       ddl-auto: none   # 스키마 관리는 api(Flyway)만
+  task:
+    scheduling:
+      pool:
+        size: 2        # 아웃박스 스위퍼(5초 주기)가 대사(새벽 1회)를 막지 않게. 각 스케줄은 fixedDelay/cron이라 자기 겹침은 없다
 
   # 정책값은 api application.yml과 동일하게 유지. 브로커 주소만 프로파일 yml 소유
   kafka:
@@ -20,3 +28,34 @@ spring:
 logging:
   pattern:
     level: "%5p [%X{traceId:-}]"
+
+# 이 파일은 전 환경 공통(정책값)만 담는다. datasource·카프카 주소는 프로파일 yml 소유.
+
+aws:
+  s3:
+    # 장바구니 파사드가 요구하는 FileStorage 조립용 — 배치는 파일을 다루지 않지만 조립 의존이라 비워 두면 안 된다
+    media-bucket: ${AWS_S3_MEDIA_BUCKET:}
+    docs-bucket: ${AWS_S3_DOCS_BUCKET:}
+    media-public-base-url: ${AWS_S3_MEDIA_PUBLIC_BASE_URL:}
+
+payment:
+  portone:
+    base-url: https://api.portone.io
+    api-secret: ${PORTONE_API_SECRET:}       # 대사 목록 조회·확정 본체의 재조회가 쓴다. 비면 대사 회차가 실패로 기록된다
+    webhook-secret: ${PORTONE_WEBHOOK_SECRET:} # 배치는 웹훅을 받지 않지만 PaymentFacade 조립에 검증기가 딸려온다
+  reconciliation:
+    cron: "0 30 4 * * *"                       # KST 04:30 — 전날 승인·취소·웹훅 재전송(최대 5.7시간)이 가라앉은 뒤
+    portone:
+      enabled: true
+      is-test: ${PORTONE_RECONCILIATION_IS_TEST:} # dev(테스트 채널)는 true, prod는 false. 비우면 구분 없이 전부
+  toss:
+    enabled: ${TOSS_RECONCILIATION_ENABLED:false} # 토스 직접 연동(orderId == 우리 결제 식별자)을 확인한 환경만 켠다
+    secret-key: ${TOSS_SECRET_KEY:}
+
+# PII 암호화 키 — api와 동일 키(같은 데이터를 복호). dev·prod는 SSM, local·test는 프로파일 파일의 고정 키가 덮는다.
+aechak:
+  pii:
+    active-version: 1
+    aes-keys:
+      1: ${PII_AES_KEY_V1}
+    hmac-key: ${PII_HMAC_KEY}
