@@ -13,4 +13,7 @@ enum class PaymentErrorCode(
     INVALID_PAYMENT_AMOUNT(60007, "결제 금액이 올바르지 않습니다.", 400),
     PAYMENT_ORDER_GROUP_NOT_FOUND(60008, "주문 정보를 찾을 수 없습니다.", 404),
     PAYMENT_ORDER_GROUP_NOT_PAYABLE(60009, "결제를 진행할 수 없는 주문입니다. 주문을 다시 진행해 주세요.", 409),
+    PAYMENT_AMOUNT_MISMATCH(60010, "결제 금액이 주문 금액과 일치하지 않습니다. 고객센터로 문의해 주세요.", 409),
+    PAYMENT_STATE_NOT_SUPPORTED(60011, "지원하지 않는 결제 상태입니다. 고객센터로 문의해 주세요.", 409),
+    PAYMENT_ORDER_GROUP_CANCELLED(60012, "만료로 취소된 주문입니다. 결제가 진행되었다면 환불 처리됩니다.", 409),
 }

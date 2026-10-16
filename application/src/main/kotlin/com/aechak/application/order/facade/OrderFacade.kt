@@ -5,6 +5,7 @@ import com.aechak.application.order.port.OrderItemForReviewQueryPort
 import com.aechak.application.order.service.OrderService
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
+import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
 import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 import com.aechak.application.user.address.usecase.DeliveryAddressUseCase
@@ -58,6 +59,16 @@ class OrderFacade(
         buyerId: Long,
     ): OrderItemForReviewResult? =
         orderItemForReviewQueryPort.findOrderItemForReview(orderItemId, buyerId)?.let(OrderItemForReviewResult::from)
+
+    /** 결제 확정 트랜잭션에 참여해야 하므로 REQUIRED — 결제 기록이 롤백되면 주문 전이도 함께 롤백된다 */
+    @Transactional
+    override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = orderService.confirmGroupPaid(orderGroupId)
+
+    @Transactional
+    override fun clearOrderedCartItems(
+        buyerId: Long,
+        orderGroupId: Long,
+    ): Int = cartService.removeOrderedItems(buyerId, orderService.orderedQuantities(orderGroupId))
 
     /** 적립금 확보도 주문 트랜잭션 안 — 실패(잔액 부족)면 재고 차감·주문 저장이 함께 롤백된다 */
     private fun usePoint(

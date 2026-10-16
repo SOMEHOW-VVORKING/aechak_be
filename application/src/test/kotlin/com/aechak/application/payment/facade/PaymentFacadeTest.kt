@@ -1,5 +1,10 @@
 package com.aechak.application.payment.facade
 
+import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
+import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
+import com.aechak.application.order.usecase.result.CreateOrderGroupResult
+import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 import com.aechak.application.payment.port.PaymentCancelStatus
 import com.aechak.application.payment.port.PaymentGatewayPort
 import com.aechak.application.payment.port.PaymentGatewayView
@@ -28,7 +33,7 @@ class PaymentFacadeTest {
     private val orderGroups = FakeOrderGroupRepository()
     private val payments = FakePaymentRepository()
     private val gateway = RecordingPaymentGateway()
-    private val facade = PaymentFacade(PaymentService(payments, orderGroups), gateway, NoOpTransactionManager())
+    private val facade = PaymentFacade(PaymentService(payments, orderGroups), gateway, UnusedOrderUseCase(), NoOpTransactionManager())
 
     @Test
     fun `저장에서 UNIQUE 경쟁에 지면 먼저 커밋된 결제행을 다시 읽어 그 행으로 사전등록한다`() {
@@ -77,6 +82,27 @@ private class FakeOrderGroupRepository : OrderGroupRepository {
     override fun findByIdempotencyKey(idempotencyKey: String): OrderGroup? = byPublicId.values.find { it.idempotencyKey == idempotencyKey }
 
     override fun findByPublicId(publicId: String): OrderGroup? = byPublicId[publicId]
+
+    override fun findById(id: Long): OrderGroup? = byPublicId.values.find { it.id == id }
+
+    override fun markPaidIfPending(id: Long): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
+}
+
+/** 결제 준비 흐름은 주문 전이를 부르지 않는다 — 호출되면 테스트 전제가 깨진 것 */
+private class UnusedOrderUseCase : OrderUseCase {
+    override fun createOrderGroup(command: CreateOrderGroupCommand): CreateOrderGroupResult = throw UnsupportedOperationException()
+
+    override fun getOrderItemForReview(
+        orderItemId: Long,
+        buyerId: Long,
+    ): OrderItemForReviewResult? = throw UnsupportedOperationException()
+
+    override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = throw UnsupportedOperationException()
+
+    override fun clearOrderedCartItems(
+        buyerId: Long,
+        orderGroupId: Long,
+    ): Int = throw UnsupportedOperationException()
 }
 
 private class FakePaymentRepository : PaymentRepository {
