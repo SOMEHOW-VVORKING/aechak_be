@@ -153,14 +153,22 @@ class OrderMessageConsumer(private val someUseCase: SomeUseCase) {
 
 ```
 boot/batch/src/main/kotlin/com/aechak/batch/
-├── BatchApplication.kt
-├── job/{도메인}/                 # Job/Step 정의 — ItemProcessor 등에서 UseCase 호출
+├── BatchApplication.kt          # 선별 스캔(@ComponentScan) — seller-api와 같은 규약
+├── config/                      # JpaConfig(@EntityScan에 L3 엔티티 패키지 포함) · SchedulingConfig
+├── outbox/                      # OutboxSweepSchedule — 아웃박스 재발행(5초 주기)
+├── payment/                     # PaymentReconciliationSchedule — 결제 대사(매일 04:30 KST, 빠진 날 따라잡기)
+├── job/{도메인}/                 # (예정) Spring Batch Job/Step — ItemProcessor 등에서 UseCase 호출
 └── support/
-    └── BusinessSkipPolicy.kt    # BusinessException → errorCode 로깅 + 스킵 판단 (HTTP 개념 없음)
+    └── BusinessSkipPolicy.kt    # (예정) BusinessException → errorCode 로깅 + 스킵 판단 (HTTP 개념 없음)
 ```
 
-- 예외 소비 방식: web-common의 핸들러가 아니라 SkipPolicy/Listener에서 errorCode 기준 처리.
+- 스케줄 클래스에는 **UseCase만 주입**한다(Facade·Service·Repository 금지 — api 컨트롤러와 같은 규칙). 시간 계산은 KST를 명시한다.
+- **선별 스캔**: 루트(com.aechak) 스캔은 인증·SMS·Redis 등 api 전용 조립까지 요구해 부팅이 깨지므로, 쓰는 application 패키지와
+  그 Facade가 요구하는 어댑터 모듈(`:pg-client`·`:pii`·`:s3-client`…)을 함께 등재한다. 어드민 전용 구현체(`Admin*`)는 §7의 제외 필터로 뺀다.
+  **전역 lazy-init은 쓰지 않는다** — `@Scheduled` 빈이 지연 생성되면 스케줄 자체가 등록되지 않는다. 조립은 `BatchApplicationSmokeTest`가 고정한다.
+- 예외 소비 방식: web-common의 핸들러가 아니라 스케줄/SkipPolicy에서 errorCode 기준 처리. 한 건의 실패가 회차를 멈추지 않게 건별로 격리한다.
 - 배치가 자체 발신하는 에러 코드의 status는 500 고정 (05 문서 ErrorCode 컨벤션).
+- dev 배포 라인(ECR·ECS·SSM)은 아직 없다(SCRUM-226) — 배치에 올린 기능은 그 전까지 dev에서 돌지 않는다.
 
 ## 7. admin — 어드민 실행 모듈 (SCRUM-170)
 

@@ -57,6 +57,10 @@ class IntegrationTestConfig {
     @Primary
     fun fakePaymentGateway(): FakePaymentGateway = FakePaymentGateway()
 
+    /** 대사 소스 — 실 포트원 소스는 test properties(payment.reconciliation.portone.enabled=false)가 끈다 */
+    @Bean
+    fun fakePaymentReconciliationSource(): FakePaymentReconciliationSource = FakePaymentReconciliationSource()
+
     /** 인증번호 확인 단계까지 테스트할 수 있도록 항상 같은 인증번호를 생성한다. */
     @Bean
     @Primary

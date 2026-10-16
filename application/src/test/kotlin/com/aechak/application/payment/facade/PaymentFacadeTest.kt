@@ -137,6 +137,11 @@ private class FakePaymentRepository : PaymentRepository {
     override fun findByOrderGroupId(orderGroupId: Long): Payment? = byOrderGroupId[orderGroupId]
 
     override fun findByPaymentId(paymentId: String): Payment? = byOrderGroupId.values.find { it.paymentId == paymentId }
+
+    override fun findPaymentIdsUpdatedBetween(
+        from: LocalDateTime,
+        until: LocalDateTime,
+    ): List<String> = byOrderGroupId.values.map { it.paymentId }
 }
 
 /** 결제 준비 흐름은 웹훅을 받지 않는다 — 호출되면 테스트 전제가 깨진 것 */
