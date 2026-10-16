@@ -145,7 +145,10 @@ AFTER_COMMIT 리스너가 발화하지 않고, 이벤트/outbox 흐름이 조용
 
 - 이미지 태그는 운영 DB 버전으로 고정한다(`latest` 금지). 현재 태그 값은 코드가 들고 있다.
 - 스키마는 지금 `ddl-auto=create`로 만든다(ERD 확정 전 과도기).
-- 알려진 예외: `boot/batch`는 아웃박스 스위퍼가 실 outbox 테이블을 읽어야 해서 런타임 DB가 MySQL이다(H2 제거 완료, SCRUM-143). 테스트는 아직 착수하지 않았다 — 착수하는 커밋에서 재사용 가능한 베이스(§3 예외)부터 만들고 같은 패턴으로 정렬한다. 그 전까지 batch 테스트 작성 금지.
+- 알려진 예외: `boot/batch`는 아웃박스 스위퍼가 실 outbox 테이블을 읽어야 해서 런타임 DB가 MySQL이다(H2 제거 완료, SCRUM-143).
+  batch 통합 테스트는 `boot/batch/src/test/.../support/BatchIntegrationTestBase`를 상속한다 — 컨테이너는 `:api` test-fixtures의
+  `IntegrationTestConfig.registerContainers`로 api와 같은 것을 공유하고(모듈마다 띄우지 않는다), Fake 빈은 끌어오지 않는다(배치는 웹 포트가 없다).
+  유스케이스 수준 통합(실 DB + Fake PG)은 어댑터와 Fake가 다 있는 `boot/api` 컨텍스트에서 돌리고, batch에는 조립 스모크만 둔다(결제 대사 선례).
 
 ## 7. 스타일
 
@@ -196,7 +199,8 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
   Flyway clean-then-migrate 전략(`FlywayCleanMigrateConfig`)도 clean을 연 이 베이스만 import한다 — 공용 fixture에 두면 clean이 막힌 다른 실행 모듈 컨텍스트가 부팅에서 깨진다.
 - **MongoDB**: 도입 시 공용 베이스에 `@ServiceConnection` Mongo 컨테이너를 추가한다 — 별도 베이스를 만들지 않는다.
 - **병렬 실행**: 테스트별 스키마/DB 분리로 격리가 강화되면 재검토.
-- **모듈 간 테스트 베이스 공유**: boot/batch·infra에 통합 테스트가 필요해지는 커밋에서 결정한다 — 위 `:api` test-fixtures를 그대로 소비할지, 모듈마다 자체 베이스를 둘지. 공유 장치 자체는 SCRUM-192에서 `:api` java-test-fixtures로 도입됐고, 현재 소비자는 seller-api뿐이다.
+- ~~**모듈 간 테스트 베이스 공유**~~ → **결정 완료(결제 대사, 2026-10-16)**. boot/batch는 자체 베이스(`BatchIntegrationTestBase`)를 두되 컨테이너는
+  `:api` test-fixtures의 `IntegrationTestConfig.registerContainers`를 소비한다(§6). infra 모듈은 여전히 단위·계약 테스트만 둔다.
 - **운영 MySQL 버전 확정 시**: 컨테이너 태그를 그 버전으로 맞춘다.
 
 ## 10. PR 전 체크리스트

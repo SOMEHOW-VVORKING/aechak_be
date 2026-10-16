@@ -46,6 +46,9 @@ package com.aechak.application.order.usecase
  *   구매자 앱만 쓰는 조회와 셀러센터만 쓰는 쓰기를 한 타입에 두면 양쪽이 안 쓰는 절반을 주입받는다
  *   (ProductUseCase / SellerProductUseCase). Facade는 하나로 두고 두 인터페이스를 함께 구현한다 —
  *   쪼개면 같은 Service 주입이 양쪽에 복제된다(선례: AuthFacade가 4개 구현).
+ *   예외: 소비 모듈이 다르고 **주입 의존까지 겹치지 않으면** 같은 BC에 Facade를 하나 더 둘 수 있다 —
+ *   조회 전용(OrderQueryFacade), 배치 전용(PaymentReconciliationFacade — 확정 파사드의 웹훅 검증기 등을
+ *   배치가 끌고 오지 않게). 트랜잭션 경계·Service 호출 규칙은 그대로다.
  * - 이 인터페이스만이 외부(Controller / Consumer / Batch / 타 도메인 Facade)에 노출된다.
  * - 타 도메인이 order를 부를 때도 반드시 이 인터페이스로만 — OrderService 직접 호출 금지.
  *
