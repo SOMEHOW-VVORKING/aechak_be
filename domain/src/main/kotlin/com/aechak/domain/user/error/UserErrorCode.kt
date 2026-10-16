@@ -35,6 +35,7 @@ enum class UserErrorCode(
     // 신고
     SELF_REPORT_NOT_ALLOWED(30200, "자기 자신은 신고할 수 없습니다.", 400),
     REPORT_REASON_REQUIRED(30201, "기타 사유 신고는 상세 사유가 필요합니다.", 400),
+    USER_ALREADY_REPORTED(30202, "이미 신고한 사용자입니다.", 409),
 
     // 약관 동의
     REQUIRED_CONSENT_MISSING(30300, "필수 약관에 동의해 주세요.", 403),
