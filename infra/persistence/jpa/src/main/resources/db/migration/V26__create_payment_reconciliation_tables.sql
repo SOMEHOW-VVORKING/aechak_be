@@ -59,3 +59,6 @@ CREATE TABLE IF NOT EXISTS payment_reconciliation_items
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_0900_ai_ci;
+
+-- 대사의 "우리만 있는 건" 탐지가 창 안에서 상태가 바뀐 결제를 updated_at으로 찾는다. 결제가 쌓이면 이 조회가 먼저 느려진다.
+CREATE INDEX idx_payments_updated_at ON payments (updated_at);
