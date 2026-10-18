@@ -13,6 +13,7 @@ import com.aechak.common.error.BusinessException;
 import com.aechak.domain.user.error.UserErrorCode;
 import com.aechak.domain.user.user.enums.UserRole;
 import com.aechak.domain.user.user.enums.UserStatus;
+import java.util.EnumSet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -50,12 +51,27 @@ class AdminUserRoleIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    void 정지된_계정_승격은_불변식_위반으로_막히고_role이_그대로다() {
-        long targetUserId = createUser(UserStatus.SUSPENDED);
+    void ACTIVE가_아닌_모든_상태의_승격은_30017로_거부되고_role이_그대로다() {
+        for (UserStatus status : EnumSet.complementOf(EnumSet.of(UserStatus.ACTIVE))) {
+            long targetUserId = createUser(status);
+
+            assertThatThrownBy(() -> adminUserRoleUseCase.promote(ACTOR_ADMIN_ID, targetUserId))
+                    .as("status=%s", status)
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                    .isEqualTo(UserErrorCode.USER_NOT_PROMOTABLE);
+            assertThat(roleOf(targetUserId)).as("status=%s", status).isEqualTo(UserRole.GENERAL);
+        }
+    }
+
+    @Test
+    void 정지된_관리자_재승격은_상태보다_30012가_먼저_판정된다() {
+        long targetUserId = createUser(UserStatus.SUSPENDED, UserRole.ADMIN);
 
         assertThatThrownBy(() -> adminUserRoleUseCase.promote(ACTOR_ADMIN_ID, targetUserId))
-                .isInstanceOf(IllegalStateException.class);
-        assertThat(roleOf(targetUserId)).isEqualTo(UserRole.GENERAL);
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_ALREADY_ADMIN);
     }
 
     @Test

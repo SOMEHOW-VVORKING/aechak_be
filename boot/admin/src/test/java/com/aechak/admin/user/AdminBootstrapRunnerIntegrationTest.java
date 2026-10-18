@@ -3,14 +3,21 @@ package com.aechak.admin.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.aechak.admin.config.AdminBootstrapProperties;
 import com.aechak.admin.config.AdminBootstrapRunner;
 import com.aechak.admin.support.IntegrationTestBase;
+import com.aechak.application.user.user.facade.AdminUserRoleFacade;
 import com.aechak.application.user.user.usecase.AdminUserRoleUseCase;
+import com.aechak.domain.user.error.UserErrorCode;
 import com.aechak.domain.user.user.enums.UserRole;
 import com.aechak.domain.user.user.enums.UserStatus;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.DefaultApplicationArguments;
 
@@ -94,6 +101,30 @@ class AdminBootstrapRunnerIntegrationTest extends IntegrationTestBase {
 
         assertThat(roleOf(suspendedUserId)).isEqualTo(UserRole.GENERAL);
         assertThat(roleOf(activeUserId)).isEqualTo(UserRole.ADMIN);
+    }
+
+    @Test
+    void 명부_오기입으로_비활성_계정이_들어오면_30017로_분류해_건너뛴다() {
+        long suspendedUserId = createUser(UserStatus.SUSPENDED);
+        Logger facadeLogger = (Logger) LoggerFactory.getLogger(AdminUserRoleFacade.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        facadeLogger.addAppender(appender);
+
+        try {
+            assertThatCode(() -> runBootstrap(true, suspendedUserId)).doesNotThrowAnyException();
+        } finally {
+            facadeLogger.detachAppender(appender);
+            appender.stop();
+        }
+
+        assertThat(appender.list).anySatisfy(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.WARN);
+            assertThat(event.getFormattedMessage())
+                    .contains("userId=" + suspendedUserId)
+                    .contains("errorCode=" + UserErrorCode.USER_NOT_PROMOTABLE.getCode());
+        });
+        assertThat(roleOf(suspendedUserId)).isEqualTo(UserRole.GENERAL);
     }
 
     @Test
