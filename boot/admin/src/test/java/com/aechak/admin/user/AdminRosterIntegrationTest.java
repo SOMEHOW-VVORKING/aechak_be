@@ -90,7 +90,7 @@ class AdminRosterIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    void 형식이_틀린_페이지_파라미터는_보정되어_200을_준다() throws Exception {
+    void 음수_page와_상한_초과_size는_400이_아니라_보정된_200을_준다() throws Exception {
         mockMvc.perform(bearer(get(BASE).param("page", "-1").param("size", "999"), actorToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items.length()").value(1));

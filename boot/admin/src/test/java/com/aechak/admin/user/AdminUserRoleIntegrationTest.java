@@ -141,7 +141,9 @@ class AdminUserRoleIntegrationTest extends IntegrationTestBase {
             }));
             assertThat(locked.await(10, TimeUnit.SECONDS)).isTrue();
 
+            CountDownLatch contenderStarted = new CountDownLatch(1);
             Future<Throwable> contender = pool.submit(() -> {
+                contenderStarted.countDown();
                 try {
                     adminUserRoleUseCase.demote(ACTOR_ADMIN_ID, secondAdmin);
                     return null;
@@ -149,7 +151,10 @@ class AdminUserRoleIntegrationTest extends IntegrationTestBase {
                     return thrown;
                 }
             });
-            Thread.sleep(500); // 두 번째 강등이 락 대기에 들어갈 시간
+            assertThat(contenderStarted.await(10, TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(500);
+            // 잠금이 없으면 두 번째 강등이 첫 강등의 커밋을 기다리지 않고 이미 끝나 있다
+            assertThat(contender.isDone()).isFalse();
             commitAllowed.countDown();
 
             holder.get(30, TimeUnit.SECONDS);
