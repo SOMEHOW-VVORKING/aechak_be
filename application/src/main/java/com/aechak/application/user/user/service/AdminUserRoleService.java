@@ -5,6 +5,7 @@ import com.aechak.common.error.BusinessException;
 import com.aechak.domain.user.error.UserErrorCode;
 import com.aechak.domain.user.user.User;
 import com.aechak.domain.user.user.enums.UserRole;
+import com.aechak.domain.user.user.enums.UserStatus;
 import com.aechak.domain.user.user.repository.UserRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -26,11 +27,26 @@ public class AdminUserRoleService {
     }
 
     public void promote(long userId) {
-        getById(userId).promoteToAdmin();
+        User user = getById(userId);
+        rejectInactivePromotion(user);
+        user.promoteToAdmin();
     }
 
     public void demote(long userId) {
         getById(userId).demoteToGeneral();
+    }
+
+    /**
+     * 비활성 계정 승격을 도메인 불변식 위반(500) 대신 30017로 거른다.
+     * 이미 관리자인 계정은 도메인이 30012로 거르므로 상태를 보지 않는다.
+     */
+    private void rejectInactivePromotion(User user) {
+        if (user.getRole() == UserRole.ADMIN) {
+            return;
+        }
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new BusinessException(UserErrorCode.USER_NOT_PROMOTABLE, null, null);
+        }
     }
 
     private User getById(long userId) {

@@ -43,12 +43,35 @@ class AdminUserRoleIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    void 정지된_계정_승격은_불변식_위반으로_막히고_role이_그대로다() {
+    void 정지된_계정_승격은_30017로_거부되고_role이_그대로다() {
         long targetUserId = createUser(UserStatus.SUSPENDED);
 
         assertThatThrownBy(() -> adminUserRoleUseCase.promote(ACTOR_ADMIN_ID, targetUserId))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_PROMOTABLE);
         assertThat(roleOf(targetUserId)).isEqualTo(UserRole.GENERAL);
+    }
+
+    @Test
+    void 온보딩_미완료_계정_승격도_30017로_거부된다() {
+        long targetUserId = createUser(UserStatus.PENDING_ONBOARDING);
+
+        assertThatThrownBy(() -> adminUserRoleUseCase.promote(ACTOR_ADMIN_ID, targetUserId))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_PROMOTABLE);
+        assertThat(roleOf(targetUserId)).isEqualTo(UserRole.GENERAL);
+    }
+
+    @Test
+    void 정지된_관리자_재승격은_상태보다_30012가_먼저_판정된다() {
+        long targetUserId = createUser(UserStatus.SUSPENDED, UserRole.ADMIN);
+
+        assertThatThrownBy(() -> adminUserRoleUseCase.promote(ACTOR_ADMIN_ID, targetUserId))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_ALREADY_ADMIN);
     }
 
     @Test
