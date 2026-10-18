@@ -111,35 +111,36 @@ class OrderExpiryService(
                 .flatMap { it.items }
                 .groupBy { it.optionCombinationId }
                 .mapValues { (_, items) -> items.sumOf { it.quantity } }
+        val failed = linkedMapOf<Long, Int>()
         var restored = 0
-        var failed = 0
         quantities.toSortedMap().forEach { (optionCombinationId, quantity) ->
             if (optionCombinationRepository.restoreStock(optionCombinationId, quantity)) {
                 restored++
             } else {
-                // 재시도해도 성공할 수 없는 두 경우뿐이라 취소는 되돌리지 않는다. 원인을 단정하지 않고 읽어서 적는다
-                failed++
-                log.error(
-                    "재고 복원 실패 — 사람 확인 필요. orderGroupPublicId={}, optionCombinationId={}, quantity={}, 사유={}",
-                    group.publicId,
-                    optionCombinationId,
-                    quantity,
-                    restoreFailureReason(optionCombinationId, quantity),
-                )
+                failed[optionCombinationId] = quantity
             }
         }
-        return restored to failed
+        if (failed.isNotEmpty()) {
+            // 수동 복원에 필요한 전량을 한 줄에 모은다. 취소 자체는 되돌리지 않는다 — 되돌리면 그룹이 결제도 취소도 안 된 채로 남는다
+            log.error(
+                "재고 복원 실패 — 수동 복원 필요. orderGroupPublicId={}, 미복원={}",
+                group.publicId,
+                failed.entries.joinToString { (id, quantity) -> "옵션조합 $id 수량 $quantity(${restoreFailureReason(id, quantity)})" },
+            )
+        }
+        return restored to failed.size
     }
 
+    /** 0행은 상한 초과와 옵션조합 소멸 둘 다에서 나온다 — 원인을 단정하지 않고 현재 재고를 읽어서 적는다 */
     private fun restoreFailureReason(
         optionCombinationId: Long,
         quantity: Int,
     ): String {
         val current = optionCombinationRepository.findById(optionCombinationId) ?: return "옵션조합 없음"
         if (current.stockQuantity > OptionCombination.MAX_STOCK_QUANTITY - quantity) {
-            return "복원하면 재고 상한 초과(현재=${current.stockQuantity}, 상한=${OptionCombination.MAX_STOCK_QUANTITY})"
+            return "재고 상한 초과, 현재 ${current.stockQuantity}"
         }
-        return "원인 불명(현재=${current.stockQuantity})"
+        return "원인 불명, 현재 ${current.stockQuantity}"
     }
 
     /** 적립금을 쓰지 않은 주문도 있다 — 그때는 원장을 만들지 않는다 */

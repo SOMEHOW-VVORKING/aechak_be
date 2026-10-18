@@ -5,6 +5,7 @@ import com.aechak.application.order.usecase.command.ExpireOrderGroupCommand
 import com.aechak.application.order.usecase.result.ExpireOrderGroupStatus
 import com.aechak.application.payment.port.PaymentGatewayStatus
 import com.aechak.application.payment.port.PaymentGatewayView
+import com.aechak.application.payment.usecase.PaymentUseCase
 import com.aechak.batch.support.BatchIntegrationTestBase
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
@@ -45,6 +46,9 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Autowired
     private lateinit var orderExpiryUseCase: OrderExpiryUseCase
+
+    @Autowired
+    private lateinit var paymentUseCase: PaymentUseCase
 
     @Test
     fun `만료된 주문그룹은 취소되고 하위 주문도 취소 이력과 함께 취소된다`() {
@@ -255,6 +259,27 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
         assertEquals(6, stockOf(fixture.optionCombinationId), "결제대기 두 주문의 2 + 3만 되돌아와야 한다")
         assertEquals(1, historyCountOf(secondOrderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
         assertEquals(0, historyCountOf(cancelledOrderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
+    }
+
+    @Test
+    fun `페이지 상한에 걸려도 다음 회차가 커서 뒤부터 이어 간다`() {
+        val stuck = seedExpiredOrderGroup(stock = 3, quantity = 2, expiresAt = LocalDateTime.now().minusMinutes(5))
+        seedPayment(stuck)
+        stubGateway(stuck, PaymentGatewayStatus.PAY_PENDING)
+        val next = seedExpiredOrderGroup(stock = 3, quantity = 2, expiresAt = LocalDateTime.now().minusMinutes(4))
+        // 한 회차가 1건·1페이지만 보는 스케줄 — 회차를 넘기지 않으면 뒤 건에 닿을 수 없다
+        val oneAtATime = OrderExpirySchedule(orderExpiryUseCase, paymentUseCase, pageSize = 1, maxPages = 1)
+
+        oneAtATime.run()
+        assertEquals(
+            OrderGroupStatus.PENDING_PAYMENT,
+            groupStatusOf(next.orderGroupId),
+            "첫 회차는 승인 대기 건만 보고 상한에 걸린다",
+        )
+
+        oneAtATime.run()
+        assertEquals(OrderGroupStatus.PENDING_PAYMENT, groupStatusOf(stuck.orderGroupId))
+        assertEquals(OrderGroupStatus.CANCELLED, groupStatusOf(next.orderGroupId), "둘째 회차는 커서 뒤부터 이어 가야 한다")
     }
 
     @Test
