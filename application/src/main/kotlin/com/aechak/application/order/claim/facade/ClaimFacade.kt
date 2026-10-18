@@ -13,6 +13,7 @@ import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.error.OrderErrorCode
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 
 /**
@@ -25,7 +26,11 @@ class ClaimFacade(
     private val sellerUseCase: SellerUseCase,
 ) : ClaimUseCase,
     SellerClaimUseCase {
-    @Transactional
+    /**
+     * READ_COMMITTED인 이유: 중복 클레임 검사가 주문 행 선점 뒤에 커밋된 다른 요청의 클레임을 봐야 한다.
+     * MySQL 기본 격리수준에서는 트랜잭션 첫 조회 시점의 스냅샷을 계속 읽어 그 클레임을 놓친다.
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun requestClaim(command: RequestClaimCommand): RequestClaimResult = claimService.requestClaim(command)
 
     @Transactional(readOnly = true)

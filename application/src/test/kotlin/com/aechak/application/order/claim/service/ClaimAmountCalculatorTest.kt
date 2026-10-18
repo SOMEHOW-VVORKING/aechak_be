@@ -70,6 +70,20 @@ class ClaimAmountCalculatorTest {
         )
     }
 
+    /** 수량 비례 배분도 곱셈이 Long 범위를 넘길 수 있다 — 넘기면 적립금 차감액이 음수가 되어 과환불한다. */
+    @Test
+    fun `금액이 커도 수량 비례 환불액이 뒤집히지 않는다`() {
+        val unitPrice = 8_000_000_000_000_000L
+        val productAmount = unitPrice * 50
+        val group = group(usedPoint = productAmount / 2, productAmount = productAmount, shippingFee = 0L)
+        val order = order(group, id = 1L, shippingFee = 0L, lines = listOf(unitPrice to 50))
+        val orderItemId = order.items.first().id
+
+        val amounts = calculator.calculate(order, listOf(order), group.usedPoint, mapOf(orderItemId to 49))
+
+        assertEquals(196_000_000_000_000_000L, amounts.total)
+    }
+
     @Test
     fun `부분 취소는 배송비를 돌려주지 않는다`() {
         val group = group(usedPoint = 0L, productAmount = 51_000L, shippingFee = 3_000L)

@@ -43,7 +43,9 @@ class ClaimAmountCalculator {
         val orderItems = order.items.associateBy { it.id }
         return targets.mapValues { (orderItemId, quantity) ->
             val item = orderItems.getValue(orderItemId)
-            val gross = item.unitPriceSnapshot * quantity - prorate(item.discountAllocatedAmount, quantity, item.quantity)
+            val gross =
+                Math.multiplyExact(item.unitPriceSnapshot, quantity.toLong()) -
+                    prorate(item.discountAllocatedAmount, quantity, item.quantity)
             val point = prorate(allocation.ofItem(orderItemId), quantity, item.quantity)
             // 안분액은 품목 금액을 넘지 않게 배분된다 — 음수가 나오면 배분이 깨진 것이라 드러낸다
             require(gross >= point) { "품목 환불액이 음수입니다 (orderItemId=$orderItemId, gross=$gross, point=$point)" }
@@ -80,7 +82,7 @@ class ClaimAmountCalculator {
     ): PointAllocation {
         if (usedPoint <= 0L) return PointAllocation.NONE
         val lines = payableLines(groupOrders)
-        val base = lines.sumOf { it.amount }
+        val base = lines.fold(0L) { sum, line -> Math.addExact(sum, line.amount) }
         if (base <= 0L) return PointAllocation.NONE
 
         val allocatable = minOf(usedPoint, base)
@@ -124,7 +126,9 @@ class ClaimAmountCalculator {
                     PayableLine(LineKey(order.id, null), order.sellerShippingFee)
             }.filter { it.amount > 0L }
 
-    private fun netAmount(item: OrderItem): Long = item.unitPriceSnapshot * item.quantity - item.discountAllocatedAmount
+    // 금액 연산이 Long 범위를 넘기면 조용히 뒤집힌 금액으로 환불하는 대신 터뜨린다
+    private fun netAmount(item: OrderItem): Long =
+        Math.multiplyExact(item.unitPriceSnapshot, item.quantity.toLong()) - item.discountAllocatedAmount
 
     /**
      * total × part / base. 금액 두 개를 그냥 곱하면 Long 범위를 넘겨 음수 안분액이 나오므로 곱셈만 큰 수로 한다.
@@ -145,7 +149,12 @@ class ClaimAmountCalculator {
         amount: Long,
         claimedQuantity: Int,
         orderedQuantity: Int,
-    ): Long = if (claimedQuantity >= orderedQuantity) amount else amount * claimedQuantity / orderedQuantity
+    ): Long =
+        if (claimedQuantity >= orderedQuantity) {
+            amount
+        } else {
+            proportionOf(amount, claimedQuantity.toLong(), orderedQuantity.toLong())
+        }
 
     /** 배송비 줄은 orderItemId가 없다. */
     private data class LineKey(
