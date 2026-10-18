@@ -3,6 +3,8 @@ package com.aechak.infra.persistence.order.group
 import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.group.enums.OrderGroupStatus
 import com.aechak.domain.order.group.repository.OrderGroupRepository
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -28,6 +30,17 @@ interface OrderGroupJpaRepository : JpaRepository<OrderGroup, Long> {
         @Param("next") next: OrderGroupStatus,
         @Param("now") now: LocalDateTime,
     ): Int
+
+    @Query(
+        "select g from OrderGroup g " +
+            "where g.status = :status and g.expiresAt < :now " +
+            "order by g.expiresAt asc",
+    )
+    fun findExpired(
+        @Param("status") status: OrderGroupStatus,
+        @Param("now") now: LocalDateTime,
+        pageable: Pageable,
+    ): List<OrderGroup>
 }
 
 @Repository
@@ -50,4 +63,18 @@ class OrderGroupRepositoryAdapter(
             next = OrderGroupStatus.PAID,
             now = LocalDateTime.now(),
         ) == 1
+
+    override fun cancelIfPending(id: Long): Boolean =
+        jpaRepository.transitionStatus(
+            id = id,
+            expected = OrderGroupStatus.PENDING_PAYMENT,
+            next = OrderGroupStatus.CANCELLED,
+            now = LocalDateTime.now(),
+        ) == 1
+
+    // Pageable 등 Spring 타입을 포트로 역류시키지 않는다 — 포트는 limit만 받는다
+    override fun findExpiredPending(
+        now: LocalDateTime,
+        limit: Int,
+    ): List<OrderGroup> = jpaRepository.findExpired(OrderGroupStatus.PENDING_PAYMENT, now, PageRequest.of(0, limit))
 }
