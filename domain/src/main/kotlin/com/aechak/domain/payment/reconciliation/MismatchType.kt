@@ -25,4 +25,7 @@ enum class MismatchType {
 
     /** 우리 원장끼리 어긋남 — 결제 행이 가리키는 그룹이 없거나, 그룹은 결제완료인데 결제는 미승인인 조합 */
     OURS_INCONSISTENT,
+
+    /** 우리는 취소 요청 중이고 PG는 아직 결제완료 — 요청과 PG 반영 사이의 정상 대기 */
+    CANCEL_IN_FLIGHT,
 }
