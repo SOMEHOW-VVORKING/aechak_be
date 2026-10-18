@@ -33,6 +33,14 @@ class UserRoleChangeTest {
     }
 
     @Test
+    fun `관리자 역할 에러코드의 번호와 HTTP 상태는 계약이다`() {
+        assertEquals(30012, UserErrorCode.USER_ALREADY_ADMIN.code)
+        assertEquals(409, UserErrorCode.USER_ALREADY_ADMIN.status)
+        assertEquals(30017, UserErrorCode.USER_NOT_PROMOTABLE.code)
+        assertEquals(409, UserErrorCode.USER_NOT_PROMOTABLE.status)
+    }
+
+    @Test
     fun `ACTIVE가 아니면 promoteToAdmin이 거부된다`() {
         val pending = User.preRegister()
 

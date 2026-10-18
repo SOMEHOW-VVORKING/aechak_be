@@ -3,6 +3,7 @@ package com.aechak.admin.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -117,8 +118,12 @@ class AdminBootstrapRunnerIntegrationTest extends IntegrationTestBase {
             appender.stop();
         }
 
-        assertThat(appender.list).anySatisfy(event -> assertThat(event.getFormattedMessage())
-                .contains("errorCode=" + UserErrorCode.USER_NOT_PROMOTABLE.getCode()));
+        assertThat(appender.list).anySatisfy(event -> {
+            assertThat(event.getLevel()).isEqualTo(Level.WARN);
+            assertThat(event.getFormattedMessage())
+                    .contains("userId=" + suspendedUserId)
+                    .contains("errorCode=" + UserErrorCode.USER_NOT_PROMOTABLE.getCode());
+        });
         assertThat(roleOf(suspendedUserId)).isEqualTo(UserRole.GENERAL);
     }
 

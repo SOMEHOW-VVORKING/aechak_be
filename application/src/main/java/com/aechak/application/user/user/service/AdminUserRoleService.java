@@ -36,10 +36,7 @@ public class AdminUserRoleService {
         getById(userId).demoteToGeneral();
     }
 
-    /**
-     * 비활성 계정 승격을 도메인 불변식 위반(500) 대신 30017로 거른다.
-     * 이미 관리자인 계정은 도메인이 30012로 거르므로 상태를 보지 않는다.
-     */
+    /** 이미 관리자인 계정을 제외하고, ACTIVE가 아닌 계정의 승격을 30017로 거부한다. */
     private void rejectInactivePromotion(User user) {
         if (user.getRole() == UserRole.ADMIN) {
             return;

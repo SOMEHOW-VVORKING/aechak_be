@@ -12,6 +12,7 @@ import com.aechak.common.error.BusinessException;
 import com.aechak.domain.user.error.UserErrorCode;
 import com.aechak.domain.user.user.enums.UserRole;
 import com.aechak.domain.user.user.enums.UserStatus;
+import java.util.EnumSet;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -43,25 +44,17 @@ class AdminUserRoleIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    void 정지된_계정_승격은_30017로_거부되고_role이_그대로다() {
-        long targetUserId = createUser(UserStatus.SUSPENDED);
+    void ACTIVE가_아닌_모든_상태의_승격은_30017로_거부되고_role이_그대로다() {
+        for (UserStatus status : EnumSet.complementOf(EnumSet.of(UserStatus.ACTIVE))) {
+            long targetUserId = createUser(status);
 
-        assertThatThrownBy(() -> adminUserRoleUseCase.promote(ACTOR_ADMIN_ID, targetUserId))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(UserErrorCode.USER_NOT_PROMOTABLE);
-        assertThat(roleOf(targetUserId)).isEqualTo(UserRole.GENERAL);
-    }
-
-    @Test
-    void 온보딩_미완료_계정_승격도_30017로_거부된다() {
-        long targetUserId = createUser(UserStatus.PENDING_ONBOARDING);
-
-        assertThatThrownBy(() -> adminUserRoleUseCase.promote(ACTOR_ADMIN_ID, targetUserId))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getErrorCode())
-                .isEqualTo(UserErrorCode.USER_NOT_PROMOTABLE);
-        assertThat(roleOf(targetUserId)).isEqualTo(UserRole.GENERAL);
+            assertThatThrownBy(() -> adminUserRoleUseCase.promote(ACTOR_ADMIN_ID, targetUserId))
+                    .as("status=%s", status)
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                    .isEqualTo(UserErrorCode.USER_NOT_PROMOTABLE);
+            assertThat(roleOf(targetUserId)).as("status=%s", status).isEqualTo(UserRole.GENERAL);
+        }
     }
 
     @Test
