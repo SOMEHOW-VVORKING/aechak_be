@@ -402,3 +402,20 @@ resource "aws_ssm_parameter" "batch_pii_hmac_key" {
 #   api: 부팅은 되지만 임시 키 폴백으로 갈라져 모듈 간 검증이 전부 401이 된다
 #   seller, admin: dev에서 필수라 공개키 자리에 ${AUTH_JWT_PUBLIC_KEY} 글자가 그대로 들어가 base64 해석 오류로 부팅이 실패한다
 # 검증 전용 실행 모듈이 더 늘면 그 모듈 경로에도 공개키를 같은 값으로 등재한다.
+
+# ── 검수 라인 ──────────────────
+# 셀러센터가 검수 요청을 발행하려면 브로커 주소가 필요하다. api 쪽 같은 이름 파라미터는
+# 수기 등재돼 있지만, 값이 terraform이 아는 고정 사설 IP라 새로 만드는 것은 여기서 소유한다.
+resource "aws_ssm_parameter" "seller_kafka_bootstrap" {
+  name  = "/${var.project}/${var.env}/seller/SPRING_KAFKA_BOOTSTRAP_SERVERS"
+  type  = "String"
+  value = "${local.kafka_private_ip}:9092"
+}
+
+# AI 검수 서버. 키는 terraform이 값을 알 수 없어 수기 등재한다 —
+# /aechak/dev/ai/AECHAK_AI_ANTHROPIC_API_KEY 를 SecureString으로 넣어야 태스크가 기동한다.
+resource "aws_ssm_parameter" "ai_kafka_bootstrap" {
+  name  = "/${var.project}/${var.env}/ai/AECHAK_AI_KAFKA_BOOTSTRAP_SERVERS"
+  type  = "String"
+  value = "${local.kafka_private_ip}:9092"
+}
