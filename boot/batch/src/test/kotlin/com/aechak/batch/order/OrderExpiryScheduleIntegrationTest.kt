@@ -136,13 +136,31 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
     }
 
     @Test
-    fun `재고가 컬럼 상한 근처면 복원을 건너뛰고 취소만 확정한다`() {
-        val fixture = seedExpiredOrderGroup(stock = OptionCombination.MAX_STOCK_QUANTITY, quantity = 2)
+    fun `재고 상한에 걸려 복원하지 못하면 만료 전체를 보류한다`() {
+        val fixture =
+            seedExpiredOrderGroup(stock = OptionCombination.MAX_STOCK_QUANTITY, quantity = 2, usedPoint = 1_000L, pointBalance = 500L)
 
         schedule.run()
 
-        assertEquals(OrderGroupStatus.CANCELLED, groupStatusOf(fixture.orderGroupId))
-        assertEquals(OptionCombination.MAX_STOCK_QUANTITY, stockOf(fixture.optionCombinationId), "상한을 넘기는 복원은 반영되지 않아야 한다")
+        assertEquals(
+            OrderGroupStatus.PENDING_PAYMENT,
+            groupStatusOf(fixture.orderGroupId),
+            "재고를 되돌리지 못한 채 취소를 확정하면 복원 의무가 사라진다",
+        )
+        assertEquals(OptionCombination.MAX_STOCK_QUANTITY, stockOf(fixture.optionCombinationId))
+        assertEquals(0, releaseLedgerCountOf(fixture.buyerId))
+        assertEquals(0, historyCountOf(fixture.orderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
+    }
+
+    @Test
+    fun `되돌릴 옵션조합이 사라졌으면 취소를 확정한다`() {
+        val fixture = seedExpiredOrderGroup(stock = 3, quantity = 2, usedPoint = 1_000L, pointBalance = 500L)
+        deleteOptionCombination(fixture.optionCombinationId)
+
+        schedule.run()
+
+        assertEquals(OrderGroupStatus.CANCELLED, groupStatusOf(fixture.orderGroupId), "되돌릴 대상이 없는 건은 재시도해도 달라지지 않는다")
+        assertEquals(1, releaseLedgerCountOf(fixture.buyerId), "적립금은 되돌릴 수 있으므로 복원한다")
     }
 
     @Test
@@ -416,6 +434,16 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
                 .createQuery("update Order o set o.status = :status where o.id = :id")
                 .setParameter("status", OrderStatus.CANCELLED)
                 .setParameter("id", orderId)
+                .executeUpdate()
+        }
+    }
+
+    /** 되돌릴 옵션조합이 사라진 상태를 만든다 — order_items는 값 참조라 행이 남는다 */
+    private fun deleteOptionCombination(optionCombinationId: Long) {
+        tx.execute {
+            em
+                .createQuery("delete from OptionCombination oc where oc.id = :id")
+                .setParameter("id", optionCombinationId)
                 .executeUpdate()
         }
     }

@@ -84,12 +84,11 @@ class OrderExpirySchedule(
         }
         val result = orderExpiryUseCase.expireOrderGroup(ExpireOrderGroupCommand(candidate.orderGroupId))
         log.info(
-            "주문서 만료 처리. orderGroupPublicId={}, 결과={}, 취소주문={}건, 재고복원={}건(실패 {}건), 적립금복원={}원",
+            "주문서 만료 처리. orderGroupPublicId={}, 결과={}, 취소주문={}건, 재고건너뜀={}건, 적립금복원={}원",
             candidate.orderGroupPublicId,
             result.status,
             result.cancelledOrders,
-            result.restoredStockItems,
-            result.failedStockItems,
+            result.skippedStockItems,
             result.releasedPoint,
         )
     }

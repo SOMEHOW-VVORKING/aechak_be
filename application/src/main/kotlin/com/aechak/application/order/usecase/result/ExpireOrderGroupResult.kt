@@ -4,8 +4,8 @@ package com.aechak.application.order.usecase.result
 data class ExpireOrderGroupResult(
     val status: ExpireOrderGroupStatus,
     val cancelledOrders: Int = 0,
-    val restoredStockItems: Int = 0,
-    val failedStockItems: Int = 0,
+    /** 되돌릴 옵션조합이 사라져 건너뛴 수 — 0이 아니면 사람이 봐야 한다 */
+    val skippedStockItems: Int = 0,
     val releasedPoint: Long = 0,
 ) {
     companion object {

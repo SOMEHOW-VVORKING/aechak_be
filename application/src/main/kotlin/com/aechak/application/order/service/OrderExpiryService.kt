@@ -72,12 +72,10 @@ class OrderExpiryService(
         // 선점 쿼리가 먼저 나가야 한다 — 애그리거트를 먼저 바꾸면 auto-flush가 상태를 써버려 자기 선점이 0행이 된다
         group.cancelUnpaid()
         val cancelled = cancelOrders(orderGroupId)
-        val restored = restoreStock(group, cancelled)
         return ExpireOrderGroupResult(
             status = ExpireOrderGroupStatus.EXPIRED,
             cancelledOrders = cancelled.size,
-            restoredStockItems = restored.first,
-            failedStockItems = restored.second,
+            skippedStockItems = restoreStock(group, cancelled),
             releasedPoint = releasePoint(group),
         )
     }
@@ -102,31 +100,51 @@ class OrderExpiryService(
         return targets
     }
 
-    /** 옵션조합별로 합산해 한 번씩만 되돌린다. 차감과 같이 id 오름차순 — 교차 주문 간 데드락 예방 */
+    /**
+     * 옵션조합별로 합산해 한 번씩만 되돌린다. 차감과 같이 id 오름차순 — 교차 주문 간 데드락 예방.
+     *
+     * 되돌릴 자리가 생길 수 있는 실패(상한 초과·원인 불명)는 던져서 만료 전체를 롤백한다 —
+     * 결제대기로 남겨 두는 것이 복원 의무를 보존하는 유일한 방법이고, 다음 회차가 다시 시도한다.
+     * 옵션조합이 사라진 경우만 건너뛴다. 되돌릴 대상 자체가 없어 재시도해도 달라지지 않는다.
+     */
     private fun restoreStock(
         group: OrderGroup,
         cancelled: List<Order>,
-    ): Pair<Int, Int> {
+    ): Int {
         val quantities =
             cancelled
                 .flatMap { it.items }
                 .groupBy { it.optionCombinationId }
                 .mapValues { (_, items) -> items.sumOf { it.quantity } }
-        val failures = mutableListOf<String>()
-        var restored = 0
+        val retryable = mutableListOf<String>()
+        var skipped = 0
         quantities.toSortedMap().forEach { (optionCombinationId, quantity) ->
-            val result = optionStockUseCase.restoreStock(RestoreOptionStockCommand(optionCombinationId, quantity))
-            if (result.status == RestoreOptionStockStatus.RESTORED) {
-                restored++
-            } else {
-                failures += "옵션조합 $optionCombinationId 수량 $quantity(${result.status}, 현재=${result.currentStock})"
+            when (optionStockUseCase.restoreStock(RestoreOptionStockCommand(optionCombinationId, quantity)).status) {
+                RestoreOptionStockStatus.RESTORED -> {
+                    Unit
+                }
+
+                RestoreOptionStockStatus.OPTION_NOT_FOUND -> {
+                    skipped++
+                    log.error(
+                        "복원 대상 옵션조합이 없어 재고를 건너뜀. orderGroupPublicId={}, optionCombinationId={}, quantity={}",
+                        group.publicId,
+                        optionCombinationId,
+                        quantity,
+                    )
+                }
+
+                RestoreOptionStockStatus.STOCK_LIMIT_EXCEEDED,
+                RestoreOptionStockStatus.UNKNOWN,
+                -> {
+                    retryable += "옵션조합 $optionCombinationId 수량 $quantity"
+                }
             }
         }
-        if (failures.isNotEmpty()) {
-            // 수동 복원에 필요한 전량을 한 줄에 모은다. 취소 자체는 되돌리지 않는다 — 되돌리면 그룹이 결제도 취소도 안 된 채로 남는다
-            log.error("재고 복원 실패 — 수동 복원 필요. orderGroupPublicId={}, 미복원={}", group.publicId, failures.joinToString())
+        if (retryable.isNotEmpty()) {
+            error("재고 복원 실패로 만료를 보류함 (orderGroupPublicId=${group.publicId}, 미복원=${retryable.joinToString()})")
         }
-        return restored to failures.size
+        return skipped
     }
 
     /** 적립금을 쓰지 않은 주문도 있다 — 그때는 원장을 만들지 않는다 */
