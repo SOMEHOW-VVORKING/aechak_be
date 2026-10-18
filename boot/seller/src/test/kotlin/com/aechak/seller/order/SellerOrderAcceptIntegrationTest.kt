@@ -1,6 +1,8 @@
 package com.aechak.seller.order
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.application.order.seller.usecase.SellerOrderUseCase
+import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.order.Order
@@ -9,6 +11,7 @@ import com.aechak.domain.order.order.OrderStatusHistory
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.seller.seller.Seller
+import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -24,7 +27,6 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
-import java.time.Duration
 import java.time.LocalDateTime
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -40,6 +42,9 @@ class SellerOrderAcceptIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var securityFilterChain: FilterChainProxy
+
+    @Autowired
+    private lateinit var sellerOrderUseCase: SellerOrderUseCase
 
     private lateinit var mockMvc: MockMvc
     private var sellerUserId = 0L
@@ -86,10 +91,34 @@ class SellerOrderAcceptIntegrationTest : IntegrationTestBase() {
         assertEquals(OrderStatus.PAID, history.fromStatus)
         assertEquals(OrderStatus.PREPARING, history.toStatus)
         assertEquals(TriggeredBy.SELLER, history.triggeredBy)
+    }
 
-        // 이력의 기록 시각이 전이 시각이다 — 별도 트랜잭션이나 비동기로 빠지면 둘이 벌어진다
-        val gap = Duration.between(history.createdAt, updatedAtOf(orderPublicId)).abs()
-        assertTrue(gap < Duration.ofSeconds(2), "전이 시각과 이력 시각이 ${gap.toMillis()}ms 벌어졌다")
+    @Test
+    fun `이력은 전이와 같은 트랜잭션에 들어간다`() {
+        val orderPublicId = seedOrder(OrderStatus.PAID)
+
+        // 호출 트랜잭션을 되돌리면 전이와 이력이 함께 사라져야 한다 —
+        // 이력이 별도 트랜잭션이면 전이만 사라지고 이력이 남아 기록 시각이 전이 시각과 벌어진다
+        tx.execute { status ->
+            sellerOrderUseCase.acceptOrder(AcceptOrderCommand(sellerId = sellerUserId, orderPublicId = orderPublicId))
+            status.setRollbackOnly()
+        }
+
+        assertEquals(OrderStatus.PAID, statusOf(orderPublicId))
+        assertEquals(0, historyCount(orderPublicId), "전이가 되돌려졌는데 이력이 남으면 안 된다")
+    }
+
+    @Test
+    fun `정지된 셀러의 발주 확인은 403과 50003이다`() {
+        val orderPublicId = seedOrder(OrderStatus.PAID)
+        suspendSeller(sellerUserId)
+
+        mockMvc
+            .perform(acceptRequest(token, orderPublicId))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(50003))
+
+        assertEquals(OrderStatus.PAID, statusOf(orderPublicId))
     }
 
     @Test
@@ -167,9 +196,11 @@ class SellerOrderAcceptIntegrationTest : IntegrationTestBase() {
     fun `동시 발주 확인은 하나만 성공한다`() {
         val orderPublicId = seedOrder(OrderStatus.PAID)
 
-        val statuses = raceTwo { acceptRequest(token, orderPublicId) }.map { it.first }
+        val results = raceTwo { acceptRequest(token, orderPublicId) }
 
-        assertEquals(listOf(204, 409), statuses.sorted(), "결과: $statuses")
+        assertEquals(listOf(204, 409), results.map { it.first }.sorted(), "결과: $results")
+        val loser = results.first { it.first == 409 }.second
+        assertTrue(loser.contains("50004"), "경합에서 진 쪽은 50004여야 한다: $loser")
         assertEquals(OrderStatus.PREPARING, statusOf(orderPublicId))
         assertEquals(1, historyCount(orderPublicId), "성공한 전이 하나만 이력을 남겨야 한다")
     }
@@ -185,6 +216,16 @@ class SellerOrderAcceptIntegrationTest : IntegrationTestBase() {
 
     private fun openSeller(userId: Long) {
         tx.execute { em.persist(Seller.open(userId, "애착상회$userId", 0L)) }
+    }
+
+    private fun suspendSeller(userId: Long) {
+        tx.execute {
+            em
+                .createQuery("update Seller s set s.status = :status where s.userId = :userId")
+                .setParameter("status", SellerStatus.SUSPENDED)
+                .setParameter("userId", userId)
+                .executeUpdate()
+        }
     }
 
     /** 주문그룹 1건 + 셀러 주문 1건을 심고 주문 공개 식별자를 돌려준다. */
@@ -246,14 +287,6 @@ class SellerOrderAcceptIntegrationTest : IntegrationTestBase() {
         tx.execute {
             em
                 .createQuery("select o.status from Order o where o.publicId = :publicId", OrderStatus::class.java)
-                .setParameter("publicId", orderPublicId)
-                .singleResult
-        }!!
-
-    private fun updatedAtOf(orderPublicId: String): LocalDateTime =
-        tx.execute {
-            em
-                .createQuery("select o.updatedAt from Order o where o.publicId = :publicId", LocalDateTime::class.java)
                 .setParameter("publicId", orderPublicId)
                 .singleResult
         }!!
