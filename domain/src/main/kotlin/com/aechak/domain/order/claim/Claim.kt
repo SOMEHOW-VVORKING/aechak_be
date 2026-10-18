@@ -207,7 +207,8 @@ class Claim protected constructor(
     /** 클레임이 대상으로 잡은 주문품목별 취소 수량. */
     fun claimedQuantityByOrderItemId(): Map<Long, Int> = _items.associate { it.orderItem.id to it.quantity }
 
-    fun itemRefundTotal(): Long = _items.sumOf { it.refundAmount }
+    // 합산이 Long 범위를 넘기면 조용히 음수가 된 환불액을 내리는 대신 터뜨린다
+    fun itemRefundTotal(): Long = _items.fold(0L) { sum, item -> Math.addExact(sum, item.refundAmount) }
 
     private fun requireSellerDecisionPending() {
         if (sellerApprovalStatus != SellerApprovalStatus.REQUESTED) {

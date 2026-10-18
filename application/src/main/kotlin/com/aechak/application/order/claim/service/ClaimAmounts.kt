@@ -5,5 +5,6 @@ data class ClaimAmounts(
     val itemRefunds: Map<Long, Long>,
     val shippingFeeRefund: Long,
 ) {
-    val total: Long get() = itemRefunds.values.sum() + shippingFeeRefund
+    // 합산이 Long 범위를 넘기면 조용히 음수가 된 환불액을 저장하는 대신 터뜨린다
+    val total: Long get() = Math.addExact(itemRefunds.values.fold(0L, Math::addExact), shippingFeeRefund)
 }

@@ -75,12 +75,14 @@ class ClaimService(
         val refundAmounts =
             claims.associate { claim ->
                 claim.publicId to
-                    claim.itemRefundTotal() +
-                    claimAmountCalculator.shippingFeeRefund(
-                        order = order,
-                        groupOrders = groupOrders,
-                        usedPoint = order.orderGroup.usedPoint,
-                        targets = claim.claimedQuantityByOrderItemId(),
+                    Math.addExact(
+                        claim.itemRefundTotal(),
+                        claimAmountCalculator.shippingFeeRefund(
+                            order = order,
+                            groupOrders = groupOrders,
+                            usedPoint = order.orderGroup.usedPoint,
+                            targets = claim.claimedQuantityByOrderItemId(),
+                        ),
                     )
             }
         return ClaimListResult.of(claims, refundAmounts, productNames)
