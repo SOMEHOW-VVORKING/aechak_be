@@ -136,6 +136,31 @@ class AdminRosterIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void 정지된_계정_승격은_500이_아니라_409_30017_을_반환한다() throws Exception {
+        long targetId = createOnboardedUser("정지회원", UserRole.GENERAL);
+        setStatus(targetId, UserStatus.SUSPENDED);
+
+        mockMvc.perform(bearer(post(BASE), actorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(promoteBody(targetId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(30017));
+        assertThat(roleOf(targetId)).isEqualTo(UserRole.GENERAL);
+    }
+
+    @Test
+    void 온보딩_미완료_계정_승격도_409_30017_을_반환한다() throws Exception {
+        long targetId = createUser(UserStatus.PENDING_ONBOARDING);
+
+        mockMvc.perform(bearer(post(BASE), actorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(promoteBody(targetId)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(30017));
+        assertThat(roleOf(targetId)).isEqualTo(UserRole.GENERAL);
+    }
+
+    @Test
     void 없는_계정_승격은_404_30000_를_반환한다() throws Exception {
         mockMvc.perform(bearer(post(BASE), actorToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -210,6 +235,13 @@ class AdminRosterIntegrationTest extends IntegrationTestBase {
         }));
         setRole(userId, role);
         return userId;
+    }
+
+    private void setStatus(long userId, UserStatus status) {
+        tx.executeWithoutResult(txStatus -> em.createQuery("update User u set u.status = :st where u.id = :id")
+                .setParameter("st", status)
+                .setParameter("id", userId)
+                .executeUpdate());
     }
 
     private void setRole(long userId, UserRole role) {
