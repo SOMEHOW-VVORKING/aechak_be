@@ -16,6 +16,7 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToMany
@@ -29,6 +30,12 @@ import java.time.LocalDateTime
     uniqueConstraints = [
         UniqueConstraint(name = "uk_orders_public_id", columnNames = ["public_id"]),
     ],
+    indexes = [
+        Index(name = "idx_orders_order_group_id", columnList = "order_group_id"),
+        Index(name = "idx_orders_seller_id_status", columnList = "seller_id, status, id"),
+        Index(name = "idx_orders_status_auto_confirm_due_at", columnList = "status, auto_confirm_due_at"),
+        Index(name = "idx_orders_seller_id_purchase_confirmed_at", columnList = "seller_id, purchase_confirmed_at"),
+    ],
 )
 class Order protected constructor(
     orderGroup: OrderGroup,
@@ -36,6 +43,8 @@ class Order protected constructor(
     sellerNameSnapshot: String,
     allocatedCouponDiscount: Long,
     sellerShippingFee: Long,
+    baseShippingFeeSnapshot: Long?,
+    freeShippingThresholdSnapshot: Long?,
 ) : AggregateRoot() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -65,6 +74,13 @@ class Order protected constructor(
 
     @Column(nullable = false)
     val sellerShippingFee: Long = sellerShippingFee
+
+    /** 주문 시점 셀러 배송 정책 스냅샷 — 부분취소 배송비 재계산의 근거. 이관 전 주문은 NULL */
+    @Column
+    val baseShippingFeeSnapshot: Long? = baseShippingFeeSnapshot
+
+    @Column
+    val freeShippingThresholdSnapshot: Long? = freeShippingThresholdSnapshot
 
     @Column
     var purchaseConfirmedAt: LocalDateTime? = null
@@ -130,9 +146,19 @@ class Order protected constructor(
             sellerNameSnapshot: String,
             allocatedCouponDiscount: Long,
             sellerShippingFee: Long,
+            baseShippingFeeSnapshot: Long?,
+            freeShippingThresholdSnapshot: Long?,
             items: List<OrderItem>,
         ): Order =
-            Order(orderGroup, sellerId, sellerNameSnapshot, allocatedCouponDiscount, sellerShippingFee).apply {
+            Order(
+                orderGroup,
+                sellerId,
+                sellerNameSnapshot,
+                allocatedCouponDiscount,
+                sellerShippingFee,
+                baseShippingFeeSnapshot,
+                freeShippingThresholdSnapshot,
+            ).apply {
                 items.forEach { _items += it }
             }
     }

@@ -84,6 +84,8 @@ class PaymentCompleteIntegrationTest : IntegrationTestBase() {
                     sellerNameSnapshot = "멍멍상회",
                     allocatedCouponDiscount = 0L,
                     sellerShippingFee = 0L,
+                    baseShippingFeeSnapshot = null,
+                    freeShippingThresholdSnapshot = null,
                     items =
                         listOf(
                             OrderItem.of(

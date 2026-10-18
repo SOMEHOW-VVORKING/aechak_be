@@ -90,6 +90,8 @@ class PaymentReconciliationIntegrationTest : IntegrationTestBase() {
                     sellerNameSnapshot = "멍멍상회",
                     allocatedCouponDiscount = 0L,
                     sellerShippingFee = 0L,
+                    baseShippingFeeSnapshot = null,
+                    freeShippingThresholdSnapshot = null,
                     items = listOf(OrderItem.of(1L, 501L, "기본", 1, amount, 0L, 1L)),
                 ),
             )
