@@ -2,6 +2,7 @@ package com.aechak.admin.user;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.aechak.admin.support.IntegrationTestBase;
 import com.aechak.application.support.PageQuery;
@@ -19,6 +20,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.PessimisticLockingFailureException;
 
 /** 관리자 역할 승격·강등·명부 조회 통합 테스트 — users.role이 실제로 바뀌는지 DB로 확인한다. */
 class AdminUserRoleIntegrationTest extends IntegrationTestBase {
@@ -131,7 +133,7 @@ class AdminUserRoleIntegrationTest extends IntegrationTestBase {
         long secondAdmin = createUser(UserStatus.ACTIVE, UserRole.ADMIN);
         CountDownLatch locked = new CountDownLatch(1);
         CountDownLatch commitAllowed = new CountDownLatch(1);
-        ExecutorService pool = Executors.newFixedThreadPool(2);
+        ExecutorService pool = Executors.newSingleThreadExecutor();
 
         try {
             Future<?> holder = pool.submit(() -> tx.executeWithoutResult(txStatus -> {
@@ -141,34 +143,38 @@ class AdminUserRoleIntegrationTest extends IntegrationTestBase {
             }));
             assertThat(locked.await(10, TimeUnit.SECONDS)).isTrue();
 
-            CountDownLatch contenderStarted = new CountDownLatch(1);
-            Future<Throwable> contender = pool.submit(() -> {
-                contenderStarted.countDown();
-                try {
-                    adminUserRoleUseCase.demote(ACTOR_ADMIN_ID, secondAdmin);
-                    return null;
-                } catch (Throwable thrown) {
-                    return thrown;
-                }
-            });
-            assertThat(contenderStarted.await(10, TimeUnit.SECONDS)).isTrue();
-            Thread.sleep(500);
-            // 잠금이 없으면 두 번째 강등이 첫 강등의 커밋을 기다리지 않고 이미 끝나 있다
-            assertThat(contender.isDone()).isFalse();
-            commitAllowed.countDown();
+            // 잠금이 없으면 대기 없이 강등에 성공해 예외가 null이 된다
+            assertThat(catchThrowable(() -> demoteWaitingAtMostTwoSeconds(secondAdmin)))
+                    .isInstanceOf(PessimisticLockingFailureException.class);
 
+            commitAllowed.countDown();
             holder.get(30, TimeUnit.SECONDS);
-            assertThat(contender.get(30, TimeUnit.SECONDS))
-                    .isInstanceOf(BusinessException.class)
-                    .extracting(thrown -> ((BusinessException) thrown).getErrorCode())
-                    .isEqualTo(UserErrorCode.LAST_ADMIN_CANNOT_BE_DEMOTED);
         } finally {
             commitAllowed.countDown();
             pool.shutdownNow();
+            resetLockWaitTimeout();
         }
 
+        // 첫 강등이 커밋된 뒤의 두 번째 강등은 마지막 관리자 가드에 막힌다
+        assertThatThrownBy(() -> adminUserRoleUseCase.demote(ACTOR_ADMIN_ID, secondAdmin))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(UserErrorCode.LAST_ADMIN_CANNOT_BE_DEMOTED);
         assertThat(roleOf(firstAdmin)).isEqualTo(UserRole.GENERAL);
         assertThat(roleOf(secondAdmin)).isEqualTo(UserRole.ADMIN);
+    }
+
+    /** 잠금 대기를 2초로 줄여 강등을 시도한다 — 선행 트랜잭션이 잠금을 쥔 동안 호출하면 대기 후 실패한다. */
+    private void demoteWaitingAtMostTwoSeconds(long targetUserId) {
+        tx.executeWithoutResult(txStatus -> {
+            em.createNativeQuery("set innodb_lock_wait_timeout = 2").executeUpdate();
+            adminUserRoleUseCase.demote(ACTOR_ADMIN_ID, targetUserId);
+        });
+    }
+
+    private void resetLockWaitTimeout() {
+        tx.executeWithoutResult(txStatus ->
+                em.createNativeQuery("set innodb_lock_wait_timeout = default").executeUpdate());
     }
 
     private void await(CountDownLatch latch) {
