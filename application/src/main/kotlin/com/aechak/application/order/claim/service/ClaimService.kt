@@ -28,11 +28,20 @@ class ClaimService(
     @param:Value("\${order.claim.auto-approve-days:2}") private val autoApproveDays: Long,
 ) {
     fun requestClaim(command: RequestClaimCommand): RequestClaimResult {
-        val order = ownedOrder(command.orderPublicId, command.buyerId)
+        // 주문 행을 먼저 선점한다 — 겹친 요청이 중복 검사를 둘 다 통과하면 같은 품목에 클레임이 두 건 걸린다
+        val order =
+            orderRepository.findByPublicIdAndBuyerIdForUpdate(command.orderPublicId, command.buyerId)
+                ?: throw BusinessException(OrderErrorCode.ORDER_NOT_FOUND)
         val targets = resolveTargets(order, command.targets)
         rejectIfAlreadyClaimed(targets.keys)
 
-        val amounts = calculateAmounts(order, targets)
+        val amounts =
+            claimAmountCalculator.calculate(
+                order = order,
+                groupOrders = groupOrdersOf(order),
+                usedPoint = order.orderGroup.usedPoint,
+                targets = targets,
+            )
         val claim =
             Claim.request(
                 order = order,
@@ -59,11 +68,17 @@ class ClaimService(
             claimItemProductQueryPort
                 .findProductNames(orderItemIds)
                 .associate { it.orderItemId to it.productName }
+        val groupOrders = groupOrdersOf(order)
         val refundAmounts =
             claims.associate { claim ->
                 claim.publicId to
                     claim.itemRefundTotal() +
-                    claimAmountCalculator.shippingFeeRefund(order, claim.claimedQuantityByOrderItemId())
+                    claimAmountCalculator.shippingFeeRefund(
+                        order = order,
+                        groupOrders = groupOrders,
+                        usedPoint = order.orderGroup.usedPoint,
+                        targets = claim.claimedQuantityByOrderItemId(),
+                    )
             }
         return ClaimListResult.of(claims, refundAmounts, productNames)
     }
@@ -92,14 +107,8 @@ class ClaimService(
     }
 
     /** 적립금을 쓰지 않은 주문은 안분 분모가 필요 없어 그룹 전체를 읽지 않는다. */
-    private fun calculateAmounts(
-        order: Order,
-        targets: Map<Long, Int>,
-    ): ClaimAmounts {
-        val usedPoint = order.orderGroup.usedPoint
-        val groupOrders = if (usedPoint > 0L) orderRepository.findAllByOrderGroupId(order.orderGroup.id) else listOf(order)
-        return claimAmountCalculator.calculate(order, groupOrders, usedPoint, targets)
-    }
+    private fun groupOrdersOf(order: Order): List<Order> =
+        if (order.orderGroup.usedPoint > 0L) orderRepository.findAllByOrderGroupId(order.orderGroup.id) else listOf(order)
 
     /** 대상 품목을 지정하지 않으면 주문 전체를 전량 대상으로 본다. */
     private fun resolveTargets(

@@ -35,6 +35,9 @@ import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import java.time.LocalDateTime
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * 구매자 클레임 요청·조회·철회 통합. 환불액은 요청 시점에 claim_items로 확정 저장되므로
@@ -88,7 +91,7 @@ class ClaimRequestIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `적립금을 쓴 주문의 환불액 합은 배송비까지 더해 결제액과 같다`() {
+    fun `적립금을 쓴 주문의 전체 취소 환불액은 결제액과 같다`() {
         val seeded =
             seedOrder(
                 items = listOf(ItemSpec(20_000L, 1), ItemSpec(15_500L, 2)),
@@ -105,11 +108,40 @@ class ClaimRequestIntegrationTest : IntegrationTestBase() {
                 .getContentAsString(Charsets.UTF_8)
 
         assertEquals(seeded.finalPaymentAmount, JsonPath.read<Int>(body, "$.data.refundAmount").toLong())
-        assertEquals(
-            seeded.finalPaymentAmount - seeded.shippingFee,
-            claimItemRefundTotal(seeded.orderId),
-            "적립금은 품목 금액에 비례해 안분되고 잔차까지 소진돼야 한다",
+        assertTrue(
+            claimItemRefundTotal(seeded.orderId) < seeded.productAmount,
+            "적립금으로 낸 몫은 현금 환불액에서 빠져야 한다",
         )
+    }
+
+    /** 적립금 사용 상한은 상품금액이 아니라 배송비까지 더한 결제 대상 금액이다. */
+    @Test
+    fun `적립금이 상품금액을 넘어도 환불액은 결제액을 넘지 않는다`() {
+        val seeded = seedOrder(items = listOf(ItemSpec(1_000L, 1)), shippingFee = 3_000L, usedPoint = 2_000L)
+
+        val body =
+            mockMvc
+                .perform(requestClaim(token, seeded.orderPublicId, """{"claimType":"CANCEL","reasonCode":"CHANGE_OF_MIND"}"""))
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+
+        assertEquals(2_000L, seeded.finalPaymentAmount, "전제: 결제액은 2,000원이다")
+        assertEquals(seeded.finalPaymentAmount, JsonPath.read<Int>(body, "$.data.refundAmount").toLong())
+    }
+
+    /** 중복 검사는 조회라 선점 없이는 겹친 요청이 둘 다 통과한다. */
+    @Test
+    fun `동시 취소 요청은 하나만 성공한다`() {
+        val seeded = seedOrder(items = listOf(ItemSpec(20_000L, 1)))
+
+        val results =
+            raceTwo { requestClaim(token, seeded.orderPublicId, """{"claimType":"CANCEL","reasonCode":"CHANGE_OF_MIND"}""") }
+
+        assertEquals(listOf(201, 409), results.map { it.first }.sorted(), "결과: $results")
+        assertEquals("50403", errorCodeOf(results.first { it.first == 409 }.second))
+        assertEquals(1, claimCount(seeded.orderId), "같은 품목에 클레임이 두 건 걸리면 환불이 두 번 나간다")
     }
 
     @Test
@@ -313,6 +345,30 @@ class ClaimRequestIntegrationTest : IntegrationTestBase() {
 
     private fun MockHttpServletRequestBuilder.bearer(token: String): MockHttpServletRequestBuilder =
         this.header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+
+    private fun errorCodeOf(body: String): String? = Regex("\"errorCode\"\\s*:\\s*(\\d+)").find(body)?.groupValues?.get(1)
+
+    private fun raceTwo(request: () -> MockHttpServletRequestBuilder): List<Pair<Int, String>> {
+        val pool = Executors.newFixedThreadPool(2)
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        try {
+            val futures =
+                listOf(request(), request()).map { builder ->
+                    pool.submit<Pair<Int, String>> {
+                        ready.countDown()
+                        start.await()
+                        val response = mockMvc.perform(builder).andReturn().response
+                        response.status to response.getContentAsString(Charsets.UTF_8)
+                    }
+                }
+            ready.await()
+            start.countDown()
+            return futures.map { it.get(60, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdown()
+        }
+    }
 
     private fun requestedClaimPublicId(orderPublicId: String): String {
         val body =

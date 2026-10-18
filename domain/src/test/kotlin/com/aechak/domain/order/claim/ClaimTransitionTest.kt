@@ -109,15 +109,32 @@ class ClaimTransitionTest {
     }
 
     @Test
-    fun `환불 실패는 재집행 경로를 남긴다`() {
+    fun `환불 실패는 다시 집행할 수 있는 상태로 돌아간다`() {
         val claim = requestedClaim().apply { approveBySeller(null) }
         claim.markRefundRequested()
 
         claim.markRefundFailed()
-
         assertEquals(ClaimStatus.REFUND_FAILED, claim.status)
         assertEquals(RefundStatus.REFUND_FAILED, claim.refundStatus)
-        assertTrue(ClaimStatus.REFUND_FAILED.canTransitionTo(ClaimStatus.APPROVED))
+
+        // 실패한 건이 되돌아오지 않으면 돈이 안 나간 승인 건이 영구히 멈춘다
+        claim.retryRefund()
+        assertEquals(ClaimStatus.APPROVED, claim.status)
+        assertEquals(RefundStatus.NONE, claim.refundStatus)
+
+        claim.markRefundRequested()
+        claim.markRefunded()
+        assertEquals(RefundStatus.DONE, claim.refundStatus)
+    }
+
+    @Test
+    fun `실패하지 않은 환불은 되돌릴 수 없다`() {
+        val claim = requestedClaim().apply { approveBySeller(null) }
+        claim.markRefundRequested()
+
+        val exception = assertFailsWith<BusinessException> { claim.retryRefund() }
+
+        assertEquals(OrderErrorCode.INVALID_CLAIM_STATUS_TRANSITION, exception.errorCode)
     }
 
     @Test

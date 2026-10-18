@@ -195,6 +195,15 @@ class Claim protected constructor(
         refundStatus = RefundStatus.REFUND_FAILED
     }
 
+    /** 실패한 환불을 다시 집행 대상으로 되돌린다 — 선점(markRefundRequested)을 다시 태워야 한다. */
+    fun retryRefund() {
+        if (refundStatus != RefundStatus.REFUND_FAILED) {
+            throw BusinessException(OrderErrorCode.INVALID_CLAIM_STATUS_TRANSITION)
+        }
+        transitionTo(ClaimStatus.APPROVED)
+        refundStatus = RefundStatus.NONE
+    }
+
     /** 클레임이 대상으로 잡은 주문품목별 취소 수량. */
     fun claimedQuantityByOrderItemId(): Map<Long, Int> = _items.associate { it.orderItem.id to it.quantity }
 

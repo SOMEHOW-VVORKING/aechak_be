@@ -3,7 +3,9 @@ package com.aechak.infra.persistence.order.order
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.repository.OrderRepository
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
@@ -21,6 +23,13 @@ interface OrderJpaRepository : JpaRepository<Order, Long> {
     fun findByPublicIdAndOrderGroupBuyerId(
         publicId: String,
         buyerId: Long,
+    ): Order?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select o from Order o join o.orderGroup g where o.publicId = :publicId and g.buyerId = :buyerId")
+    fun findForUpdateByPublicIdAndBuyerId(
+        @Param("publicId") publicId: String,
+        @Param("buyerId") buyerId: Long,
     ): Order?
 
     @Modifying
@@ -62,6 +71,11 @@ class OrderRepositoryAdapter(
         publicId: String,
         buyerId: Long,
     ): Order? = jpaRepository.findByPublicIdAndOrderGroupBuyerId(publicId, buyerId)
+
+    override fun findByPublicIdAndBuyerIdForUpdate(
+        publicId: String,
+        buyerId: Long,
+    ): Order? = jpaRepository.findForUpdateByPublicIdAndBuyerId(publicId, buyerId)
 
     override fun findByPublicIdAndSellerId(
         publicId: String,
