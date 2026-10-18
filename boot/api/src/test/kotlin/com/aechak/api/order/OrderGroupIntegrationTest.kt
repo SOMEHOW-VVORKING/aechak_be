@@ -123,6 +123,20 @@ class OrderGroupIntegrationTest : IntegrationTestBase() {
             address.id
         }!!
 
+    /** 셀러 생성 경로에 임계 설정이 없어 컬럼을 직접 갱신한다 — 무료배송 임계가 있는 셀러 재현용 */
+    private fun setFreeShippingThreshold(
+        sellerUserId: Long,
+        threshold: Long,
+    ) {
+        tx.execute {
+            em
+                .createQuery("update Seller s set s.freeShippingThreshold = :t, s.updatedAt = CURRENT_TIMESTAMP where s.userId = :id")
+                .setParameter("t", threshold)
+                .setParameter("id", sellerUserId)
+                .executeUpdate()
+        }
+    }
+
     private fun suspendSale(comboId: Long) {
         tx.execute {
             em
@@ -245,6 +259,29 @@ class OrderGroupIntegrationTest : IntegrationTestBase() {
         assertEquals(2L, cartItemCount())
         // 적립금 미사용이면 원장에 아무것도 남지 않아야 함
         assertEquals(0L, pointTxCount())
+    }
+
+    @Test
+    fun `주문마다 셀러 배송 정책 스냅샷이 남는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val combo = seedSellerProduct(71L, "멍멍상회", 3000L, 19000L, 10, "a")
+        setFreeShippingThreshold(71L, 100_000L)
+        val cartItemIds = seedCart(buyerId, listOf(combo to 1))
+        val addressId = seedAddress(buyerId)
+
+        mockMvc
+            .perform(postOrderGroup(token, orderGroupJson(cartItemIds, addressId, 22_000L), "key-shipping-snapshot"))
+            .andExpect(status().isCreated)
+
+        assertEquals(
+            listOf(3000L),
+            em.createQuery("select o.baseShippingFeeSnapshot from Order o", Long::class.javaObjectType).resultList,
+        )
+        assertEquals(
+            listOf(100_000L),
+            em.createQuery("select o.freeShippingThresholdSnapshot from Order o", Long::class.javaObjectType).resultList,
+        )
     }
 
     @Test
