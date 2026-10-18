@@ -35,7 +35,7 @@ private val shipment = QShipment.shipment
 private val courier = QCourierMaster.courierMaster
 private val claim = QClaim.claim
 
-/** 종결된 클레임 — 주문 흐름에 더 영향을 주지 않으므로 진행 중 판정에서 뺀다. */
+/** 종결 시각이 찍히지 않더라도 더 진행되지 않는 상태 — 진행 중 판정에서 뺀다. */
 private val CLOSED_CLAIM_STATUSES = setOf(ClaimStatus.REJECTED, ClaimStatus.WITHDRAWN)
 
 /**
@@ -131,8 +131,11 @@ class SellerOrderQueryAdapter(
                     claim.status,
                 ),
             ).from(claim)
-            .where(claim.orderId.`in`(orderIds), claim.status.notIn(CLOSED_CLAIM_STATUSES))
-            .orderBy(claim.orderId.asc(), claim.id.asc())
+            .where(
+                claim.orderId.`in`(orderIds),
+                claim.resolvedAt.isNull,
+                claim.status.notIn(CLOSED_CLAIM_STATUSES),
+            ).orderBy(claim.orderId.asc(), claim.id.asc())
             .fetch()
     }
 

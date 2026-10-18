@@ -234,6 +234,17 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `마지막 페이지를 넘어선 요청은 빈 목록에 다음 페이지도 없다`() {
+        seedOrder(status = OrderStatus.PAID)
+
+        getOrders("page=5&size=20")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.orders.length()").value(0))
+            .andExpect(jsonPath("$.data.totalCount").value(1))
+            .andExpect(jsonPath("$.data.hasNext").value(false))
+    }
+
+    @Test
     fun `size 상한을 넘기면 400과 90001이다`() {
         getOrders("size=101")
             .andExpect(status().isBadRequest)
@@ -324,6 +335,25 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
         getOrders()
             .andExpect(jsonPath("$.data.orders[0].activeClaim").value(nullValue()))
             .andExpect(jsonPath("$.data.orders[1].activeClaim").value(nullValue()))
+    }
+
+    @Test
+    fun `종결 시각이 찍힌 클레임은 승인 상태여도 진행 중으로 보지 않는다`() {
+        val order = seedOrder(status = OrderStatus.DELIVERED)
+        seedClaim(order.id, ClaimType.RETURN, status = ClaimStatus.APPROVED, resolvedAt = LocalDateTime.now())
+
+        getOrders()
+            .andExpect(jsonPath("$.data.orders[0].activeClaim").value(nullValue()))
+    }
+
+    @Test
+    fun `승인됐지만 처리 중인 클레임은 진행 중이다`() {
+        val order = seedOrder(status = OrderStatus.DELIVERED)
+        val claimPublicId = seedClaim(order.id, ClaimType.RETURN, status = ClaimStatus.APPROVED)
+
+        getOrders()
+            .andExpect(jsonPath("$.data.orders[0].activeClaim.claimId").value(claimPublicId))
+            .andExpect(jsonPath("$.data.orders[0].activeClaim.status").value("APPROVED"))
     }
 
     @Test
@@ -456,13 +486,11 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
 
         @Test
         fun `주문이 늘어도 목록 조회 쿼리 수는 그대로다`() {
-            seedOrder(status = OrderStatus.SHIPPING).also { seedShipment(it.id, trackingNumber = "100000000001") }
-            val withOneOrder = countStatementsOnList()
+            seedOrderWithBundle(index = 1)
+            val withOneOrder = countStatementsOnList(expectedOrders = 1)
 
-            (2..5).forEach { index ->
-                seedOrder(status = OrderStatus.SHIPPING).also { seedShipment(it.id, trackingNumber = "10000000000$index") }
-            }
-            val withFiveOrders = countStatementsOnList()
+            (2..5).forEach { seedOrderWithBundle(index = it) }
+            val withFiveOrders = countStatementsOnList(expectedOrders = 5)
 
             assertEquals(
                 withOneOrder,
@@ -473,16 +501,29 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
 
         @Test
         fun `목록 조회는 요청당 한 자릿수 쿼리로 끝난다`() {
-            (1..5).forEach { seedOrder(status = OrderStatus.PAID) }
+            (1..5).forEach { seedOrderWithBundle(index = it) }
 
-            val statements = countStatementsOnList()
+            val statements = countStatementsOnList(expectedOrders = 5)
 
             assertTrue(statements in 1..9, "목록 조회 쿼리 수가 예상 범위를 벗어났다: $statements")
         }
 
-        private fun countStatementsOnList(): Long {
+        /** 구매자를 주문마다 다르게 두고 배송·클레임까지 붙인다 — 조립 재료별 N+1이 각각 드러나야 한다. */
+        private fun seedOrderWithBundle(index: Int) {
+            val order = seedOrder(status = OrderStatus.DELIVERED, buyerId = createBuyer("집사$index"))
+            seedShipment(order.id, trackingNumber = "10000000000$index")
+            seedClaim(order.id, ClaimType.RETURN)
+        }
+
+        /** 쿼리 수만 세면 조립이 터져 응답이 비어도 통과한다 — 응답 성공과 행 수를 함께 고정한다. */
+        private fun countStatementsOnList(expectedOrders: Int): Long {
             statistics.clear()
             getOrders()
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.orders.length()").value(expectedOrders))
+                .andExpect(jsonPath("$.data.orders[0].shipment.trackingNumber").exists())
+                .andExpect(jsonPath("$.data.orders[0].activeClaim.claimId").exists())
+                .andExpect(jsonPath("$.data.orders[0].buyerNickname").exists())
             return statistics.prepareStatementCount
         }
     }
@@ -537,6 +578,7 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
         receiverName: String = "홍길동",
         contactNumber: String = "010-1234-5678",
         orderedAt: LocalDateTime? = null,
+        buyerId: Long = buyerUserId,
     ): SeedOrder {
         val seed =
             tx.execute {
@@ -561,7 +603,7 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
                 val productAmount = items.sumOf { it.unitPrice * it.quantity }
                 val group =
                     OrderGroup.create(
-                        buyerId = buyerUserId,
+                        buyerId = buyerId,
                         deliveryAddressId = 0L,
                         deliveryAddress =
                             DeliveryAddressSnapshot(
@@ -646,6 +688,7 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
         orderId: Long,
         claimType: ClaimType,
         status: ClaimStatus = ClaimStatus.CLAIM_REQUESTED,
+        resolvedAt: LocalDateTime? = null,
     ): String =
         tx.execute {
             val order = em.find(Order::class.java, orderId)
@@ -657,13 +700,12 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
                 )
             em.persist(claim)
             em.flush()
-            if (status != ClaimStatus.CLAIM_REQUESTED) {
-                em
-                    .createQuery("update Claim c set c.status = :status where c.id = :id")
-                    .setParameter("status", status)
-                    .setParameter("id", claim.id)
-                    .executeUpdate()
-            }
+            em
+                .createQuery("update Claim c set c.status = :status, c.resolvedAt = :resolvedAt where c.id = :id")
+                .setParameter("status", status)
+                .setParameter("resolvedAt", resolvedAt)
+                .setParameter("id", claim.id)
+                .executeUpdate()
             claim.publicId
         }!!
 

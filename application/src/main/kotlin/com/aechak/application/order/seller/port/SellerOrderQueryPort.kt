@@ -24,6 +24,6 @@ interface SellerOrderQueryPort {
 
     fun findShipments(orderIds: Collection<Long>): List<SellerOrderShipmentView>
 
-    /** 종결되지 않은 클레임만 — 주문당 여러 행일 수 있어 호출자가 최신 한 건을 고른다 */
+    /** 종결 시각이 없고 더 진행될 수 있는 클레임만 — 주문당 여러 행일 수 있어 호출자가 최신 한 건을 고른다 */
     fun findOpenClaims(orderIds: Collection<Long>): List<SellerOrderClaimView>
 }
