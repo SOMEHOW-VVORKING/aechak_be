@@ -9,7 +9,9 @@
 --  - enum 컬럼은 VARCHAR로 둔다(V21·V24와 같은 규약).
 --  - 인덱스·UNIQUE 이름은 엔티티 @Table 선언과 일치시킨다.
 
--- NOT NULL 좁히기가 남은 NULL을 조용히 0으로 바꾸지 않게 이 마이그레이션 세션만 strict로 고정한다.
+-- NOT NULL 좁히기가 남은 NULL을 조용히 0으로 바꾸지 않게 이 마이그레이션 동안만 strict로 고정하고
+-- 끝에서 원래 값으로 되돌린다. Flyway는 앱과 같은 커넥션 풀을 쓰므로 세션 설정을 남기면 안 된다.
+SET @saved_sql_mode = @@SESSION.sql_mode;
 SET SESSION sql_mode = IF(@@SESSION.sql_mode = '', 'STRICT_ALL_TABLES',
                           CONCAT(@@SESSION.sql_mode, ',STRICT_ALL_TABLES'));
 
@@ -991,3 +993,6 @@ VALUES ('CJ', 'CJ대한통운', NULL, b'1', NOW(6), NOW(6)),
        ('LOGEN', '로젠택배', NULL, b'1', NOW(6), NOW(6)),
        ('POST', '우체국택배', NULL, b'1', NOW(6), NOW(6))
 ON DUPLICATE KEY UPDATE courier_code = courier_code;
+
+-- 세션 설정 복원. 실패로 중단되면 이 줄에 닿지 않지만, 그때는 부팅이 멈춰 커넥션도 쓰이지 않는다.
+SET SESSION sql_mode = @saved_sql_mode;

@@ -151,6 +151,7 @@ class Claim protected constructor(
             order: Order,
             items: List<ClaimItem>,
         ): Claim {
+            require(order.id > 0L) { "클레임은 저장된 주문에만 걸 수 있습니다 — 스냅샷이 0으로 굳는다" }
             require(items.isNotEmpty()) { "클레임에는 대상 품목이 하나 이상 필요합니다" }
             val orderItems = order.items
             require(items.all { claimItem -> orderItems.any { it === claimItem.orderItem } }) {
