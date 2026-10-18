@@ -1,6 +1,7 @@
 package com.aechak.domain.user.user.repository
 
 import com.aechak.domain.user.user.User
+import com.aechak.domain.user.user.enums.UserRole
 
 interface UserRepository {
     fun findById(id: Long): User?
@@ -30,4 +31,13 @@ interface UserRepository {
         userId: Long,
         amount: Long,
     ): Boolean
+
+    /** 역할 기준 목록 — id 오름차순. */
+    fun findAllByRole(
+        role: UserRole,
+        page: Int,
+        size: Int,
+    ): List<User>
+
+    fun countByRole(role: UserRole): Long
 }
