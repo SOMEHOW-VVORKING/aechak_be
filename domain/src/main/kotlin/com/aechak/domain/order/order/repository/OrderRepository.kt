@@ -1,6 +1,7 @@
 package com.aechak.domain.order.order.repository
 
 import com.aechak.domain.order.order.Order
+import com.aechak.domain.order.order.enums.OrderStatus
 
 interface OrderRepository {
     /** 주문품목은 Order의 cascade로 함께 저장된다. */
@@ -8,6 +9,19 @@ interface OrderRepository {
 
     fun findAllByOrderGroupId(orderGroupId: Long): List<Order>
 
+    /** 셀러 스코프 단건 조회 — 타 셀러 주문은 없는 것으로 본다. */
+    fun findByPublicIdAndSellerId(
+        publicId: String,
+        sellerId: Long,
+    ): Order?
+
     /** 그룹 확정에 따른 셀러 주문 일괄 전이 — 결제대기 행만. 전이된 행 수 반환 */
     fun markAllPaidByOrderGroupId(orderGroupId: Long): Int
+
+    /** 기대 상태인 행만 전이한다 — 동시 전이의 선점 심판. 전이됐으면 true */
+    fun transitionStatusIf(
+        id: Long,
+        expected: OrderStatus,
+        next: OrderStatus,
+    ): Boolean
 }
