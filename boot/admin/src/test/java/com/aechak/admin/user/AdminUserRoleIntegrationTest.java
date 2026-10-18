@@ -12,6 +12,11 @@ import com.aechak.common.error.BusinessException;
 import com.aechak.domain.user.error.UserErrorCode;
 import com.aechak.domain.user.user.enums.UserRole;
 import com.aechak.domain.user.user.enums.UserStatus;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -69,6 +74,7 @@ class AdminUserRoleIntegrationTest extends IntegrationTestBase {
 
     @Test
     void 강등은_role을_GENERAL로_되돌리고_재호출에도_멱등하다() {
+        createUser(UserStatus.ACTIVE, UserRole.ADMIN); // 강등 후에도 남는 관리자
         long targetUserId = createUser(UserStatus.ACTIVE, UserRole.ADMIN);
 
         adminUserRoleUseCase.demote(ACTOR_ADMIN_ID, targetUserId);
@@ -117,6 +123,55 @@ class AdminUserRoleIntegrationTest extends IntegrationTestBase {
 
         assertThat(page.getItems()).isEmpty();
         assertThat(page.getTotalCount()).isEqualTo(2);
+    }
+
+    @Test
+    void 동시_강등은_직렬화되어_관리자가_0명이_되지_않는다() throws Exception {
+        long firstAdmin = createUser(UserStatus.ACTIVE, UserRole.ADMIN);
+        long secondAdmin = createUser(UserStatus.ACTIVE, UserRole.ADMIN);
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch commitAllowed = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<?> holder = pool.submit(() -> tx.executeWithoutResult(txStatus -> {
+                adminUserRoleUseCase.demote(ACTOR_ADMIN_ID, firstAdmin);
+                locked.countDown();
+                await(commitAllowed);
+            }));
+            assertThat(locked.await(10, TimeUnit.SECONDS)).isTrue();
+
+            Future<Throwable> contender = pool.submit(() -> {
+                try {
+                    adminUserRoleUseCase.demote(ACTOR_ADMIN_ID, secondAdmin);
+                    return null;
+                } catch (Throwable thrown) {
+                    return thrown;
+                }
+            });
+            Thread.sleep(500); // 두 번째 강등이 락 대기에 들어갈 시간
+            commitAllowed.countDown();
+
+            holder.get(30, TimeUnit.SECONDS);
+            assertThat(contender.get(30, TimeUnit.SECONDS))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(thrown -> ((BusinessException) thrown).getErrorCode())
+                    .isEqualTo(UserErrorCode.LAST_ADMIN_CANNOT_BE_DEMOTED);
+        } finally {
+            commitAllowed.countDown();
+            pool.shutdownNow();
+        }
+
+        assertThat(roleOf(firstAdmin)).isEqualTo(UserRole.GENERAL);
+        assertThat(roleOf(secondAdmin)).isEqualTo(UserRole.ADMIN);
+    }
+
+    private void await(CountDownLatch latch) {
+        try {
+            latch.await(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private UserRole roleOf(long userId) {
