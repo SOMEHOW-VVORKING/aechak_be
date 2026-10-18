@@ -140,10 +140,47 @@ class PaymentService(
         paymentRepository.findByOrderGroupId(orderGroupId)
             ?: throw BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND)
 
+    /**
+     * 취소 선점. 금액을 생략하면 남은 취소가능액 전액이고, 그 경우 PG에는 금액을 싣지 않는다
+     * (포트원은 금액 없는 요청을 전액 취소로 처리한다).
+     */
+    fun requestCancel(
+        orderGroupId: Long,
+        amount: Long?,
+    ): CancelTarget {
+        val payment = getByOrderGroupId(orderGroupId)
+        val cancellable = payment.cancellableAmount ?: throw BusinessException(PaymentErrorCode.PAYMENT_NOT_CANCELLABLE)
+        val requested = amount ?: cancellable
+        return CancelTarget(
+            payment = paymentRepository.save(payment.requestCancel(requested)),
+            requestedAmount = requested,
+            cancellableBefore = cancellable,
+        )
+    }
+
+    /** PG가 확정한 금액만 취소가능액에서 뺀다 — 원승인액(등록금액·실결제액)은 그대로 둔다 */
+    fun completeCancel(
+        payment: Payment,
+        cancelledAmount: Long,
+    ): Payment = paymentRepository.save(payment.completeCancel(cancelledAmount))
+
+    /** 취소 선점 해제 — 누적 취소액이 있으면 부분취소로, 없으면 승인으로 되돌린다 */
+    fun failCancel(payment: Payment): Payment = paymentRepository.save(payment.failCancel())
+
     data class CompletionTarget(
         val group: OrderGroup,
         val payment: Payment?,
     )
+
+    /** cancellableBefore 는 PG에 보낼 취소가능액 대조값 — 포트원 취소 API에 멱등키가 없어 중복 취소 방어가 여기 걸려 있다 */
+    data class CancelTarget(
+        val payment: Payment,
+        val requestedAmount: Long,
+        val cancellableBefore: Long,
+    ) {
+        /** 남은 전액을 취소하는 요청인가 — 그러면 PG에 금액을 싣지 않는다 */
+        val isFullCancel: Boolean get() = requestedAmount == cancellableBefore
+    }
 
     data class Ledger(
         val payment: Payment,

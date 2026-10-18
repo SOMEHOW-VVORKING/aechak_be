@@ -1,5 +1,7 @@
 package com.aechak.infra.client.payment
 
+import com.aechak.application.payment.port.PaymentCancelCommand
+import com.aechak.application.payment.port.PaymentCancelResult
 import com.aechak.application.payment.port.PaymentCancelStatus
 import com.aechak.application.payment.port.PaymentGatewayPort
 import com.aechak.application.payment.port.PaymentGatewayStatus
@@ -24,6 +26,7 @@ import java.time.ZoneId
 class PortOneAdapter(
     @Qualifier(PortOneConfig.PORT_ONE_REST_CLIENT) private val restClient: RestClient,
     private val properties: PortOneProperties,
+    private val cancelProperties: PaymentCancelProperties,
 ) : PaymentGatewayPort {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -92,28 +95,34 @@ class PortOneAdapter(
             status = response.status,
             totalAmount = response.amount.total,
             paidAmount = response.amount.paid,
+            cancelledAmount = response.amount.cancelled,
             pgTxId = response.pgTxId,
             paidAt = response.paidAt?.atZoneSameInstant(KST)?.toLocalDateTime(),
             failureCode = response.failure?.pgCode ?: response.failure?.reason,
         )
     }
 
-    override fun cancel(
-        paymentId: String,
-        reason: String,
-    ): PaymentCancelStatus {
+    override fun cancel(command: PaymentCancelCommand): PaymentCancelResult {
         requireApiSecret()
+        assertWithinAmountLimit(command)
+        val paymentId = command.paymentId
         val response =
             try {
                 restClient
                     .post()
                     .uri(CANCEL_PATH, paymentId)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(CancelRequest(reason = reason))
-                    .retrieve()
+                    .body(
+                        CancelRequest(
+                            storeId = properties.storeId.ifBlank { null },
+                            reason = command.reason,
+                            amount = command.amount,
+                            currentCancellableAmount = command.currentCancellableAmount,
+                            requester = command.requester.name,
+                        ),
+                    ).retrieve()
                     .onStatus({ it.isError }) { _, response ->
-                        logFailure(CANCEL_PAYMENT_OPERATION, paymentId, response)
-                        throw BusinessException(PaymentErrorCode.PAYMENT_GATEWAY_ERROR)
+                        throw cancelFailure(paymentId, response)
                     }.body(CancelResponse::class.java)
             } catch (e: HttpMessageConversionException) {
                 throw gatewayFailure(CANCEL_PAYMENT_OPERATION, paymentId, e)
@@ -124,7 +133,78 @@ class PortOneAdapter(
             }
         if (response == null) throw BusinessException(PaymentErrorCode.PAYMENT_GATEWAY_ERROR)
 
-        return response.cancellation.status
+        val cancellation = response.cancellation
+        log.info(
+            "포트원 {} 응답. paymentId={}, status={}, cancelledAmount={}",
+            CANCEL_PAYMENT_OPERATION,
+            paymentId,
+            cancellation.status,
+            cancellation.totalAmount,
+        )
+        return PaymentCancelResult(
+            status = cancellation.status,
+            cancelledAmount = cancellation.totalAmount,
+            pgCancellationId = cancellation.pgCancellationId,
+        )
+    }
+
+    /** 실수나 계산 오류가 큰 금액으로 나가지 않게 PG로 떠나기 직전에 거는 상한 */
+    private fun assertWithinAmountLimit(command: PaymentCancelCommand) {
+        // 전액 취소는 amount 를 싣지 않으므로 우리가 아는 취소가능액을 상한 대조 대상으로 쓴다
+        val amount = command.amount ?: command.currentCancellableAmount
+        if (amount == null) {
+            log.error("취소 금액을 알 수 없어 상한 대조를 못 함. paymentId={}", command.paymentId)
+            throw BusinessException(PaymentErrorCode.PAYMENT_CANCEL_AMOUNT_LIMIT_EXCEEDED)
+        }
+        if (amount > cancelProperties.maxAmount) {
+            log.error(
+                "취소 금액 상한 초과로 호출 중단. paymentId={}, amount={}, maxAmount={}",
+                command.paymentId,
+                amount,
+                cancelProperties.maxAmount,
+            )
+            throw BusinessException(PaymentErrorCode.PAYMENT_CANCEL_AMOUNT_LIMIT_EXCEEDED)
+        }
+    }
+
+    /**
+     * 취소 실패를 포트원 오류 타입별로 분해한다. 묶어서 502로 올리면 초과 취소와 잔액 불일치가
+     * 재시도 가능한 장애로 읽혀 같은 취소가 반복된다.
+     */
+    private fun cancelFailure(
+        paymentId: String,
+        response: ClientHttpResponse,
+    ): BusinessException {
+        val type = logFailure(CANCEL_PAYMENT_OPERATION, paymentId, response)
+        val code =
+            when (type) {
+                CANCEL_AMOUNT_EXCEEDS_TYPE -> {
+                    PaymentErrorCode.CANCEL_AMOUNT_EXCEEDS_CANCELLABLE
+                }
+
+                // 우리가 보낸 취소가능액과 PG 잔액이 다르다 = 우리가 모르는 취소가 이미 있었다
+                CANCELLABLE_AMOUNT_CONSISTENCY_BROKEN_TYPE, PAYMENT_ALREADY_CANCELLED_TYPE -> {
+                    PaymentErrorCode.PAYMENT_CANCELLABLE_AMOUNT_CONFLICT
+                }
+
+                PAYMENT_NOT_FOUND_TYPE -> {
+                    PaymentErrorCode.PAYMENT_NOT_FOUND
+                }
+
+                PAYMENT_NOT_PAID_TYPE -> {
+                    PaymentErrorCode.PAYMENT_NOT_CANCELLABLE
+                }
+
+                MAX_CANCEL_COUNT_REACHED_TYPE, INVALID_REQUEST_TYPE -> {
+                    PaymentErrorCode.PAYMENT_CANCEL_FAILED
+                }
+
+                // 포트원 오류 봉투가 아닌 응답(프록시·WAF)과 5xx는 재시도 가능한 장애로 본다
+                else -> {
+                    PaymentErrorCode.PAYMENT_GATEWAY_ERROR
+                }
+            }
+        return BusinessException(code)
     }
 
     private fun requireApiSecret() {
@@ -177,6 +257,12 @@ class PortOneAdapter(
         /** 포트원 오류 본문 판별값 */
         private const val ALREADY_PAID_TYPE = "ALREADY_PAID"
         private const val PAYMENT_NOT_FOUND_TYPE = "PAYMENT_NOT_FOUND"
+        private const val CANCEL_AMOUNT_EXCEEDS_TYPE = "CANCEL_AMOUNT_EXCEEDS_CANCELLABLE_AMOUNT"
+        private const val CANCELLABLE_AMOUNT_CONSISTENCY_BROKEN_TYPE = "CANCELLABLE_AMOUNT_CONSISTENCY_BROKEN"
+        private const val MAX_CANCEL_COUNT_REACHED_TYPE = "MAX_CANCEL_COUNT_REACHED"
+        private const val INVALID_REQUEST_TYPE = "INVALID_REQUEST"
+        private const val PAYMENT_ALREADY_CANCELLED_TYPE = "PAYMENT_ALREADY_CANCELLED"
+        private const val PAYMENT_NOT_PAID_TYPE = "PAYMENT_NOT_PAID"
 
         /** 오류 본문에서 type 필드만 뽑는 전용 파서 */
         private val ERROR_BODY_MAPPER = JsonMapper.builder().build()
@@ -197,8 +283,13 @@ private data class PreRegisterRequest(
     val currency: String,
 )
 
+/** amount 를 싣지 않으면 포트원이 전액 취소로 처리한다 */
 private data class CancelRequest(
+    val storeId: String?,
     val reason: String,
+    val amount: Long?,
+    val currentCancellableAmount: Long?,
+    val requester: String,
 )
 
 private data class PaymentResponse(
@@ -211,6 +302,8 @@ private data class PaymentResponse(
     data class Amount(
         val total: Long,
         val paid: Long,
+        /** 응답 스키마에서 빠져도 조회가 깨지지 않게 기본 0 — 그 경우 대사가 금액 불일치로 사람을 부른다 */
+        val cancelled: Long = 0L,
     )
 
     /** FAILED 응답에만 실림 — 포트원 공식 스키마 PaymentFailure(reason·pgCode·pgMessage)의 부분 매핑 */
@@ -225,5 +318,8 @@ private data class CancelResponse(
 ) {
     data class Cancellation(
         val status: PaymentCancelStatus,
+        /** 이번 취소로 확정된 금액. REQUESTED(비동기 승인)면 아직 확정이 아니므로 안 올 수 있다 */
+        val totalAmount: Long? = null,
+        val pgCancellationId: String? = null,
     )
 }

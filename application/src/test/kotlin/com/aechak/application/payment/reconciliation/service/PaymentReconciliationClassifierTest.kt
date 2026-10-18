@@ -62,8 +62,9 @@ class PaymentReconciliationClassifierTest {
     private fun payment(
         status: PaymentStatus,
         target: Long = amount,
-        paid: Long? = if (status == PaymentStatus.APPROVED) amount else null,
+        paid: Long? = if (status == PaymentStatus.PENDING || status == PaymentStatus.FAILED) null else amount,
         cancellable: Long? = paid,
+        cancelledAmount: Long = 0L,
     ): Payment =
         Payment.restore(
             id = 7L,
@@ -72,10 +73,12 @@ class PaymentReconciliationClassifierTest {
             method = PaymentMethod.CARD,
             targetAmount = target,
             status = status,
-            transactionId = if (status == PaymentStatus.APPROVED) "pg-tx" else null,
+            transactionId = if (status == PaymentStatus.PENDING) null else "pg-tx",
             realPaidAmount = paid,
             failureCode = null,
             cancellableAmount = cancellable,
+            cancelledAmount = cancelledAmount,
+            cancelRequestedAt = if (status == PaymentStatus.CANCEL_REQUESTED) LocalDateTime.of(2026, 10, 15, 11, 0) else null,
             version = 0,
         )
 
@@ -331,6 +334,77 @@ class PaymentReconciliationClassifierTest {
             MismatchType.AMOUNT_MISMATCH,
             ReconciliationResolution.MANUAL_REQUIRED,
             payment(PaymentStatus.APPROVED, cancellable = 0L),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.PAID),
+        )
+
+    @Test
+    fun `우리가 취소 요청 중이고 PG가 아직 결제완료면 정상 대기라 사람을 부르지 않는다`() =
+        assertVerdict(
+            MismatchType.CANCEL_IN_FLIGHT,
+            ReconciliationResolution.NOT_REQUIRED,
+            // 선점은 금액 원장을 건드리지 않으므로 취소가능액은 승인액 그대로다
+            payment(PaymentStatus.CANCEL_REQUESTED),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.PAID),
+        )
+
+    @Test
+    fun `취소 요청 중인데 원승인액이 PG와 다르면 대기가 아니라 금액 불일치다`() =
+        assertVerdict(
+            MismatchType.AMOUNT_MISMATCH,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.CANCEL_REQUESTED),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.PAID, paid = 12_000L),
+        )
+
+    @Test
+    fun `취소 요청만 남았는데 PG는 이미 취소했으면 원장 미반영이라 사람 확인이다`() =
+        assertVerdict(
+            MismatchType.PG_CANCELLED_OURS_UNSYNCED,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.CANCEL_REQUESTED),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.CANCELLED, cancelled = amount),
+        )
+
+    @Test
+    fun `전액 취소가 원장과 그룹에 모두 반영됐으면 일치다`() =
+        assertVerdict(
+            MismatchType.MATCHED,
+            ReconciliationResolution.NOT_REQUIRED,
+            payment(PaymentStatus.CANCELLED, cancellable = 0L, cancelledAmount = amount),
+            group(OrderGroupStatus.CANCELLED),
+            pg(PaymentGatewayStatus.CANCELLED, cancelled = amount),
+        )
+
+    @Test
+    fun `부분 취소가 원장과 그룹에 모두 반영됐으면 일치다`() =
+        assertVerdict(
+            MismatchType.MATCHED,
+            ReconciliationResolution.NOT_REQUIRED,
+            payment(PaymentStatus.PARTIAL_CANCELLED, cancellable = 10_000L, cancelledAmount = 3_000L),
+            group(OrderGroupStatus.PARTIALLY_CANCELLED),
+            pg(PaymentGatewayStatus.PARTIAL_CANCELLED, cancelled = 3_000L),
+        )
+
+    @Test
+    fun `원장만 깎고 그룹을 전이하지 않았으면 사람 확인이다`() =
+        assertVerdict(
+            MismatchType.PG_CANCELLED_OURS_UNSYNCED,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.PARTIAL_CANCELLED, cancellable = 10_000L, cancelledAmount = 3_000L),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.PARTIAL_CANCELLED, cancelled = 3_000L),
+        )
+
+    @Test
+    fun `전액 취소가 끝난 결제를 PG가 결제완료로 말하면 금액 불일치다`() =
+        assertVerdict(
+            MismatchType.AMOUNT_MISMATCH,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.CANCELLED, cancellable = 0L, cancelledAmount = amount),
             group(OrderGroupStatus.PAID),
             pg(PaymentGatewayStatus.PAID),
         )

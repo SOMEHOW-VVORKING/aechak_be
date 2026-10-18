@@ -33,7 +33,8 @@ object PaymentReconciliationClassifier {
         if (payment == null) return manual(MismatchType.PG_ONLY_UNKNOWN)
         // 결제 행은 항상 그룹을 가리킨다 — 없으면 PG와 무관하게 우리 데이터가 깨진 것
         if (group == null) return manual(MismatchType.OURS_INCONSISTENT)
-        val oursApproved = payment.status == PaymentStatus.APPROVED
+        // 취소 요청·부분취소·전액취소도 "승인이 성립한 뒤"다 — 좁게 보면 모든 취소 건이 원장 깨짐으로 읽힌다
+        val oursApproved = payment.status.isApprovedOrLater
         // 결제완료 이후 상태(PAID·부분취소)의 그룹에 결제 행이 미승인이면 확정 트랜잭션이 반만 남은 것 — PG 대답과 무관하게 사람이 봐야 한다
         val groupSettled = group.status == OrderGroupStatus.PAID || group.status == OrderGroupStatus.PARTIALLY_CANCELLED
         if (groupSettled && !oursApproved) return manual(MismatchType.OURS_INCONSISTENT)
@@ -66,6 +67,14 @@ object PaymentReconciliationClassifier {
         if (oursApproved) {
             // 승인 원장이 PG와 다르면 그룹 상태와 무관하게 사람 확인 — 확정 본체의 approve()는 이미 승인된 행을 고치지 않는다
             if (!approvedLedgerAgrees(group, payment, gateway)) return manual(MismatchType.AMOUNT_MISMATCH)
+            // 취소를 요청했고 PG는 아직 반영 전 — 선점 때 원장을 깎지 않으므로 금액은 일치한다.
+            // 일치로 접지 않고 유형만 따로 남겨, 요청만 남고 끝나지 않은 건을 목록에서 찾을 수 있게 한다
+            if (payment.status == PaymentStatus.CANCEL_REQUESTED &&
+                gateway.cancelledAmount == 0L &&
+                group.status == OrderGroupStatus.PAID
+            ) {
+                return Verdict(MismatchType.CANCEL_IN_FLIGHT, ReconciliationResolution.NOT_REQUIRED)
+            }
             // 취소가능액도 원장의 일부다 — PG가 취소한 적 없으면 승인액 그대로 남아 있어야 한다
             if (payment.cancellableAmount != gateway.paidAmount - gateway.cancelledAmount) return manual(MismatchType.AMOUNT_MISMATCH)
             if (group.status == OrderGroupStatus.PAID) return matched()
@@ -93,7 +102,10 @@ object PaymentReconciliationClassifier {
         return if (cancellableAgrees && groupAgrees) matched() else manual(MismatchType.PG_CANCELLED_OURS_UNSYNCED)
     }
 
-    /** 주문금액·등록금액·우리 실결제액·PG 승인액이 전부 같아야 한다 — 하나라도 어긋나면 사람 확인 */
+    /**
+     * 주문금액·등록금액·우리 실결제액·PG 승인액이 전부 같아야 한다 — 하나라도 어긋나면 사람 확인.
+     * 취소는 이 넷을 바꾸지 않는다(줄어드는 것은 취소가능액뿐) — 그래서 취소 건에도 그대로 적용된다.
+     */
     private fun approvedLedgerAgrees(
         group: OrderGroup,
         payment: Payment,
