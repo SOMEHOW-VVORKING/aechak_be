@@ -2,7 +2,10 @@ package com.aechak.domain.product.option.repository
 
 import com.aechak.domain.product.option.OptionCombination
 
-/** 재고 차감/복구는 어댑터의 조건부 원자 UPDATE(차감은 잔량, 복구는 컬럼 상한을 조건으로)로 강제한다. */
+/**
+ * 재고 차감/복구는 어댑터의 조건부 원자 UPDATE(차감은 잔량, 복구는 컬럼 상한을 조건으로)로 강제한다.
+ * 타 도메인은 이 포트를 직접 부르지 않고 product의 재고 변이 UseCase를 경유한다.
+ */
 interface OptionCombinationRepository {
     fun saveAll(optionCombinations: List<OptionCombination>): List<OptionCombination>
 

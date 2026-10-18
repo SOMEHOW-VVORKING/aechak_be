@@ -24,6 +24,7 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.application.pii", // 암호문 Base64 왕복 부품(PiiStringCodec)
         "com.aechak.application.payment", // 결제 확정 본체·대사
         "com.aechak.application.order", // 확정의 주문 전이(OrderUseCase) — 장바구니 파사드가 딸려와 file·s3가 필요하다
+        "com.aechak.application.product.option", // 만료 복원이 경유하는 재고 변이(OptionStockUseCase)
         "com.aechak.application.user.address", // OrderFacade의 배송지 의존
         "com.aechak.application.user.point", // OrderFacade의 적립금 의존
         "com.aechak.application.user.user", // 적립금·배송지 파사드의 UserUseCase 의존

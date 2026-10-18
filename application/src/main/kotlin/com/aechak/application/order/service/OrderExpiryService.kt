@@ -5,6 +5,9 @@ import com.aechak.application.order.usecase.query.ExpiredOrderGroupQuery
 import com.aechak.application.order.usecase.result.ExpireOrderGroupResult
 import com.aechak.application.order.usecase.result.ExpireOrderGroupStatus
 import com.aechak.application.order.usecase.result.ExpiredOrderGroupResult
+import com.aechak.application.product.option.usecase.OptionStockUseCase
+import com.aechak.application.product.option.usecase.command.RestoreOptionStockCommand
+import com.aechak.application.product.option.usecase.result.RestoreOptionStockStatus
 import com.aechak.application.user.point.usecase.PointUseCase
 import com.aechak.application.user.point.usecase.command.ReleasePointCommand
 import com.aechak.domain.order.group.OrderGroup
@@ -16,8 +19,6 @@ import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.order.repository.OrderStatusHistoryRepository
-import com.aechak.domain.product.option.OptionCombination
-import com.aechak.domain.product.option.repository.OptionCombinationRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
@@ -31,7 +32,7 @@ class OrderExpiryService(
     private val orderGroupRepository: OrderGroupRepository,
     private val orderRepository: OrderRepository,
     private val orderStatusHistoryRepository: OrderStatusHistoryRepository,
-    private val optionCombinationRepository: OptionCombinationRepository,
+    private val optionStockUseCase: OptionStockUseCase,
     private val pointUseCase: PointUseCase,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -111,36 +112,21 @@ class OrderExpiryService(
                 .flatMap { it.items }
                 .groupBy { it.optionCombinationId }
                 .mapValues { (_, items) -> items.sumOf { it.quantity } }
-        val failed = linkedMapOf<Long, Int>()
+        val failures = mutableListOf<String>()
         var restored = 0
         quantities.toSortedMap().forEach { (optionCombinationId, quantity) ->
-            if (optionCombinationRepository.restoreStock(optionCombinationId, quantity)) {
+            val result = optionStockUseCase.restoreStock(RestoreOptionStockCommand(optionCombinationId, quantity))
+            if (result.status == RestoreOptionStockStatus.RESTORED) {
                 restored++
             } else {
-                failed[optionCombinationId] = quantity
+                failures += "옵션조합 $optionCombinationId 수량 $quantity(${result.status}, 현재=${result.currentStock})"
             }
         }
-        if (failed.isNotEmpty()) {
+        if (failures.isNotEmpty()) {
             // 수동 복원에 필요한 전량을 한 줄에 모은다. 취소 자체는 되돌리지 않는다 — 되돌리면 그룹이 결제도 취소도 안 된 채로 남는다
-            log.error(
-                "재고 복원 실패 — 수동 복원 필요. orderGroupPublicId={}, 미복원={}",
-                group.publicId,
-                failed.entries.joinToString { (id, quantity) -> "옵션조합 $id 수량 $quantity(${restoreFailureReason(id, quantity)})" },
-            )
+            log.error("재고 복원 실패 — 수동 복원 필요. orderGroupPublicId={}, 미복원={}", group.publicId, failures.joinToString())
         }
-        return restored to failed.size
-    }
-
-    /** 0행은 상한 초과와 옵션조합 소멸 둘 다에서 나온다 — 원인을 단정하지 않고 현재 재고를 읽어서 적는다 */
-    private fun restoreFailureReason(
-        optionCombinationId: Long,
-        quantity: Int,
-    ): String {
-        val current = optionCombinationRepository.findById(optionCombinationId) ?: return "옵션조합 없음"
-        if (current.stockQuantity > OptionCombination.MAX_STOCK_QUANTITY - quantity) {
-            return "재고 상한 초과, 현재 ${current.stockQuantity}"
-        }
-        return "원인 불명, 현재 ${current.stockQuantity}"
+        return restored to failures.size
     }
 
     /** 적립금을 쓰지 않은 주문도 있다 — 그때는 원장을 만들지 않는다 */
