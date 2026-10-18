@@ -10,16 +10,23 @@ import com.aechak.domain.order.order.OrderItem
 import com.aechak.domain.order.order.OrderStatusHistory
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.enums.TriggeredBy
+import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.shipment.CourierMaster
 import com.aechak.domain.order.shipment.Shipment
 import com.aechak.domain.order.shipment.enums.ShipmentType
 import com.aechak.domain.seller.seller.Seller
+import com.aechak.infra.persistence.order.order.OrderRepositoryAdapter
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.context.TestConfiguration
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Import
+import org.springframework.context.annotation.Primary
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.security.web.FilterChainProxy
@@ -33,13 +40,16 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import java.time.LocalDateTime
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 셀러 송장 등록 통합. 상품 준비중에서 등록하면 발송 대기를 거쳐 2단 전이하고 이력도 2행이다.
  * 전이의 심판이 조건부 UPDATE라 Testcontainers 실 MySQL이 전제다(H2 금지).
  */
+@Import(SellerShipmentIntegrationTest.TransitionRaceConfig::class)
 class SellerShipmentIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var context: WebApplicationContext
@@ -49,6 +59,9 @@ class SellerShipmentIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var sellerOrderUseCase: SellerOrderUseCase
+
+    @Autowired
+    private lateinit var transitionBarrier: TransitionBarrier
 
     private lateinit var mockMvc: MockMvc
     private var sellerUserId = 0L
@@ -65,6 +78,11 @@ class SellerShipmentIntegrationTest : IntegrationTestBase() {
         token = mintAccessToken(sellerUserId)
         openSeller(sellerUserId)
         seedCourier("CJ")
+    }
+
+    @AfterEach
+    fun resetBarrier() {
+        transitionBarrier.disable()
     }
 
     @Test
@@ -316,20 +334,85 @@ class SellerShipmentIntegrationTest : IntegrationTestBase() {
         assertEquals(0, shipmentCount(orderPublicId))
     }
 
-    /** 두 트랜잭션이 같은 상태를 읽는 지점까지는 HTTP 경계에서 맞출 수 없어, 겹친 요청의 결과만 고정한다. */
+    @Test
+    fun `교환 재발송이 있어도 최초 송장은 등록된다`() {
+        val orderPublicId = seedOrder(OrderStatus.PREPARING)
+        seedExchangeReshipment(orderPublicId)
+
+        mockMvc.perform(shipmentRequest(token, orderPublicId)).andExpect(status().isCreated)
+
+        val shipments = shipmentsOf(orderPublicId)
+        assertEquals(2, shipments.size)
+        assertEquals(listOf(ShipmentType.EXCHANGE_RESHIP, ShipmentType.INITIAL), shipments.map { it.shipmentType })
+    }
+
+    @Test
+    fun `송장번호 앞뒤 공백은 지우고 저장한다`() {
+        val orderPublicId = seedOrder(OrderStatus.PREPARING)
+        seedCourier("HANJIN", trackingFormatPattern = "\\d{12}")
+
+        mockMvc
+            .perform(shipmentRequest(token, orderPublicId, courierCode = " HANJIN ", trackingNumber = " 123456789012 "))
+            .andExpect(status().isCreated)
+
+        assertEquals("123456789012", shipmentsOf(orderPublicId).first().trackingNumber)
+    }
+
+    @Test
+    fun `송장번호가 50자를 넘으면 90001이다`() {
+        val orderPublicId = seedOrder(OrderStatus.PREPARING)
+
+        mockMvc
+            .perform(shipmentRequest(token, orderPublicId, trackingNumber = "1".repeat(50)))
+            .andExpect(status().isCreated)
+        mockMvc
+            .perform(shipmentRequest(token, seedOrder(OrderStatus.PREPARING), trackingNumber = "1".repeat(51)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+
+        assertEquals(1, shipmentCount(orderPublicId))
+    }
+
+    @Test
+    fun `택배사 코드가 30자를 넘으면 90001이다`() {
+        val orderPublicId = seedOrder(OrderStatus.PREPARING)
+
+        mockMvc
+            .perform(shipmentRequest(token, orderPublicId, courierCode = "C".repeat(31)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+    }
+
+    /**
+     * 두 요청이 주문·중복 조회를 모두 끝낸 뒤에야 첫 조건부 UPDATE로 들어가게 묶는다 —
+     * 이 장치가 없으면 앞 요청이 커밋한 뒤 뒤 요청이 조회하는 순서로도 통과해 선점 UPDATE 제거를 못 잡는다.
+     */
     @Test
     fun `동시 송장 등록은 하나만 성공한다`() {
         val orderPublicId = seedOrder(OrderStatus.PREPARING)
+        transitionBarrier.enable()
 
         val results = raceTwo { shipmentRequest(token, orderPublicId) }
 
         assertEquals(listOf(201, 409), results.map { it.first }.sorted(), "결과: $results")
         val loser = results.first { it.first == 409 }.second
-        // 발송이 먼저 보이면 50302, 전이 선점에서 지면 50005 — 둘 중 어느 쪽이든 발송은 1건이어야 한다
-        assertTrue(errorCodeOf(loser) in setOf("50302", "50005"), "경합에서 진 쪽의 코드: $loser")
+        assertEquals("50005", errorCodeOf(loser), "전이 선점에서 진 쪽은 50005여야 한다: $loser")
         assertEquals(OrderStatus.SHIPPING, statusOf(orderPublicId))
         assertEquals(1, shipmentCount(orderPublicId), "발송이 두 건 생기면 안 된다")
         assertEquals(2, historiesOf(orderPublicId).size, "성공한 2단 전이만 이력을 남겨야 한다")
+    }
+
+    @Test
+    fun `발송 대기 주문의 동시 송장 등록도 하나만 성공한다`() {
+        val orderPublicId = seedOrder(OrderStatus.DISPATCH_PENDING)
+        transitionBarrier.enable()
+
+        val results = raceTwo { shipmentRequest(token, orderPublicId) }
+
+        assertEquals(listOf(201, 409), results.map { it.first }.sorted(), "결과: $results")
+        assertEquals("50005", errorCodeOf(results.first { it.first == 409 }.second))
+        assertEquals(1, shipmentCount(orderPublicId))
+        assertEquals(1, historiesOf(orderPublicId).size)
     }
 
     // ---------- 헬퍼 ----------
@@ -364,6 +447,26 @@ class SellerShipmentIntegrationTest : IntegrationTestBase() {
                     courierName = "택배사$courierCode",
                     isActive = isActive,
                     trackingFormatPattern = trackingFormatPattern,
+                ),
+            )
+        }
+    }
+
+    /** 같은 주문에 교환 재발송 1건을 심는다 — 최초 발송 중복 판정이 종류를 좁혀 보는지 가른다. */
+    private fun seedExchangeReshipment(orderPublicId: String) {
+        tx.execute {
+            val order =
+                em
+                    .createQuery("select o from Order o where o.publicId = :publicId", Order::class.java)
+                    .setParameter("publicId", orderPublicId)
+                    .singleResult
+            val courier = em.find(CourierMaster::class.java, "CJ")
+            em.persist(
+                Shipment.dispatch(
+                    courier = courier,
+                    order = order,
+                    trackingNumber = "888888888888",
+                    shipmentType = ShipmentType.EXCHANGE_RESHIP,
                 ),
             )
         }
@@ -466,6 +569,58 @@ class SellerShipmentIntegrationTest : IntegrationTestBase() {
                 .singleResult
                 .toInt()
         }!!
+
+    /** 두 요청이 조회를 끝낸 지점에서 만나게 하는 장치. enable한 테스트에서만 동작한다. */
+    class TransitionBarrier {
+        private val barrier = CyclicBarrier(2)
+        private val arrivals = AtomicInteger()
+
+        @Volatile
+        private var enabled = false
+
+        fun enable() {
+            enabled = true
+        }
+
+        fun disable() {
+            enabled = false
+        }
+
+        /** 첫 전이를 요구한 두 요청만 묶는다 — 승자의 두 번째 전이는 기다리지 않는다. */
+        fun awaitBothArrived() {
+            if (enabled && arrivals.getAndIncrement() < BOTH) {
+                barrier.await(AWAIT_SECONDS, TimeUnit.SECONDS)
+            }
+        }
+
+        private companion object {
+            private const val BOTH = 2
+            private const val AWAIT_SECONDS = 10L
+        }
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    class TransitionRaceConfig {
+        @Bean
+        fun transitionBarrier(): TransitionBarrier = TransitionBarrier()
+
+        @Bean
+        @Primary
+        fun barrieredOrderRepository(
+            delegate: OrderRepositoryAdapter,
+            barrier: TransitionBarrier,
+        ): OrderRepository =
+            object : OrderRepository by delegate {
+                override fun transitionStatusIf(
+                    id: Long,
+                    expected: OrderStatus,
+                    next: OrderStatus,
+                ): Boolean {
+                    barrier.awaitBothArrived()
+                    return delegate.transitionStatusIf(id, expected, next)
+                }
+            }
+    }
 
     private fun raceTwo(request: () -> MockHttpServletRequestBuilder): List<Pair<Int, String>> {
         val pool = Executors.newFixedThreadPool(2)

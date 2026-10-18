@@ -11,7 +11,6 @@ import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.order.repository.OrderStatusHistoryRepository
-import com.aechak.domain.order.shipment.Shipment
 import com.aechak.domain.order.shipment.enums.ShipmentType
 import com.aechak.domain.order.shipment.repository.CourierMasterRepository
 import com.aechak.domain.order.shipment.repository.ShipmentRepository
@@ -67,16 +66,7 @@ class SellerOrderService(
         recordHistory(order, OrderStatus.DISPATCH_PENDING, OrderStatus.SHIPPING)
 
         val dispatchedAt = LocalDateTime.now()
-        val shipment =
-            shipmentRepository.save(
-                Shipment.dispatch(
-                    courier = courier,
-                    order = order,
-                    trackingNumber = command.trackingNumber,
-                    shipmentType = ShipmentType.INITIAL,
-                    at = dispatchedAt,
-                ),
-            )
+        val shipment = shipmentRepository.save(command.toEntity(courier, order, dispatchedAt))
 
         return RegisterShipmentResult(
             shipmentId = shipment.id,
