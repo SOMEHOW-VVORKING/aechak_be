@@ -578,7 +578,10 @@ class SellerShipmentIntegrationTest : IntegrationTestBase() {
         @Volatile
         private var enabled = false
 
+        /** 싱글턴이라 테스트 간에 도착 수가 남는다 — 켤 때마다 되감는다. */
         fun enable() {
+            arrivals.set(0)
+            barrier.reset()
             enabled = true
         }
 
