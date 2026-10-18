@@ -35,6 +35,8 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.application.order.claim", // 클레임 승인·거부 — 구매자 요청 계약과 파사드를 공유한다. 환불 집행은 아래 제외 필터로 뺀다
         "com.aechak.application.order.delivery", // 배송완료 전이 — 셀러 수동 처리와 배치 자동 전이가 공유하는 묶음
         "com.aechak.application.order.shipment", // 택배사 마스터 조회 — order BC 중 이 하위만 쓴다
+        // 검수 요청 발행. service 패키지만 넣는다 — facade(판정 적용·기한 정리)는 api가 소유한다.
+        "com.aechak.application.inspection.service",
         "com.aechak.infra.persistence", // JPA 어댑터 (QuerydslConfig 포함)
         "com.aechak.infra.s3", // FileStorage 어댑터
         "com.aechak.infra.redis", // 인증 코드 저장소
