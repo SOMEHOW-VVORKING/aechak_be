@@ -283,3 +283,4 @@ private fun loadOwnedActive(userId: Long, addressId: Long): DeliveryAddress {
 
 - SELLER를 UserRole enum에 넣지 않는 이유는 domain의 UserRole 주석 참조(셀러는 상태를 가진 애그리거트 → sellers 행으로 판정).
 - ADMIN 자격의 저장값은 `users.role`이고, 바꾸는 경로는 User의 승격·강등 메서드뿐이다(어드민 전용 유스케이스 `AdminUserRoleUseCase`가 경유). 요청 인가는 여전히 토큰의 role 클레임이 판정하므로 저장값 변경이 기존 토큰에 즉시 반영되지 않는다 — 승격은 재로그인이 필요하고 강등은 토큰 만료까지 유효하다.
+- 자기 역할 변경 금지와 "마지막 관리자 강등 금지"는 application이 판정한다 — 판정 재료가 요청자 id와 ADMIN 행 전체여서 컨트롤러 어노테이션으로도, 단일 애그리거트 메서드로도 표현할 수 없다. `users`에 낙관적 락이 없으므로 관리자 수는 ADMIN 행을 id 오름차순으로 잠근 뒤 센다 — 동시 강등 둘이 각자 "아직 2명"을 보고 통과하면 관리자 0명이 되고, 그 상태의 복구 경로는 기동 부트스트랩뿐이다.

@@ -176,7 +176,9 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 boot/admin/src/main/java/com/aechak/admin/
 ├── AdminApplication.java
 ├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config}
-└── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
+├── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
+├── seller/          # 입점 심사 컨트롤러 + request/response
+└── user/            # 관리자 명부 컨트롤러 + request/response
 ```
 
 - A-5(MVP 제외)를 해소하고 신설 — 셀러 입점 심사부터 운영자 기능이 실제 API로 필요해졌다.
@@ -187,5 +189,6 @@ boot/admin/src/main/java/com/aechak/admin/
 - 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(seller-api와 같은 검증 전용 모드).
 - **관리자 명부의 저장값은 `users.role`이고, 기동 부트스트랩(`admin.bootstrap.enabled`/`user-ids`)이 기동마다 설정 명부를 멱등 승격한다.** 최초 관리자를 만드는 경로이자 관리자가 0명이 된 상태의 유일한 복구 경로라 "최초 1회"가 아니라 기동마다 돈다. 명부에 적힌 계정이 없거나 비활성이면 경고 로그만 남기고 부팅을 계속한다 — 어드민이 뜨지 않으면 명부를 고칠 수단도 사라진다. 부트스트랩이 admin에 사는 이유는 이 모듈만 ECS 태스크가 1대로 고정이고(api는 오토스케일) `users` 쓰기 배선이 이미 조립돼 있어서다.
   - 토큰의 `role` 클레임은 로그인 시점 스냅샷이다 — 승격 직후 ADMIN 토큰을 받으려면 api에서 다시 로그인해야 하고, 강등해도 발급돼 있던 토큰은 만료까지 ADMIN으로 통과한다.
+  - 명부를 손으로 바꾸는 경로는 `/admin/admins`(목록·승격·강등)다. 자기 역할 변경은 403(30014), 관리자가 0명이 되는 강등은 409(30013)으로 막는다.
 - DB 마이그레이션은 api 단일 소유 그대로 — admin은 접속만 한다.
 - 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.
