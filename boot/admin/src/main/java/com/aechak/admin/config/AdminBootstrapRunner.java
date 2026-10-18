@@ -7,8 +7,8 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 
 /**
- * 기동마다 설정 명부를 관리자로 멱등 승격한다 — 설정이 비어 있으면 아무것도 하지 않는다.
- * 대상별 성공·실패 처리는 유스케이스 소관이라 여기서는 예외를 잡지 않는다.
+ * 기동마다 설정 명부를 관리자로 멱등 승격한다 — 비활성이거나 명부가 비면 아무것도 하지 않는다.
+ * 대상별 실패 처리는 유스케이스가 한다.
  */
 @Slf4j
 @RequiredArgsConstructor

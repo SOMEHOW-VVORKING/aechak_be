@@ -60,6 +60,14 @@ class AdminUserRoleIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void 없는_계정_강등은_30000으로_거부된다() {
+        assertThatThrownBy(() -> adminUserRoleUseCase.demote(ACTOR_ADMIN_ID, 999999L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_FOUND);
+    }
+
+    @Test
     void 강등은_role을_GENERAL로_되돌리고_재호출에도_멱등하다() {
         long targetUserId = createUser(UserStatus.ACTIVE, UserRole.ADMIN);
 
@@ -88,6 +96,27 @@ class AdminUserRoleIntegrationTest extends IntegrationTestBase {
                 .containsExactly(thirdAdmin);
         assertThat(secondPage.getItems())
                 .allSatisfy(item -> assertThat(item.role()).isEqualTo(UserRole.ADMIN));
+    }
+
+    @Test
+    void 관리자가_없으면_명부는_빈_목록과_0을_준다() {
+        createUser(UserStatus.ACTIVE);
+
+        PageResult<AdminUserRoleResult> page = adminUserRoleUseCase.listAdmins(PageQuery.of(0, 20));
+
+        assertThat(page.getItems()).isEmpty();
+        assertThat(page.getTotalCount()).isZero();
+    }
+
+    @Test
+    void 범위를_넘긴_페이지는_빈_목록을_주고_전체_개수는_유지한다() {
+        createUser(UserStatus.ACTIVE, UserRole.ADMIN);
+        createUser(UserStatus.ACTIVE, UserRole.ADMIN);
+
+        PageResult<AdminUserRoleResult> page = adminUserRoleUseCase.listAdmins(PageQuery.of(5, 2));
+
+        assertThat(page.getItems()).isEmpty();
+        assertThat(page.getTotalCount()).isEqualTo(2);
     }
 
     private UserRole roleOf(long userId) {

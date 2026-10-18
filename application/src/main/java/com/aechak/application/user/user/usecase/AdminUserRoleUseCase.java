@@ -21,8 +21,8 @@ public interface AdminUserRoleUseCase {
     void demote(long adminId, long targetUserId);
 
     /**
-     * 기동 부트스트랩 — 설정 명부를 멱등 적용한다. 관리자가 0명이 된 상태의 복구 경로이기도 하다.
-     * 대상 1건의 실패(미존재·비활성·이미 관리자)는 경고 로그만 남기고 나머지 대상을 계속 처리한다.
+     * 기동 부트스트랩 — 설정 명부를 멱등 적용한다.
+     * 대상 1건의 실패(미존재·비활성·이미 관리자)는 로그만 남기고 나머지 대상을 계속 처리한다.
      */
     void ensureBootstrapAdmins(List<Long> userIds);
 }

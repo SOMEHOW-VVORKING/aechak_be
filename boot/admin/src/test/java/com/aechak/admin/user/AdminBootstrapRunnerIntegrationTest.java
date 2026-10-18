@@ -15,8 +15,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.DefaultApplicationArguments;
 
 /**
- * 기동 부트스트랩 통합 테스트 — 러너를 직접 호출한다(@SpringBootTest는 ApplicationRunner를 돌리지 않는다).
- * 명부는 테스트별로 달라야 해서 컨텍스트를 새로 띄우지 않고 설정 객체를 손으로 만든다.
+ * 기동 부트스트랩 통합 테스트.
+ * 테스트 컨텍스트도 기동 시 러너를 실행하지만 설정이 비활성이라 건너뛴다(테스트 프로퍼티).
+ * 명부는 테스트별로 달라야 해서 컨텍스트를 새로 띄우지 않고 설정 객체를 손으로 만들어 러너를 호출한다.
  */
 class AdminBootstrapRunnerIntegrationTest extends IntegrationTestBase {
 
@@ -58,6 +59,29 @@ class AdminBootstrapRunnerIntegrationTest extends IntegrationTestBase {
         assertThatCode(() -> runBootstrap(true, 999999L, existingUserId)).doesNotThrowAnyException();
 
         assertThat(roleOf(existingUserId)).isEqualTo(UserRole.ADMIN);
+        assertThat(adminCount()).isEqualTo(1);
+    }
+
+    @Test
+    void 중간_대상이_실패해도_앞의_승격은_남고_뒤의_대상도_처리된다() {
+        long beforeUserId = createUser(UserStatus.ACTIVE);
+        long afterUserId = createUser(UserStatus.ACTIVE);
+
+        assertThatCode(() -> runBootstrap(true, beforeUserId, 999999L, afterUserId))
+                .doesNotThrowAnyException();
+
+        assertThat(roleOf(beforeUserId)).isEqualTo(UserRole.ADMIN);
+        assertThat(roleOf(afterUserId)).isEqualTo(UserRole.ADMIN);
+        assertThat(adminCount()).isEqualTo(2);
+    }
+
+    @Test
+    void 명부에_같은_userId가_중복돼도_한_번만_승격하고_넘어간다() {
+        long userId = createUser(UserStatus.ACTIVE);
+
+        assertThatCode(() -> runBootstrap(true, userId, userId)).doesNotThrowAnyException();
+
+        assertThat(roleOf(userId)).isEqualTo(UserRole.ADMIN);
         assertThat(adminCount()).isEqualTo(1);
     }
 
