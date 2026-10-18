@@ -282,3 +282,4 @@ private fun loadOwnedActive(userId: Long, addressId: Long): DeliveryAddress {
 **왜 소유권을 @PreAuthorize에 넣지 않나** — `@deliveryAddressGuard.isOwner(...)`를 어노테이션에 두면 판정용으로 리소스를 한 번 더 조회한다(어노테이션은 불린만 반환 → 꺼낸 리소스를 서비스에 못 넘김). 결과: ① 같은 리소스 2회 조회 ② 소유권 규칙이 어노테이션·서비스 두 곳으로 갈라져 변경 시 어긋남(이중 진실) ③ "없음(404)"을 "권한 없음(403)"으로 뭉갬. 서비스 단일 판정이 조회 1회·단일 출처·정확한 상태코드를 준다.
 
 - SELLER를 UserRole enum에 넣지 않는 이유는 domain의 UserRole 주석 참조(셀러는 상태를 가진 애그리거트 → sellers 행으로 판정).
+- ADMIN 자격의 저장값은 `users.role`이고, 바꾸는 경로는 User의 승격·강등 메서드뿐이다(어드민 전용 유스케이스 `AdminUserRoleUseCase`가 경유). 요청 인가는 여전히 토큰의 role 클레임이 판정하므로 저장값 변경이 기존 토큰에 즉시 반영되지 않는다 — 승격은 재로그인이 필요하고 강등은 토큰 만료까지 유효하다.

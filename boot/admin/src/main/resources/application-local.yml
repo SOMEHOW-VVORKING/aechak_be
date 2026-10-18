@@ -12,6 +12,13 @@ spring:
 api:
   cors-allowed-origins: ""   # 어드민 웹 FE 미착수 — dev 포트 확정 시 추가
 
+# 최초 관리자 만들기 — api에서 소셜 로그인으로 가입한 뒤 그 userId를 쉼표로 넣고 어드민을 재기동한다.
+# 승격 후 ADMIN 토큰을 받으려면 api에서 다시 로그인해야 한다 (role은 로그인 시점에 토큰으로 스냅샷된다).
+admin:
+  bootstrap:
+    enabled: ${ADMIN_BOOTSTRAP_ENABLED:true}
+    user-ids: ${ADMIN_BOOTSTRAP_USER_IDS:}
+
 aws:
   s3:
     media-bucket: ${AWS_S3_MEDIA_BUCKET}
