@@ -247,7 +247,7 @@ PREPARE col1_stmt FROM @stmt;
 EXECUTE col1_stmt;
 DEALLOCATE PREPARE col1_stmt;
 
--- claims.seller_id — 비정규화 스냅샷(조인 2홉 회피)
+-- claims.seller_id — 비정규화 스냅샷. 아래 백필 후 NOT NULL로 좁힌다
 SET @stmt = IF(
     EXISTS(
         SELECT 1 FROM information_schema.TABLES
@@ -256,14 +256,14 @@ SET @stmt = IF(
         SELECT 1 FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'claims' AND COLUMN_NAME = 'seller_id'
     ),
-    'ALTER TABLE claims ADD COLUMN seller_id BIGINT NOT NULL',
+    'ALTER TABLE claims ADD COLUMN seller_id BIGINT NULL',
     'SELECT 1'
 );
 PREPARE col2_stmt FROM @stmt;
 EXECUTE col2_stmt;
 DEALLOCATE PREPARE col2_stmt;
 
--- claims.order_id — 비정규화 스냅샷(조인 2홉 회피)
+-- claims.order_id — 비정규화 스냅샷. 아래 백필 후 NOT NULL로 좁힌다
 SET @stmt = IF(
     EXISTS(
         SELECT 1 FROM information_schema.TABLES
@@ -272,7 +272,7 @@ SET @stmt = IF(
         SELECT 1 FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'claims' AND COLUMN_NAME = 'order_id'
     ),
-    'ALTER TABLE claims ADD COLUMN order_id BIGINT NOT NULL',
+    'ALTER TABLE claims ADD COLUMN order_id BIGINT NULL',
     'SELECT 1'
 );
 PREPARE col3_stmt FROM @stmt;
@@ -295,9 +295,362 @@ PREPARE col4_stmt FROM @stmt;
 EXECUTE col4_stmt;
 DEALLOCATE PREPARE col4_stmt;
 
+-- ── claims 비정규화 컬럼 백필 ─────────────────────────────────────────────────
+-- 위에서 NULL로 추가했으므로 기존 행을 주문 경로로 채운 뒤 NOT NULL로 좁힌다.
+-- NOT NULL로 바로 추가하면 MySQL이 기존 행을 암묵적 기본값 0으로 채워 조용히 오염된다.
+-- 한 클레임이 두 주문에 걸쳐 있거나 품목이 없으면 채우지 않는다 — 그런 행이 있으면
+-- 다음 NOT NULL 좁히기가 실패해 사람이 보게 된다(조용히 0을 넣는 것보다 낫다).
+UPDATE claims c
+    JOIN (SELECT ci.claim_id,
+                 MIN(o.id)              AS order_id,
+                 MIN(o.seller_id)       AS seller_id,
+                 COUNT(DISTINCT o.id)   AS order_count
+          FROM claim_items ci
+                   JOIN order_items oi ON oi.id = ci.order_item_id
+                   JOIN orders o ON o.id = oi.order_id
+          GROUP BY ci.claim_id) src
+    ON src.claim_id = c.id AND src.order_count = 1
+SET c.order_id   = src.order_id,
+    c.seller_id  = src.seller_id,
+    c.updated_at = NOW(6)
+WHERE c.order_id IS NULL
+   OR c.seller_id IS NULL;
+
+-- claims.order_id 좁히기 — 남은 NULL이 있으면 여기서 실패한다
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'claims'
+          AND COLUMN_NAME = 'order_id' AND IS_NULLABLE = 'YES'
+    ),
+    'ALTER TABLE claims MODIFY COLUMN order_id BIGINT NOT NULL',
+    'SELECT 1'
+);
+PREPARE nn0_stmt FROM @stmt;
+EXECUTE nn0_stmt;
+DEALLOCATE PREPARE nn0_stmt;
+
+-- claims.seller_id 좁히기 — 남은 NULL이 있으면 여기서 실패한다
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'claims'
+          AND COLUMN_NAME = 'seller_id' AND IS_NULLABLE = 'YES'
+    ),
+    'ALTER TABLE claims MODIFY COLUMN seller_id BIGINT NOT NULL',
+    'SELECT 1'
+);
+PREPARE nn1_stmt FROM @stmt;
+EXECUTE nn1_stmt;
+DEALLOCATE PREPARE nn1_stmt;
+
+-- ── seller_applications.user_id NOT NULL 보강 ────────────────────────────────
+-- V10이 이 제약을 걸지만, V10 적용 시점에 테이블이 없던 DB(그 뒤 ddl-auto가 만든 DB)에서는
+-- 건너뛰어져 nullable로 남는다. 아래 UNIQUE는 NULL 중복을 막지 못하므로 여기서 먼저 좁힌다.
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seller_applications'
+          AND COLUMN_NAME = 'user_id' AND IS_NULLABLE = 'YES'
+    ),
+    'ALTER TABLE seller_applications MODIFY COLUMN user_id BIGINT NOT NULL',
+    'SELECT 1'
+);
+PREPARE sa_user_id_stmt FROM @stmt;
+EXECUTE sa_user_id_stmt;
+DEALLOCATE PREPARE sa_user_id_stmt;
+
+-- ── enum 컬럼 VARCHAR 수렴 ───────────────────────────────────────────────────
+-- Hibernate는 @Enumerated(STRING)을 MySQL 네이티브 enum으로 만들지만 이 레포의 마이그레이션은
+-- VARCHAR을 쓴다(V21·V24 규약). 네이티브 enum으로 남겨 두면 그 DB는 enum 값 목록이 테이블에
+-- 박혀 있어, 코드에 상태값이 추가되면 쓰기가 실패한다. 그래서 기존 enum 컬럼을 VARCHAR로 바꾼다.
+-- 값은 라벨 문자열이 그대로 보존된다.
+
+-- sellers.status
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sellers'
+          AND COLUMN_NAME = 'status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE sellers MODIFY COLUMN status VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en0_stmt FROM @stmt;
+EXECUTE en0_stmt;
+DEALLOCATE PREPARE en0_stmt;
+
+-- sellers.previous_status
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sellers'
+          AND COLUMN_NAME = 'previous_status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE sellers MODIFY COLUMN previous_status VARCHAR(30) NULL',
+    'SELECT 1'
+);
+PREPARE en1_stmt FROM @stmt;
+EXECUTE en1_stmt;
+DEALLOCATE PREPARE en1_stmt;
+
+-- sellers.telesales_notice_status
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sellers'
+          AND COLUMN_NAME = 'telesales_notice_status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE sellers MODIFY COLUMN telesales_notice_status VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en2_stmt FROM @stmt;
+EXECUTE en2_stmt;
+DEALLOCATE PREPARE en2_stmt;
+
+-- seller_applications.business_type
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seller_applications'
+          AND COLUMN_NAME = 'business_type' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE seller_applications MODIFY COLUMN business_type VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en3_stmt FROM @stmt;
+EXECUTE en3_stmt;
+DEALLOCATE PREPARE en3_stmt;
+
+-- seller_applications.status
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seller_applications'
+          AND COLUMN_NAME = 'status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE seller_applications MODIFY COLUMN status VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en4_stmt FROM @stmt;
+EXECUTE en4_stmt;
+DEALLOCATE PREPARE en4_stmt;
+
+-- application_documents.document_type
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'application_documents'
+          AND COLUMN_NAME = 'document_type' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE application_documents MODIFY COLUMN document_type VARCHAR(40) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en5_stmt FROM @stmt;
+EXECUTE en5_stmt;
+DEALLOCATE PREPARE en5_stmt;
+
+-- application_reviews.decision
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'application_reviews'
+          AND COLUMN_NAME = 'decision' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE application_reviews MODIFY COLUMN decision VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en6_stmt FROM @stmt;
+EXECUTE en6_stmt;
+DEALLOCATE PREPARE en6_stmt;
+
+-- settlement_accounts.verification_status
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'settlement_accounts'
+          AND COLUMN_NAME = 'verification_status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE settlement_accounts MODIFY COLUMN verification_status VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en7_stmt FROM @stmt;
+EXECUTE en7_stmt;
+DEALLOCATE PREPARE en7_stmt;
+
+-- order_status_histories.from_status
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_status_histories'
+          AND COLUMN_NAME = 'from_status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE order_status_histories MODIFY COLUMN from_status VARCHAR(30) NULL',
+    'SELECT 1'
+);
+PREPARE en8_stmt FROM @stmt;
+EXECUTE en8_stmt;
+DEALLOCATE PREPARE en8_stmt;
+
+-- order_status_histories.to_status
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_status_histories'
+          AND COLUMN_NAME = 'to_status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE order_status_histories MODIFY COLUMN to_status VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en9_stmt FROM @stmt;
+EXECUTE en9_stmt;
+DEALLOCATE PREPARE en9_stmt;
+
+-- order_status_histories.triggered_by
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_status_histories'
+          AND COLUMN_NAME = 'triggered_by' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE order_status_histories MODIFY COLUMN triggered_by VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en10_stmt FROM @stmt;
+EXECUTE en10_stmt;
+DEALLOCATE PREPARE en10_stmt;
+
+-- shipments.shipment_type
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'shipments'
+          AND COLUMN_NAME = 'shipment_type' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE shipments MODIFY COLUMN shipment_type VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en11_stmt FROM @stmt;
+EXECUTE en11_stmt;
+DEALLOCATE PREPARE en11_stmt;
+
+-- claims.claim_type
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'claims'
+          AND COLUMN_NAME = 'claim_type' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE claims MODIFY COLUMN claim_type VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en12_stmt FROM @stmt;
+EXECUTE en12_stmt;
+DEALLOCATE PREPARE en12_stmt;
+
+-- claims.return_cost_bearer
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'claims'
+          AND COLUMN_NAME = 'return_cost_bearer' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE claims MODIFY COLUMN return_cost_bearer VARCHAR(30) NULL',
+    'SELECT 1'
+);
+PREPARE en13_stmt FROM @stmt;
+EXECUTE en13_stmt;
+DEALLOCATE PREPARE en13_stmt;
+
+-- claims.status
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'claims'
+          AND COLUMN_NAME = 'status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE claims MODIFY COLUMN status VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en14_stmt FROM @stmt;
+EXECUTE en14_stmt;
+DEALLOCATE PREPARE en14_stmt;
+
+-- claims.refund_status
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'claims'
+          AND COLUMN_NAME = 'refund_status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE claims MODIFY COLUMN refund_status VARCHAR(30) NULL',
+    'SELECT 1'
+);
+PREPARE en15_stmt FROM @stmt;
+EXECUTE en15_stmt;
+DEALLOCATE PREPARE en15_stmt;
+
+-- claims.settlement_status
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'claims'
+          AND COLUMN_NAME = 'settlement_status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE claims MODIFY COLUMN settlement_status VARCHAR(30) NULL',
+    'SELECT 1'
+);
+PREPARE en16_stmt FROM @stmt;
+EXECUTE en16_stmt;
+DEALLOCATE PREPARE en16_stmt;
+
+-- claims.seller_approval_status
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'claims'
+          AND COLUMN_NAME = 'seller_approval_status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE claims MODIFY COLUMN seller_approval_status VARCHAR(30) NULL',
+    'SELECT 1'
+);
+PREPARE en17_stmt FROM @stmt;
+EXECUTE en17_stmt;
+DEALLOCATE PREPARE en17_stmt;
+
+-- orders.status
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders'
+          AND COLUMN_NAME = 'status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE orders MODIFY COLUMN status VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE en18_stmt FROM @stmt;
+EXECUTE en18_stmt;
+DEALLOCATE PREPARE en18_stmt;
+
+-- orders.confirm_type
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders'
+          AND COLUMN_NAME = 'confirm_type' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE orders MODIFY COLUMN confirm_type VARCHAR(20) NULL',
+    'SELECT 1'
+);
+PREPARE en19_stmt FROM @stmt;
+EXECUTE en19_stmt;
+DEALLOCATE PREPARE en19_stmt;
+
 -- ── 인덱스·UNIQUE 수렴 ────────────────────────────────────────────────────────
 -- 빈 DB든 ddl-auto가 만든 DB든 같은 경로를 타게 하려고 CREATE TABLE에 인라인으로 두지 않고
 -- 전부 조건부 ALTER로 붙인다. 두 경로의 결과가 같다는 것이 이 PR의 핵심 불변식이다.
+-- 판정은 이름 존재 여부다 — 같은 이름으로 정의가 다른 인덱스가 있으면 건너뛴다. 여기 이름은
+-- 전부 이 마이그레이션이 처음 쓰거나 V10이 같은 정의로 만든 것이라 그 경우가 없다.
 
 -- seller_applications.uk_seller_applications_user_id — 유저당 신청 1행 불변식의 DB 방어선
 SET @stmt = IF(
@@ -620,13 +973,12 @@ EXECUTE ix19_stmt;
 DEALLOCATE PREPARE ix19_stmt;
 
 -- ── 택배사 시드 ───────────────────────────────────────────────────────────────
--- 재실행해도 행이 늘지 않게 코드(PK) 충돌 시 이름만 갱신한다. 운영 중 비활성 처리한 택배사를
--- 되살리지 않도록 is_active는 건드리지 않는다.
+-- 코드(PK)가 이미 있으면 아무것도 바꾸지 않는다 — 운영에서 비활성 처리하거나 이름을 고친 행을
+-- 재실행이 되돌리지 않게 한다. 기준 5종은 셀러센터가 쓰는 택배사 목록과 같다.
 INSERT INTO courier_masters (courier_code, courier_name, tracking_format_pattern, is_active, created_at, updated_at)
 VALUES ('CJ', 'CJ대한통운', NULL, b'1', NOW(6), NOW(6)),
        ('LOTTE', '롯데택배', NULL, b'1', NOW(6), NOW(6)),
        ('HANJIN', '한진택배', NULL, b'1', NOW(6), NOW(6)),
        ('LOGEN', '로젠택배', NULL, b'1', NOW(6), NOW(6)),
        ('POST', '우체국택배', NULL, b'1', NOW(6), NOW(6))
-ON DUPLICATE KEY UPDATE courier_name = VALUES(courier_name),
-                        updated_at   = NOW(6);
+ON DUPLICATE KEY UPDATE courier_code = courier_code;

@@ -14,20 +14,21 @@ import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import java.io.File
 import java.sql.Connection
-import java.sql.DriverManager
+import java.sql.ResultSet
 import javax.sql.DataSource
 
 /**
- * V27(ddl-auto 의존 테이블 Flyway 이관)의 안전성 검증.
+ * V27(ddl-auto 의존 테이블 Flyway 이관)의 안전성 검증. 깨지면 "dev에 적용하면 스키마가 갈린다"는 뜻이다.
  *
- * 세 개의 스키마를 컨테이너에 따로 만들어 비교한다.
- *  - fresh   : 빈 DB에 Flyway 전체 적용
- *  - entity  : Hibernate가 엔티티 선언대로 만들었을 DDL(스크립트 생성으로 받아 적용)
- *  - legacy  : dev 재현 — V26까지 적용된 DB에 Hibernate가 테이블을 만들어 둔 상태에서 V27 적용
+ * 네 개의 스키마를 컨테이너에 따로 만들어 대조한다.
+ *  - fresh  : 빈 DB에 Flyway 전체 적용 — 기준
+ *  - entity : Hibernate가 엔티티 선언대로 만들었을 DDL(스키마 생성 스크립트로 받아 적용)
+ *  - legacy : dev 재현 — ddl-auto가 V10 전에 테이블을 만들고 FK까지 걸어 둔 DB
+ *  - late   : V10 이후에 ddl-auto가 테이블을 만든 DB(그 뒤 새로 만든 환경이 이 모양이다)
  *
- * ddl-auto=validate 부팅으로는 이 정합을 볼 수 없다. 아직 Flyway 밖에 있는 테이블(users·products 등
- * 20여 개)이 빈 DB에 없어 validate가 그 테이블들에서 먼저 깨지기 때문이다. 그래서 이관 대상 테이블만
- * 떼어 "엔티티 선언 ↔ 마이그레이션" 을 직접 비교한다.
+ * `ddl-auto=validate` 부팅으로는 이 정합을 볼 수 없다. 엔티티 테이블 47개 중 Flyway가 만드는 것은
+ * 14개뿐이고 users·products 등이 아직 ddl-auto 전용이라, 빈 DB에서 validate가 그 테이블들에서
+ * 먼저 깨진다. 그래서 이관 대상 테이블만 떼어 직접 대조한다.
  */
 @SpringBootTest(
     properties = [
@@ -48,6 +49,7 @@ class V27SchemaMigrationIntegrationTest {
     private lateinit var freshUrl: String
     private lateinit var entityUrl: String
     private lateinit var legacyUrl: String
+    private lateinit var lateUrl: String
 
     @BeforeAll
     fun prepareSchemas() {
@@ -57,19 +59,24 @@ class V27SchemaMigrationIntegrationTest {
         entityUrl = recreateDatabase("v27_entity")
         execute(entityUrl, entitySchemaStatements(TARGET_TABLES))
 
-        // dev의 시간 순서를 그대로 재현한다 — ddl-auto가 테이블을 먼저 만들고, 그 위로 마이그레이션이 쌓였다.
+        // dev 재현: ddl-auto가 V10보다 먼저 테이블을 만들었고 FK도 걸려 있다. 기존 클레임 데이터도 심는다.
         legacyUrl = recreateDatabase("v27_legacy")
         migrateUpTo(legacyUrl, "1")
-        execute(legacyUrl, legacyPreV27Statements())
+        execute(legacyUrl, preV27DriftStatements())
         migrateUpTo(legacyUrl, "26")
-        execute(legacyUrl, legacyForeignKeyStatements())
+        execute(legacyUrl, legacyForeignKeyStatements() + legacyClaimRows())
         flyway(legacyUrl).migrate()
+
+        // V10 이후에 ddl-auto가 만든 DB: V10의 조건부 ALTER가 전부 건너뛰어져 제약이 비어 있다.
+        lateUrl = recreateDatabase("v27_late")
+        migrateUpTo(lateUrl, "26")
+        execute(lateUrl, preV27DriftStatements())
+        flyway(lateUrl).migrate()
     }
 
     @Test
     fun `빈 DB에 Flyway 전체 적용이 성공하고 택배사가 시드된다`() {
-        val applied =
-            query(freshUrl, "SELECT version FROM flyway_schema_history WHERE success = 1") { it.getString(1) }
+        val applied = query(freshUrl, "SELECT version FROM flyway_schema_history WHERE success = 1") { it.getString(1) }
         assertThat(applied).contains("27")
 
         val couriers = query(freshUrl, "SELECT courier_code FROM courier_masters ORDER BY courier_code") { it.getString(1) }
@@ -80,85 +87,117 @@ class V27SchemaMigrationIntegrationTest {
     }
 
     @Test
-    fun `V27을 다시 실행해도 스키마와 시드가 늘지 않는다`() {
+    fun `V27을 다시 실행해도 스키마가 그대로다`() {
         val before = TARGET_TABLES.associateWith { snapshot(freshUrl, it) }
 
         execute(freshUrl, statementsOf(migrationSql()))
 
         assertThat(TARGET_TABLES.associateWith { snapshot(freshUrl, it) }).isEqualTo(before)
-        val couriers = query(freshUrl, "SELECT courier_code FROM courier_masters") { it.getString(1) }
-        assertThat(couriers).hasSize(5)
     }
 
     @Test
-    fun `유저당 신청 1행 제약은 엔티티보다 DB가 더 좁다`() {
-        // V10이 기존 DB에 걸어 둔 결정(행 재사용 모델의 방어선). 엔티티 선언은 nullable이라 비교에서 예외로 둔다.
-        val nullable = snapshot(freshUrl, "seller_applications").columns.getValue("user_id").nullable
-        assertThat(nullable).isFalse()
-        assertThat(snapshot(legacyUrl, "seller_applications").columns.getValue("user_id").nullable).isFalse()
+    fun `시드 재실행은 운영에서 고친 택배사 행을 되돌리지 않는다`() {
+        // 운영 데이터를 바꿔 보는 테스트라 기준 스키마(fresh)를 더럽히지 않게 전용 DB를 쓴다.
+        val seedUrl = recreateDatabase("v27_seed")
+        flyway(seedUrl).migrate()
+        execute(
+            seedUrl,
+            listOf("UPDATE courier_masters SET courier_name = '씨제이', is_active = b'0' WHERE courier_code = 'CJ'"),
+        )
+
+        execute(seedUrl, statementsOf(migrationSql()))
+
+        val cj =
+            query(seedUrl, "SELECT courier_name, is_active FROM courier_masters WHERE courier_code = 'CJ'") {
+                it.getString(1) to it.getBoolean(2)
+            }
+        assertThat(cj).containsExactly("씨제이" to false)
+        assertThat(query(seedUrl, "SELECT courier_code FROM courier_masters") { it.getString(1) }).hasSize(5)
     }
 
     @Test
     fun `Flyway가 만든 스키마가 엔티티 선언과 일치한다`() {
-        TARGET_TABLES.forEach { table ->
-            val fromFlyway = snapshot(freshUrl, table)
-            val fromEntity = snapshot(entityUrl, table)
+        assertSameShape(actualUrl = freshUrl, expectedUrl = entityUrl, tolerateNativeEnum = true)
+    }
 
-            assertThat(fromFlyway.columns.keys)
-                .describedAs("%s 컬럼 집합", table)
-                .isEqualTo(fromEntity.columns.keys)
-            fromEntity.columns.forEach { (column, entityShape) ->
-                assertColumnMatches(table, column, fromFlyway.columns.getValue(column), entityShape)
-            }
-            assertThat(fromFlyway.indexes)
-                .describedAs("%s 인덱스", table)
-                .isEqualTo(fromEntity.indexes)
+    @Test
+    fun `ddl-auto가 V10 전에 만든 DB에 적용해도 빈 DB와 같은 모양이 된다`() {
+        assertSameShape(actualUrl = legacyUrl, expectedUrl = freshUrl, tolerateNativeEnum = false)
+    }
+
+    @Test
+    fun `ddl-auto가 V10 뒤에 만든 DB에 적용해도 빈 DB와 같은 모양이 된다`() {
+        assertSameShape(actualUrl = lateUrl, expectedUrl = freshUrl, tolerateNativeEnum = false)
+    }
+
+    @Test
+    fun `유저당 신청 1행 제약은 엔티티보다 DB가 더 좁다`() {
+        // V10이 세운 결정(행 재사용 모델의 방어선). 엔티티 선언은 nullable이라 모양 비교에서 예외로 둔다.
+        listOf(freshUrl, legacyUrl, lateUrl).forEach { url ->
+            assertThat(snapshot(url, "seller_applications").columns.getValue("user_id").nullable).isFalse()
         }
     }
 
     @Test
-    fun `ddl-auto가 만든 테이블이 있는 DB에 적용해도 빈 DB와 같은 모양이 된다`() {
-        TARGET_TABLES.forEach { table ->
-            val fromFlyway = snapshot(freshUrl, table)
-            val afterMigration = snapshot(legacyUrl, table)
-
-            assertThat(afterMigration.columns.keys)
-                .describedAs("%s 컬럼 집합", table)
-                .isEqualTo(fromFlyway.columns.keys)
-            fromFlyway.columns.forEach { (column, freshShape) ->
-                assertColumnMatches(table, column, afterMigration.columns.getValue(column), freshShape)
+    fun `기존 클레임의 비정규화 컬럼은 주문 경로로 채워진다`() {
+        val filled =
+            query(legacyUrl, "SELECT seller_id, order_id FROM claims ORDER BY id") {
+                it.getLong(1) to it.getLong(2)
             }
-            assertThat(afterMigration.indexes)
-                .describedAs("%s 인덱스", table)
-                .isEqualTo(fromFlyway.indexes)
+        assertThat(filled).containsExactly(SEEDED_SELLER_ID to SEEDED_ORDER_ID)
+    }
+
+    /** 컬럼(이름·타입·NULL 허용·기본값·EXTRA)과 명명 인덱스(유일성·컬럼 순서)를 테이블 단위로 대조한다. */
+    private fun assertSameShape(
+        actualUrl: String,
+        expectedUrl: String,
+        tolerateNativeEnum: Boolean,
+    ) {
+        TARGET_TABLES.forEach { table ->
+            val actual = snapshot(actualUrl, table)
+            val expected = snapshot(expectedUrl, table)
+
+            assertThat(actual.columns.keys).describedAs("%s 컬럼 집합", table).isEqualTo(expected.columns.keys)
+            expected.columns.forEach { (column, expectedColumn) ->
+                assertColumnMatches(table, column, actual.columns.getValue(column), expectedColumn, tolerateNativeEnum)
+            }
+            assertThat(actual.indexes).describedAs("%s 인덱스", table).isEqualTo(expected.indexes)
         }
     }
 
-    /**
-     * enum 컬럼만 예외를 둔다. Hibernate 7은 MySQL 네이티브 enum으로 만들지만 이 레포의 마이그레이션은
-     * V21·V24와 같은 규약으로 VARCHAR을 쓴다 — 값 집합이 코드에 있고 enum 값 추가가 DDL 변경이 되는 것을
-     * 피하기 위한 기존 선택이라 여기서 뒤집지 않는다.
-     */
     private fun assertColumnMatches(
         table: String,
         column: String,
         actual: ColumnShape,
         expected: ColumnShape,
+        tolerateNativeEnum: Boolean,
     ) {
         if ("$table.$column" !in DB_STRICTER_THAN_ENTITY) {
-            assertThat(actual.nullable)
-                .describedAs("%s.%s NULL 허용", table, column)
-                .isEqualTo(expected.nullable)
+            assertThat(actual.nullable).describedAs("%s.%s NULL 허용", table, column).isEqualTo(expected.nullable)
         }
-        assertThat(actual.extra)
-            .describedAs("%s.%s EXTRA", table, column)
-            .isEqualTo(expected.extra)
-        if (actual.type != expected.type) {
-            assertThat(setOf(actual.type.substringBefore("("), expected.type.substringBefore("(")))
-                .describedAs("%s.%s 타입 (%s vs %s)", table, column, actual.type, expected.type)
-                .isEqualTo(setOf("enum", "varchar"))
-        }
+        assertThat(actual.default).describedAs("%s.%s 기본값", table, column).isEqualTo(expected.default)
+        assertThat(actual.extra).describedAs("%s.%s EXTRA", table, column).isEqualTo(expected.extra)
+        if (actual.type == expected.type) return
+
+        // Hibernate는 enum을 네이티브 enum으로, 마이그레이션은 VARCHAR로 만든다. 길이가 모든 값을 담는지까지 본다.
+        val pair = setOf(actual.type.substringBefore("("), expected.type.substringBefore("("))
+        assertThat(tolerateNativeEnum && pair == setOf("enum", "varchar"))
+            .describedAs("%s.%s 타입 (%s vs %s)", table, column, actual.type, expected.type)
+            .isTrue()
+        val (enumType, varcharType) = if (actual.type.startsWith("enum")) actual.type to expected.type else expected.type to actual.type
+        assertThat(varcharLengthOf(varcharType))
+            .describedAs("%s.%s VARCHAR 길이가 enum 값(%s)을 담아야 한다", table, column, enumType)
+            .isGreaterThanOrEqualTo(longestEnumValueOf(enumType))
     }
+
+    private fun varcharLengthOf(type: String): Int = type.substringAfter("(").substringBefore(")").toInt()
+
+    private fun longestEnumValueOf(type: String): Int =
+        type
+            .substringAfter("(")
+            .substringBeforeLast(")")
+            .split(",")
+            .maxOf { it.trim().trim('\'').length }
 
     /**
      * Hibernate가 생성한 스크립트에서 주어진 테이블을 건드리는 문장만 원래 순서로 고른다.
@@ -178,7 +217,7 @@ class V27SchemaMigrationIntegrationTest {
     }
 
     /** ddl-auto가 V27 직전까지 만들어 두었던 모양 — 이 PR이 추가하는 인덱스·컬럼이 아직 없다. */
-    private fun legacyPreV27Statements(): List<String> =
+    private fun preV27DriftStatements(): List<String> =
         entitySchemaStatements(DDL_AUTO_TABLES)
             .filterNot { statement -> ADDED_INDEXES.any { statement.contains(it) } } +
             listOf(
@@ -193,6 +232,39 @@ class V27SchemaMigrationIntegrationTest {
             "ALTER TABLE shipments ADD CONSTRAINT FKlegacyshipmentsorder FOREIGN KEY (order_id) REFERENCES orders (id)",
             "ALTER TABLE claim_items ADD CONSTRAINT FKlegacyclaimitemsclaim FOREIGN KEY (claim_id) REFERENCES claims (id)",
             "ALTER TABLE order_status_histories ADD CONSTRAINT FKlegacyoshorder FOREIGN KEY (order_id) REFERENCES orders (id)",
+        )
+
+    /** V27 적용 전에 이미 있던 클레임 1건 — 비정규화 컬럼 백필이 실제 주문을 가리키는지 보려면 데이터가 필요하다. */
+    private fun legacyClaimRows(): List<String> =
+        listOf(
+            """
+            INSERT INTO order_groups (id, public_id, buyer_id, receiver_name_enc, contact_number_enc, zip_code,
+                                      base_address, coupon_discount_amount, used_point, total_product_amount,
+                                      total_shipping_fee, final_payment_amount, status, idempotency_key,
+                                      created_at, updated_at)
+            VALUES (9001, 'LEGACYGROUP00000000000001', 5001, 'enc', 'enc', '12345', '서울시 애착구',
+                    0, 0, 10000, 3000, 13000, 'PAID', 'legacy-key-1', NOW(6), NOW(6))
+            """.trimIndent(),
+            """
+            INSERT INTO orders (id, public_id, order_group_id, status, seller_id, allocated_coupon_discount,
+                                seller_shipping_fee, extension_count, created_at, updated_at)
+            VALUES ($SEEDED_ORDER_ID, 'LEGACYORDER00000000000001', 9001, 'DELIVERED', $SEEDED_SELLER_ID,
+                    0, 3000, 0, NOW(6), NOW(6))
+            """.trimIndent(),
+            """
+            INSERT INTO order_items (id, order_id, product_id, option_combination_id, option_name_snapshot, quantity,
+                                     unit_price_snapshot, discount_allocated_amount, item_status, product_version_id,
+                                     created_at, updated_at)
+            VALUES (9003, $SEEDED_ORDER_ID, 7001, 7002, '기본 / 1개', 1, 10000, 0, 'ORDERED', 7003, NOW(6), NOW(6))
+            """.trimIndent(),
+            """
+            INSERT INTO claims (id, public_id, claim_type, status, version, requested_at, created_at, updated_at)
+            VALUES (9004, 'LEGACYCLAIM00000000000001', 'CANCEL', 'CLAIM_REQUESTED', 0, NOW(6), NOW(6), NOW(6))
+            """.trimIndent(),
+            """
+            INSERT INTO claim_items (id, claim_id, order_item_id, quantity, refund_amount, created_at, updated_at)
+            VALUES (9005, 9004, 9003, 1, 10000, NOW(6), NOW(6))
+            """.trimIndent(),
         )
 
     private fun targetTableOf(statement: String): String? =
@@ -218,12 +290,18 @@ class V27SchemaMigrationIntegrationTest {
         query(
             url,
             """
-            SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, EXTRA
+            SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA
             FROM information_schema.COLUMNS
             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '$table'
             """.trimIndent(),
         ) { rs ->
-            rs.getString(1) to ColumnShape(rs.getString(2).lowercase(), rs.getString(3) == "YES", rs.getString(4))
+            rs.getString(1) to
+                ColumnShape(
+                    type = rs.getString(2).lowercase(),
+                    nullable = rs.getString(3) == "YES",
+                    default = rs.getString(4),
+                    extra = rs.getString(5),
+                )
         }.toMap()
 
     /** ddl-auto가 FK 때문에 만든 보조 인덱스(FK로 시작)는 비교에서 뺀다 — FK를 쓰지 않기로 한 규약과 무관한 잔재다. */
@@ -250,7 +328,7 @@ class V27SchemaMigrationIntegrationTest {
     private fun <T> query(
         url: String,
         sql: String,
-        row: (java.sql.ResultSet) -> T,
+        row: (ResultSet) -> T,
     ): List<T> =
         connect(url).use { conn ->
             conn.createStatement().use { statement ->
@@ -295,7 +373,7 @@ class V27SchemaMigrationIntegrationTest {
         return "$base/${database ?: ""}"
     }
 
-    private fun connect(url: String): Connection = DriverManager.getConnection(url, ROOT_USER, ROOT_PASSWORD)
+    private fun connect(url: String): Connection = java.sql.DriverManager.getConnection(url, ROOT_USER, ROOT_PASSWORD)
 
     private fun flyway(url: String): Flyway = Flyway.configure().dataSource(url, ROOT_USER, ROOT_PASSWORD).load()
 
@@ -312,6 +390,7 @@ class V27SchemaMigrationIntegrationTest {
     private data class ColumnShape(
         val type: String,
         val nullable: Boolean,
+        val default: String?,
         val extra: String,
     )
 
@@ -322,21 +401,24 @@ class V27SchemaMigrationIntegrationTest {
 
     companion object {
         private const val MIGRATION_NAME = "V27__migrate_ddl_auto_tables.sql"
-
-        /** 엔티티 선언보다 DB가 더 좁은 컬럼 — 비교에서 NULL 허용만 예외로 둔다. */
-        private val DB_STRICTER_THAN_ENTITY = setOf("seller_applications.user_id")
         private const val ENTITY_SCHEMA_SCRIPT = "build/v27-entity-schema.sql"
 
         // MySQLContainer의 기본 root 계정. 테스트 전용 계정은 DB를 만들 권한이 없다.
         private const val ROOT_USER = "root"
         private const val ROOT_PASSWORD = "test"
 
+        private const val SEEDED_ORDER_ID = 9002L
+        private const val SEEDED_SELLER_ID = 6001L
+
         private val CREATE_TABLE = Regex("^create table (?:if not exists )?`?([a-z_0-9]+)`?", RegexOption.IGNORE_CASE)
         private val CREATE_INDEX = Regex("^create index \\S+ on `?([a-z_0-9]+)`?", RegexOption.IGNORE_CASE)
         private val ALTER_TABLE = Regex("^alter table (?:if exists )?`?([a-z_0-9]+)`?", RegexOption.IGNORE_CASE)
         private val FOREIGN_KEY = Regex("foreign key", RegexOption.IGNORE_CASE)
 
-        /** 이 PR이 새로 붙이는 인덱스 — legacy 재현에서 빼야 한다. */
+        /** 엔티티 선언보다 DB가 더 좁은 컬럼 — NULL 허용 비교만 예외로 둔다. */
+        private val DB_STRICTER_THAN_ENTITY = setOf("seller_applications.user_id")
+
+        /** 이 PR이 새로 붙이는 인덱스 — ddl-auto 재현에서 빼야 한다. */
         private val ADDED_INDEXES =
             listOf(
                 "idx_application_reviews_application_id",
