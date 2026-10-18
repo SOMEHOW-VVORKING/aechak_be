@@ -24,7 +24,7 @@ data class SellerProductDetailResult(
     val inspectionStatus: InspectionStatus,
 ) {
     companion object {
-        /** 이미지는 currentImages만 쓴다. 닫힌 키를 실어 보내면 그 응답으로 수정할 때 소유 증명에서 걸린다. */
+        /** 이미지는 현재 노출 중인 행(currentImages)에서만 뽑는다. */
         fun from(product: Product): SellerProductDetailResult {
             val current = product.currentImages
             return SellerProductDetailResult(

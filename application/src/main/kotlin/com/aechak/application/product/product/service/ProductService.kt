@@ -313,7 +313,7 @@ class ProductService(
         )
     }
 
-    /** 셀러 본인 상품 한 건 — 없거나 남의 상품이면 404로 묶어 존재 여부를 가린다 */
+    /** 셀러 본인 상품 한 건 — 없는 상품과 남의 상품 모두 404 */
     fun getOwnedProduct(
         sellerId: Long,
         publicId: String,

@@ -4,8 +4,12 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.domain.product.category.Category
+import com.aechak.domain.product.product.Product
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.seller.seller.enums.SellerStatus
+import org.hamcrest.Matchers.contains
+import org.hamcrest.Matchers.empty
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -97,9 +101,9 @@ class SellerProductDetailIntegrationTest : IntegrationTestBase() {
         val productId = register()
 
         detail(productId)
-            .andExpect(jsonPath("$.data.discountPrice").isEmpty)
-            .andExpect(jsonPath("$.data.discountStartAt").isEmpty)
-            .andExpect(jsonPath("$.data.discountEndAt").isEmpty)
+            .andExpect(jsonPath("$.data.discountPrice").value(nullValue()))
+            .andExpect(jsonPath("$.data.discountStartAt").value(nullValue()))
+            .andExpect(jsonPath("$.data.discountEndAt").value(nullValue()))
     }
 
     @Test
@@ -163,18 +167,41 @@ class SellerProductDetailIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.additionalImageKeys.length()").value(2))
             .andExpect(jsonPath("$.data.additionalImageKeys[0]").value("products/a2.png"))
             .andExpect(jsonPath("$.data.additionalImageKeys[1]").value("products/a3.png"))
-            .andExpect(jsonPath("$.data.detailImageKeys").isEmpty)
+            .andExpect(jsonPath("$.data.detailImageKeys").value(empty<String>()))
     }
 
     @Test
-    fun `조회 응답을 그대로 수정 요청에 실으면 통과하고 아무 값도 유실되지 않는다`() {
+    fun `수정 이력이 있는 상품의 조회 응답을 그대로 되돌려 보내도 통과하고 값이 유실되지 않는다`() {
         val productId =
             register(
                 discountPrice = 19_900L,
                 discountStartAt = DISCOUNT_START,
                 discountEndAt = DISCOUNT_END,
                 additionalImageNames = listOf("a1.png", "a2.png"),
+                detailImageNames = listOf("d1.png", "d2.png"),
             )
+        update(
+            productId,
+            updateJson(
+                thumbnailImageKey = tmpKey("thumb2.png"),
+                additionalImageKeys = listOf("products/a2.png", "products/a1.png"),
+                detailImageKeys = listOf("products/d2.png"),
+                discountPrice = 19_900L,
+                discountStartAt = DISCOUNT_START,
+                discountEndAt = DISCOUNT_END,
+            ),
+        )
+        update(
+            productId,
+            updateJson(
+                thumbnailImageKey = "products/thumb2.png",
+                additionalImageKeys = listOf("products/a2.png"),
+                detailImageKeys = listOf("products/d2.png", tmpKey("d3.png")),
+                discountPrice = 19_900L,
+                discountStartAt = DISCOUNT_START,
+                discountEndAt = DISCOUNT_END,
+            ),
+        )
         val before = detailData(productId)
 
         mockMvc
@@ -186,6 +213,13 @@ class SellerProductDetailIntegrationTest : IntegrationTestBase() {
             ).andExpect(status().isOk)
 
         assertEquals(before, detailData(productId), "받은 응답을 그대로 되돌려 보낸 저장은 어떤 값도 바꾸면 안 된다")
+        detail(productId)
+            .andExpect(jsonPath("$.data.discountPrice").value(19_900))
+            .andExpect(jsonPath("$.data.discountStartAt").value(DISCOUNT_START))
+            .andExpect(jsonPath("$.data.discountEndAt").value(DISCOUNT_END))
+            .andExpect(jsonPath("$.data.thumbnailImageKey").value("products/thumb2.png"))
+            .andExpect(jsonPath("$.data.additionalImageKeys").value(contains("products/a2.png")))
+            .andExpect(jsonPath("$.data.detailImageKeys").value(contains("products/d2.png", "products/d3.png")))
     }
 
     @Test
@@ -209,17 +243,36 @@ class SellerProductDetailIntegrationTest : IntegrationTestBase() {
     @Test
     fun `정지된 셀러는 40004를 반환한다`() {
         val productId = register()
-        tx.execute {
-            em
-                .createQuery("update Seller s set s.status = :st where s.userId = :id")
-                .setParameter("st", SellerStatus.SUSPENDED)
-                .setParameter("id", sellerUserId)
-                .executeUpdate()
-        }
+        changeSellerStatus(SellerStatus.SUSPENDED)
 
         detail(productId)
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.errorCode").value(40004))
+    }
+
+    @Test
+    fun `휴점 셀러와 탈퇴 신청 셀러도 40004를 반환한다`() {
+        val productId = register()
+
+        changeSellerStatus(SellerStatus.PAUSED)
+        detail(productId)
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(40004))
+
+        changeSellerStatus(SellerStatus.WITHDRAWAL_REQUESTED)
+        detail(productId)
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(40004))
+    }
+
+    @Test
+    fun `대표 이미지가 없는 상품은 thumbnailImageKey가 null로 나간다`() {
+        val productId = persistProductWithoutRepresentativeImage()
+
+        detail(productId)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.thumbnailImageKey").value(nullValue()))
+            .andExpect(jsonPath("$.data.additionalImageKeys").value(empty<String>()))
     }
 
     @Test
@@ -274,6 +327,35 @@ class SellerProductDetailIntegrationTest : IntegrationTestBase() {
             ).andExpect(status().isOk)
     }
 
+    private fun changeSellerStatus(status: SellerStatus) {
+        tx.execute {
+            em
+                .createQuery("update Seller s set s.status = :st where s.userId = :id")
+                .setParameter("st", status)
+                .setParameter("id", sellerUserId)
+                .executeUpdate()
+        }
+    }
+
+    /** 등록 API로는 만들 수 없는 상태 — 대표 이미지 키가 비어 이미지 행도 없는 상품을 직접 심는다. */
+    private fun persistProductWithoutRepresentativeImage(): String =
+        tx.execute {
+            val product =
+                Product.register(
+                    category = em.find(Category::class.java, leafCategoryId),
+                    sellerId = sellerUserId,
+                    name = "대표 이미지 없는 상품",
+                    description = null,
+                    representativeImageKey = null,
+                    regularPrice = 25_000L,
+                    discountPrice = null,
+                    discountStartAt = null,
+                    discountEndAt = null,
+                )
+            em.persist(product)
+            product.publicId
+        }!!
+
     private fun openSeller(userId: Long) {
         tx.execute { em.persist(Seller.open(userId, "애착상회$userId", 0L)) }
     }
@@ -325,18 +407,29 @@ class SellerProductDetailIntegrationTest : IntegrationTestBase() {
         thumbnailImageKey: String = "products/thumbnail.png",
         additionalImageKeys: List<String> = emptyList(),
         detailImageKeys: List<String> = emptyList(),
-    ): String =
-        """
-        {
-          "categoryId": $leafCategoryId,
-          "productName": "연어 건사료 2kg",
-          "description": "연어 90% 함유",
-          "regularPrice": 25000,
-          "thumbnailImageKey": "$thumbnailImageKey",
-          "additionalImageKeys": ${additionalImageKeys.toJsonArray()},
-          "detailImageKeys": ${detailImageKeys.toJsonArray()}
-        }
-        """.trimIndent()
+        discountPrice: Long? = null,
+        discountStartAt: String? = null,
+        discountEndAt: String? = null,
+    ): String {
+        val discount =
+            listOfNotNull(
+                discountPrice?.let { "\"discountPrice\": $it," },
+                discountStartAt?.let { "\"discountStartAt\": \"$it\"," },
+                discountEndAt?.let { "\"discountEndAt\": \"$it\"," },
+            ).joinToString("\n")
+        return """
+            {
+              "categoryId": $leafCategoryId,
+              "productName": "연어 건사료 2kg",
+              "description": "연어 90% 함유",
+              "regularPrice": 25000,
+              $discount
+              "thumbnailImageKey": "$thumbnailImageKey",
+              "additionalImageKeys": ${additionalImageKeys.toJsonArray()},
+              "detailImageKeys": ${detailImageKeys.toJsonArray()}
+            }
+            """.trimIndent()
+    }
 
     /** 공통 업로드가 발급하는 tmp 키 형태 — 등록·수정이 이 접두로 소유자와 용도를 가른다. */
     private fun tmpKey(
