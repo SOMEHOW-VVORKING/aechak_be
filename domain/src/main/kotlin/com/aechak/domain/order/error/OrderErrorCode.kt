@@ -11,6 +11,9 @@ enum class OrderErrorCode(
     ORDER_NOT_FOUND(50000, "주문을 찾을 수 없습니다.", 404),
     CANNOT_CANCEL_SHIPPED(50001, "배송이 시작된 주문은 취소할 수 없습니다.", 409),
     INVALID_ORDER_STATUS_TRANSITION(50002, "허용되지 않은 주문 상태 전이입니다.", 409),
+    ORDER_ACCESS_DENIED(50003, "셀러 주문을 처리할 권한이 없습니다.", 403),
+    ORDER_NOT_ACCEPTABLE(50004, "결제완료 상태의 주문만 발주 확인할 수 있습니다.", 409),
+    ORDER_NOT_DISPATCHABLE(50005, "발송 대기 상태의 주문만 발송 처리할 수 있습니다.", 409),
 
     // 주문그룹
     INVALID_ORDER_GROUP_STATUS_TRANSITION(50100, "허용되지 않은 주문그룹 상태 전이입니다.", 409),
