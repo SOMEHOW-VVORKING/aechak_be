@@ -59,8 +59,7 @@ resource "aws_ssm_parameter" "media_public_base_url" {
 
 # ── 웹 연동 ─────────────────────────────────────────────
 # 앱마다 배포된 프론트 + 로컬 개발 프론트. 로컬에서 dev 백엔드에 붙는 구성을 함께 허용한다.
-# api 모듈은 세 웹이 모두 호출하므로(로그인·refresh·presigned 발급) 합집합을 쓰고,
-# seller·admin 모듈은 자기 콘솔 오리진만 받는다.
+# api 모듈은 all_web_origins(세 웹 합집합)를, seller·admin 모듈은 자기 콘솔 목록을 쓴다.
 locals {
   buyer_origins   = concat(["https://${local.web_domain}"], var.frontend_origins)
   seller_origins  = concat(["https://${local.seller_domain}"], var.seller_frontend_origins)
@@ -282,9 +281,8 @@ resource "aws_ssm_parameter" "admin_media_public_base_url" {
   value = "https://${local.media_domain}"
 }
 
-# 어드민 웹 오리진 — 빈 목록이면 파라미터를 만들지 않는다(SSM은 빈 값을 거절, 앱은 기본값 빈 목록으로 부팅)
+# 어드민 웹 오리진 — 구매자·셀러 웹과 별개 목록(배포 어드민 도메인 + 로컬 포트)
 resource "aws_ssm_parameter" "admin_cors_origins" {
-  count = length(local.admin_origins) > 0 ? 1 : 0
   name  = "/${var.project}/${var.env}/admin/CORS_ALLOWED_ORIGINS"
   type  = "String"
   value = join(",", local.admin_origins)
