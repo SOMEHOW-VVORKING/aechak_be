@@ -214,7 +214,7 @@ class PortOneAdapterTest {
     }
 
     @Test
-    fun `비동기 승인 REQUESTED는 확정 금액 없이 그대로 번역된다`() {
+    fun `비동기 승인은 REQUESTED로 그대로 번역된다`() {
         server
             .expect(requestTo("$BASE_URL/payments/pay-12/cancel"))
             .andRespond(withSuccess(CANCEL_REQUESTED_JSON, MediaType.APPLICATION_JSON))
@@ -222,7 +222,18 @@ class PortOneAdapterTest {
         val result = adapter.cancel(cancelCommand("pay-12", amount = null))
 
         assertEquals(PaymentCancelStatus.REQUESTED, result.status, "접수만 된 건을 성공으로 읽으면 원장을 미리 깎는다")
-        assertNull(result.cancelledAmount, "확정 전이므로 금액이 없어야 한다")
+        server.verify()
+    }
+
+    @Test
+    fun `확정 금액이 없는 성공 응답은 추정 없이 그대로 비운다`() {
+        server
+            .expect(requestTo("$BASE_URL/payments/pay-20/cancel"))
+            .andRespond(withSuccess(CANCEL_SUCCEEDED_WITHOUT_AMOUNT_JSON, MediaType.APPLICATION_JSON))
+
+        val result = adapter.cancel(cancelCommand("pay-20", amount = 4_000L))
+
+        assertNull(result.cancelledAmount, "요청액으로 채우면 호출자가 PG가 확정하지 않은 금액을 원장에서 깎는다")
         server.verify()
     }
 
@@ -490,17 +501,24 @@ class PortOneAdapterTest {
             }
             """.trimIndent()
 
-        /** 비동기 승인 — 접수만 되고 금액 확정 필드가 없다 */
+        /** 비동기 승인 — 접수만 된 상태. 금액이 실려도 확정은 아니다 */
         private val CANCEL_REQUESTED_JSON =
             """
             {
               "cancellation": {
                 "status": "REQUESTED",
                 "id": "cancel-3",
+                "totalAmount": 10000,
                 "reason": "고객 변심",
                 "requestedAt": "2026-08-20T11:00:00Z"
               }
             }
+            """.trimIndent()
+
+        /** 스키마상 SUCCEEDED에는 totalAmount가 필수지만, 빠진 응답을 요청액으로 메우지 않는지 본다 */
+        private val CANCEL_SUCCEEDED_WITHOUT_AMOUNT_JSON =
+            """
+            {"cancellation": {"status": "SUCCEEDED", "id": "cancel-4", "pgCancellationId": "pgcancel-4"}}
             """.trimIndent()
 
         private val CANCEL_AMOUNT_EXCEEDS_JSON =

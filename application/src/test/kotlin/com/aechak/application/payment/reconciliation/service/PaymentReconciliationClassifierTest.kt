@@ -339,14 +339,36 @@ class PaymentReconciliationClassifierTest {
         )
 
     @Test
-    fun `우리가 취소 요청 중이고 PG가 아직 결제완료면 정상 대기라 사람을 부르지 않는다`() =
+    fun `취소 요청만 남고 PG에 반영되지 않았으면 끝나지 않은 취소로 사람 확인이다`() =
         assertVerdict(
             MismatchType.CANCEL_IN_FLIGHT,
-            ReconciliationResolution.NOT_REQUIRED,
+            // 열린 상태로 남겨야 다음 회차가 이월해 다시 본다 — 일치로 접으면 선점이 영구히 남고 재취소가 막힌다
+            ReconciliationResolution.MANUAL_REQUIRED,
             // 선점은 금액 원장을 건드리지 않으므로 취소가능액은 승인액 그대로다
             payment(PaymentStatus.CANCEL_REQUESTED),
             group(OrderGroupStatus.PAID),
             pg(PaymentGatewayStatus.PAID),
+        )
+
+    @Test
+    fun `취소 요청 중인데 우리 잔액만 줄어 있으면 대기가 아니라 금액 불일치다`() =
+        assertVerdict(
+            MismatchType.AMOUNT_MISMATCH,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.CANCEL_REQUESTED, cancellable = 8_000L),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.PAID),
+        )
+
+    @Test
+    fun `부분취소가 반영된 뒤의 두 번째 취소 요청도 끝나지 않은 취소로 남는다`() =
+        assertVerdict(
+            MismatchType.CANCEL_IN_FLIGHT,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            // 첫 부분취소 3,000원은 양쪽에 반영됐고, 두 번째 요청이 PG 응답을 기다리는 중이다
+            payment(PaymentStatus.CANCEL_REQUESTED, cancellable = 10_000L, cancelledAmount = 3_000L),
+            group(OrderGroupStatus.PARTIALLY_CANCELLED),
+            pg(PaymentGatewayStatus.PARTIAL_CANCELLED, cancelled = 3_000L),
         )
 
     @Test

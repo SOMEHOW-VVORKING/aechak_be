@@ -55,6 +55,17 @@ class PaymentFacade(
             isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
         }
 
+    /**
+     * 취소 전용 경계. 호출자가 자기 트랜잭션 안에서 이 포트를 불러도 선점 커밋이 PG 호출보다 먼저 끝나야 하므로
+     * 바깥 트랜잭션에 합류하지 않는다. 합류하면 선점이 커밋되기 전에 PG가 호출되고, 호출자 롤백이
+     * "PG는 취소했는데 우리 원장은 승인" 상태를 만든다.
+     */
+    private val cancelTx =
+        TransactionTemplate(transactionManager).apply {
+            isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
+            propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
+        }
+
     override fun preparePayment(command: PreparePaymentCommand): PreparePaymentResult {
         val payment =
             try {
@@ -106,7 +117,7 @@ class PaymentFacade(
         // 1. 취소 선점을 먼저 커밋한다 — 이 1행 성공이 "이 취소는 내 것"의 유일한 근거다
         val target =
             try {
-                tx.execute { paymentService.requestCancel(command.orderGroupId, command.amount) }!!
+                cancelTx.execute { paymentService.requestCancel(command.orderGroupId, command.amount) }!!
             } catch (e: OptimisticLockingFailureException) {
                 // 같은 결제를 두 요청이 동시에 선점했다 — 진 쪽은 진행 중인 취소를 기다린다
                 throw BusinessException(PaymentErrorCode.PAYMENT_CANCEL_IN_PROGRESS, e)
@@ -134,8 +145,17 @@ class PaymentFacade(
         // 3. PG가 확정한 금액만 원장에서 뺀다
         return when (cancellation.status) {
             PaymentCancelStatus.SUCCEEDED -> {
-                val cancelled = cancellation.cancelledAmount ?: target.requestedAmount
-                tx.execute {
+                // PG가 확정한 금액만 반영한다 — 없으면 요청액으로 추정하지 않고, 선점을 남겨 재요청을 막고 대사로 넘긴다
+                val cancelled =
+                    cancellation.cancelledAmount ?: run {
+                        log.error(
+                            "PG가 취소 확정 금액 없이 성공을 보고함 — 원장 반영 보류, 선점 유지. paymentId={}, requestedAmount={}",
+                            payment.paymentId,
+                            target.requestedAmount,
+                        )
+                        throw BusinessException(PaymentErrorCode.PAYMENT_GATEWAY_ERROR)
+                    }
+                cancelTx.execute {
                     // 밖에서 로딩한 결제 행은 낡았을 수 있어 저장 직전에 다시 읽는다
                     val current = paymentService.getByOrderGroupId(command.orderGroupId)
                     CancelPaymentResult.of(
@@ -166,7 +186,7 @@ class PaymentFacade(
     /** 선점 해제는 보상 동작이라 실패해도 원래 예외를 가리지 않는다 — 남은 CANCEL_REQUESTED는 대사가 본다 */
     private fun releaseCancelRequest(orderGroupId: Long) {
         runCatching {
-            tx.execute { paymentService.failCancel(paymentService.getByOrderGroupId(orderGroupId)) }
+            cancelTx.execute { paymentService.failCancel(paymentService.getByOrderGroupId(orderGroupId)) }
         }.onFailure { log.error("취소 선점 해제 실패 — 결제 행이 요청 상태로 남음. orderGroupId={}", orderGroupId, it) }
     }
 

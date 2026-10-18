@@ -16,6 +16,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * 실 포트원 대신 기록만 하는 Fake.
  * 컨텍스트 수명 내내 사는 싱글턴이라 테스트 사이에 상태가 안 새게 clear로 비움.
+ *
+ * 취소는 기록만 하지 않고 PG 쪽 잔액까지 들고 있다 — 취소가능액 대조(포트원의 유일한 중복 취소 방어)와
+ * 취소 뒤 조회 상태가 재현되지 않으면 "응답만 유실되고 PG는 취소에 성공한" 경로를 검증할 수 없다.
  */
 class FakePaymentGateway : PaymentGatewayPort {
     private val registered = ConcurrentHashMap<String, Long>()
@@ -25,6 +28,11 @@ class FakePaymentGateway : PaymentGatewayPort {
     private val failOnce = AtomicBoolean(false)
     private val cancelStatuses = ConcurrentHashMap<String, PaymentCancelStatus>()
     private val cancelErrors = ConcurrentHashMap<String, PaymentErrorCode>()
+    private val errorsAfterProcessing = ConcurrentHashMap<String, PaymentErrorCode>()
+    private val amountlessSuccess = ConcurrentHashMap<String, Boolean>()
+
+    /** PG 쪽 확정 취소액 누적 — 실제로 처리된 취소만 더한다 */
+    private val confirmedCancelled = ConcurrentHashMap<String, Long>()
 
     @Volatile
     private var onCancel: ((PaymentCancelCommand) -> Unit)? = null
@@ -64,13 +72,29 @@ class FakePaymentGateway : PaymentGatewayPort {
         onCancel = hook
     }
 
-    /** cancel이 PG 오류로 끊기는 경로를 심음. */
+    /** cancel이 PG에 닿기 전에 끊기는 경로를 심음 — PG는 아무것도 하지 않았다. */
     fun stubCancelError(
         paymentId: String,
         errorCode: PaymentErrorCode,
     ) {
         cancelErrors[paymentId] = errorCode
     }
+
+    /** PG는 취소를 확정했는데 응답만 유실된 경로를 심음 — 재요청이 잔액 대조에 걸려야 한다. */
+    fun stubCancelErrorAfterProcessing(
+        paymentId: String,
+        errorCode: PaymentErrorCode,
+    ) {
+        errorsAfterProcessing[paymentId] = errorCode
+    }
+
+    /** PG가 취소는 확정했지만 금액을 안 돌려주는 응답을 심음. */
+    fun stubCancelWithoutAmount(paymentId: String) {
+        amountlessSuccess[paymentId] = true
+    }
+
+    /** PG 쪽 누적 확정 취소액 */
+    fun cancelledAmountOf(paymentId: String): Long = confirmedCancelled[paymentId] ?: 0L
 
     fun clear() {
         registered.clear()
@@ -79,6 +103,9 @@ class FakePaymentGateway : PaymentGatewayPort {
         cancelled.clear()
         cancelStatuses.clear()
         cancelErrors.clear()
+        errorsAfterProcessing.clear()
+        amountlessSuccess.clear()
+        confirmedCancelled.clear()
         onCancel = null
         failOnce.set(false)
     }
@@ -97,11 +124,17 @@ class FakePaymentGateway : PaymentGatewayPort {
     override fun find(paymentId: String): PaymentGatewayView? {
         stubbed[paymentId]?.let { return it }
         val amount = registered[paymentId] ?: return null
+        val cancelled = cancelledAmountOf(paymentId)
         return PaymentGatewayView(
-            status = PaymentGatewayStatus.PAID,
+            status =
+                when {
+                    cancelled == 0L -> PaymentGatewayStatus.PAID
+                    cancelled < amount -> PaymentGatewayStatus.PARTIAL_CANCELLED
+                    else -> PaymentGatewayStatus.CANCELLED
+                },
             totalAmount = amount,
             paidAmount = amount,
-            cancelledAmount = cancelledTotal(paymentId),
+            cancelledAmount = cancelled,
             pgTxId = "fake-tx-$paymentId",
             paidAt = PAID_AT,
         )
@@ -111,20 +144,34 @@ class FakePaymentGateway : PaymentGatewayPort {
         cancelErrors[command.paymentId]?.let { throw BusinessException(it) }
         cancelled += command
         onCancel?.invoke(command)
+        assertCancellableAgrees(command)
         val status = cancelStatuses[command.paymentId] ?: PaymentCancelStatus.SUCCEEDED
+        // 전액 취소는 amount 를 싣지 않으므로 우리가 보낸 취소가능액이 그대로 확정액이다
+        val amount = command.amount ?: command.currentCancellableAmount
+        if (status == PaymentCancelStatus.SUCCEEDED) {
+            confirmedCancelled.merge(command.paymentId, amount, Long::plus)
+        }
+        // 확정 뒤에 끊는 주입 — 호출자는 결과를 모르지만 PG는 이미 취소했다
+        errorsAfterProcessing[command.paymentId]?.let { throw BusinessException(it) }
+        val reportAmount = status == PaymentCancelStatus.SUCCEEDED && amountlessSuccess[command.paymentId] != true
         return PaymentCancelResult(
             status = status,
-            // 전액 취소는 amount 를 싣지 않으므로 우리가 보낸 취소가능액이 그대로 확정액이다
-            cancelledAmount = if (status == PaymentCancelStatus.SUCCEEDED) command.amount ?: command.currentCancellableAmount else null,
+            cancelledAmount = if (reportAmount) amount else null,
             pgCancellationId = "fake-cancel-${command.paymentId}",
         )
     }
 
-    /** SUCCEEDED로 끝난 취소의 누적 금액 — find가 돌려주는 PG 쪽 취소액이다 */
-    private fun cancelledTotal(paymentId: String): Long =
-        cancelled
-            .filter { it.paymentId == paymentId && cancelStatuses[paymentId] != PaymentCancelStatus.REQUESTED }
-            .sumOf { it.amount ?: it.currentCancellableAmount ?: 0L }
+    /** 포트원의 중복 취소 방어를 재현한다 — 보낸 취소가능액이 PG 잔액과 다르면 거절한다 */
+    private fun assertCancellableAgrees(command: PaymentCancelCommand) {
+        val paid = registered[command.paymentId] ?: throw BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND)
+        val remaining = paid - cancelledAmountOf(command.paymentId)
+        if (command.currentCancellableAmount != remaining) {
+            throw BusinessException(PaymentErrorCode.PAYMENT_CANCELLABLE_AMOUNT_CONFLICT)
+        }
+        if ((command.amount ?: remaining) > remaining) {
+            throw BusinessException(PaymentErrorCode.CANCEL_AMOUNT_EXCEEDS_CANCELLABLE)
+        }
+    }
 
     companion object {
         /** PAID에는 paidAt이 필수라 없는 조합을 심지 않으려고 고정함. */

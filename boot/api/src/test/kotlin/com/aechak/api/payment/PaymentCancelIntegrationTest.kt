@@ -149,6 +149,45 @@ class PaymentCancelIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `PG는 취소했는데 응답만 유실되면 재요청이 취소가능액 대조에 걸린다`() {
+        val paid = paidGroup()
+        // PG는 확정했고 호출자만 결과를 모르는 상태
+        paymentGateway.stubCancelErrorAfterProcessing(paid.publicId, PaymentErrorCode.PAYMENT_GATEWAY_ERROR)
+
+        assertThrows(BusinessException::class.java) {
+            paymentUseCase.cancelPayment(cancelCommand(paid.orderGroupId, amount = 5_000L))
+        }
+        assertEquals("APPROVED", paymentRow(paid.publicId).status, "선점이 풀려야 재요청이 가능하다")
+
+        // 재요청의 대조값은 우리 원장 기준 전액이지만 PG 잔액은 이미 줄어 있다 — 중복 취소가 여기서 막힌다
+        val retry =
+            assertThrows(BusinessException::class.java) {
+                paymentUseCase.cancelPayment(cancelCommand(paid.orderGroupId, amount = 5_000L))
+            }
+
+        assertEquals(PaymentErrorCode.PAYMENT_CANCELLABLE_AMOUNT_CONFLICT, retry.errorCode)
+        assertEquals(5_000L, paymentGateway.cancelledAmountOf(paid.publicId), "PG에서 두 번 취소되면 안 된다")
+        assertEquals("APPROVED", paymentRow(paid.publicId).status)
+        assertEquals(0L, paymentRow(paid.publicId).cancelledAmount, "확정 금액을 모르는 취소를 원장에 추정 반영하지 않는다")
+    }
+
+    @Test
+    fun `확정 금액 없는 성공 응답은 원장을 깎지 않고 선점을 남긴다`() {
+        val paid = paidGroup()
+        paymentGateway.stubCancelWithoutAmount(paid.publicId)
+
+        val e =
+            assertThrows(BusinessException::class.java) {
+                paymentUseCase.cancelPayment(cancelCommand(paid.orderGroupId, amount = 5_000L))
+            }
+
+        assertEquals(PaymentErrorCode.PAYMENT_GATEWAY_ERROR, e.errorCode)
+        val row = paymentRow(paid.publicId)
+        assertEquals("CANCEL_REQUESTED", row.status, "PG는 취소했으니 선점을 풀어 재요청을 내보내면 안 된다")
+        assertEquals(PRODUCT_AMOUNT, row.cancellableAmount, "확정 금액을 모르면 추정해 깎지 않는다")
+    }
+
+    @Test
     fun `선점이 커밋된 뒤 도착한 동시 취소는 60016으로 막힌다`() {
         val paid = paidGroup()
         val insideCancel = CountDownLatch(1)
@@ -182,6 +221,24 @@ class PaymentCancelIntegrationTest : IntegrationTestBase() {
         assertEquals(5_000L, row.cancelledAmount, "한 번만 집행돼야 한다 — 두 번 깎이면 구매자에게 두 번 환불된다")
         assertEquals(8_000L, row.cancellableAmount)
         assertEquals(1, paymentGateway.cancelCommands.size, "진 쪽이 PG까지 나가면 중복 취소가 된다")
+    }
+
+    @Test
+    fun `호출자 트랜잭션 안에서 불러도 취소 반영이 커밋된다`() {
+        val paid = paidGroup()
+
+        // 환불 집행처럼 자기 트랜잭션을 연 호출자가 이 포트를 부르고 그 뒤 롤백하는 상황
+        assertThrows(IllegalStateException::class.java) {
+            tx.execute {
+                paymentUseCase.cancelPayment(cancelCommand(paid.orderGroupId, amount = 5_000L))
+                throw IllegalStateException("호출자 롤백")
+            }
+        }
+
+        val row = paymentRow(paid.publicId)
+        assertEquals("PARTIAL_CANCELLED", row.status, "바깥 트랜잭션에 합류하면 PG는 취소했는데 원장은 승인으로 돌아간다")
+        assertEquals(5_000L, row.cancelledAmount)
+        assertEquals(8_000L, row.cancellableAmount)
     }
 
     // ---------- 픽스처 ----------

@@ -17,6 +17,7 @@ import com.aechak.domain.payment.reconciliation.ReconciliationResolution
  * 2. 돈이 걸린 나머지(금액 불일치·우리만 승인·PG 취소 미반영·모르는 결제·취소된 그룹의 승인)는 사람 몫이다.
  *
  * 우선순위: 결제 행 없음 → 우리 원장 내부 불일치 → (PG 승인) 그룹 취소 → 금액 → 상태.
+ * 취소 선점만 남은 건은 금액이 일치해도 일치로 접지 않는다 — 접으면 이월 대상에서 빠져 선점이 영구히 남는다.
  * 우리 결제가 이미 승인이면 어느 분기에서든 승인 원장(등록금액·실결제액)이 PG 승인액과 같아야 한다 — 다르면 자동 보정으로 보내지 않는다.
  */
 object PaymentReconciliationClassifier {
@@ -67,16 +68,10 @@ object PaymentReconciliationClassifier {
         if (oursApproved) {
             // 승인 원장이 PG와 다르면 그룹 상태와 무관하게 사람 확인 — 확정 본체의 approve()는 이미 승인된 행을 고치지 않는다
             if (!approvedLedgerAgrees(group, payment, gateway)) return manual(MismatchType.AMOUNT_MISMATCH)
-            // 취소를 요청했고 PG는 아직 반영 전 — 선점 때 원장을 깎지 않으므로 금액은 일치한다.
-            // 일치로 접지 않고 유형만 따로 남겨, 요청만 남고 끝나지 않은 건을 목록에서 찾을 수 있게 한다
-            if (payment.status == PaymentStatus.CANCEL_REQUESTED &&
-                gateway.cancelledAmount == 0L &&
-                group.status == OrderGroupStatus.PAID
-            ) {
-                return Verdict(MismatchType.CANCEL_IN_FLIGHT, ReconciliationResolution.NOT_REQUIRED)
-            }
-            // 취소가능액도 원장의 일부다 — PG가 취소한 적 없으면 승인액 그대로 남아 있어야 한다
+            // 취소가능액도 원장의 일부다 — PG가 취소한 적 없으면 승인액 그대로 남아 있어야 한다.
+            // 선점(CANCEL_REQUESTED)은 금액을 건드리지 않으므로 이 비교를 먼저 해야, 잘못 깎은 원장이 대기로 숨지 않는다
             if (payment.cancellableAmount != gateway.paidAmount - gateway.cancelledAmount) return manual(MismatchType.AMOUNT_MISMATCH)
+            if (payment.status == PaymentStatus.CANCEL_REQUESTED) return manual(MismatchType.CANCEL_IN_FLIGHT)
             if (group.status == OrderGroupStatus.PAID) return matched()
         }
         // 그룹이 결제대기 — 둘 다 못 들었거나 승인 기록만 남고 전이가 유실된 것. 확정 본체가 다시 PG에 묻고 금액을 대조한 뒤 선점한다
@@ -94,6 +89,8 @@ object PaymentReconciliationClassifier {
         // 취소 전 원승인액부터 같아야 취소액 비교가 의미 있다
         if (!approvedLedgerAgrees(group, payment, gateway)) return manual(MismatchType.AMOUNT_MISMATCH)
         val cancellableAgrees = payment.cancellableAmount == gateway.paidAmount - gateway.cancelledAmount
+        // 이전 취소가 정합이어도 선점이 남아 있으면 끝나지 않은 요청이 있다 — 일치로 접으면 그 요청이 사라진다
+        if (cancellableAgrees && payment.status == PaymentStatus.CANCEL_REQUESTED) return manual(MismatchType.CANCEL_IN_FLIGHT)
         val groupAgrees =
             when (gateway.status) {
                 PaymentGatewayStatus.CANCELLED -> group.status == OrderGroupStatus.CANCELLED

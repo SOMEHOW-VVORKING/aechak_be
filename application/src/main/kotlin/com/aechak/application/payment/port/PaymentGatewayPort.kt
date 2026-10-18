@@ -22,12 +22,13 @@ interface PaymentGatewayPort {
  * 취소 요청. amount 가 null 이면 전액 취소다.
  * currentCancellableAmount 는 우리가 알고 있는 취소가능액이고, PG가 이 값과 자기 잔액을 대조해
  * 다르면 거절한다 — 포트원 취소 API에는 멱등키가 없어 중복 취소 방어가 이 대조에 걸려 있다.
+ * 생략하면 PG가 대조를 하지 않으므로 선택값으로 두지 않는다.
  */
 data class PaymentCancelCommand(
     val paymentId: String,
     val reason: String,
     val amount: Long?,
-    val currentCancellableAmount: Long?,
+    val currentCancellableAmount: Long,
     val requester: PaymentCancelRequester,
 )
 

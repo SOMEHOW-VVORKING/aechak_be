@@ -152,10 +152,6 @@ class PortOneAdapter(
     private fun assertWithinAmountLimit(command: PaymentCancelCommand) {
         // 전액 취소는 amount 를 싣지 않으므로 우리가 아는 취소가능액을 상한 대조 대상으로 쓴다
         val amount = command.amount ?: command.currentCancellableAmount
-        if (amount == null) {
-            log.error("취소 금액을 알 수 없어 상한 대조를 못 함. paymentId={}", command.paymentId)
-            throw BusinessException(PaymentErrorCode.PAYMENT_CANCEL_AMOUNT_LIMIT_EXCEEDED)
-        }
         if (amount > cancelProperties.maxAmount) {
             log.error(
                 "취소 금액 상한 초과로 호출 중단. paymentId={}, amount={}, maxAmount={}",
