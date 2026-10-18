@@ -31,9 +31,7 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.application.user.verification", // 전화 인증
         "com.aechak.application.file", // 서류 승격
         "com.aechak.application.product", // 상품 등록·카테고리 조회
-        // 택배사 마스터 조회. order BC 전체가 아니라 shipment 하위만 등재한다 —
-        // application.order 루트는 구매자 주문·장바구니 파사드까지 끌고 와 배송지·적립금 패키지를 요구한다.
-        "com.aechak.application.order.shipment",
+        "com.aechak.application.order.shipment", // 택배사 마스터 조회 — order BC 중 이 하위만 쓴다
         "com.aechak.infra.persistence", // JPA 어댑터 (QuerydslConfig 포함)
         "com.aechak.infra.s3", // FileStorage 어댑터
         "com.aechak.infra.redis", // 인증 코드 저장소

@@ -3,6 +3,7 @@ package com.aechak.seller.order
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.domain.order.shipment.CourierMaster
 import com.aechak.domain.seller.seller.Seller
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -69,14 +70,26 @@ class CourierListIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.items[0].courierCode").value("CJ"))
     }
 
+    // 필드 누락이 아니라 명시적 null이어야 한다 — FE가 "검증 패턴 없음"을 키 부재로 추론하지 않게
     @Test
     fun `송장번호 형식이 미정이면 null로 내린다`() {
         seedCourier("CJ", "CJ대한통운", trackingFormatPattern = null)
         seedCourier("POST", "우체국택배", trackingFormatPattern = "^\\d{13}$")
 
         list()
-            .andExpect(jsonPath("$.data.items[0].trackingFormatPattern").doesNotExist())
+            .andExpect(jsonPath("$.data.items[0].trackingFormatPattern").value(nullValue()))
             .andExpect(jsonPath("$.data.items[1].trackingFormatPattern").value("^\\d{13}$"))
+    }
+
+    @Test
+    fun `이름이 같으면 코드 오름차순으로 반환한다`() {
+        seedCourier("ZZ-LOTTE", "롯데택배")
+        seedCourier("AA-LOTTE", "롯데택배")
+
+        list()
+            .andExpect(jsonPath("$.data.items.length()").value(2))
+            .andExpect(jsonPath("$.data.items[0].courierCode").value("AA-LOTTE"))
+            .andExpect(jsonPath("$.data.items[1].courierCode").value("ZZ-LOTTE"))
     }
 
     @Test
