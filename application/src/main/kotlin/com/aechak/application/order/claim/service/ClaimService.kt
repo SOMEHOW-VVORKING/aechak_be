@@ -28,9 +28,12 @@ class ClaimService(
     @param:Value("\${order.claim.auto-approve-days:2}") private val autoApproveDays: Long,
 ) {
     fun requestClaim(command: RequestClaimCommand): RequestClaimResult {
-        // 주문 행을 먼저 선점한다 — 겹친 요청이 중복 검사를 둘 다 통과하면 같은 품목에 클레임이 두 건 걸린다
+        // 주문 행을 먼저 선점한다 — 겹친 요청이 중복 검사를 둘 다 통과하면 같은 품목에 클레임이 두 건 걸린다.
+        // 소유권 확인보다 선점이 앞서지만 공개 식별자는 추측 불가이고 선점은 이 트랜잭션 안에서 끝난다
         val order =
-            orderRepository.findByPublicIdAndBuyerIdForUpdate(command.orderPublicId, command.buyerId)
+            orderRepository
+                .findByPublicIdForUpdate(command.orderPublicId)
+                ?.takeIf { it.orderGroup.buyerId == command.buyerId }
                 ?: throw BusinessException(OrderErrorCode.ORDER_NOT_FOUND)
         val targets = resolveTargets(order, command.targets)
         rejectIfAlreadyClaimed(targets.keys)

@@ -209,6 +209,33 @@ class ClaimRequestIntegrationTest : IntegrationTestBase() {
         assertEquals(2, claimCount(seeded.orderId))
     }
 
+    /** 중복 차단은 수량이 아니라 주문품목 단위다 — 수량을 쪼개 두 번 취소하면 안분 잔차 때문에 합이 결제액과 갈린다. */
+    @Test
+    fun `일부 수량을 취소한 뒤 남은 수량은 같은 품목이라 요청이 막힌다`() {
+        val seeded = seedOrder(items = listOf(ItemSpec(20_000L, 3)))
+        val target = seeded.orderItemIds.first()
+        mockMvc
+            .perform(
+                requestClaim(
+                    token,
+                    seeded.orderPublicId,
+                    """{"claimType":"CANCEL","reasonCode":"CHANGE_OF_MIND","items":[{"orderItemId":$target,"quantity":1}]}""",
+                ),
+            ).andExpect(status().isCreated)
+
+        mockMvc
+            .perform(
+                requestClaim(
+                    token,
+                    seeded.orderPublicId,
+                    """{"claimType":"CANCEL","reasonCode":"CHANGE_OF_MIND","items":[{"orderItemId":$target,"quantity":2}]}""",
+                ),
+            ).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(50403))
+
+        assertEquals(1, claimCount(seeded.orderId))
+    }
+
     @Test
     fun `주문 수량보다 많이 요청하면 422와 50406이다`() {
         val seeded = seedOrder(items = listOf(ItemSpec(20_000L, 2)))

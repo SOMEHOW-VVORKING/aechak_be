@@ -16,13 +16,10 @@ interface OrderRepository {
     ): Order?
 
     /**
-     * 구매자 스코프 단건 조회 + 행 선점. 같은 주문에 겹친 클레임 요청을 직렬화한다 —
-     * 선점 없이 중복 검사를 하면 두 요청이 모두 "진행 중 없음"을 읽는다.
+     * 주문 행 선점 조회. 같은 주문에 겹친 클레임 요청을 직렬화한다 — 선점 없이 중복 검사를 하면
+     * 두 요청이 모두 "진행 중 없음"을 읽는다. 소유권은 호출측이 확인한다.
      */
-    fun findByPublicIdAndBuyerIdForUpdate(
-        publicId: String,
-        buyerId: Long,
-    ): Order?
+    fun findByPublicIdForUpdate(publicId: String): Order?
 
     /** 셀러 스코프 단건 조회 — 타 셀러 주문은 없는 것으로 본다. */
     fun findByPublicIdAndSellerId(

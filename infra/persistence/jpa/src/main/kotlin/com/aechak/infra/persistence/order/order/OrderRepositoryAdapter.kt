@@ -25,11 +25,11 @@ interface OrderJpaRepository : JpaRepository<Order, Long> {
         buyerId: Long,
     ): Order?
 
+    // 조인을 끼우면 MySQL이 조인한 주문그룹 행까지 잠근다 — 주문 행만 잠그도록 단일 테이블로 둔다
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select o from Order o join o.orderGroup g where o.publicId = :publicId and g.buyerId = :buyerId")
-    fun findForUpdateByPublicIdAndBuyerId(
+    @Query("select o from Order o where o.publicId = :publicId")
+    fun findForUpdateByPublicId(
         @Param("publicId") publicId: String,
-        @Param("buyerId") buyerId: Long,
     ): Order?
 
     @Modifying
@@ -72,10 +72,7 @@ class OrderRepositoryAdapter(
         buyerId: Long,
     ): Order? = jpaRepository.findByPublicIdAndOrderGroupBuyerId(publicId, buyerId)
 
-    override fun findByPublicIdAndBuyerIdForUpdate(
-        publicId: String,
-        buyerId: Long,
-    ): Order? = jpaRepository.findForUpdateByPublicIdAndBuyerId(publicId, buyerId)
+    override fun findByPublicIdForUpdate(publicId: String): Order? = jpaRepository.findForUpdateByPublicId(publicId)
 
     override fun findByPublicIdAndSellerId(
         publicId: String,

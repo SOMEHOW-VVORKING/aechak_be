@@ -3,6 +3,7 @@ package com.aechak.application.order.claim.service
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.OrderItem
 import org.springframework.stereotype.Service
+import java.math.BigInteger
 
 /**
  * 환불액 계산. 품목 환불액은 claim_items에 확정 저장되고, 이후 승인·집행은 저장된 값을 그대로 쓴다.
@@ -83,7 +84,7 @@ class ClaimAmountCalculator {
         if (base <= 0L) return PointAllocation.NONE
 
         val allocatable = minOf(usedPoint, base)
-        val shares = lines.associate { it.key to allocatable * it.amount / base }.toMutableMap()
+        val shares = lines.associate { it.key to proportionOf(allocatable, it.amount, base) }.toMutableMap()
         distributeResidual(lines, shares, allocatable - shares.values.sum())
         return PointAllocation(
             itemShares = shares.filterKeys { it.orderItemId != null }.mapKeys { it.key.orderItemId!! },
@@ -91,7 +92,9 @@ class ClaimAmountCalculator {
         )
     }
 
-    /** 나누어떨어지지 않은 잔차를 큰 금액 줄부터 1원씩 싣는다. 합이 사용액과 어긋나면 환불 총액이 결제액과 갈린다. */
+    /**
+     * 금액이 큰 줄부터 남은 여유만큼 잔차를 싣는다. 합이 사용액과 어긋나면 환불 총액이 결제액과 갈린다.
+     */
     private fun distributeResidual(
         lines: List<PayableLine>,
         shares: MutableMap<LineKey, Long>,
@@ -106,7 +109,7 @@ class ClaimAmountCalculator {
                     .thenBy { it.key.orderItemId ?: Long.MAX_VALUE },
             ).forEach { line ->
                 if (residual <= 0L) return
-                // 한 줄에 몰아 싣으면 금액이 작은 줄의 환불액이 음수가 된다 — 남은 여유만큼만 싣는다
+                // 여유를 넘겨 싣으면 그 줄의 환불액이 음수가 된다
                 val added = minOf(residual, line.amount - shares.getValue(line.key))
                 shares[line.key] = shares.getValue(line.key) + added
                 residual -= added
@@ -122,6 +125,21 @@ class ClaimAmountCalculator {
             }.filter { it.amount > 0L }
 
     private fun netAmount(item: OrderItem): Long = item.unitPriceSnapshot * item.quantity - item.discountAllocatedAmount
+
+    /**
+     * total × part / base. 금액 두 개를 그냥 곱하면 Long 범위를 넘겨 음수 안분액이 나오므로 곱셈만 큰 수로 한다.
+     * 결과는 total 이하라 Long에 담긴다.
+     */
+    private fun proportionOf(
+        total: Long,
+        part: Long,
+        base: Long,
+    ): Long =
+        BigInteger
+            .valueOf(total)
+            .multiply(BigInteger.valueOf(part))
+            .divide(BigInteger.valueOf(base))
+            .toLong()
 
     private fun prorate(
         amount: Long,
