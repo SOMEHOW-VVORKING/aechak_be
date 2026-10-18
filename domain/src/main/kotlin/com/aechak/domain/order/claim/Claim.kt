@@ -141,14 +141,25 @@ class Claim protected constructor(
     val items: List<ClaimItem> get() = _items.toList()
 
     companion object {
+        /**
+         * 대상 품목은 이 주문 애그리거트가 들고 있는 품목이어야 한다 — 스냅샷(sellerId·orderId)과
+         * 품목 경로가 다른 주문을 가리키면 셀러 목록과 상세가 갈린다. 그래서 ClaimItem은 조회한
+         * 주문의 items에서 만들어 넘겨야 한다.
+         */
         fun request(
             claimType: ClaimType,
             order: Order,
             items: List<ClaimItem>,
-        ): Claim =
-            Claim(claimType, order.sellerId, order.id).apply {
+        ): Claim {
+            require(items.isNotEmpty()) { "클레임에는 대상 품목이 하나 이상 필요합니다" }
+            val orderItems = order.items
+            require(items.all { claimItem -> orderItems.any { it === claimItem.orderItem } }) {
+                "클레임 품목은 모두 이 주문의 품목이어야 합니다 (orderId=${order.id})"
+            }
+            return Claim(claimType, order.sellerId, order.id).apply {
                 requestedAt = LocalDateTime.now()
                 items.forEach { _items += it }
             }
+        }
     }
 }

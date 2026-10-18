@@ -2,6 +2,7 @@ package com.aechak.api.schema
 
 import com.aechak.api.support.IntegrationTestConfig
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationVersion
 import org.junit.jupiter.api.BeforeAll
@@ -60,18 +61,34 @@ class V27SchemaMigrationIntegrationTest {
         execute(entityUrl, entitySchemaStatements(TARGET_TABLES))
 
         // dev 재현: ddl-auto가 V10보다 먼저 테이블을 만들었고 FK도 걸려 있다. 기존 클레임 데이터도 심는다.
-        legacyUrl = recreateDatabase("v27_legacy")
-        migrateUpTo(legacyUrl, "1")
-        execute(legacyUrl, preV27DriftStatements())
-        migrateUpTo(legacyUrl, "26")
-        execute(legacyUrl, legacyForeignKeyStatements() + legacyClaimRows())
-        flyway(legacyUrl).migrate()
+        legacyUrl = buildDriftSchema("v27_legacy", createdBeforeV10 = true, rows = legacyClaimRows())
 
         // V10 이후에 ddl-auto가 만든 DB: V10의 조건부 ALTER가 전부 건너뛰어져 제약이 비어 있다.
-        lateUrl = recreateDatabase("v27_late")
-        migrateUpTo(lateUrl, "26")
-        execute(lateUrl, preV27DriftStatements())
-        flyway(lateUrl).migrate()
+        lateUrl = buildDriftSchema("v27_late", createdBeforeV10 = false, rows = emptyList())
+    }
+
+    /**
+     * ddl-auto가 만든 DB를 재현한 뒤 V27까지 적용한다.
+     * orders는 V21이 만들지만 ddl-auto가 그 위에 enum 타입과 FK 보조 인덱스를 남기므로 그 모양까지 되돌린다.
+     */
+    private fun buildDriftSchema(
+        name: String,
+        createdBeforeV10: Boolean,
+        rows: List<String>,
+        migrateToLatest: Boolean = true,
+    ): String {
+        val url = recreateDatabase(name)
+        if (createdBeforeV10) {
+            migrateUpTo(url, "1")
+            execute(url, preV27DriftStatements())
+            migrateUpTo(url, "26")
+        } else {
+            migrateUpTo(url, "26")
+            execute(url, preV27DriftStatements())
+        }
+        execute(url, ordersDriftStatements() + rows + driftForeignKeyStatements())
+        if (migrateToLatest) flyway(url).migrate()
+        return url
     }
 
     @Test
@@ -93,6 +110,31 @@ class V27SchemaMigrationIntegrationTest {
         execute(freshUrl, statementsOf(migrationSql()))
 
         assertThat(TARGET_TABLES.associateWith { snapshot(freshUrl, it) }).isEqualTo(before)
+    }
+
+    @Test
+    fun `V27을 다시 실행해도 이미 채운 클레임 데이터를 건드리지 않는다`() {
+        val before = claimSnapshotOf(legacyUrl)
+
+        execute(legacyUrl, statementsOf(migrationSql()))
+
+        assertThat(claimSnapshotOf(legacyUrl)).isEqualTo(before)
+    }
+
+    @Test
+    fun `주문으로 이어지지 않는 품목이 섞인 클레임이 있으면 적용이 실패한다`() {
+        val orphanUrl =
+            buildDriftSchema(
+                "v27_orphan",
+                createdBeforeV10 = true,
+                rows = legacyClaimRows() + orphanClaimItemRow(),
+                migrateToLatest = false,
+            )
+
+        // 백필이 채우지 못한 행이 남아 NOT NULL 좁히기가 막힌다 — 조용히 0을 넣지 않는다는 뜻이다.
+        assertThatThrownBy { flyway(orphanUrl).migrate() }
+            .hasMessageContaining("V27__migrate_ddl_auto_tables.sql")
+            .hasMessageContaining("Invalid use of NULL value")
     }
 
     @Test
@@ -227,12 +269,34 @@ class V27SchemaMigrationIntegrationTest {
             )
 
     /** ddl-auto가 걸어 둔 FK를 흉내낸다 — FK와 그 보조 인덱스가 있어도 조건부 ALTER가 걸리지 않아야 한다. */
-    private fun legacyForeignKeyStatements(): List<String> =
+    private fun driftForeignKeyStatements(): List<String> =
         listOf(
-            "ALTER TABLE shipments ADD CONSTRAINT FKlegacyshipmentsorder FOREIGN KEY (order_id) REFERENCES orders (id)",
-            "ALTER TABLE claim_items ADD CONSTRAINT FKlegacyclaimitemsclaim FOREIGN KEY (claim_id) REFERENCES claims (id)",
-            "ALTER TABLE order_status_histories ADD CONSTRAINT FKlegacyoshorder FOREIGN KEY (order_id) REFERENCES orders (id)",
+            "ALTER TABLE shipments ADD CONSTRAINT FKdriftshipmentsorder FOREIGN KEY (order_id) REFERENCES orders (id)",
+            "ALTER TABLE claim_items ADD CONSTRAINT FKdriftclaimitemsclaim FOREIGN KEY (claim_id) REFERENCES claims (id)",
+            "ALTER TABLE order_status_histories ADD CONSTRAINT FKdriftoshorder FOREIGN KEY (order_id) REFERENCES orders (id)",
+            "ALTER TABLE orders ADD CONSTRAINT FKdriftordersgroup FOREIGN KEY (order_group_id) REFERENCES order_groups (id)",
         )
+
+    /**
+     * orders를 ddl-auto가 손댄 모양으로 되돌린다 — enum 타입과, 명명 인덱스 없이 FK 보조 인덱스만 있는 상태.
+     * enum 값 목록은 엔티티 스크립트에서 그대로 떠 와 테스트가 상태값 추가에 뒤처지지 않게 한다.
+     */
+    private fun ordersDriftStatements(): List<String> {
+        val ordersCreate = entitySchemaStatements(listOf("orders")).first { CREATE_TABLE.containsMatchIn(it) }
+        return listOf(
+            "ALTER TABLE orders MODIFY COLUMN status ${enumDefinitionOf(ordersCreate, "status")} NOT NULL",
+            "ALTER TABLE orders MODIFY COLUMN confirm_type ${enumDefinitionOf(ordersCreate, "confirm_type")} NULL",
+            "ALTER TABLE orders DROP INDEX idx_orders_order_group_id",
+        )
+    }
+
+    private fun enumDefinitionOf(
+        createStatement: String,
+        column: String,
+    ): String {
+        val match = Regex("[(,]\\s*$column (enum ?\\([^)]*\\))", RegexOption.IGNORE_CASE).find(createStatement)
+        return requireNotNull(match) { "$column 의 enum 선언을 엔티티 스크립트에서 찾지 못했습니다" }.groupValues[1]
+    }
 
     /** V27 적용 전에 이미 있던 클레임 1건 — 비정규화 컬럼 백필이 실제 주문을 가리키는지 보려면 데이터가 필요하다. */
     private fun legacyClaimRows(): List<String> =
@@ -267,6 +331,15 @@ class V27SchemaMigrationIntegrationTest {
             """.trimIndent(),
         )
 
+    /** 주문품목이 사라진 클레임 품목 — 정상 품목과 섞이면 백필이 "주문 하나"로 오판할 수 있는 모양이다. */
+    private fun orphanClaimItemRow(): List<String> =
+        listOf(
+            """
+            INSERT INTO claim_items (id, claim_id, order_item_id, quantity, refund_amount, created_at, updated_at)
+            VALUES (9006, 9004, 8888, 1, 5000, NOW(6), NOW(6))
+            """.trimIndent(),
+        )
+
     private fun targetTableOf(statement: String): String? =
         CREATE_TABLE.find(statement)?.groupValues?.get(1)
             ?: CREATE_INDEX.find(statement)?.groupValues?.get(1)
@@ -277,6 +350,12 @@ class V27SchemaMigrationIntegrationTest {
         requireNotNull(stream) { "$MIGRATION_NAME 을 클래스패스에서 찾지 못했습니다" }
         return stream.use { it.reader().readText() }
     }
+
+    /** 백필 결과와 updated_at까지 — 재실행이 데이터를 건드리지 않는지 보려면 시각도 봐야 한다. */
+    private fun claimSnapshotOf(url: String): List<String> =
+        query(url, "SELECT id, seller_id, order_id, updated_at FROM claims ORDER BY id") {
+            "${it.getLong(1)}/${it.getLong(2)}/${it.getLong(3)}/${it.getTimestamp(4)}"
+        }
 
     private fun snapshot(
         url: String,

@@ -9,6 +9,10 @@
 --  - enum 컬럼은 VARCHAR로 둔다(V21·V24와 같은 규약).
 --  - 인덱스·UNIQUE 이름은 엔티티 @Table 선언과 일치시킨다.
 
+-- NOT NULL 좁히기가 남은 NULL을 조용히 0으로 바꾸지 않게 이 마이그레이션 세션만 strict로 고정한다.
+SET SESSION sql_mode = IF(@@SESSION.sql_mode = '', 'STRICT_ALL_TABLES',
+                          CONCAT(@@SESSION.sql_mode, ',STRICT_ALL_TABLES'));
+
 
 -- 셀러 상점. PK가 user_id다(별도 셀러 id 없음) — 유저 1명 = 셀러 1개.
 CREATE TABLE IF NOT EXISTS sellers
@@ -298,18 +302,23 @@ DEALLOCATE PREPARE col4_stmt;
 -- ── claims 비정규화 컬럼 백필 ─────────────────────────────────────────────────
 -- 위에서 NULL로 추가했으므로 기존 행을 주문 경로로 채운 뒤 NOT NULL로 좁힌다.
 -- NOT NULL로 바로 추가하면 MySQL이 기존 행을 암묵적 기본값 0으로 채워 조용히 오염된다.
--- 한 클레임이 두 주문에 걸쳐 있거나 품목이 없으면 채우지 않는다 — 그런 행이 있으면
--- 다음 NOT NULL 좁히기가 실패해 사람이 보게 된다(조용히 0을 넣는 것보다 낫다).
+-- 품목 전부가 같은 한 주문으로 이어질 때만 채운다. FK가 없어 주문·주문품목이 사라진 품목이 섞여
+-- 있을 수 있는데, 그런 품목을 INNER JOIN으로 떨어뜨리면 남은 품목만 보고 "주문 하나"로 오판한다.
+-- 채우지 못한 행이 있으면 다음 NOT NULL 좁히기가 실패해 사람이 보게 된다(조용히 0을 넣는 것보다 낫다).
 UPDATE claims c
     JOIN (SELECT ci.claim_id,
                  MIN(o.id)              AS order_id,
                  MIN(o.seller_id)       AS seller_id,
+                 COUNT(*)               AS item_count,
+                 COUNT(o.id)            AS linked_item_count,
                  COUNT(DISTINCT o.id)   AS order_count
           FROM claim_items ci
-                   JOIN order_items oi ON oi.id = ci.order_item_id
-                   JOIN orders o ON o.id = oi.order_id
+                   LEFT JOIN order_items oi ON oi.id = ci.order_item_id
+                   LEFT JOIN orders o ON o.id = oi.order_id
           GROUP BY ci.claim_id) src
-    ON src.claim_id = c.id AND src.order_count = 1
+    ON src.claim_id = c.id
+   AND src.order_count = 1
+   AND src.linked_item_count = src.item_count
 SET c.order_id   = src.order_id,
     c.seller_id  = src.seller_id,
     c.updated_at = NOW(6)
