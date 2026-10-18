@@ -654,6 +654,8 @@ class PaymentReconciliationFacadeTest {
 
         override fun findExpiredPending(
             now: LocalDateTime,
+            afterExpiresAt: LocalDateTime?,
+            afterId: Long?,
             limit: Int,
         ): List<OrderGroup> = throw UnsupportedOperationException()
     }

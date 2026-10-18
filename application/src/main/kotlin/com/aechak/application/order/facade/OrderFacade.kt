@@ -9,6 +9,7 @@ import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.command.ExpireOrderGroupCommand
+import com.aechak.application.order.usecase.query.ExpiredOrderGroupQuery
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
 import com.aechak.application.order.usecase.result.ExpireOrderGroupResult
@@ -75,8 +76,8 @@ class OrderFacade(
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = orderService.confirmGroupPaid(orderGroupId)
 
     @Transactional(readOnly = true)
-    override fun findExpiredOrderGroups(limit: Int): List<ExpiredOrderGroupResult> =
-        orderExpiryService.findExpired(LocalDateTime.now(), limit)
+    override fun findExpiredOrderGroups(query: ExpiredOrderGroupQuery): List<ExpiredOrderGroupResult> =
+        orderExpiryService.findExpired(LocalDateTime.now(), query)
 
     /** 취소 전이·재고·적립금이 한 트랜잭션 — 복원 중 하나라도 터지면 그룹이 결제대기로 돌아가 다음 회차가 다시 집는다 */
     @Transactional

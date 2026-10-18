@@ -10,14 +10,17 @@ import java.time.LocalDateTime
 data class ExpiredOrderGroupResult(
     val orderGroupId: Long,
     val orderGroupPublicId: String,
-    val expiresAt: LocalDateTime?,
+    val expiresAt: LocalDateTime,
 ) {
     companion object {
         fun from(orderGroup: OrderGroup): ExpiredOrderGroupResult =
             ExpiredOrderGroupResult(
                 orderGroupId = orderGroup.id,
                 orderGroupPublicId = orderGroup.publicId,
-                expiresAt = orderGroup.expiresAt,
+                expiresAt =
+                    requireNotNull(orderGroup.expiresAt) {
+                        "만료 스캔 결과에는 만료 시각이 필수입니다 (publicId=${orderGroup.publicId})"
+                    },
             )
     }
 }

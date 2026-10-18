@@ -101,6 +101,8 @@ private class FakeOrderGroupRepository : OrderGroupRepository {
 
     override fun findExpiredPending(
         now: LocalDateTime,
+        afterExpiresAt: LocalDateTime?,
+        afterId: Long?,
         limit: Int,
     ): List<OrderGroup> = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
 }

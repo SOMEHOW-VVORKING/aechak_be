@@ -2,6 +2,7 @@ package com.aechak.batch.order
 
 import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.order.usecase.command.ExpireOrderGroupCommand
+import com.aechak.application.order.usecase.query.ExpiredOrderGroupQuery
 import com.aechak.application.order.usecase.result.ExpiredOrderGroupResult
 import com.aechak.application.payment.usecase.PaymentUseCase
 import com.aechak.application.payment.usecase.command.CompletePaymentByGatewayCommand
@@ -18,6 +19,9 @@ import org.springframework.stereotype.Component
  * 건마다 두 단계로 돈다. 먼저 결제 결과를 확정해(외부 조회라 트랜잭션 밖) 승인·승인대기 건을 걸러내고,
  * 그 뒤에도 결제대기로 남은 건만 취소·복원한다. 돈이 나간 그룹을 취소하지 않으려면 이 순서여야 한다.
  *
+ * 한 회차는 커서로 페이지를 넘기며 최대 max-pages 페이지까지 본다. 넘긴 건이 결제대기로 남아도 다음 페이지로 진행하므로
+ * 처리할 수 없는 건이 뒤의 만료 주문을 가리지 않는다.
+ *
  * 환불 배선이 아직 없어 기본값은 꺼져 있다 — 승인과 경합에서 취소가 이기면 수동 환불이 필요한 건이 남는다.
  */
 @Component
@@ -25,24 +29,43 @@ import org.springframework.stereotype.Component
 class OrderExpirySchedule(
     private val orderExpiryUseCase: OrderExpiryUseCase,
     private val paymentUseCase: PaymentUseCase,
-    @Value("\${order.expiry.limit:100}") private val limit: Int,
+    @Value("\${order.expiry.page-size:100}") private val pageSize: Int,
+    @Value("\${order.expiry.max-pages:10}") private val maxPages: Int,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     @Scheduled(cron = "\${order.expiry.cron:0 * * * * *}", zone = "Asia/Seoul")
     fun run() {
-        val candidates = orderExpiryUseCase.findExpiredOrderGroups(limit)
-        if (candidates.isEmpty()) return
-        log.info("주문서 만료 회차 시작. 대상={}건", candidates.size)
-        candidates.forEach { candidate ->
-            try {
-                expire(candidate)
-            } catch (e: Exception) {
-                // 한 건의 실패가 회차를 멈추지 않게 건별로 격리한다. 결제 상태를 모르는 건은 취소하지 않고 다음 회차로 넘긴다
-                log.error("주문서 만료 실패 — 이번 회차는 건너뜀. orderGroupPublicId={}", candidate.orderGroupPublicId, e)
+        var cursor: ExpiredOrderGroupResult? = null
+        var examined = 0
+        repeat(maxPages) {
+            val candidates = orderExpiryUseCase.findExpiredOrderGroups(queryAfter(cursor))
+            if (candidates.isEmpty()) return finish(examined)
+            candidates.forEach { candidate ->
+                try {
+                    expire(candidate)
+                } catch (e: Exception) {
+                    // 한 건의 실패가 회차를 멈추지 않게 건별로 격리한다. 결제 상태를 모르는 건은 취소하지 않고 다음 회차로 넘긴다
+                    log.error("주문서 만료 실패 — 이번 회차는 건너뜀. orderGroupPublicId={}", candidate.orderGroupPublicId, e)
+                }
             }
+            examined += candidates.size
+            if (candidates.size < pageSize) return finish(examined)
+            cursor = candidates.last()
         }
+        log.warn("주문서 만료 회차가 페이지 상한에 걸림 — 남은 적체는 다음 회차가 이어 받는다. 살펴본건={}", examined)
     }
+
+    private fun finish(examined: Int) {
+        if (examined > 0) log.info("주문서 만료 회차 종료. 살펴본건={}", examined)
+    }
+
+    private fun queryAfter(cursor: ExpiredOrderGroupResult?): ExpiredOrderGroupQuery =
+        ExpiredOrderGroupQuery(
+            limit = pageSize,
+            afterExpiresAt = cursor?.expiresAt,
+            afterOrderGroupId = cursor?.orderGroupId,
+        )
 
     private fun expire(candidate: ExpiredOrderGroupResult) {
         val settlement = settlePayment(candidate)

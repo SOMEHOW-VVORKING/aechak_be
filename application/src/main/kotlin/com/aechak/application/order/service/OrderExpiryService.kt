@@ -1,6 +1,7 @@
 package com.aechak.application.order.service
 
 import com.aechak.application.order.support.OrderPointLedger
+import com.aechak.application.order.usecase.query.ExpiredOrderGroupQuery
 import com.aechak.application.order.usecase.result.ExpireOrderGroupResult
 import com.aechak.application.order.usecase.result.ExpireOrderGroupStatus
 import com.aechak.application.order.usecase.result.ExpiredOrderGroupResult
@@ -15,6 +16,7 @@ import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.order.repository.OrderStatusHistoryRepository
+import com.aechak.domain.product.option.OptionCombination
 import com.aechak.domain.product.option.repository.OptionCombinationRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -36,8 +38,15 @@ class OrderExpiryService(
 
     fun findExpired(
         now: LocalDateTime,
-        limit: Int,
-    ): List<ExpiredOrderGroupResult> = orderGroupRepository.findExpiredPending(now, limit).map(ExpiredOrderGroupResult::from)
+        query: ExpiredOrderGroupQuery,
+    ): List<ExpiredOrderGroupResult> =
+        orderGroupRepository
+            .findExpiredPending(
+                now = now,
+                afterExpiresAt = query.afterExpiresAt,
+                afterId = query.afterOrderGroupId,
+                limit = query.limit,
+            ).map(ExpiredOrderGroupResult::from)
 
     /**
      * 취소 전이 선점에 성공한 경우에만 복원한다.
@@ -108,17 +117,29 @@ class OrderExpiryService(
             if (optionCombinationRepository.restoreStock(optionCombinationId, quantity)) {
                 restored++
             } else {
-                // 복원하면 컬럼 상한을 넘기는 재고다. 되돌릴 자리가 없어 사람이 확인해야 하고, 취소 자체는 되돌리지 않는다
+                // 재시도해도 성공할 수 없는 두 경우뿐이라 취소는 되돌리지 않는다. 원인을 단정하지 않고 읽어서 적는다
                 failed++
                 log.error(
-                    "재고 복원이 상한에 걸려 건너뜀 — 사람 확인 필요. orderGroupPublicId={}, optionCombinationId={}, quantity={}",
+                    "재고 복원 실패 — 사람 확인 필요. orderGroupPublicId={}, optionCombinationId={}, quantity={}, 사유={}",
                     group.publicId,
                     optionCombinationId,
                     quantity,
+                    restoreFailureReason(optionCombinationId, quantity),
                 )
             }
         }
         return restored to failed
+    }
+
+    private fun restoreFailureReason(
+        optionCombinationId: Long,
+        quantity: Int,
+    ): String {
+        val current = optionCombinationRepository.findById(optionCombinationId) ?: return "옵션조합 없음"
+        if (current.stockQuantity > OptionCombination.MAX_STOCK_QUANTITY - quantity) {
+            return "복원하면 재고 상한 초과(현재=${current.stockQuantity}, 상한=${OptionCombination.MAX_STOCK_QUANTITY})"
+        }
+        return "원인 불명(현재=${current.stockQuantity})"
     }
 
     /** 적립금을 쓰지 않은 주문도 있다 — 그때는 원장을 만들지 않는다 */

@@ -34,11 +34,26 @@ interface OrderGroupJpaRepository : JpaRepository<OrderGroup, Long> {
     @Query(
         "select g from OrderGroup g " +
             "where g.status = :status and g.expiresAt < :now " +
-            "order by g.expiresAt asc",
+            "order by g.expiresAt asc, g.id asc",
     )
     fun findExpired(
         @Param("status") status: OrderGroupStatus,
         @Param("now") now: LocalDateTime,
+        pageable: Pageable,
+    ): List<OrderGroup>
+
+    // 커서 분기를 쿼리로 나눈다 — null 파라미터를 비교 연산에 넣지 않는다
+    @Query(
+        "select g from OrderGroup g " +
+            "where g.status = :status and g.expiresAt < :now " +
+            "and (g.expiresAt > :afterExpiresAt or (g.expiresAt = :afterExpiresAt and g.id > :afterId)) " +
+            "order by g.expiresAt asc, g.id asc",
+    )
+    fun findExpiredAfter(
+        @Param("status") status: OrderGroupStatus,
+        @Param("now") now: LocalDateTime,
+        @Param("afterExpiresAt") afterExpiresAt: LocalDateTime,
+        @Param("afterId") afterId: Long,
         pageable: Pageable,
     ): List<OrderGroup>
 }
@@ -72,9 +87,17 @@ class OrderGroupRepositoryAdapter(
             now = LocalDateTime.now(),
         ) == 1
 
-    // Pageable 등 Spring 타입을 포트로 역류시키지 않는다 — 포트는 limit만 받는다
+    // Pageable 등 Spring 타입을 포트로 역류시키지 않는다 — 포트는 커서와 limit만 받는다
     override fun findExpiredPending(
         now: LocalDateTime,
+        afterExpiresAt: LocalDateTime?,
+        afterId: Long?,
         limit: Int,
-    ): List<OrderGroup> = jpaRepository.findExpired(OrderGroupStatus.PENDING_PAYMENT, now, PageRequest.of(0, limit))
+    ): List<OrderGroup> {
+        val page = PageRequest.of(0, limit)
+        if (afterExpiresAt == null || afterId == null) {
+            return jpaRepository.findExpired(OrderGroupStatus.PENDING_PAYMENT, now, page)
+        }
+        return jpaRepository.findExpiredAfter(OrderGroupStatus.PENDING_PAYMENT, now, afterExpiresAt, afterId, page)
+    }
 }
