@@ -268,6 +268,25 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `품목이 여러 개인 주문도 목록에 한 번만 나온다`() {
+        seedOrder(
+            status = OrderStatus.PAID,
+            items =
+                listOf(
+                    SeedItem(optionName = "100g / 단품", quantity = 1, unitPrice = 24_000L),
+                    SeedItem(optionName = "200g / 단품", quantity = 1, unitPrice = 30_000L),
+                ),
+        )
+
+        // 품목 조인이 들어오면 행이 품목 수만큼 불어난다 — 키워드가 두 품목에 걸리는 경우까지 함께 본다
+        getOrders("keyword=단품")
+            .andExpect(jsonPath("$.data.totalCount").value(1))
+            .andExpect(jsonPath("$.data.orders.length()").value(1))
+            .andExpect(jsonPath("$.data.orders[0].itemCount").value(2))
+            .andExpect(jsonPath("$.data.orders[0].totalProductAmount").value(54_000))
+    }
+
+    @Test
     fun `수령인명과 연락처는 복호된 평문으로 내려간다`() {
         seedOrder(status = OrderStatus.PAID, receiverName = "홍길동", contactNumber = "010-1234-5678")
 
