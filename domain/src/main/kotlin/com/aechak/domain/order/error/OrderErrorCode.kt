@@ -41,4 +41,14 @@ enum class OrderErrorCode(
     // 배송
     SHIPMENT_NOT_FOUND(50300, "배송 정보를 찾을 수 없습니다.", 404),
     SHIPMENT_ALREADY_DELIVERED(50301, "이미 배송완료 처리된 배송입니다.", 409),
+
+    // 클레임
+    CLAIM_NOT_FOUND(50400, "클레임을 찾을 수 없습니다.", 404),
+    CLAIM_NOT_REQUESTABLE(50401, "현재 주문 상태에서는 요청할 수 없는 클레임입니다.", 409),
+    INVALID_CLAIM_STATUS_TRANSITION(50402, "허용되지 않은 클레임 상태 전이입니다.", 409),
+    CLAIM_ALREADY_IN_PROGRESS(50403, "이미 진행 중인 클레임이 있는 상품입니다.", 409),
+    CLAIM_ACCESS_DENIED(50404, "클레임을 처리할 권한이 없습니다.", 403),
+    CLAIM_REJECTION_REASON_REQUIRED(50405, "거부 사유를 입력해 주세요.", 400),
+    CLAIM_QUANTITY_EXCEEDS_ORDERED(50406, "주문한 수량보다 많이 요청할 수 없습니다.", 422),
+    CLAIM_ALREADY_RESOLVED(50408, "이미 처리된 클레임입니다.", 409),
 }

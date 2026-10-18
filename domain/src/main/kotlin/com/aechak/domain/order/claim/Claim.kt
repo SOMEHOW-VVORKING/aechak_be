@@ -1,11 +1,13 @@
 package com.aechak.domain.order.claim
 
+import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.claim.enums.ClaimSettlementStatus
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
 import com.aechak.domain.order.claim.enums.ReturnCostBearer
 import com.aechak.domain.order.claim.enums.SellerApprovalStatus
+import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.support.AggregateRoot
 import com.aechak.domain.support.Ulid
@@ -140,16 +142,92 @@ class Claim protected constructor(
     private val _items: MutableList<ClaimItem> = mutableListOf()
     val items: List<ClaimItem> get() = _items.toList()
 
+    /** 셀러 승인 — 취소는 즉시 승인으로 끝나고, 반품·교환은 회수를 기다린다. */
+    fun approveBySeller(returnCostBearer: ReturnCostBearer?) {
+        requireSellerDecisionPending()
+        transitionTo(if (claimType == ClaimType.CANCEL) ClaimStatus.APPROVED else ClaimStatus.COLLECTING)
+        sellerApprovalStatus = SellerApprovalStatus.APPROVED
+        approvedAt = LocalDateTime.now()
+        if (claimType != ClaimType.CANCEL) {
+            this.returnCostBearer = returnCostBearer
+        }
+    }
+
+    /** 셀러 거부 — 사유는 구매자에게 그대로 노출되므로 빈 값을 받지 않는다. */
+    fun rejectBySeller(rejectionReason: String) {
+        if (rejectionReason.isBlank()) {
+            throw BusinessException(OrderErrorCode.CLAIM_REJECTION_REASON_REQUIRED)
+        }
+        requireSellerDecisionPending()
+        transitionTo(ClaimStatus.REJECTED)
+        sellerApprovalStatus = SellerApprovalStatus.REJECTED
+        this.rejectionReason = rejectionReason.trim().take(REASON_MAX_LENGTH)
+        resolvedAt = LocalDateTime.now()
+    }
+
+    /** 구매자 철회 — 셀러가 판단하기 전에만 거둘 수 있다. */
+    fun withdrawByBuyer() {
+        transitionTo(ClaimStatus.WITHDRAWN)
+        resolvedAt = LocalDateTime.now()
+    }
+
+    /** 환불 집행 선점 표시. 이 1행이 집행의 멱등 게이트다. */
+    fun markRefundRequested() {
+        if (status != ClaimStatus.APPROVED || refundStatus != RefundStatus.NONE) {
+            throw BusinessException(OrderErrorCode.INVALID_CLAIM_STATUS_TRANSITION)
+        }
+        refundStatus = RefundStatus.REQUESTED
+    }
+
+    fun markRefunded() {
+        if (refundStatus != RefundStatus.REQUESTED) {
+            throw BusinessException(OrderErrorCode.INVALID_CLAIM_STATUS_TRANSITION)
+        }
+        refundStatus = RefundStatus.DONE
+        resolvedAt = LocalDateTime.now()
+    }
+
+    fun markRefundFailed() {
+        if (refundStatus != RefundStatus.REQUESTED) {
+            throw BusinessException(OrderErrorCode.INVALID_CLAIM_STATUS_TRANSITION)
+        }
+        transitionTo(ClaimStatus.REFUND_FAILED)
+        refundStatus = RefundStatus.REFUND_FAILED
+    }
+
+    /** 클레임이 대상으로 잡은 주문품목별 취소 수량. */
+    fun claimedQuantityByOrderItemId(): Map<Long, Int> = _items.associate { it.orderItem.id to it.quantity }
+
+    fun itemRefundTotal(): Long = _items.sumOf { it.refundAmount }
+
+    private fun requireSellerDecisionPending() {
+        if (sellerApprovalStatus != SellerApprovalStatus.REQUESTED) {
+            throw BusinessException(OrderErrorCode.CLAIM_ALREADY_RESOLVED)
+        }
+    }
+
+    private fun transitionTo(next: ClaimStatus) {
+        if (!status.canTransitionTo(next)) {
+            throw BusinessException(OrderErrorCode.INVALID_CLAIM_STATUS_TRANSITION)
+        }
+        status = next
+    }
+
     companion object {
+        const val REASON_MAX_LENGTH = 500
+
         /**
          * 대상 품목은 이 주문 애그리거트가 들고 있는 품목이어야 한다 — 스냅샷(sellerId·orderId)과
          * 품목 경로가 다른 주문을 가리키면 셀러 목록과 상세가 갈린다. 그래서 ClaimItem은 조회한
          * 주문의 items에서 만들어 넘겨야 한다.
          */
         fun request(
-            claimType: ClaimType,
             order: Order,
+            claimType: ClaimType,
+            reasonCode: String,
+            reasonDetail: String?,
             items: List<ClaimItem>,
+            autoApproveDueAt: LocalDateTime,
         ): Claim {
             require(order.id > 0L) { "클레임은 저장된 주문에만 걸 수 있습니다 — 스냅샷이 0으로 굳는다" }
             require(items.isNotEmpty()) { "클레임에는 대상 품목이 하나 이상 필요합니다" }
@@ -157,10 +235,21 @@ class Claim protected constructor(
             require(items.all { claimItem -> orderItems.any { it === claimItem.orderItem } }) {
                 "클레임 품목은 모두 이 주문의 품목이어야 합니다 (orderId=${order.id})"
             }
+            if (!claimType.isRequestableFrom(order.status)) {
+                throw BusinessException(OrderErrorCode.CLAIM_NOT_REQUESTABLE)
+            }
             return Claim(claimType, order.sellerId, order.id).apply {
+                this.reasonCode = reasonCode.trim().take(REASON_CODE_MAX_LENGTH)
+                this.reasonDetail = reasonDetail?.trim()?.take(REASON_MAX_LENGTH)
+                sellerApprovalStatus = SellerApprovalStatus.REQUESTED
+                refundStatus = RefundStatus.NONE
+                settlementStatus = ClaimSettlementStatus.PENDING
                 requestedAt = LocalDateTime.now()
+                this.autoApproveDueAt = autoApproveDueAt
                 items.forEach { _items += it }
             }
         }
+
+        private const val REASON_CODE_MAX_LENGTH = 60
     }
 }
