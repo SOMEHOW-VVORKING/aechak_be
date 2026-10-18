@@ -97,13 +97,17 @@ class SellerOrderAcceptIntegrationTest : IntegrationTestBase() {
     fun `이력은 전이와 같은 트랜잭션에 들어간다`() {
         val orderPublicId = seedOrder(OrderStatus.PAID)
 
-        // 호출 트랜잭션을 되돌리면 전이와 이력이 함께 사라져야 한다 —
-        // 이력이 별도 트랜잭션이면 전이만 사라지고 이력이 남아 기록 시각이 전이 시각과 벌어진다
         tx.execute { status ->
             sellerOrderUseCase.acceptOrder(AcceptOrderCommand(sellerId = sellerUserId, orderPublicId = orderPublicId))
+            em.flush()
+            em.clear()
+            // 커밋 전에 둘이 함께 보여야 한다 — 이력이 커밋 뒤에 저장되면 여기서 0건이다
+            assertEquals(OrderStatus.PREPARING, statusOf(orderPublicId))
+            assertEquals(1, historyCount(orderPublicId))
             status.setRollbackOnly()
         }
 
+        // 되돌리면 둘이 함께 사라져야 한다 — 이력이 별도 트랜잭션이면 전이만 사라진다
         assertEquals(OrderStatus.PAID, statusOf(orderPublicId))
         assertEquals(0, historyCount(orderPublicId), "전이가 되돌려졌는데 이력이 남으면 안 된다")
     }
@@ -192,6 +196,7 @@ class SellerOrderAcceptIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(20004))
     }
 
+    /** 두 트랜잭션이 같은 상태를 읽는 지점까지는 HTTP 경계에서 맞출 수 없어, 겹친 요청의 결과만 고정한다. */
     @Test
     fun `동시 발주 확인은 하나만 성공한다`() {
         val orderPublicId = seedOrder(OrderStatus.PAID)
@@ -200,7 +205,7 @@ class SellerOrderAcceptIntegrationTest : IntegrationTestBase() {
 
         assertEquals(listOf(204, 409), results.map { it.first }.sorted(), "결과: $results")
         val loser = results.first { it.first == 409 }.second
-        assertTrue(loser.contains("50004"), "경합에서 진 쪽은 50004여야 한다: $loser")
+        assertEquals("50004", errorCodeOf(loser), "경합에서 진 쪽은 50004여야 한다: $loser")
         assertEquals(OrderStatus.PREPARING, statusOf(orderPublicId))
         assertEquals(1, historyCount(orderPublicId), "성공한 전이 하나만 이력을 남겨야 한다")
     }
@@ -213,6 +218,8 @@ class SellerOrderAcceptIntegrationTest : IntegrationTestBase() {
     ): MockHttpServletRequestBuilder =
         post("/api/v1/sellers/me/orders/$orderPublicId/accept")
             .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+
+    private fun errorCodeOf(body: String): String? = Regex("\"errorCode\"\\s*:\\s*(\\d+)").find(body)?.groupValues?.get(1)
 
     private fun openSeller(userId: Long) {
         tx.execute { em.persist(Seller.open(userId, "애착상회$userId", 0L)) }
