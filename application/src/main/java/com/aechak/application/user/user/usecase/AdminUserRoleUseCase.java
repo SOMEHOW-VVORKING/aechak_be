@@ -14,10 +14,10 @@ public interface AdminUserRoleUseCase {
     /** 관리자 목록 — 가입 순(userId 오름차순). */
     PageResult<AdminUserRoleResult> listAdmins(PageQuery pageQuery);
 
-    /** 승격 — 이미 관리자면 30012, 비활성 계정이면 불변식 위반(500). adminId는 감사 로그용. */
+    /** 승격 — 이미 관리자면 30012, 자기 자신이면 30014, 비활성 계정이면 불변식 위반(500). */
     void promote(long adminId, long targetUserId);
 
-    /** 강등 — 이미 일반 회원이면 멱등 no-op. adminId는 감사 로그용. */
+    /** 강등 — 이미 일반 회원이면 멱등 no-op. 자기 자신이면 30014, 남은 관리자가 자기뿐이면 30013. */
     void demote(long adminId, long targetUserId);
 
     /**

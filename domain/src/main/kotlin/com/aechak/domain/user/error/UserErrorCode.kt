@@ -30,6 +30,8 @@ enum class UserErrorCode(
 
     // 관리자 역할
     USER_ALREADY_ADMIN(30012, "이미 관리자인 계정입니다.", 409),
+    LAST_ADMIN_CANNOT_BE_DEMOTED(30013, "마지막 관리자는 강등할 수 없습니다.", 409),
+    SELF_ROLE_CHANGE_NOT_ALLOWED(30014, "자신의 역할은 변경할 수 없습니다.", 403),
 
     // 적립금
     INVALID_POINT_AMOUNT(30100, "적립금 거래 금액은 0보다 커야 합니다.", 400),
