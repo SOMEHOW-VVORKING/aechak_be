@@ -18,12 +18,15 @@ CREATE TABLE IF NOT EXISTS product_drafts
     discount_end_at     DATETIME(6)   NULL,
     thumbnail_image_key VARCHAR(1024) NULL,                  -- 승격 전 tmp 키. 정식 등록 때 상품 등록 경로가 승격한다
     payload             JSON          NOT NULL,
+    -- 셀러가 저장을 누른 시각. 감사 컬럼(updated_at)은 flush 때 다시 찍혀 응답과 어긋나고,
+    -- 내용이 같은 재저장은 dirty로 잡히지 않아 아예 움직이지 않는다. 보관 기간 기산점도 이 컬럼이다
+    saved_at            DATETIME(6)   NOT NULL,
     created_at          DATETIME(6)   NOT NULL,
-    updated_at          DATETIME(6)   NOT NULL,              -- 마지막 저장 시각 = 목록의 savedAt, 보관 기간 기준
+    updated_at          DATETIME(6)   NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT uk_product_draft_public_id UNIQUE (public_id),
-    -- 셀러별 목록·상한 계산과 보관 기간 정리가 모두 (seller_id, updated_at)으로 걸린다
-    INDEX ix_product_draft_seller (seller_id, updated_at)
+    -- 셀러별 목록·상한 계산과 보관 기간 정리가 모두 (seller_id, saved_at)으로 걸린다
+    INDEX ix_product_draft_seller (seller_id, saved_at)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_0900_ai_ci;

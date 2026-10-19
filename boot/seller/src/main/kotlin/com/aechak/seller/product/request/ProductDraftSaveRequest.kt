@@ -18,6 +18,7 @@ data class ProductDraftSaveRequest(
     val categoryId: Long? = null,
     @field:Size(max = ProductDraft.NAME_MAX, message = "상품명은 {max}자 이하여야 합니다.")
     val productName: String? = null,
+    @field:Size(max = ProductDraft.DESCRIPTION_MAX, message = "상세 설명은 {max}자 이하여야 합니다.")
     val description: String? = null,
     val regularPrice: Long? = null,
     val discountPrice: Long? = null,

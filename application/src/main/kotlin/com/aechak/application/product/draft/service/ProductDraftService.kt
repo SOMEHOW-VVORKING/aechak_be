@@ -37,9 +37,9 @@ class ProductDraftService(
             if (productDraftRepository.countLive(command.sellerId, liveSince(now)) >= MAX_PRODUCT_DRAFTS) {
                 throw BusinessException(ProductErrorCode.PRODUCT_DRAFT_LIMIT_EXCEEDED)
             }
-            return productDraftRepository.save(command.toEntity())
+            return productDraftRepository.save(command.toEntity(now))
         }
-        return findLiveOrThrow(command.sellerId, draftId, now).also(command::applyTo)
+        return findLiveOrThrow(command.sellerId, draftId, now).also { command.applyTo(it, now) }
     }
 
     fun delete(

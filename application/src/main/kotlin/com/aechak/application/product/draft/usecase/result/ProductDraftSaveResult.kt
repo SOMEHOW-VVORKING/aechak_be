@@ -8,6 +8,6 @@ data class ProductDraftSaveResult(
     val savedAt: LocalDateTime,
 ) {
     companion object {
-        fun from(draft: ProductDraft): ProductDraftSaveResult = ProductDraftSaveResult(draft.publicId, draft.updatedAt)
+        fun from(draft: ProductDraft): ProductDraftSaveResult = ProductDraftSaveResult(draft.publicId, draft.savedAt)
     }
 }

@@ -13,7 +13,7 @@ data class ProductDraftSummaryResult(
             ProductDraftSummaryResult(
                 draftId = draft.publicId,
                 productName = draft.productName,
-                savedAt = draft.updatedAt,
+                savedAt = draft.savedAt,
             )
     }
 }

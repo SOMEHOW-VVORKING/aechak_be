@@ -1,10 +1,14 @@
 package com.aechak.seller.product
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.application.file.port.FileKey
+import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.product.draft.service.ProductDraftService
+import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.draft.ProductDraft
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.seller.seller.enums.SellerStatus
+import com.aechak.seller.product.support.ProductDraftPayload
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
@@ -40,6 +44,7 @@ class SellerProductDraftIntegrationTest : IntegrationTestBase() {
     private lateinit var mockMvc: MockMvc
     private var sellerUserId = 0L
     private lateinit var token: String
+    private var leafCategoryId = 0L
 
     @BeforeEach
     fun setUp() {
@@ -51,6 +56,7 @@ class SellerProductDraftIntegrationTest : IntegrationTestBase() {
         sellerUserId = createActiveUser()
         token = mintAccessToken(sellerUserId)
         openSeller(sellerUserId)
+        leafCategoryId = openLeafCategory()
     }
 
     @Test
@@ -82,6 +88,26 @@ class SellerProductDraftIntegrationTest : IntegrationTestBase() {
 
         mockMvc.perform(deleteDraft(token, draftId)).andExpect(status().isNoContent)
         mockMvc.perform(getDraft(token, draftId)).andExpect(status().isNotFound).andExpect(errorCode(40400))
+    }
+
+    @Test
+    fun `수정 응답의 savedAt은 직후 조회와 같다`() {
+        val draftId = createDraft(draftJson(productName = "처음"))
+
+        val putResponse =
+            mockMvc
+                .perform(
+                    put("/api/v1/sellers/me/product-drafts/$draftId")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(draftJson(productName = "나중")),
+                ).andExpect(status().isOk)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        val putSavedAt = Regex("\"savedAt\":\"([^\"]+)\"").find(putResponse)!!.groupValues[1]
+
+        mockMvc.perform(getDraft(token, draftId)).andExpect(jsonPath("$.data.savedAt").value(putSavedAt))
     }
 
     @Test
@@ -210,9 +236,49 @@ class SellerProductDraftIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `정식 등록을 마친 초안을 지우면 목록에서 사라진다`() {
-        // 등록 요청이 초안을 대신 지워 주지 않는다 — 치우는 주체가 삭제 EP임을 고정한다
-        val draftId = createDraft(draftJson(productName = "등록까지 간 상품"))
+    fun `초안에 담아 둔 tmp 이미지 키로 정식 등록이 되고 초안은 삭제로 치운다`() {
+        // 초안이 키를 승격하지 않고 보관하므로 등록 경로의 승격이 그대로 돌아야 한다
+        val thumbnailKey = tmpKey("rep.webp")
+        val detailKey = tmpKey("d1.webp")
+        val draftId =
+            createDraft(
+                """
+                {
+                  "categoryId": $leafCategoryId,
+                  "productName": "등록까지 간 상품",
+                  "regularPrice": 25000,
+                  "thumbnailImageKey": "$thumbnailKey",
+                  "detailImageKeys": ["$detailKey"]
+                }
+                """.trimIndent(),
+            )
+
+        mockMvc
+            .perform(getDraft(token, draftId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.thumbnailImageKey").value(thumbnailKey))
+            .andExpect(jsonPath("$.data.detailImageKeys[0]").value(detailKey))
+
+        mockMvc
+            .perform(
+                post("/api/v1/sellers/me/products")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {
+                          "categoryId": $leafCategoryId,
+                          "productName": "등록까지 간 상품",
+                          "regularPrice": 25000,
+                          "thumbnailImageKey": "$thumbnailKey",
+                          "detailImageKeys": ["$detailKey"],
+                          "optionCombinations": [{"optionValues": [], "additionalPrice": 0, "stockQuantity": 50}]
+                        }
+                        """.trimIndent(),
+                    ),
+            ).andExpect(status().isCreated)
+
+        // 등록은 초안을 대신 지워 주지 않는다 — 치우는 주체가 삭제 EP임을 고정한다
         mockMvc.perform(getDrafts(token)).andExpect(jsonPath("$.data.totalCount").value(1))
 
         mockMvc.perform(deleteDraft(token, draftId)).andExpect(status().isNoContent)
@@ -222,6 +288,88 @@ class SellerProductDraftIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.totalCount").value(0))
             .andExpect(jsonPath("$.data.items").isEmpty)
         assertEquals(0L, draftRowCount(), "삭제는 행을 남기지 않아야 한다")
+    }
+
+    @Test
+    fun `payload는 문자열이 아니라 JSON 객체로 저장된다`() {
+        // 이중 인코딩되면 여기서 STRING이 나온다 — 프리필이 조용히 깨진다
+        createDraft(draftJson(productName = "저장 모양 확인"))
+
+        val jsonType =
+            tx.execute {
+                em.createNativeQuery("select json_type(payload) from product_drafts").singleResult as String
+            }
+        assertEquals("OBJECT", jsonType, "payload는 JSON 객체여야 한다")
+    }
+
+    @Test
+    fun `빈 본문으로 덮어쓰면 채워 둔 필드가 전부 비워진다`() {
+        val draftId =
+            createDraft(
+                """
+                {
+                  "productName": "채운 초안",
+                  "regularPrice": 1000,
+                  "detailImageKeys": ["${tmpKey("d1.webp")}"],
+                  "optionGroups": [{"name": "중량", "values": ["100g"]}]
+                }
+                """.trimIndent(),
+            )
+
+        mockMvc
+            .perform(
+                put("/api/v1/sellers/me/product-drafts/$draftId")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{}"),
+            ).andExpect(status().isOk)
+
+        mockMvc
+            .perform(getDraft(token, draftId))
+            .andExpect(jsonPath("$.data.productName").doesNotExist())
+            .andExpect(jsonPath("$.data.regularPrice").doesNotExist())
+            .andExpect(jsonPath("$.data.detailImageKeys").isEmpty)
+            .andExpect(jsonPath("$.data.optionGroups").isEmpty)
+    }
+
+    @Test
+    fun `보관 기간 경계에 아직 닿지 않은 초안은 살아 있다`() {
+        val draftId = createDraft(draftJson(productName = "경계 초안"))
+        ageDraft(draftId, LocalDateTime.now().minusDays(ProductDraftService.RETENTION_DAYS).plusMinutes(1))
+
+        mockMvc.perform(getDraft(token, draftId)).andExpect(status().isOk)
+        mockMvc.perform(getDrafts(token)).andExpect(jsonPath("$.data.totalCount").value(1))
+    }
+
+    @Test
+    fun `보관 기간이 지난 초안은 덮어쓰기와 삭제도 404다`() {
+        val expired = createDraft(draftJson(productName = "묵은 초안"))
+        ageDraft(expired, LocalDateTime.now().minusDays(ProductDraftService.RETENTION_DAYS + 1))
+
+        mockMvc
+            .perform(
+                put("/api/v1/sellers/me/product-drafts/$expired")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(draftJson(productName = "되살리기")),
+            ).andExpect(status().isNotFound)
+            .andExpect(errorCode(40400))
+        mockMvc.perform(deleteDraft(token, expired)).andExpect(status().isNotFound).andExpect(errorCode(40400))
+    }
+
+    @Test
+    fun `상세 설명이 컬럼 용량을 넘으면 90001을 반환한다`() {
+        val body = """{"description": "${"가".repeat(ProductDraft.DESCRIPTION_MAX + 1)}"}"""
+
+        mockMvc.perform(createRequest(token, body)).andExpect(status().isBadRequest).andExpect(errorCode(90001))
+    }
+
+    @Test
+    fun `옵션값 목록이 상한을 넘으면 90001을 반환한다`() {
+        val values = (1..ProductDraftPayload.GROUP_VALUES_MAX + 1).joinToString(", ") { "\"v$it\"" }
+        val body = """{"optionGroups": [{"name": "중량", "values": [$values]}]}"""
+
+        mockMvc.perform(createRequest(token, body)).andExpect(status().isBadRequest).andExpect(errorCode(90001))
     }
 
     @Test
@@ -351,13 +499,27 @@ class SellerProductDraftIntegrationTest : IntegrationTestBase() {
         tx.execute { em.persist(Seller.open(userId, "애착상회", 0L)) }
     }
 
+    private fun openLeafCategory(): Long =
+        tx.execute {
+            val root = Category.create(null, Category.ROOT_DEPTH, "강아지", null, 1)
+            em.persist(root)
+            val mid = Category.create(root, Category.MID_DEPTH, "사료", null, 1)
+            em.persist(mid)
+            val leaf = Category.create(mid, Category.LEAF_DEPTH, "건사료", null, 1)
+            em.persist(leaf)
+            leaf.id
+        }!!
+
+    /** 공통 업로드가 발급하는 tmp 키 형태. 초안은 이 상태로 보관하고 정식 등록이 승격한다. */
+    private fun tmpKey(fileName: String): String = "${FileKey.tmpPrefixOf(sellerUserId, UploadPurpose.PRODUCT)}$fileName"
+
     private fun ageDraft(
         publicId: String,
         savedAt: LocalDateTime,
     ) {
         tx.execute {
             em
-                .createQuery("update ProductDraft d set d.updatedAt = :savedAt where d.publicId = :publicId")
+                .createQuery("update ProductDraft d set d.savedAt = :savedAt where d.publicId = :publicId")
                 .setParameter("savedAt", savedAt)
                 .setParameter("publicId", publicId)
                 .executeUpdate()

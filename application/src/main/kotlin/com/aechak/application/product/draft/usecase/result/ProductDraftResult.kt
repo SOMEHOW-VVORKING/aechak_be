@@ -21,7 +21,7 @@ data class ProductDraftResult(
         fun from(draft: ProductDraft): ProductDraftResult =
             ProductDraftResult(
                 draftId = draft.publicId,
-                savedAt = draft.updatedAt,
+                savedAt = draft.savedAt,
                 categoryId = draft.categoryId,
                 productName = draft.productName,
                 description = draft.description,

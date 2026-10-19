@@ -20,7 +20,7 @@ data class SaveProductDraftCommand(
     val thumbnailImageKey: String?,
     val payload: String,
 ) {
-    fun toEntity(): ProductDraft =
+    fun toEntity(savedAt: LocalDateTime): ProductDraft =
         ProductDraft.of(
             sellerId = sellerId,
             categoryId = categoryId,
@@ -32,9 +32,13 @@ data class SaveProductDraftCommand(
             discountEndAt = discountEndAt,
             thumbnailImageKey = thumbnailImageKey,
             payload = payload,
+            savedAt = savedAt,
         )
 
-    fun applyTo(draft: ProductDraft) {
+    fun applyTo(
+        draft: ProductDraft,
+        savedAt: LocalDateTime,
+    ) {
         draft.overwrite(
             categoryId = categoryId,
             productName = productName,
@@ -45,6 +49,7 @@ data class SaveProductDraftCommand(
             discountEndAt = discountEndAt,
             thumbnailImageKey = thumbnailImageKey,
             payload = payload,
+            savedAt = savedAt,
         )
     }
 }

@@ -10,27 +10,27 @@ import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
 interface ProductDraftJpaRepository : JpaRepository<ProductDraft, Long> {
-    @Query("select d from ProductDraft d where d.publicId = :publicId and d.sellerId = :sellerId and d.updatedAt >= :savedAfter")
+    @Query("select d from ProductDraft d where d.publicId = :publicId and d.sellerId = :sellerId and d.savedAt >= :savedAfter")
     fun findLive(
         @Param("publicId") publicId: String,
         @Param("sellerId") sellerId: Long,
         @Param("savedAfter") savedAfter: LocalDateTime,
     ): ProductDraft?
 
-    @Query("select d from ProductDraft d where d.sellerId = :sellerId and d.updatedAt >= :savedAfter order by d.updatedAt desc, d.id desc")
+    @Query("select d from ProductDraft d where d.sellerId = :sellerId and d.savedAt >= :savedAfter order by d.savedAt desc, d.id desc")
     fun findAllLive(
         @Param("sellerId") sellerId: Long,
         @Param("savedAfter") savedAfter: LocalDateTime,
     ): List<ProductDraft>
 
-    @Query("select count(d) from ProductDraft d where d.sellerId = :sellerId and d.updatedAt >= :savedAfter")
+    @Query("select count(d) from ProductDraft d where d.sellerId = :sellerId and d.savedAt >= :savedAfter")
     fun countLive(
         @Param("sellerId") sellerId: Long,
         @Param("savedAfter") savedAfter: LocalDateTime,
     ): Long
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("delete from ProductDraft d where d.publicId = :publicId and d.sellerId = :sellerId and d.updatedAt >= :savedAfter")
+    @Query("delete from ProductDraft d where d.publicId = :publicId and d.sellerId = :sellerId and d.savedAt >= :savedAfter")
     fun deleteLive(
         @Param("publicId") publicId: String,
         @Param("sellerId") sellerId: Long,
@@ -38,7 +38,7 @@ interface ProductDraftJpaRepository : JpaRepository<ProductDraft, Long> {
     ): Int
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("delete from ProductDraft d where d.sellerId = :sellerId and d.updatedAt < :savedBefore")
+    @Query("delete from ProductDraft d where d.sellerId = :sellerId and d.savedAt < :savedBefore")
     fun deleteExpired(
         @Param("sellerId") sellerId: Long,
         @Param("savedBefore") savedBefore: LocalDateTime,

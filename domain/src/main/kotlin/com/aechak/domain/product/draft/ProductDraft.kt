@@ -18,12 +18,16 @@ import java.time.LocalDateTime
  *
  * payload는 등록 폼의 중첩 입력(이미지 키 목록·옵션)을 담은 JSON이다. 서버는 내용을 해석하지 않고
  * 셀러가 보낸 모양 그대로 보관한다.
+ *
+ * savedAt은 셀러가 저장을 누른 시각이다. BaseEntity의 updatedAt과 따로 두는 이유는 두 가지다 —
+ * 감사 컬럼은 flush 시점에 다시 찍혀 응답으로 내보낸 값과 어긋나고, 내용이 같은 재저장은
+ * dirty로 잡히지 않아 저장 시각이 아예 움직이지 않는다. 보관 기간 기산점도 이 컬럼이다.
  */
 @Entity
 @Table(
     name = "product_drafts",
     uniqueConstraints = [UniqueConstraint(name = "uk_product_draft_public_id", columnNames = ["public_id"])],
-    indexes = [Index(name = "ix_product_draft_seller", columnList = "seller_id, updated_at")],
+    indexes = [Index(name = "ix_product_draft_seller", columnList = "seller_id, saved_at")],
 )
 class ProductDraft protected constructor(
     @Column(name = "seller_id", nullable = false)
@@ -37,6 +41,7 @@ class ProductDraft protected constructor(
     discountEndAt: LocalDateTime?,
     thumbnailImageKey: String?,
     payload: String,
+    savedAt: LocalDateTime,
 ) : AggregateRoot() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -77,10 +82,11 @@ class ProductDraft protected constructor(
     var payload: String = payload
         protected set
 
-    /**
-     * 폼 내용을 통째로 덮어쓴다. 빠진 필드는 비우는 것이 셀러의 의도이므로 null도 그대로 반영한다.
-     * updatedAt을 직접 올려 내용이 같은 재저장도 저장 시각이 움직이게 한다.
-     */
+    @Column(name = "saved_at", nullable = false)
+    var savedAt: LocalDateTime = savedAt
+        protected set
+
+    /** 폼 내용을 통째로 덮어쓴다. 빠진 필드는 비우는 것이 셀러의 의도이므로 null도 그대로 반영한다. */
     fun overwrite(
         categoryId: Long?,
         productName: String?,
@@ -91,6 +97,7 @@ class ProductDraft protected constructor(
         discountEndAt: LocalDateTime?,
         thumbnailImageKey: String?,
         payload: String,
+        savedAt: LocalDateTime,
     ) {
         this.categoryId = categoryId
         this.productName = productName
@@ -101,12 +108,15 @@ class ProductDraft protected constructor(
         this.discountEndAt = discountEndAt
         this.thumbnailImageKey = thumbnailImageKey
         this.payload = payload
-        updatedAt = LocalDateTime.now()
+        this.savedAt = savedAt
     }
 
     companion object {
         const val NAME_MAX = 255
         const val IMAGE_KEY_MAX = 1024
+
+        /** description은 TEXT(65535바이트) — utf8mb4 최악 4바이트/자를 담고도 남는 글자 수로 끊는다 */
+        const val DESCRIPTION_MAX = 16_000
 
         fun of(
             sellerId: Long,
@@ -119,6 +129,7 @@ class ProductDraft protected constructor(
             discountEndAt: LocalDateTime?,
             thumbnailImageKey: String?,
             payload: String,
+            savedAt: LocalDateTime,
         ): ProductDraft =
             ProductDraft(
                 sellerId = sellerId,
@@ -131,6 +142,7 @@ class ProductDraft protected constructor(
                 discountEndAt = discountEndAt,
                 thumbnailImageKey = thumbnailImageKey,
                 payload = payload,
+                savedAt = savedAt,
             )
     }
 }
