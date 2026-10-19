@@ -40,4 +40,7 @@ interface UserRepository {
     ): List<User>
 
     fun countByRole(role: UserRole): Long
+
+    /** 역할 보유 행을 id 오름차순으로 잠그고 그 id를 돌려준다 — 관리자 수 판정과 강등이 한 트랜잭션에서 직렬화된다. */
+    fun lockIdsByRole(role: UserRole): List<Long>
 }

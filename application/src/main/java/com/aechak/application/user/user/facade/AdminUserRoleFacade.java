@@ -40,13 +40,13 @@ public class AdminUserRoleFacade implements AdminUserRoleUseCase {
 
     @Override
     public void promote(long adminId, long targetUserId) {
-        tx.executeWithoutResult(txStatus -> adminUserRoleService.promote(targetUserId));
+        tx.executeWithoutResult(txStatus -> adminUserRoleService.promote(adminId, targetUserId));
         log.info("관리자 승격 adminId={} targetUserId={}", adminId, targetUserId);
     }
 
     @Override
     public void demote(long adminId, long targetUserId) {
-        tx.executeWithoutResult(txStatus -> adminUserRoleService.demote(targetUserId));
+        tx.executeWithoutResult(txStatus -> adminUserRoleService.demote(adminId, targetUserId));
         log.info("관리자 강등 adminId={} targetUserId={}", adminId, targetUserId);
     }
 
@@ -60,7 +60,7 @@ public class AdminUserRoleFacade implements AdminUserRoleUseCase {
 
     private void promoteForBootstrap(long userId) {
         try {
-            tx.executeWithoutResult(txStatus -> adminUserRoleService.promote(userId));
+            tx.executeWithoutResult(txStatus -> adminUserRoleService.promoteWithoutActor(userId));
             log.info("기동 부트스트랩으로 관리자를 승격했습니다 userId={}", userId);
         } catch (BusinessException e) {
             if (e.getErrorCode() == UserErrorCode.USER_ALREADY_ADMIN) {

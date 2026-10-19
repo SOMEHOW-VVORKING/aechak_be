@@ -88,6 +88,10 @@ class User protected constructor() : AggregateRoot() {
     val profileImageKey: String?
         get() = _profile?.profileImageKey
 
+    /** 표시용 닉네임 — 프로필이 없으면 null. */
+    val nickname: String?
+        get() = _profile?.nickname
+
     /** 사용자를 탈퇴 상태로 바꾸고 닉네임과 전화번호 값을 삭제해 UNIQUE 제약에서 해제 */
     fun withdraw() {
         if (status == UserStatus.WITHDRAWN) {

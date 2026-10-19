@@ -26,14 +26,34 @@ public class AdminUserRoleService {
         return userRepository.countByRole(UserRole.ADMIN);
     }
 
-    public void promote(long userId) {
+    /** 운영자 요청 승격. */
+    public void promote(long adminId, long targetUserId) {
+        rejectSelfRoleChange(adminId, targetUserId);
+        promoteWithoutActor(targetUserId);
+    }
+
+    /** 기동 부트스트랩 승격 — 요청자가 없는 경로라 자기 역할 변경 판정이 없다. */
+    public void promoteWithoutActor(long userId) {
         User user = getById(userId);
         rejectInactivePromotion(user);
         user.promoteToAdmin();
     }
 
-    public void demote(long userId) {
-        getById(userId).demoteToGeneral();
+    /** 운영자 요청 강등 — 관리자가 0명이 되는 강등을 막는다. */
+    public void demote(long adminId, long targetUserId) {
+        rejectSelfRoleChange(adminId, targetUserId);
+        List<Long> lockedAdminIds = userRepository.lockIdsByRole(UserRole.ADMIN);
+        User target = getById(targetUserId);
+        if (target.getRole() == UserRole.ADMIN && lockedAdminIds.size() <= 1) {
+            throw new BusinessException(UserErrorCode.LAST_ADMIN_CANNOT_BE_DEMOTED, null, null);
+        }
+        target.demoteToGeneral();
+    }
+
+    private void rejectSelfRoleChange(long adminId, long targetUserId) {
+        if (adminId == targetUserId) {
+            throw new BusinessException(UserErrorCode.SELF_ROLE_CHANGE_NOT_ALLOWED, null, null);
+        }
     }
 
     /** 이미 관리자인 계정을 제외하고, ACTIVE가 아닌 계정의 승격을 30017로 거부한다. */
