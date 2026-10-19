@@ -153,6 +153,10 @@ class Order protected constructor(
         this.autoConfirmDueAt = autoConfirmDueAt
     }
 
+    /** 할인 안분액을 뺀 상품금액 합계 — 배송비는 포함하지 않는다. */
+    fun productAmountAfterDiscount(): Long =
+        _items.sumOf { Math.multiplyExact(it.unitPriceSnapshot, it.quantity.toLong()) - it.discountAllocatedAmount }
+
     /** 클레임 승인에 따른 취소 — 즉시취소가 막히는 발송 대기 건도 이 경로로 전이한다. */
     fun cancelByClaimApproval() {
         if (status == OrderStatus.PENDING_PAYMENT) {
