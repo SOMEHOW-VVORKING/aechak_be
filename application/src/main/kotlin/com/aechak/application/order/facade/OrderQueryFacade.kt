@@ -8,6 +8,7 @@ import com.aechak.application.order.usecase.result.OrderDetailResult
 import com.aechak.application.order.usecase.result.OrderGroupItemResult
 import com.aechak.application.order.usecase.result.OrderListResult
 import com.aechak.application.order.usecase.result.SellerOrderItemResult
+import com.aechak.application.pii.support.PiiStringCodec
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional
 class OrderQueryFacade(
     private val orderQueryService: OrderQueryService,
     private val fileUseCase: FileUseCase,
+    private val piiStringCodec: PiiStringCodec,
 ) : OrderQueryUseCase {
     @Transactional(readOnly = true)
     override fun getOrders(query: OrderListQuery): OrderListResult {
@@ -52,7 +54,10 @@ class OrderQueryFacade(
         return OrderDetailResult.of(
             view = detail,
             lines = orderQueryService.getLines(listOf(detail.orderId)),
+            shipment = orderQueryService.getLatestShipment(detail.orderId),
+            activeClaim = orderQueryService.getActiveClaim(detail.orderId),
             resolveThumbnail = fileUseCase::resolveMediaUrl,
+            decryptPii = piiStringCodec::decrypt,
         )
     }
 }

@@ -3,6 +3,8 @@ package com.aechak.application.order.usecase.result
 import com.aechak.application.order.port.view.OrderLineView
 
 data class OrderLineItemResult(
+    val orderItemId: Long,
+    val productId: Long,
     val productName: String,
     val thumbnailUrl: String?,
     val optionName: String,
@@ -16,6 +18,8 @@ data class OrderLineItemResult(
             thumbnailUrl: String?,
         ): OrderLineItemResult =
             OrderLineItemResult(
+                orderItemId = view.orderItemId,
+                productId = view.productId,
                 productName = view.productName,
                 thumbnailUrl = thumbnailUrl,
                 optionName = view.optionName,
