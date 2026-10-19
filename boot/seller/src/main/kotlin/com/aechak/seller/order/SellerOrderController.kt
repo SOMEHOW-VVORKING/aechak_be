@@ -2,6 +2,7 @@ package com.aechak.seller.order
 
 import com.aechak.application.order.seller.usecase.SellerOrderUseCase
 import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
+import com.aechak.application.order.seller.usecase.command.CompleteDeliveryCommand
 import com.aechak.seller.order.request.ShipmentRegisterRequest
 import com.aechak.seller.order.response.ShipmentRegisterResponse
 import com.aechak.webcommon.response.ApiResponse
@@ -29,6 +30,18 @@ class SellerOrderController(
     ): ResponseEntity<Void> {
         sellerOrderUseCase.acceptOrder(
             AcceptOrderCommand(sellerId = principal.userId, orderPublicId = orderPublicId),
+        )
+        return ResponseEntity.noContent().build()
+    }
+
+    /** 배송완료 — 배송중 주문을 배송완료로 전이하고 구매확정 기한을 부여한다. */
+    @PostMapping("/{orderPublicId}/delivery-complete")
+    fun completeDelivery(
+        @PathVariable orderPublicId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<Void> {
+        sellerOrderUseCase.completeDelivery(
+            CompleteDeliveryCommand(sellerId = principal.userId, orderPublicId = orderPublicId),
         )
         return ResponseEntity.noContent().build()
     }

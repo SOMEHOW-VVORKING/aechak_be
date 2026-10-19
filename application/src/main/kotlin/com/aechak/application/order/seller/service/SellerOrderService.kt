@@ -1,6 +1,8 @@
 package com.aechak.application.order.seller.service
 
+import com.aechak.application.order.delivery.service.OrderDeliveryService
 import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
+import com.aechak.application.order.seller.usecase.command.CompleteDeliveryCommand
 import com.aechak.application.order.seller.usecase.command.RegisterShipmentCommand
 import com.aechak.application.order.seller.usecase.result.RegisterShipmentResult
 import com.aechak.common.error.BusinessException
@@ -23,6 +25,7 @@ class SellerOrderService(
     private val orderStatusHistoryRepository: OrderStatusHistoryRepository,
     private val courierMasterRepository: CourierMasterRepository,
     private val shipmentRepository: ShipmentRepository,
+    private val orderDeliveryService: OrderDeliveryService,
 ) {
     fun acceptOrder(command: AcceptOrderCommand) {
         val order = findSellerOrder(command.sellerId, command.orderPublicId)
@@ -73,6 +76,11 @@ class SellerOrderService(
             dispatchedAt = dispatchedAt,
             orderStatus = order.status,
         )
+    }
+
+    fun completeDelivery(command: CompleteDeliveryCommand) {
+        val order = findSellerOrder(command.sellerId, command.orderPublicId)
+        orderDeliveryService.complete(order, LocalDateTime.now(), TriggeredBy.SELLER)
     }
 
     private fun findSellerOrder(
