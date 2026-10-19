@@ -91,9 +91,16 @@ class SellerOrderService(
         log.warn(
             "택배사 송장번호 패턴이 정규식으로 컴파일되지 않아 형식 검증을 건너뜁니다. courierCode={}, trackingFormatPattern={}",
             courier.courierCode,
-            courier.trackingFormatPattern,
+            escapeLineBreaks(courier.trackingFormatPattern),
         )
     }
+
+    /** 깨진 패턴에 개행이 섞여 있으면 경고 한 줄이 여러 줄로 쪼개져 수집기가 뒷부분을 잃는다. */
+    private fun escapeLineBreaks(pattern: String?): String? =
+        pattern
+            ?.replace("\r\n", "\\n")
+            ?.replace("\n", "\\n")
+            ?.replace("\r", "\\r")
 
     private fun findSellerOrder(
         sellerId: Long,

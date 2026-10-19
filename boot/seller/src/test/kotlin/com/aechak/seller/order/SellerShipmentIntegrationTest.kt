@@ -23,6 +23,7 @@ import com.aechak.domain.seller.seller.Seller
 import com.aechak.infra.persistence.order.order.OrderRepositoryAdapter
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -268,6 +269,24 @@ class SellerShipmentIntegrationTest : IntegrationTestBase() {
         val warning = warnings.first()
         assertTrue(warning.contains("HANJIN"), "택배사 코드가 로그에 있어야 한다: $warning")
         assertTrue(warning.contains(BROKEN_PATTERN), "문제의 패턴 문자열이 로그에 있어야 한다: $warning")
+    }
+
+    @Test
+    fun `깨진 패턴에 개행이 섞여 있어도 경고는 한 줄이다`() {
+        val orderPublicId = seedOrder(OrderStatus.PREPARING)
+        seedCourier("HANJIN", trackingFormatPattern = "$BROKEN_PATTERN\n줄바꿈")
+
+        val warnings =
+            captureServiceWarnings {
+                mockMvc
+                    .perform(shipmentRequest(token, orderPublicId, courierCode = "HANJIN", trackingNumber = "아무값1"))
+                    .andExpect(status().isCreated)
+            }
+
+        assertEquals(1, warnings.size, "경고 1건이어야 한다. 실제: $warnings")
+        val warning = warnings.first()
+        assertFalse(warning.contains("\n") || warning.contains("\r"), "경고에 실제 개행이 없어야 한다: $warning")
+        assertTrue(warning.contains("\\n줄바꿈"), "개행은 이스케이프해 싣는다: $warning")
     }
 
     @Test
