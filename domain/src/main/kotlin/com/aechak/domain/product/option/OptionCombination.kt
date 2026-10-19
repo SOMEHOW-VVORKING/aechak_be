@@ -60,7 +60,7 @@ class OptionCombination protected constructor(
      */
     fun changeStock(delta: Int): Int {
         val before = stockQuantity
-        stockQuantity = (before.toLong() + delta).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+        stockQuantity = (before.toLong() + delta).coerceIn(0L, MAX_STOCK_QUANTITY.toLong()).toInt()
         return stockQuantity - before
     }
 
@@ -79,6 +79,9 @@ class OptionCombination protected constructor(
     companion object {
         /** 재고가 해당 개수 이하면 노출(임계치) */
         const val STOCK_DISPLAY_THRESHOLD = 20
+
+        /** stock_quantity가 담을 수 있는 최대값. 컬럼은 int unsigned지만 매핑 타입이 Int라 여기가 실제 상한이다 */
+        const val MAX_STOCK_QUANTITY = Int.MAX_VALUE
 
         fun create(
             product: Product,

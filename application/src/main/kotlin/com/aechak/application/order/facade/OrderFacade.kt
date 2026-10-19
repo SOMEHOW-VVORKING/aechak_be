@@ -3,12 +3,19 @@ package com.aechak.application.order.facade
 import com.aechak.application.order.cart.service.CartService
 import com.aechak.application.order.port.OrderItemForReviewQueryPort
 import com.aechak.application.order.service.OrderConfirmService
+import com.aechak.application.order.service.OrderExpiryService
 import com.aechak.application.order.service.OrderService
+import com.aechak.application.order.support.OrderPointLedger
+import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
+import com.aechak.application.order.usecase.command.ExpireOrderGroupCommand
+import com.aechak.application.order.usecase.query.ExpiredOrderGroupQuery
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
+import com.aechak.application.order.usecase.result.ExpireOrderGroupResult
+import com.aechak.application.order.usecase.result.ExpiredOrderGroupResult
 import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 import com.aechak.application.user.address.usecase.DeliveryAddressUseCase
 import com.aechak.application.user.point.usecase.PointUseCase
@@ -21,21 +28,25 @@ import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
+import java.time.LocalDateTime
 
 /**
- * OrderUseCase의 유일한 구현체. 트랜잭션 경계는 여기 고정.
+ * order 도메인 진입점의 유일한 구현체. 트랜잭션 경계는 여기 고정.
  * 타 BC 협력(배송지·적립금)은 그쪽 UseCase를, 같은 BC의 장바구니는 CartService를 주입받는다.
+ * 만료 계약을 인터페이스로 가른 이유는 소비 모듈이 갈려서다 — 구매자 앱은 쓰지 않고 배치만 쓴다.
  */
 @Service
 class OrderFacade(
     private val orderService: OrderService,
     private val orderConfirmService: OrderConfirmService,
+    private val orderExpiryService: OrderExpiryService,
     private val cartService: CartService,
     private val deliveryAddressUseCase: DeliveryAddressUseCase,
     private val pointUseCase: PointUseCase,
     private val orderItemForReviewQueryPort: OrderItemForReviewQueryPort,
     transactionManager: PlatformTransactionManager,
-) : OrderUseCase {
+) : OrderUseCase,
+    OrderExpiryUseCase {
     private val tx =
         TransactionTemplate(transactionManager).apply {
             isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
@@ -86,6 +97,15 @@ class OrderFacade(
         )
     }
 
+    @Transactional(readOnly = true)
+    override fun findExpiredOrderGroups(query: ExpiredOrderGroupQuery): List<ExpiredOrderGroupResult> =
+        orderExpiryService.findExpired(LocalDateTime.now(), query)
+
+    /** 취소 전이·재고·적립금이 한 트랜잭션 — 복원 중 하나라도 터지면 그룹이 결제대기로 돌아가 다음 회차가 다시 집는다 */
+    @Transactional
+    override fun expireOrderGroup(command: ExpireOrderGroupCommand): ExpireOrderGroupResult =
+        orderExpiryService.expire(command.orderGroupId, LocalDateTime.now())
+
     @Transactional
     override fun clearOrderedCartItems(
         buyerId: Long,
@@ -102,15 +122,9 @@ class OrderFacade(
             UsePointCommand(
                 userId = command.buyerId,
                 amount = command.usedPoint,
-                idempotencyKey = "$POINT_USE_KEY_PREFIX${result.orderGroupId}",
-                sourceType = POINT_SOURCE_ORDER_GROUP,
+                idempotencyKey = OrderPointLedger.useKey(result.orderGroupId),
+                sourceType = OrderPointLedger.SOURCE_TYPE,
             ),
         )
-    }
-
-    companion object {
-        // 주문그룹 publicId 기반 결정적 키 — 같은 그룹의 사용 기록은 재실행돼도 원장 1행
-        const val POINT_USE_KEY_PREFIX = "USE:ORDER:"
-        const val POINT_SOURCE_ORDER_GROUP = "ORDER_GROUP"
     }
 }

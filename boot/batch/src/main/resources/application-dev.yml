@@ -1,0 +1,12 @@
+# dev 서버 — 값은 부팅 시 SSM /aechak/dev/batch/ 에서 로드(아래 import). yml은 어떤 값이 필요한지 명시하는 계약서
+spring:
+  config:
+    import: aws-parameterstore:/aechak/dev/batch/   # SSM 접근 실패(권한·네트워크) 시 부팅 실패
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}           # RDS - 필수, 미존재 시 부팅 실패(fail-fast)
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS}   # 아웃박스 재발행 대상 브로커. 미존재 시 부팅 실패
+
+# ddl-auto·PII 키·포트원 설정은 application.yml이 소유한다 — 여기선 프로파일별로 갈리는 접속 정보만 선언한다

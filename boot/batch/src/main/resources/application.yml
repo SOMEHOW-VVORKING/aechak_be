@@ -11,7 +11,7 @@ spring:
   task:
     scheduling:
       pool:
-        size: 2        # 아웃박스 스위퍼(5초 주기)가 대사(새벽 1회)를 막지 않게. 각 스케줄은 fixedDelay/cron이라 자기 겹침은 없다
+        size: 8        # 아웃박스 스위퍼(5초 주기)와 대사·주문·정산 스케줄이 서로를 막지 않게. 각 스케줄은 fixedDelay/cron이라 자기 겹침은 없다
 
   # 정책값은 api application.yml과 동일하게 유지. 브로커 주소만 프로파일 yml 소유
   kafka:
@@ -43,6 +43,10 @@ payment:
     base-url: https://api.portone.io
     api-secret: ${PORTONE_API_SECRET:}       # 대사 목록 조회·확정 본체의 재조회가 쓴다. 비면 대사 회차가 실패로 기록된다
     webhook-secret: ${PORTONE_WEBHOOK_SECRET:} # 배치는 웹훅을 받지 않지만 PaymentFacade 조립에 검증기가 딸려온다
+    store-id: ${PORTONE_STORE_ID:}             # 취소 요청에 실을 상점. 비면 API 시크릿의 상점이 쓰인다
+  # 취소 1건의 금액 상한. 기본 0 = 취소를 PG로 내보내지 않는다. api와 같은 기준으로 둔다
+  cancel:
+    max-amount: ${PAYMENT_CANCEL_MAX_AMOUNT:0}
   reconciliation:
     cron: "0 30 4 * * *"                       # KST 04:30 — 전날 승인·취소·웹훅 재전송(최대 5.7시간)이 가라앉은 뒤
     portone:
@@ -51,6 +55,14 @@ payment:
   toss:
     enabled: ${TOSS_RECONCILIATION_ENABLED:false} # 토스 직접 연동(orderId == 우리 결제 식별자)을 확인한 환경만 켠다
     secret-key: ${TOSS_SECRET_KEY:}
+
+order:
+  expiry:
+    # 기본값 false — 환불 집행이 붙기 전까지는 승인과 경합에서 취소가 이긴 건을 되돌릴 경로가 없다
+    enabled: ${ORDER_EXPIRY_ENABLED:false}
+    cron: "0 * * * * *"   # 매분 — 주문서 TTL이 10분이라 분 단위로 충분하다
+    page-size: 100        # 스캔 한 페이지 건수
+    max-pages: 10         # 한 회차 페이지 상한. 남은 적체는 다음 회차가 이어 받는다
 
 # PII 암호화 키 — api와 동일 키(같은 데이터를 복호). dev·prod는 SSM, local·test는 프로파일 파일의 고정 키가 덮는다.
 aechak:

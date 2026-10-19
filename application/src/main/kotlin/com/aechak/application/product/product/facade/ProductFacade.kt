@@ -22,6 +22,7 @@ import com.aechak.application.product.product.usecase.result.ProductResult
 import com.aechak.application.product.product.usecase.result.ProductSaleStatusChangeResult
 import com.aechak.application.product.product.usecase.result.ProductSummaryResult
 import com.aechak.application.product.product.usecase.result.ProductUpdateResult
+import com.aechak.application.product.product.usecase.result.SellerProductDetailResult
 import com.aechak.application.product.product.usecase.result.SellerProductOptionsResult
 import com.aechak.application.product.product.usecase.result.SellerProductSummaryResult
 import com.aechak.application.product.stats.service.ProductStatsService
@@ -125,6 +126,15 @@ class ProductFacade(
         requireProductReadableSeller(query.sellerId)
         val now = LocalDateTime.now()
         return productService.getSellerPage(query, now).map { SellerProductSummaryResult.from(view = it, now = now) }
+    }
+
+    @Transactional(readOnly = true)
+    override fun getMyProductDetail(
+        sellerId: Long,
+        publicId: String,
+    ): SellerProductDetailResult {
+        requireActiveSeller(sellerId)
+        return SellerProductDetailResult.from(productService.getOwnedProduct(sellerId, publicId))
     }
 
     @Transactional(readOnly = true)
