@@ -7,5 +7,6 @@ interface CourierMasterRepository {
     /** 활성 택배사를 이름 오름차순으로 반환한다. */
     fun findAllActive(): List<CourierMaster>
 
-    fun findByCourierCode(courierCode: String): CourierMaster?
+    /** 비활성 택배사는 고를 수 없으므로 없는 것으로 본다. */
+    fun findActiveByCourierCode(courierCode: String): CourierMaster?
 }

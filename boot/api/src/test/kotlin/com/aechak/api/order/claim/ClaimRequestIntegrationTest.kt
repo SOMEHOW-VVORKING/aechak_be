@@ -155,16 +155,16 @@ class ClaimRequestIntegrationTest : IntegrationTestBase() {
                     requestClaim(
                         token,
                         seeded.orderPublicId,
-                        """{"claimType":"CANCEL","reasonCode":"CHANGE_OF_MIND","items":[{"orderItemId":$target,"quantity":1}]}""",
+                        """{"claimType":"CANCEL","reasonCode":"CHANGE_OF_MIND","items":[{"orderItemId":$target,"quantity":2}]}""",
                     ),
                 ).andExpect(status().isCreated)
                 .andReturn()
                 .response
                 .getContentAsString(Charsets.UTF_8)
 
-        assertEquals(15_500L, JsonPath.read<Int>(body, "$.data.refundAmount").toLong(), "부분 취소는 배송비를 돌려주지 않는다")
+        assertEquals(31_000L, JsonPath.read<Int>(body, "$.data.refundAmount").toLong(), "부분 취소는 배송비를 돌려주지 않는다")
         assertEquals(1, claimItemCount(seeded.orderId))
-        assertEquals(15_500L, claimItemRefundTotal(seeded.orderId))
+        assertEquals(31_000L, claimItemRefundTotal(seeded.orderId))
     }
 
     @Test
@@ -209,11 +209,15 @@ class ClaimRequestIntegrationTest : IntegrationTestBase() {
         assertEquals(2, claimCount(seeded.orderId))
     }
 
-    /** 중복 차단은 수량이 아니라 주문품목 단위다 — 수량을 쪼개 두 번 취소하면 안분 잔차 때문에 합이 결제액과 갈린다. */
+    /**
+     * 수량을 쪼갠 요청은 받지 않는다 — 중복 차단이 품목 단위라 남은 수량에 후속 클레임을 걸 수 없고,
+     * order_items에 취소 수량을 담을 자리도 없어 남은 수량이 환불도 이행도 받지 못한 채 묶인다.
+     */
     @Test
-    fun `일부 수량을 취소한 뒤 남은 수량은 같은 품목이라 요청이 막힌다`() {
+    fun `주문 수량보다 적게 요청하면 422와 50410이다`() {
         val seeded = seedOrder(items = listOf(ItemSpec(20_000L, 3)))
         val target = seeded.orderItemIds.first()
+
         mockMvc
             .perform(
                 requestClaim(
@@ -221,19 +225,10 @@ class ClaimRequestIntegrationTest : IntegrationTestBase() {
                     seeded.orderPublicId,
                     """{"claimType":"CANCEL","reasonCode":"CHANGE_OF_MIND","items":[{"orderItemId":$target,"quantity":1}]}""",
                 ),
-            ).andExpect(status().isCreated)
+            ).andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.errorCode").value(50410))
 
-        mockMvc
-            .perform(
-                requestClaim(
-                    token,
-                    seeded.orderPublicId,
-                    """{"claimType":"CANCEL","reasonCode":"CHANGE_OF_MIND","items":[{"orderItemId":$target,"quantity":2}]}""",
-                ),
-            ).andExpect(status().isConflict)
-            .andExpect(jsonPath("$.errorCode").value(50403))
-
-        assertEquals(1, claimCount(seeded.orderId))
+        assertEquals(0, claimCount(seeded.orderId))
     }
 
     @Test

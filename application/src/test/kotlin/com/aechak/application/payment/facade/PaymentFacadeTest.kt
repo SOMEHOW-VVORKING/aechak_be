@@ -1,6 +1,7 @@
 package com.aechak.application.payment.facade
 
 import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
@@ -21,6 +22,7 @@ import com.aechak.application.payment.usecase.result.CancelPaymentStatus
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
+import com.aechak.domain.order.group.enums.OrderGroupStatus
 import com.aechak.domain.order.group.repository.OrderGroupRepository
 import com.aechak.domain.payment.Payment
 import com.aechak.domain.payment.enums.PaymentMethod
@@ -217,6 +219,12 @@ private class FakeOrderGroupRepository : OrderGroupRepository {
 
     override fun markPaidIfPending(id: Long): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
 
+    override fun transitionStatusIf(
+        id: Long,
+        expected: OrderGroupStatus,
+        next: OrderGroupStatus,
+    ): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
+
     override fun cancelIfPending(id: Long): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
 
     override fun findExpiredPending(
@@ -237,6 +245,8 @@ private class UnusedOrderUseCase : OrderUseCase {
     ): OrderItemForReviewResult? = throw UnsupportedOperationException()
 
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = throw UnsupportedOperationException()
+
+    override fun confirmPurchase(command: ConfirmPurchaseCommand) = throw UnsupportedOperationException()
 
     override fun clearOrderedCartItems(
         buyerId: Long,

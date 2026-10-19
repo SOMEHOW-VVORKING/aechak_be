@@ -1,5 +1,6 @@
 package com.aechak.application.user.point.service
 
+import com.aechak.application.user.point.usecase.command.EarnPurchaseRewardCommand
 import com.aechak.application.user.point.usecase.command.ReleasePointCommand
 import com.aechak.application.user.point.usecase.command.UsePointCommand
 import com.aechak.application.user.user.service.UserService
@@ -7,6 +8,7 @@ import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.point.PointTransaction
 import com.aechak.domain.user.point.enums.PointTransactionType
+import com.aechak.domain.user.point.policy.PurchaseRewardPolicy
 import com.aechak.domain.user.point.policy.ReviewRewardPolicy
 import com.aechak.domain.user.point.repository.PointTransactionRepository
 import com.aechak.domain.user.user.repository.UserRepository
@@ -41,6 +43,22 @@ class PointCommandService(
             ),
         )
         userRepository.addPointBalance(buyerUserId, amount)
+    }
+
+    /** 구매확정 적립 지급 */
+    fun earnPurchaseReward(command: EarnPurchaseRewardCommand) {
+        val amount = PurchaseRewardPolicy.amountFor(command.productAmount)
+        // 적립률을 적용하면 1원이 안 되는 주문이 있다. 0원 원장은 남기지 않는다
+        if (amount == 0L) {
+            return
+        }
+        val idempotencyKey = purchaseRewardKey(command.orderPublicId)
+        if (pointTransactionRepository.existsByIdempotencyKey(idempotencyKey)) {
+            return
+        }
+        val buyer = userService.getById(command.buyerUserId)
+        pointTransactionRepository.save(command.toEntity(buyer, amount, idempotencyKey))
+        userRepository.addPointBalance(command.buyerUserId, amount)
     }
 
     /**
@@ -95,5 +113,7 @@ class PointCommandService(
         private const val SOURCE_TYPE = "REVIEW_REWARD"
 
         private fun reviewRewardKey(reviewId: Long): String = "EARN:$SOURCE_TYPE:$reviewId"
+
+        private fun purchaseRewardKey(orderPublicId: String): String = "EARN:PURCHASE:$orderPublicId"
     }
 }

@@ -13,9 +13,7 @@ class CourierService(
     fun findActiveCouriers(): List<CourierMaster> = courierMasterRepository.findAllActive()
 
     fun verifyActiveCourier(courierCode: String) {
-        val courier = courierMasterRepository.findByCourierCode(courierCode)
-        if (courier == null || !courier.isActive) {
-            throw BusinessException(OrderErrorCode.COURIER_NOT_FOUND)
-        }
+        courierMasterRepository.findActiveByCourierCode(courierCode)
+            ?: throw BusinessException(OrderErrorCode.COURIER_NOT_FOUND)
     }
 }

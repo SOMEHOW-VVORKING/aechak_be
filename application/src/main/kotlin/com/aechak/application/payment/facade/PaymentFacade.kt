@@ -12,6 +12,7 @@ import com.aechak.application.payment.port.PaymentWebhookRequest
 import com.aechak.application.payment.port.PaymentWebhookVerifier
 import com.aechak.application.payment.service.PaymentService
 import com.aechak.application.payment.usecase.PaymentUseCase
+import com.aechak.application.payment.usecase.command.ApplyPaymentCancelCommand
 import com.aechak.application.payment.usecase.command.CancelPaymentCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByGatewayCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCommand
@@ -21,6 +22,7 @@ import com.aechak.application.payment.usecase.result.CancelPaymentResult
 import com.aechak.application.payment.usecase.result.CancelPaymentStatus
 import com.aechak.application.payment.usecase.result.CompletePaymentResult
 import com.aechak.application.payment.usecase.result.CompletePaymentStatus
+import com.aechak.application.payment.usecase.result.GatewayCancelResult
 import com.aechak.application.payment.usecase.result.PreparePaymentResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.group.OrderGroup
@@ -33,6 +35,7 @@ import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 
 /**
@@ -114,6 +117,20 @@ class PaymentFacade(
     }
 
     override fun cancelPayment(command: CancelPaymentCommand): CancelPaymentResult {
+        val gateway = requestCancelAtGateway(command)
+        val confirmed =
+            gateway.confirmedAmount
+                ?: return cancelTx.execute {
+                    CancelPaymentResult.of(
+                        CancelPaymentStatus.REQUESTED,
+                        paymentService.getByOrderGroupId(command.orderGroupId),
+                        cancelledAmount = 0L,
+                    )
+                }!!
+        return cancelTx.execute { applyCancel(command.orderGroupId, confirmed) }!!
+    }
+
+    override fun requestCancelAtGateway(command: CancelPaymentCommand): GatewayCancelResult {
         // 1. 취소 선점을 먼저 커밋한다 — 이 1행 성공이 "이 취소는 내 것"의 유일한 근거다
         val target =
             try {
@@ -142,7 +159,6 @@ class PaymentFacade(
                 throw e
             }
 
-        // 3. PG가 확정한 금액만 원장에서 뺀다
         return when (cancellation.status) {
             PaymentCancelStatus.SUCCEEDED -> {
                 // PG가 확정한 금액만 반영한다 — 없으면 요청액으로 추정하지 않고, 선점을 남겨 재요청을 막고 대사로 넘긴다
@@ -155,15 +171,7 @@ class PaymentFacade(
                         )
                         throw BusinessException(PaymentErrorCode.PAYMENT_GATEWAY_ERROR)
                     }
-                cancelTx.execute {
-                    // 밖에서 로딩한 결제 행은 낡았을 수 있어 저장 직전에 다시 읽는다
-                    val current = paymentService.getByOrderGroupId(command.orderGroupId)
-                    CancelPaymentResult.of(
-                        CancelPaymentStatus.COMPLETED,
-                        paymentService.completeCancel(current, cancelled),
-                        cancelled,
-                    )
-                }!!
+                GatewayCancelResult(payment.paymentId, cancelled)
             }
 
             // 비동기 승인 — 아직 PG도 깎지 않았다. 여기서 원장을 깎으면 대사가 금액 불일치 오보를 낸다
@@ -173,7 +181,7 @@ class PaymentFacade(
                     payment.paymentId,
                     target.requestedAmount,
                 )
-                CancelPaymentResult.of(CancelPaymentStatus.REQUESTED, payment, cancelledAmount = 0L)
+                GatewayCancelResult(payment.paymentId, confirmedAmount = null)
             }
 
             PaymentCancelStatus.FAILED -> {
@@ -181,6 +189,23 @@ class PaymentFacade(
                 throw BusinessException(PaymentErrorCode.PAYMENT_CANCEL_FAILED)
             }
         }
+    }
+
+    @Transactional
+    override fun applyCancelledAmount(command: ApplyPaymentCancelCommand): CancelPaymentResult =
+        applyCancel(command.orderGroupId, command.cancelledAmount)
+
+    /** PG가 확정한 금액만 원장에서 뺀다. 밖에서 로딩한 결제 행은 낡았을 수 있어 저장 직전에 다시 읽는다 */
+    private fun applyCancel(
+        orderGroupId: Long,
+        cancelledAmount: Long,
+    ): CancelPaymentResult {
+        val current = paymentService.getByOrderGroupId(orderGroupId)
+        return CancelPaymentResult.of(
+            CancelPaymentStatus.COMPLETED,
+            paymentService.completeCancel(current, cancelledAmount),
+            cancelledAmount,
+        )
     }
 
     /** 선점 해제는 보상 동작이라 실패해도 원래 예외를 가리지 않는다 — 남은 CANCEL_REQUESTED는 대사가 본다 */
@@ -219,7 +244,7 @@ class PaymentFacade(
                 throw BusinessException(PaymentErrorCode.PAYMENT_ORDER_GROUP_CANCELLED)
             }
 
-            // 부분취소는 결제 완료 이후에만 생기는 상태 — 아직 생산자가 없고, 클레임 구현 시 이 분기를 재정의한다
+            // 부분취소 — 클레임 환불이 이미 집행된 그룹이다. 뒤늦은 확정 요청은 남은 금액을 다시 승인하지 않고 끊는다
             OrderGroupStatus.PARTIALLY_CANCELLED -> {
                 throw BusinessException(PaymentErrorCode.PAYMENT_ORDER_GROUP_CANCELLED)
             }
@@ -262,6 +287,12 @@ class PaymentFacade(
                     val current = paymentService.getByOrderGroupId(group.id)
                     CompletePaymentResult.of(CompletePaymentStatus.FAILED, group, paymentService.markFailed(current, view))
                 }!!
+            }
+
+            // 이미 취소된 결제 — 확정할 승인이 남아 있지 않다. "지원하지 않는 상태"가 아니라 취소된 건으로 응답한다
+            PaymentGatewayStatus.CANCELLED, PaymentGatewayStatus.PARTIAL_CANCELLED -> {
+                log.warn("취소된 결제에 확정 요청이 도착. orderGroupPublicId={}, paymentId={}", group.publicId, payment.paymentId)
+                throw BusinessException(PaymentErrorCode.PAYMENT_ORDER_GROUP_CANCELLED)
             }
 
             else -> {
