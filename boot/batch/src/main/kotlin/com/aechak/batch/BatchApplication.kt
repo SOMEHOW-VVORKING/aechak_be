@@ -44,7 +44,7 @@ import org.springframework.context.annotation.FilterType
         // 조립하면 배치가 쓰지도 않는 의존을 끌고 온다.
         ComponentScan.Filter(type = FilterType.REGEX, pattern = ["com\\.aechak\\.application\\.order\\.seller\\..*"]),
         // 구매자·셀러 클레임 파사드만 제외. 셀러 자격 검증(application.seller)을 요구해 조립하면 쓰지도 않는 의존을 끌고 온다.
-        // 같은 패키지의 환불 집행 파사드는 자격 검증을 쓰지 않아 배치가 조립한다 — 그래서 패키지가 아니라 클래스 단위로 가린다.
+        // 같은 패키지의 환불 집행·자동승인 파사드는 자격 검증을 쓰지 않아 배치가 조립한다 — 그래서 패키지가 아니라 클래스 단위로 가린다.
         ComponentScan.Filter(
             type = FilterType.REGEX,
             pattern = ["com\\.aechak\\.application\\.order\\.claim\\.facade\\.ClaimFacade"],

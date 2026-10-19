@@ -51,6 +51,12 @@ import org.springframework.context.annotation.FilterType
             type = FilterType.REGEX,
             pattern = ["com\\.aechak\\.application\\.order\\.claim\\..*\\.ClaimRefund.*"],
         ),
+        // 자동승인 전용 구현체 제외. 셀러 자격을 대조하지 않고 승인하는 경로라 셀러센터에 두면
+        // 컨트롤러가 실수로 그 빈을 집는 순간 자격 검증이 비어 버린다. 승인 주체는 배치뿐이다.
+        ComponentScan.Filter(
+            type = FilterType.REGEX,
+            pattern = ["com\\.aechak\\.application\\.order\\.claim\\..*\\.ClaimAutoApprove.*"],
+        ),
     ],
 )
 class SellerApiApplication
