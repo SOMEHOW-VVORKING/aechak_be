@@ -313,6 +313,14 @@ class ProductService(
         )
     }
 
+    /** 셀러 본인 상품 한 건 — 없는 상품과 남의 상품 모두 404 */
+    fun getOwnedProduct(
+        sellerId: Long,
+        publicId: String,
+    ): Product =
+        productRepository.findByPublicIdAndSellerId(publicId, sellerId)
+            ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+
     /** 본인 상품인지 판정 후 조합별 재고 조회 — 없으면 404, 남의 상품이면 403 */
     fun getOwnedOptions(
         sellerId: Long,

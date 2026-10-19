@@ -14,7 +14,7 @@ import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
 interface OrderJpaRepository : JpaRepository<Order, Long> {
-    fun findAllByOrderGroupId(orderGroupId: Long): List<Order>
+    fun findAllByOrderGroupIdOrderByIdAsc(orderGroupId: Long): List<Order>
 
     fun findByPublicIdAndSellerId(
         publicId: String,
@@ -68,7 +68,7 @@ class OrderRepositoryAdapter(
 
     override fun findById(id: Long): Order? = jpaRepository.findByIdOrNull(id)
 
-    override fun findAllByOrderGroupId(orderGroupId: Long): List<Order> = jpaRepository.findAllByOrderGroupId(orderGroupId)
+    override fun findAllByOrderGroupId(orderGroupId: Long): List<Order> = jpaRepository.findAllByOrderGroupIdOrderByIdAsc(orderGroupId)
 
     override fun findByPublicIdAndBuyerId(
         publicId: String,
