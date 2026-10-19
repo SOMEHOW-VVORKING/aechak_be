@@ -11,6 +11,12 @@ interface OrderRepository {
 
     fun findAllByOrderGroupId(orderGroupId: Long): List<Order>
 
+    /**
+     * 여러 주문그룹의 주문을 품목까지 한 번에 읽는다. 클레임 환불액 재계산은 적립금 안분 분모로
+     * 같은 그룹의 주문 전체를 요구하므로, 목록 한 페이지분을 주문마다 질의하지 않게 묶는다.
+     */
+    fun findAllByOrderGroupIdIn(orderGroupIds: Collection<Long>): List<Order>
+
     /** 구매자 스코프 단건 조회 — 타인 주문은 없는 것으로 본다. */
     fun findByPublicIdAndBuyerId(
         publicId: String,

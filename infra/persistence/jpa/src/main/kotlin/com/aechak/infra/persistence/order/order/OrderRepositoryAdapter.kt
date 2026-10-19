@@ -16,6 +16,17 @@ import java.time.LocalDateTime
 interface OrderJpaRepository : JpaRepository<Order, Long> {
     fun findAllByOrderGroupId(orderGroupId: Long): List<Order>
 
+    // 그룹과 품목을 함께 끌어온다 — 클레임 목록의 환불액 재계산이 주문마다 추가 질의를 내지 않게.
+    @Query(
+        "select distinct o from Order o " +
+            "join fetch o.orderGroup g " +
+            "left join fetch o._items " +
+            "where g.id in :orderGroupIds",
+    )
+    fun findAllWithItemsByOrderGroupIdIn(
+        @Param("orderGroupIds") orderGroupIds: Collection<Long>,
+    ): List<Order>
+
     fun findByPublicIdAndSellerId(
         publicId: String,
         sellerId: Long,
@@ -69,6 +80,9 @@ class OrderRepositoryAdapter(
     override fun findById(id: Long): Order? = jpaRepository.findByIdOrNull(id)
 
     override fun findAllByOrderGroupId(orderGroupId: Long): List<Order> = jpaRepository.findAllByOrderGroupId(orderGroupId)
+
+    override fun findAllByOrderGroupIdIn(orderGroupIds: Collection<Long>): List<Order> =
+        if (orderGroupIds.isEmpty()) emptyList() else jpaRepository.findAllWithItemsByOrderGroupIdIn(orderGroupIds)
 
     override fun findByPublicIdAndBuyerId(
         publicId: String,

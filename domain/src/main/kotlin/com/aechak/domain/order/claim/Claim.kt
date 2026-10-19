@@ -1,6 +1,7 @@
 package com.aechak.domain.order.claim
 
 import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.order.claim.enums.ClaimSettlementStatus
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
@@ -171,6 +172,18 @@ class Claim protected constructor(
         resolvedAt = LocalDateTime.now()
     }
 
+    /**
+     * 셀러 운영 메모 덮어쓰기. 공백만 보내면 삭제로 본다.
+     * 상태 전이와 무관하므로 종결된 클레임에도 쓸 수 있다.
+     */
+    fun updateSellerMemo(memo: String?) {
+        val normalized = memo?.trim()
+        if (normalized != null && normalized.length > SELLER_MEMO_MAX_LENGTH) {
+            throw BusinessException(CommonErrorCode.INVALID_REQUEST)
+        }
+        sellerMemo = normalized?.takeIf { it.isNotEmpty() }
+    }
+
     /** 환불 집행 대상인지 — 셀러가 승인했고 아직 집행이 시작되지 않은 건만. */
     fun isRefundExecutable(): Boolean = status == ClaimStatus.APPROVED && refundStatus == RefundStatus.NONE
 
@@ -228,6 +241,8 @@ class Claim protected constructor(
 
     companion object {
         const val REASON_MAX_LENGTH = 500
+
+        const val SELLER_MEMO_MAX_LENGTH = 500
 
         /**
          * 대상 품목은 이 주문 애그리거트가 들고 있는 품목이어야 한다 — 스냅샷(sellerId·orderId)과
