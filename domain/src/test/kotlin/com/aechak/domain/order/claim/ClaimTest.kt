@@ -107,6 +107,22 @@ class ClaimTest {
     }
 
     @Test
+    fun `환불 실패는 진행 상태와 환불 상태를 함께 움직이고 재집행이 둘을 함께 되돌린다`() {
+        // 셀러 클레임 목록의 상태 필터가 이 동행에 기댄다 — 한 축만 움직이면 "환불 실패" 판정이 어느 축으로 거느냐에 따라 갈린다.
+        val claim = request(order())
+        claim.approveBySeller(null)
+        claim.markRefundRequested()
+
+        claim.markRefundFailed()
+        assertEquals(ClaimStatus.REFUND_FAILED, claim.status)
+        assertEquals(RefundStatus.REFUND_FAILED, claim.refundStatus)
+
+        claim.retryRefund()
+        assertEquals(ClaimStatus.APPROVED, claim.status)
+        assertEquals(RefundStatus.NONE, claim.refundStatus)
+    }
+
+    @Test
     fun `운영 메모는 앞뒤 공백을 떼고 저장되고 공백만 보내면 지워진다`() {
         val claim = request(order())
 

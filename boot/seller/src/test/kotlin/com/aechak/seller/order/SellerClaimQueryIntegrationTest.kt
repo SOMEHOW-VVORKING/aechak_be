@@ -168,6 +168,20 @@ class SellerClaimQueryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `네 자리 연도를 넘는 요청일은 400이다`() {
+        // LocalDate.parse가 받아버리는 확장 연도. 반개구간 상한을 만드는 하루 더하기가 경계에서 터져 500이 되던 입력이다.
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims?requestedTo=%2B999999999-12-31").bearer(token))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims?requestedFrom=-999999999-01-01").bearer(token))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+    }
+
+    @Test
     fun `유형별 건수는 유형 필터를 무시하고 상태 필터는 반영한다`() {
         seedClaim()
         seedClaim()

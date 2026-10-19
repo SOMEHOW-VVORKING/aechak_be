@@ -10,6 +10,11 @@ import java.time.LocalDate
  * 셀러 클레임 목록 조회 입력. 상태 필터는 서버의 축 어휘를 그대로 받는다 —
  * 화면의 단일 표시 상태로 접는 일은 프론트 몫이므로 서버가 그 어휘를 알 필요가 없다.
  * 비어 있는 필터는 그 축으로 걸지 않는다는 뜻이다.
+ *
+ * [한계] 축별 목록은 AND로 묶인다. 화면 표시 상태 하나는 축 조건의 AND로 전부 표현되지만
+ * (예: 승인됨 = status APPROVED + refundStatus NONE·REQUESTED, 환불 완료 = refundStatus DONE),
+ * 서로 다른 축에 걸친 표시 상태를 **한 번에 여러 개** 고르는 선택은 표현할 수 없다.
+ * 그런 선택이 생기면 축 조건 묶음을 OR로 받는 구조로 넓혀야 한다.
  */
 data class SellerClaimSearchQuery(
     val sellerId: Long,

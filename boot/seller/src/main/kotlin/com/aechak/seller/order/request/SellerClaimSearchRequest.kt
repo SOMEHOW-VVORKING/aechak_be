@@ -58,13 +58,27 @@ data class SellerClaimSearchRequest(
             throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "$field: 지원하지 않는 값입니다.")
         }
 
+    /**
+     * 네 자리 연도만 받는다 — `LocalDate.parse`는 `+999999999-12-31` 같은 확장 연도도 받아들이고,
+     * 그 값이 넘어가면 반개구간 상한을 만드는 하루 더하기가 LocalDate 경계에서 터져 500이 된다.
+     */
     private fun parseDate(
         field: String,
         value: String,
-    ): LocalDate =
-        try {
-            LocalDate.parse(value)
-        } catch (e: DateTimeParseException) {
+    ): LocalDate {
+        val date =
+            try {
+                LocalDate.parse(value)
+            } catch (e: DateTimeParseException) {
+                throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "$field: 날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
+            }
+        if (date.year !in SUPPORTED_YEARS) {
             throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "$field: 날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
         }
+        return date
+    }
+
+    private companion object {
+        val SUPPORTED_YEARS = 1..9999
+    }
 }
