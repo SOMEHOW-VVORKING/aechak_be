@@ -2,6 +2,8 @@ package com.aechak.infra.persistence.order.claim
 
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.enums.ClaimStatus
+import com.aechak.domain.order.claim.enums.ClaimType
+import com.aechak.domain.order.claim.enums.RefundStatus
 import com.aechak.domain.order.claim.enums.SellerApprovalStatus
 import com.aechak.domain.order.claim.repository.ClaimRepository
 import org.springframework.data.domain.PageRequest
@@ -55,6 +57,19 @@ interface ClaimJpaRepository : JpaRepository<Claim, Long> {
         @Param("statuses") statuses: Collection<ClaimStatus>,
     ): Long
 
+    // 상태 선두 인덱스(status, auto_approve_due_at)의 접두를 타고 승인 건만 훑는다
+    @Query(
+        "select c from Claim c " +
+            "where c.status = :status and c.refundStatus = :refundStatus and c.claimType = :claimType " +
+            "order by c.id asc",
+    )
+    fun findRefundPending(
+        @Param("status") status: ClaimStatus,
+        @Param("refundStatus") refundStatus: RefundStatus,
+        @Param("claimType") claimType: ClaimType,
+        pageable: Pageable,
+    ): List<Claim>
+
     @Query(
         "select c from Claim c " +
             "where c.status = :status and c.sellerApprovalStatus = :approvalStatus " +
@@ -86,6 +101,14 @@ class ClaimRepositoryAdapter(
 
     override fun existsActiveByOrderItemId(orderItemId: Long): Boolean =
         jpaRepository.countHoldingByOrderItemId(orderItemId, ClaimStatus.HOLDING) > 0
+
+    override fun findRefundPending(limit: Int): List<Claim> =
+        jpaRepository.findRefundPending(
+            status = ClaimStatus.APPROVED,
+            refundStatus = RefundStatus.NONE,
+            claimType = ClaimType.CANCEL,
+            pageable = PageRequest.of(0, limit),
+        )
 
     override fun findAutoApprovable(
         dueBefore: LocalDateTime,

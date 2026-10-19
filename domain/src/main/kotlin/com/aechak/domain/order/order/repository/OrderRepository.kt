@@ -7,6 +7,8 @@ interface OrderRepository {
     /** 주문품목은 Order의 cascade로 함께 저장된다. */
     fun saveAll(orders: List<Order>): List<Order>
 
+    fun findById(id: Long): Order?
+
     fun findAllByOrderGroupId(orderGroupId: Long): List<Order>
 
     /** 구매자 스코프 단건 조회 — 타인 주문은 없는 것으로 본다. */

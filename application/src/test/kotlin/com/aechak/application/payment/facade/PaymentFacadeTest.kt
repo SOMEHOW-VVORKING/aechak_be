@@ -21,6 +21,7 @@ import com.aechak.application.payment.usecase.result.CancelPaymentStatus
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
+import com.aechak.domain.order.group.enums.OrderGroupStatus
 import com.aechak.domain.order.group.repository.OrderGroupRepository
 import com.aechak.domain.payment.Payment
 import com.aechak.domain.payment.enums.PaymentMethod
@@ -216,6 +217,12 @@ private class FakeOrderGroupRepository : OrderGroupRepository {
     override fun findById(id: Long): OrderGroup? = byPublicId.values.find { it.id == id }
 
     override fun markPaidIfPending(id: Long): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
+
+    override fun transitionStatusIf(
+        id: Long,
+        expected: OrderGroupStatus,
+        next: OrderGroupStatus,
+    ): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
 
     override fun cancelIfPending(id: Long): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
 
