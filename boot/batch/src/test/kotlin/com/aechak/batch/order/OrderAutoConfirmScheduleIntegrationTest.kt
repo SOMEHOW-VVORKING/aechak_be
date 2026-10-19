@@ -27,6 +27,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -388,8 +389,12 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
         val orderPublicId: String,
     )
 
-    /** 배치가 KST로 판정하므로 fixture 시각도 KST로 만든다 — JVM 기본 시간대가 UTC면 기한이 9시간 밀린다. */
-    private fun kstNow(): LocalDateTime = LocalDateTime.now(KST)
+    /**
+     * 배치가 KST로 판정하므로 fixture 시각도 KST로 만든다 — JVM 기본 시간대가 UTC면 기한이 9시간 밀린다.
+     * 마이크로초로 끊는 이유는 DB 왕복이다. 시각 컬럼은 DATETIME(6)이라 그보다 작은 자리는 반올림돼 사라지는데,
+     * JVM 시계 해상도는 리눅스에서 나노·맥에서 마이크로라 끊지 않으면 심은 값과 읽은 값이 리눅스에서만 어긋난다.
+     */
+    private fun kstNow(): LocalDateTime = LocalDateTime.now(KST).truncatedTo(ChronoUnit.MICROS)
 
     private companion object {
         private val KST = ZoneId.of("Asia/Seoul")
