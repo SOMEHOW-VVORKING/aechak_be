@@ -132,9 +132,41 @@ class Order protected constructor(
         this.confirmType = confirmType
     }
 
-    private fun transitionTo(next: OrderStatus) {
-        if (!status.canTransitionTo(next)) {
+    /** 셀러 발주 확인 — 결제완료 건만 상품 준비중으로 간다. */
+    fun accept() {
+        transitionTo(OrderStatus.PREPARING, OrderErrorCode.ORDER_NOT_ACCEPTABLE)
+    }
+
+    /** 상품 준비 완료 — 송장 등록을 기다리는 발송 대기로 간다. */
+    fun markDispatchPending() {
+        transitionTo(OrderStatus.DISPATCH_PENDING)
+    }
+
+    /** 송장 등록에 따른 발송 확정. */
+    fun markShipping() {
+        transitionTo(OrderStatus.SHIPPING, OrderErrorCode.ORDER_NOT_DISPATCHABLE)
+    }
+
+    /** 배송완료 — 구매확정 기한을 함께 부여한다. */
+    fun markDelivered(autoConfirmDueAt: LocalDateTime) {
+        transitionTo(OrderStatus.DELIVERED)
+        this.autoConfirmDueAt = autoConfirmDueAt
+    }
+
+    /** 클레임 승인에 따른 취소 — 즉시취소가 막히는 발송 대기 건도 이 경로로 전이한다. */
+    fun cancelByClaimApproval() {
+        if (status == OrderStatus.PENDING_PAYMENT) {
             throw BusinessException(OrderErrorCode.INVALID_ORDER_STATUS_TRANSITION)
+        }
+        transitionTo(OrderStatus.CANCELLED)
+    }
+
+    private fun transitionTo(
+        next: OrderStatus,
+        denied: OrderErrorCode = OrderErrorCode.INVALID_ORDER_STATUS_TRANSITION,
+    ) {
+        if (!status.canTransitionTo(next)) {
+            throw BusinessException(denied)
         }
         status = next
     }
