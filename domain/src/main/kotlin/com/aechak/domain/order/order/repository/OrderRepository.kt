@@ -2,10 +2,14 @@ package com.aechak.domain.order.order.repository
 
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.enums.OrderStatus
+import java.time.LocalDateTime
 
 interface OrderRepository {
     /** 주문품목은 Order의 cascade로 함께 저장된다. */
     fun saveAll(orders: List<Order>): List<Order>
+
+    /** 배치가 스캔으로 받은 id를 되짚는 단건 조회. */
+    fun findById(id: Long): Order?
 
     fun findAllByOrderGroupId(orderGroupId: Long): List<Order>
 
@@ -30,4 +34,25 @@ interface OrderRepository {
         expected: OrderStatus,
         next: OrderStatus,
     ): Boolean
+
+    /**
+     * 구매확정 기한이 지난 배송완료 주문 id — 진행 중 클레임이 있는 주문은 제외한다.
+     * [afterId] 다음 id부터 오름차순 최대 [limit] 건.
+     */
+    fun findAutoConfirmDueIds(
+        dueAtOrBefore: LocalDateTime,
+        afterId: Long,
+        limit: Int,
+    ): List<Long>
+
+    /**
+     * 구매확정 사전 안내 대상 주문 id — 기한이 [dueAtAfter] 초과 [dueAtOrBefore] 이하이고 아직 안내하지 않은 배송완료 주문.
+     * [afterId] 다음 id부터 오름차순 최대 [limit] 건.
+     */
+    fun findConfirmNotifyTargetIds(
+        dueAtAfter: LocalDateTime,
+        dueAtOrBefore: LocalDateTime,
+        afterId: Long,
+        limit: Int,
+    ): List<Long>
 }

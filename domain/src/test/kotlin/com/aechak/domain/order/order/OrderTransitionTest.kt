@@ -102,6 +102,27 @@ class OrderTransitionTest {
     }
 
     @Test
+    fun `배송완료 주문은 사전 안내 시각을 받고 재안내는 시각을 덮지 않는다`() {
+        val order = deliveredOrder()
+        val first = LocalDateTime.of(2026, 10, 22, 2, 0)
+
+        order.markConfirmNotified(first)
+        order.markConfirmNotified(first.plusDays(1))
+
+        assertEquals(first, order.purchaseConfirmNotifiedAt, "재안내가 시각을 덮으면 안내 이력의 기준이 흔들린다")
+    }
+
+    @Test
+    fun `배송완료가 아닌 주문에는 사전 안내 시각을 남기지 않는다`() {
+        val order = dispatchPendingOrder()
+
+        val exception = assertFailsWith<BusinessException> { order.markConfirmNotified(LocalDateTime.now()) }
+
+        assertEquals(OrderErrorCode.ORDER_NOT_CONFIRMABLE, exception.errorCode)
+        assertNull(order.purchaseConfirmNotifiedAt)
+    }
+
+    @Test
     fun `발송 대기 주문은 즉시취소가 막히지만 클레임 승인 경로로는 취소된다`() {
         val immediate = dispatchPendingOrder()
         val byClaim = dispatchPendingOrder()

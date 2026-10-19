@@ -1,8 +1,12 @@
 package com.aechak.infra.persistence.order.order
 
+import com.aechak.domain.order.claim.enums.ClaimStatus
+import com.aechak.domain.order.claim.policy.ClaimProgressPolicy
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.repository.OrderRepository
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -48,6 +52,34 @@ interface OrderJpaRepository : JpaRepository<Order, Long> {
         @Param("next") next: OrderStatus,
         @Param("now") now: LocalDateTime,
     ): Int
+
+    @Query(
+        "select o.id from Order o " +
+            "where o.status = :status and o.autoConfirmDueAt <= :dueAtOrBefore and o.id > :afterId " +
+            "and not exists (select c.id from Claim c where c.orderId = o.id and c.status in :claimStatuses) " +
+            "order by o.id asc",
+    )
+    fun findAutoConfirmDueIds(
+        @Param("status") status: OrderStatus,
+        @Param("dueAtOrBefore") dueAtOrBefore: LocalDateTime,
+        @Param("afterId") afterId: Long,
+        @Param("claimStatuses") claimStatuses: Collection<ClaimStatus>,
+        pageable: Pageable,
+    ): List<Long>
+
+    @Query(
+        "select o.id from Order o " +
+            "where o.status = :status and o.purchaseConfirmNotifiedAt is null " +
+            "and o.autoConfirmDueAt > :dueAtAfter and o.autoConfirmDueAt <= :dueAtOrBefore and o.id > :afterId " +
+            "order by o.id asc",
+    )
+    fun findConfirmNotifyTargetIds(
+        @Param("status") status: OrderStatus,
+        @Param("dueAtAfter") dueAtAfter: LocalDateTime,
+        @Param("dueAtOrBefore") dueAtOrBefore: LocalDateTime,
+        @Param("afterId") afterId: Long,
+        pageable: Pageable,
+    ): List<Long>
 }
 
 @Repository
@@ -55,6 +87,8 @@ class OrderRepositoryAdapter(
     private val jpaRepository: OrderJpaRepository,
 ) : OrderRepository {
     override fun saveAll(orders: List<Order>): List<Order> = jpaRepository.saveAll(orders)
+
+    override fun findById(id: Long): Order? = jpaRepository.findById(id).orElse(null)
 
     override fun findAllByOrderGroupId(orderGroupId: Long): List<Order> = jpaRepository.findAllByOrderGroupId(orderGroupId)
 
@@ -89,4 +123,32 @@ class OrderRepositoryAdapter(
             next = next,
             now = LocalDateTime.now(),
         ) == 1
+
+    // 클레임 유보 판정 기준은 도메인 정책이 쥔다 — 자동확정 스캔과 단건 재확인이 같은 상태 집합을 본다
+    override fun findAutoConfirmDueIds(
+        dueAtOrBefore: LocalDateTime,
+        afterId: Long,
+        limit: Int,
+    ): List<Long> =
+        jpaRepository.findAutoConfirmDueIds(
+            status = OrderStatus.DELIVERED,
+            dueAtOrBefore = dueAtOrBefore,
+            afterId = afterId,
+            claimStatuses = ClaimProgressPolicy.IN_PROGRESS,
+            pageable = PageRequest.of(0, limit),
+        )
+
+    override fun findConfirmNotifyTargetIds(
+        dueAtAfter: LocalDateTime,
+        dueAtOrBefore: LocalDateTime,
+        afterId: Long,
+        limit: Int,
+    ): List<Long> =
+        jpaRepository.findConfirmNotifyTargetIds(
+            status = OrderStatus.DELIVERED,
+            dueAtAfter = dueAtAfter,
+            dueAtOrBefore = dueAtOrBefore,
+            afterId = afterId,
+            pageable = PageRequest.of(0, limit),
+        )
 }
