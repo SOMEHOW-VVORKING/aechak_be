@@ -1,14 +1,19 @@
 package com.aechak.application.order.claim.facade
 
 import com.aechak.application.order.claim.service.ClaimService
+import com.aechak.application.order.claim.service.SellerClaimQueryService
 import com.aechak.application.order.claim.usecase.ClaimUseCase
 import com.aechak.application.order.claim.usecase.SellerClaimUseCase
 import com.aechak.application.order.claim.usecase.command.ApproveClaimCommand
 import com.aechak.application.order.claim.usecase.command.RejectClaimCommand
 import com.aechak.application.order.claim.usecase.command.RequestClaimCommand
+import com.aechak.application.order.claim.usecase.command.UpdateClaimMemoCommand
 import com.aechak.application.order.claim.usecase.command.WithdrawClaimCommand
+import com.aechak.application.order.claim.usecase.query.SellerClaimSearchQuery
 import com.aechak.application.order.claim.usecase.result.ClaimListResult
 import com.aechak.application.order.claim.usecase.result.RequestClaimResult
+import com.aechak.application.order.claim.usecase.result.SellerClaimDetailResult
+import com.aechak.application.order.claim.usecase.result.SellerClaimPageResult
 import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.error.OrderErrorCode
@@ -23,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class ClaimFacade(
     private val claimService: ClaimService,
+    private val sellerClaimQueryService: SellerClaimQueryService,
     private val sellerUseCase: SellerUseCase,
 ) : ClaimUseCase,
     SellerClaimUseCase {
@@ -52,6 +58,27 @@ class ClaimFacade(
     override fun rejectClaim(command: RejectClaimCommand) {
         requireActiveSeller(command.sellerId)
         claimService.rejectClaim(command)
+    }
+
+    @Transactional(readOnly = true)
+    override fun searchClaims(query: SellerClaimSearchQuery): SellerClaimPageResult {
+        requireActiveSeller(query.sellerId)
+        return sellerClaimQueryService.searchClaims(query)
+    }
+
+    @Transactional(readOnly = true)
+    override fun getClaim(
+        claimPublicId: String,
+        sellerId: Long,
+    ): SellerClaimDetailResult {
+        requireActiveSeller(sellerId)
+        return sellerClaimQueryService.getClaim(claimPublicId, sellerId)
+    }
+
+    @Transactional
+    override fun updateSellerMemo(command: UpdateClaimMemoCommand) {
+        requireActiveSeller(command.sellerId)
+        claimService.updateSellerMemo(command)
     }
 
     private fun requireActiveSeller(sellerId: Long) {

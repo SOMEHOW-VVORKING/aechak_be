@@ -4,6 +4,7 @@ import com.aechak.application.order.claim.port.ClaimItemProductQueryPort
 import com.aechak.application.order.claim.usecase.command.ApproveClaimCommand
 import com.aechak.application.order.claim.usecase.command.RejectClaimCommand
 import com.aechak.application.order.claim.usecase.command.RequestClaimCommand
+import com.aechak.application.order.claim.usecase.command.UpdateClaimMemoCommand
 import com.aechak.application.order.claim.usecase.command.WithdrawClaimCommand
 import com.aechak.application.order.claim.usecase.result.ClaimListResult
 import com.aechak.application.order.claim.usecase.result.RequestClaimResult
@@ -108,6 +109,12 @@ class ClaimService(
     fun rejectClaim(command: RejectClaimCommand) {
         val claim = sellerClaim(command.claimPublicId, command.sellerId)
         claim.rejectBySeller(command.rejectionReason)
+        claimRepository.save(claim)
+    }
+
+    fun updateSellerMemo(command: UpdateClaimMemoCommand) {
+        val claim = sellerClaim(command.claimPublicId, command.sellerId)
+        claim.updateSellerMemo(command.sellerMemo)
         claimRepository.save(claim)
     }
 
