@@ -43,6 +43,8 @@ enum class OrderErrorCode(
     // 배송
     SHIPMENT_NOT_FOUND(50300, "배송 정보를 찾을 수 없습니다.", 404),
     SHIPMENT_ALREADY_DELIVERED(50301, "이미 배송완료 처리된 배송입니다.", 409),
+    SHIPMENT_ALREADY_REGISTERED(50302, "이미 송장이 등록되어 있습니다.", 409),
+    COURIER_NOT_FOUND(50303, "택배사를 찾을 수 없습니다.", 404),
 
     // 클레임
     CLAIM_NOT_FOUND(50400, "클레임을 찾을 수 없습니다.", 404),
@@ -54,5 +56,7 @@ enum class OrderErrorCode(
     CLAIM_QUANTITY_EXCEEDS_ORDERED(50406, "주문한 수량보다 많이 요청할 수 없습니다.", 422),
     CLAIM_REFUND_FAILED(50407, "환불 처리에 실패했습니다. 잠시 후 다시 확인해 주세요.", 502),
     CLAIM_ALREADY_RESOLVED(50408, "이미 처리된 클레임입니다.", 409),
+    CLAIM_COLLECTION_NOT_STARTABLE(50409, "회수를 진행할 수 없는 클레임 상태입니다.", 409),
     CLAIM_PARTIAL_QUANTITY_NOT_SUPPORTED(50410, "주문한 수량 전부를 대상으로만 요청할 수 있습니다.", 422),
+    CLAIM_RESHIP_NOT_ALLOWED(50411, "회수가 끝난 교환 클레임만 재발송할 수 있습니다.", 409),
 }

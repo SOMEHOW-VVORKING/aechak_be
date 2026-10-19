@@ -171,6 +171,37 @@ class Claim protected constructor(
         resolvedAt = LocalDateTime.now()
     }
 
+    /**
+     * 회수 송장 등록 — 셀러가 승인해 회수 대기로 넘어온 반품·교환만. 상태는 그대로 두고 시작 시각만 남긴다.
+     * 회수 완료 전까지 status가 COLLECTING에 머무는 것이 "물건을 받기 전에는 환불하지 않는다"의 근거다.
+     */
+    fun startCollection() {
+        if (status != ClaimStatus.COLLECTING || collectionStartedAt != null) {
+            throw BusinessException(OrderErrorCode.CLAIM_COLLECTION_NOT_STARTABLE)
+        }
+        collectionStartedAt = LocalDateTime.now()
+    }
+
+    /** 회수 완료 — 여기서야 승인이 끝난다. 반품 환불 집행은 이 전이 뒤에만 선점에 걸린다. */
+    fun completeCollection() {
+        if (status != ClaimStatus.COLLECTING || collectionStartedAt == null) {
+            throw BusinessException(OrderErrorCode.CLAIM_COLLECTION_NOT_STARTABLE)
+        }
+        transitionTo(ClaimStatus.APPROVED)
+    }
+
+    /** 재발송 송장 등록 가능한지 — 교환이고 회수가 끝났고 아직 재발송하지 않은 건만. */
+    fun isReshippable(): Boolean =
+        claimType == ClaimType.EXCHANGE && status == ClaimStatus.APPROVED && collectionStartedAt != null && resolvedAt == null
+
+    /** 교환 종결 — 환불이 없어 재발송이 종결 사건이다. */
+    fun completeExchange() {
+        if (!isReshippable()) {
+            throw BusinessException(OrderErrorCode.CLAIM_RESHIP_NOT_ALLOWED)
+        }
+        resolvedAt = LocalDateTime.now()
+    }
+
     /** 환불 집행 대상인지 — 셀러가 승인했고 아직 집행이 시작되지 않은 건만. */
     fun isRefundExecutable(): Boolean = status == ClaimStatus.APPROVED && refundStatus == RefundStatus.NONE
 
