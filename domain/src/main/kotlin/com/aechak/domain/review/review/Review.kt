@@ -18,6 +18,7 @@ import jakarta.persistence.OneToMany
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
+import java.time.LocalTime
 
 @Entity
 @Table(
@@ -30,8 +31,6 @@ import java.time.LocalDateTime
 )
 class Review protected constructor(
     val productId: Long,
-    val optionCombinationId: Long,
-    // 작성 시점 옵션명 스냅샷. 원본 옵션이 바뀌거나 삭제돼도 리뷰 표시는 유지된다.
     val optionNameSnapshot: String,
     val orderItemId: Long,
     val authorUserId: Long,
@@ -76,23 +75,69 @@ class Review protected constructor(
         deletedAt = LocalDateTime.now()
     }
 
+    fun mask(displayContent: String) {
+        if (reviewStatus != ReviewStatus.PUBLIC) {
+            throw BusinessException(ReviewErrorCode.INVALID_REVIEW_STATUS_TRANSITION)
+        }
+        reviewStatus = ReviewStatus.MASKED
+        this.displayContent = displayContent
+    }
+
+    fun block() {
+        if (reviewStatus != ReviewStatus.PUBLIC) {
+            throw BusinessException(ReviewErrorCode.INVALID_REVIEW_STATUS_TRANSITION)
+        }
+        reviewStatus = ReviewStatus.BLOCKED
+    }
+
     companion object {
-        /** UNIQUE 제약명. @Table 선언과 제약 위반 예외 번역이 공유한다. */
         const val UK_ORDER_ITEM_ID = "uk_reviews_order_item_id"
+
+        const val MAX_IMAGES = 5
+
+        const val WRITE_WINDOW_DAYS = 30L
+
+        // 구매확정일로부터 30일째 되는 날의 끝
+        fun writeDeadline(purchaseConfirmedAt: LocalDateTime): LocalDateTime =
+            purchaseConfirmedAt
+                .toLocalDate()
+                .plusDays(WRITE_WINDOW_DAYS)
+                .atTime(LocalTime.MAX)
+
+        fun isWithinWriteWindow(
+            purchaseConfirmedAt: LocalDateTime,
+            now: LocalDateTime,
+        ): Boolean = !writeDeadline(purchaseConfirmedAt).isBefore(now)
+
+        private const val BLINDED_CONTENT = "블라인드 처리된 리뷰입니다."
+
+        fun visibleContent(
+            reviewStatus: ReviewStatus,
+            content: String,
+            displayContent: String?,
+        ): String =
+            when (reviewStatus) {
+                ReviewStatus.MASKED -> displayContent ?: BLINDED_CONTENT
+                else -> content
+            }
 
         fun write(
             productId: Long,
-            optionCombinationId: Long,
             optionNameSnapshot: String,
             orderItemId: Long,
             authorUserId: Long,
             rating: Int,
             content: String,
+            images: List<ReviewImage> = emptyList(),
         ): Review {
             if (rating !in 1..5) {
                 throw BusinessException(ReviewErrorCode.INVALID_REVIEW_RATING)
             }
-            return Review(productId, optionCombinationId, optionNameSnapshot, orderItemId, authorUserId, rating, content)
+            if (images.size > MAX_IMAGES) {
+                throw BusinessException(ReviewErrorCode.REVIEW_TOO_MANY_IMAGES)
+            }
+            return Review(productId, optionNameSnapshot, orderItemId, authorUserId, rating, content)
+                .apply { _images.addAll(images) }
         }
     }
 }

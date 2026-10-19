@@ -21,13 +21,13 @@ internal class EnvelopeFactory(
         val eventId = message.eventId
         val occurredAt = message.occurredAt
         val aggregateType = message.aggregateType
-        val aggregateId = message.aggregateId
+        val orderingKey = message.orderingKey
         return Envelope(
             eventId = eventId,
             eventType = message::class.simpleName!!, // 컨슈머 라우팅 기준은 계약 클래스명. 도메인 이벤트명 아님. 리네임하면 기존 컨슈머가 못 알아봄
             occurredAt = occurredAt,
             aggregateType = aggregateType,
-            aggregateId = aggregateId,
+            orderingKey = orderingKey,
             traceId = MDC.get(TraceIdRecordInterceptor.TRACE_ID_MDC_KEY) ?: UUID.randomUUID().toString(),
             producer = producer,
             payload = objectMapper.writeValueAsString(message),

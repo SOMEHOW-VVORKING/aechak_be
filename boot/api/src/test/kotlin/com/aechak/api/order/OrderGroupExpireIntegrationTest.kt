@@ -159,6 +159,7 @@ class OrderGroupExpireIntegrationTest : KafkaIntegrationTestBase() {
                                 OrderItem.of(
                                     productId = 1L,
                                     optionCombinationId = it.optionCombinationId,
+                                    optionNameSnapshot = "기본",
                                     quantity = it.quantity,
                                     unitPriceSnapshot = 10_000L,
                                     discountAllocatedAmount = 0,
@@ -464,7 +465,7 @@ class OrderGroupExpireIntegrationTest : KafkaIntegrationTestBase() {
                 .param("eventId", message.eventId)
                 .query(String::class.java)
                 .single()
-        kafka.send(Topics.ORDER, message.aggregateId, envelopeJson).get()
+        kafka.send(Topics.ORDER, message.orderingKey, envelopeJson).get()
 
         awaitStock(combination, 2, "인박스가 없으면 재전달된 메시지가 재고를 두 번 되돌린다")
         await().during(HOLD).atMost(WAIT).untilAsserted {

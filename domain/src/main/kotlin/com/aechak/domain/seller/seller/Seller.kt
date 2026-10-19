@@ -97,6 +97,9 @@ class Seller protected constructor(
         protected set
 
     companion object {
+        /** MySQL 중복 키 메시지의 PK 식별자 — 같은 신청 동시 승인의 개점 INSERT 충돌 판별용. */
+        const val PK_CONFLICT_MARKER = "sellers.PRIMARY"
+
         fun open(
             userId: Long,
             storeName: String,

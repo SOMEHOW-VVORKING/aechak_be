@@ -203,6 +203,8 @@ payment 도메인은 헥사고날 완전 적용(L3): 순수 도메인 모델과 
 §3 이벤트, §4 리포지토리 포트)은 그대로 적용한다.
 
 **적용 범위는 payment BC뿐이다.** 다른 도메인을 L3로 옮기는 것은 이 절의 승인 범위가 아니다.
+payment BC 안의 다른 애그리거트 루트(결제 대사 `payment/reconciliation/` — 회차·건)도 같은 규칙을 따른다:
+순수 모델은 `domain/payment/reconciliation/`, 엔티티·매퍼·어댑터는 `infra/persistence/payment/reconciliation/`.
 
 ### 6-1. 자리와 이름
 

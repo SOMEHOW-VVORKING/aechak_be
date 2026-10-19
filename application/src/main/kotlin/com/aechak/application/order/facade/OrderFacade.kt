@@ -2,6 +2,7 @@ package com.aechak.application.order.facade
 
 import com.aechak.application.messaging.MessagePublisher
 import com.aechak.application.order.cart.service.CartService
+import com.aechak.application.order.port.OrderItemForReviewQueryPort
 import com.aechak.application.order.service.OrderGroupService
 import com.aechak.application.order.service.OrderService
 import com.aechak.application.order.service.model.CancelledOrderGroup
@@ -9,8 +10,10 @@ import com.aechak.application.order.support.OrderPointKeys
 import com.aechak.application.order.usecase.OrderGroupExpireUseCase
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
+import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
 import com.aechak.application.order.usecase.result.ExpireTargetResult
+import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 import com.aechak.application.payment.port.PaymentGatewayPort
 import com.aechak.application.user.address.usecase.DeliveryAddressUseCase
 import com.aechak.application.user.point.usecase.PointUseCase
@@ -22,6 +25,7 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDateTime
 
@@ -38,6 +42,7 @@ class OrderFacade(
     private val pointUseCase: PointUseCase,
     private val paymentGateway: PaymentGatewayPort,
     private val messagePublisher: MessagePublisher,
+    private val orderItemForReviewQueryPort: OrderItemForReviewQueryPort,
     transactionManager: PlatformTransactionManager,
 ) : OrderUseCase,
     OrderGroupExpireUseCase {
@@ -71,6 +76,23 @@ class OrderFacade(
             orderService.findByIdempotencyKey(command.idempotencyKey, command.buyerId) ?: throw e
         }
     }
+
+    @Transactional(readOnly = true)
+    override fun getOrderItemForReview(
+        orderItemId: Long,
+        buyerId: Long,
+    ): OrderItemForReviewResult? =
+        orderItemForReviewQueryPort.findOrderItemForReview(orderItemId, buyerId)?.let(OrderItemForReviewResult::from)
+
+    /** 결제 확정 트랜잭션에 참여해야 하므로 REQUIRED — 결제 기록이 롤백되면 주문 전이도 함께 롤백된다 */
+    @Transactional
+    override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = orderService.confirmGroupPaid(orderGroupId)
+
+    @Transactional
+    override fun clearOrderedCartItems(
+        buyerId: Long,
+        orderGroupId: Long,
+    ): Int = cartService.removeOrderedItems(buyerId, orderService.orderedQuantities(orderGroupId))
 
     override fun findExpireTargets(
         after: ExpireTargetResult?,

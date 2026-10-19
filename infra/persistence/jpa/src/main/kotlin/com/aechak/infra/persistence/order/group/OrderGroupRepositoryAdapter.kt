@@ -47,12 +47,13 @@ interface OrderGroupJpaRepository : JpaRepository<OrderGroup, Long> {
 
     @Modifying
     @Query(
-        "update OrderGroup g set g.status = :next, g.updatedAt = :now " +
-            "where g.id = :id and g.status = :current",
+        "update OrderGroup g " +
+            "set g.status = :next, g.updatedAt = :now " +
+            "where g.id = :id and g.status = :expected",
     )
-    fun updateStatusIf(
+    fun transitionStatus(
         @Param("id") id: Long,
-        @Param("current") current: OrderGroupStatus,
+        @Param("expected") expected: OrderGroupStatus,
         @Param("next") next: OrderGroupStatus,
         @Param("now") now: LocalDateTime,
     ): Int
@@ -64,11 +65,11 @@ class OrderGroupRepositoryAdapter(
 ) : OrderGroupRepository {
     override fun save(orderGroup: OrderGroup): OrderGroup = jpaRepository.save(orderGroup)
 
+    override fun findById(id: Long): OrderGroup? = jpaRepository.findByIdOrNull(id)
+
     override fun findByIdempotencyKey(idempotencyKey: String): OrderGroup? = jpaRepository.findByIdempotencyKey(idempotencyKey)
 
     override fun findByPublicId(publicId: String): OrderGroup? = jpaRepository.findByPublicId(publicId)
-
-    override fun findById(id: Long): OrderGroup? = jpaRepository.findByIdOrNull(id)
 
     override fun findExpiredPendingTargets(
         now: LocalDateTime,
@@ -83,10 +84,19 @@ class OrderGroupRepositoryAdapter(
 
     // 벌크 JPQL은 @PreUpdate를 우회하므로 updated_at을 쿼리에서 함께 SET함
     override fun cancelIfPending(id: Long): Boolean =
-        jpaRepository.updateStatusIf(
-            id,
-            OrderGroupStatus.PENDING_PAYMENT,
-            OrderGroupStatus.CANCELLED,
-            LocalDateTime.now(),
+        jpaRepository.transitionStatus(
+            id = id,
+            expected = OrderGroupStatus.PENDING_PAYMENT,
+            next = OrderGroupStatus.CANCELLED,
+            now = LocalDateTime.now(),
+        ) == 1
+
+    // 벌크 JPQL은 @PreUpdate를 우회하므로 updated_at을 쿼리에서 함께 SET한다
+    override fun markPaidIfPending(id: Long): Boolean =
+        jpaRepository.transitionStatus(
+            id = id,
+            expected = OrderGroupStatus.PENDING_PAYMENT,
+            next = OrderGroupStatus.PAID,
+            now = LocalDateTime.now(),
         ) == 1
 }

@@ -84,7 +84,7 @@ class OrderGroupQueryIntegrationTest : IntegrationTestBase() {
     private var sig = 0
 
     /**
-     * 표시 필드는 product_versions와 option_combinations에 INNER JOIN으로 붙어 실물 행이 없으면 품목이 통째로 빠짐.
+     * 표시 필드는 product_versions에 INNER JOIN으로 붙어 실물 행이 없으면 품목이 통째로 빠짐.
      * 그래서 카테고리부터 옵션 조합까지 실제로 심음.
      */
     private fun seedItem(
@@ -114,6 +114,7 @@ class OrderGroupQueryIntegrationTest : IntegrationTestBase() {
         return OrderItem.of(
             productId = product.id,
             optionCombinationId = combo.id,
+            optionNameSnapshot = item.optionName,
             quantity = item.quantity,
             unitPriceSnapshot = item.unitPrice,
             discountAllocatedAmount = 0,
@@ -276,7 +277,7 @@ class OrderGroupQueryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `상품이 개명돼도 품목의 상품명은 주문 시점 그대로고 옵션명은 현재값을 따라간다`() {
+    fun `품목은 셀러가 상품명과 옵션명을 바꿔도 주문 시점 상품명과 옵션명을 싣는다`() {
         val buyerId = createActiveUser()
         val publicId =
             seedOrderGroup(
@@ -297,9 +298,9 @@ class OrderGroupQueryIntegrationTest : IntegrationTestBase() {
             "상품명은 주문 시점 버전 스냅샷이라, 상품 현재 이름을 읽으면 지난 주문의 표기가 뒤늦게 바뀐다",
         )
         assertEquals(
-            "소고기 / 10kg",
+            "닭고기 / 10kg",
             JsonPath.read<String>(body, "$item.optionName"),
-            "옵션명은 스냅샷 컬럼이 없어 현재값을 따라간다",
+            "주문 뒤 옵션 개명이 지난 주문 표기에 번지면 안 된다",
         )
     }
 
@@ -332,7 +333,7 @@ class OrderGroupQueryIntegrationTest : IntegrationTestBase() {
         mockMvc
             .perform(getOrderGroup("01JZZZZZZZZZZZZZZZZZZZZZZZ", mintAccessToken(buyerId)))
             .andExpect(status().isNotFound)
-            .andExpect(jsonPath("$.errorCode").value(50111))
+            .andExpect(jsonPath("$.errorCode").value(50109))
     }
 
     @Test
@@ -349,7 +350,7 @@ class OrderGroupQueryIntegrationTest : IntegrationTestBase() {
 
         assertEquals(404, response.status, "남의 주문그룹은 403으로 실재를 알리지 않고 404로 숨겨야 한다")
         assertEquals(
-            50111,
+            50109,
             JsonPath.read<Int>(response.getContentAsString(Charsets.UTF_8), "$.errorCode"),
             "없는 주문그룹과 같은 코드로 응답해 존재 여부가 갈리지 않아야 한다",
         )

@@ -38,7 +38,7 @@ internal class DirectMessagePublisher(
             sender
                 .send(
                     envelope.aggregateType,
-                    envelope.aggregateId,
+                    envelope.orderingKey,
                     envelope.eventId,
                     envelope.eventType,
                     envelope.traceId,
@@ -57,9 +57,9 @@ internal class DirectMessagePublisher(
     ) {
         // 콜백 스레드에는 MDC가 없어 traceId를 로그 인자로 명시함
         log.error(
-            "직접 발행 실패 - 유실 (eventType={}, aggregateId={}, eventId={}, traceId={})",
+            "직접 발행 실패 - 유실 (eventType={}, orderingKey={}, eventId={}, traceId={})",
             envelope.eventType,
-            envelope.aggregateId,
+            envelope.orderingKey,
             envelope.eventId,
             envelope.traceId,
             e,

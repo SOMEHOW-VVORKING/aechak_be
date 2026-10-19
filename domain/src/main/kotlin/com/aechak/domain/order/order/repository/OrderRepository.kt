@@ -11,4 +11,7 @@ interface OrderRepository {
 
     /** 주문 id 오름차순. 품목도 id 오름차순 */
     fun findAllByOrderGroupIdWithItems(orderGroupId: Long): List<Order>
+
+    /** 그룹 확정에 따른 셀러 주문 일괄 전이 — 결제대기 행만. 전이된 행 수 반환 */
+    fun markAllPaidByOrderGroupId(orderGroupId: Long): Int
 }

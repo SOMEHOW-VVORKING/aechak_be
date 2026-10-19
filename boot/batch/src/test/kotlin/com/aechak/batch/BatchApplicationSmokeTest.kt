@@ -1,49 +1,37 @@
 package com.aechak.batch
 
-import com.aechak.batch.order.OrderGroupExpireJobConfig
-import com.aechak.batch.order.OrderGroupExpireSchedule
-import com.aechak.batch.outbox.OutboxSweepSchedule
+import com.aechak.application.payment.port.PaymentReconciliationSourcePort
+import com.aechak.application.payment.reconciliation.usecase.PaymentReconciliationUseCase
+import com.aechak.batch.payment.PaymentReconciliationSchedule
 import com.aechak.batch.support.BatchIntegrationTestBase
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNotNull
-import org.junit.jupiter.api.Test
-import org.springframework.batch.core.job.Job
+import com.aechak.domain.payment.reconciliation.ReconciliationSource
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.context.ConfigurableApplicationContext
+import org.springframework.context.ApplicationContext
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
- * 배치 조립 스모크. 스케줄러가 쓰는 유스케이스 빈이 배치 컨텍스트에서 실제로 해소되는지를 고정함.
- * 깨지면 만료 배치와 아웃박스 스위퍼가 배포 후 기동 시점에야 죽고, 그동안 재고와 적립금이 안 돌아옴.
+ * 조립 스모크. 선별 스캔이라 application 패키지가 늘 때마다 어댑터 누락으로 부팅이 깨질 수 있다 —
+ * 대사 스케줄과 그 의존(확정 본체·포트원 소스)이 실제로 조립되는지, 어드민 전용 빈은 빠지는지 고정한다.
  */
 class BatchApplicationSmokeTest : BatchIntegrationTestBase() {
     @Autowired
-    private lateinit var expireSchedule: OrderGroupExpireSchedule
-
-    @Autowired
-    private lateinit var sweepSchedule: OutboxSweepSchedule
-
-    @Autowired
-    private lateinit var context: ConfigurableApplicationContext
-
-    @Autowired
-    @Qualifier(OrderGroupExpireJobConfig.ORDER_GROUP_EXPIRE_JOB)
-    private lateinit var expireJob: Job
+    private lateinit var context: ApplicationContext
 
     @Test
-    fun `배치 컨텍스트가 스케줄러 배선을 모두 해소한다`() {
-        assertNotNull(expireSchedule, "만료 스케줄러가 없으면 만료된 주문그룹이 재고와 적립금을 계속 잡아 둔다")
-        assertNotNull(sweepSchedule, "아웃박스 스위퍼가 없으면 발행에 실패한 이벤트가 다시 나가지 않는다")
-        assertNotNull(expireJob, "만료 잡 배선이 풀리면 스케줄이 매 주기 잡 실행 실패 로그만 남긴다")
+    fun `대사 스케줄과 유스케이스와 포트원 소스가 조립된다`() {
+        context.getBean(PaymentReconciliationSchedule::class.java)
+        context.getBean(PaymentReconciliationUseCase::class.java)
+        val sources = context.getBeansOfType(PaymentReconciliationSourcePort::class.java).values.map { it.source }
+
+        assertEquals(listOf(ReconciliationSource.PORTONE), sources, "토스 소스는 설정으로 켜기 전엔 조립되지 않아야 한다")
     }
 
     @Test
-    fun `스케줄 빈은 전역 lazy의 예외로 기동 시 생성된다`() {
-        listOf("orderGroupExpireSchedule", "outboxSweepSchedule").forEach { name ->
-            assertFalse(
-                context.beanFactory.getBeanDefinition(name).isLazyInit,
-                "$name 이 lazy면 스케줄 등록이 없어 에러 없이 스윕만 멈춘다",
-            )
-        }
+    fun `어드민 전용 빈은 배치에 조립되지 않는다`() {
+        assertFalse(context.containsBean("adminSellerReviewFacade"), "Admin* 제외 필터가 지워지면 어드민 파사드가 배치에 섞인다")
+        assertTrue(context.containsBean("paymentReconciliationFacade"))
     }
 }

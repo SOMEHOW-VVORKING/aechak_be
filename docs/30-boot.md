@@ -92,7 +92,7 @@ data class OrderResponse(
 | --- | --- | --- |
 | 도메인 불변식 | 엔티티 companion | `CartItem.MAX_QUANTITY` — 병합 합산 상한에도 같은 값을 씀 |
 | 저장 한계(컬럼 길이) | 그 컬럼을 선언한 엔티티 companion | `ProductImage.STORAGE_KEY_MAX` — `@Column(length = ...)`과 DTO가 같은 값을 봄 |
-| 조회 계약 | application의 Query companion | `ProductSearchQuery.SIZE_MIN` — 도메인이 알 이유가 없음 |
+| 조회 계약 | application의 공용 상수나 Query companion | `CursorPageSize.MIN` — 목록마다 다를 이유가 없어 공용으로 두고, 도메인은 알 이유가 없음 |
 
 **개념의 규칙인지 저장의 한계인지를 먼저 가른다.** 상품이 성립하는 가격 범위나 가질 수 있는
 이미지 수는 상품이라는 개념의 규칙이므로 애그리거트가 소유하고 팩토리가 거절한다. 반면 상품명
@@ -153,16 +153,37 @@ class OrderMessageConsumer(private val someUseCase: SomeUseCase) {
 
 ```
 boot/batch/src/main/kotlin/com/aechak/batch/
-├── BatchApplication.kt
-├── job/{도메인}/                 # Job/Step 정의 — ItemProcessor 등에서 UseCase 호출
+├── BatchApplication.kt          # 선별 스캔(@ComponentScan) — seller-api와 같은 규약
+├── config/                      # JpaConfig(@EntityScan에 L3 엔티티 패키지 포함) · SchedulingConfig
+├── outbox/                      # OutboxSweepSchedule — 아웃박스 재발행(5초 주기)
+├── payment/                     # PaymentReconciliationSchedule — 결제 대사(매일 04:30 KST, 빠진 날 따라잡기)
+├── job/{도메인}/                 # (예정) Spring Batch Job/Step — ItemProcessor 등에서 UseCase 호출
 └── support/
-    └── BusinessSkipPolicy.kt    # BusinessException → errorCode 로깅 + 스킵 판단 (HTTP 개념 없음)
+    └── BusinessSkipPolicy.kt    # (예정) BusinessException → errorCode 로깅 + 스킵 판단 (HTTP 개념 없음)
 ```
 
-- 예외 소비 방식: web-common의 핸들러가 아니라 SkipPolicy/Listener에서 errorCode 기준 처리.
+- 스케줄 클래스에는 **UseCase만 주입**한다(Facade·Service·Repository 금지 — api 컨트롤러와 같은 규칙). 시간 계산은 KST를 명시한다.
+- **선별 스캔**: 루트(com.aechak) 스캔은 인증·SMS·Redis 등 api 전용 조립까지 요구해 부팅이 깨지므로, 쓰는 application 패키지와
+  그 Facade가 요구하는 어댑터 모듈(`:pg-client`·`:pii`·`:s3-client`…)을 함께 등재한다. 어드민 전용 구현체(`Admin*`)는 §7의 제외 필터로 뺀다.
+  **전역 lazy-init은 쓰지 않는다** — `@Scheduled` 빈이 지연 생성되면 스케줄 자체가 등록되지 않는다. 조립은 `BatchApplicationSmokeTest`가 고정한다.
+- 예외 소비 방식: web-common의 핸들러가 아니라 스케줄/SkipPolicy에서 errorCode 기준 처리. 한 건의 실패가 회차를 멈추지 않게 건별로 격리한다.
 - 배치가 자체 발신하는 에러 코드의 status는 500 고정 (05 문서 ErrorCode 컨벤션).
+- dev 배포 라인(ECR·ECS·SSM)은 아직 없다(SCRUM-226) — 배치에 올린 기능은 그 전까지 dev에서 돌지 않는다.
 
-## 7. admin — A-5 결정: MVP 제외
+## 7. admin — 어드민 실행 모듈 (SCRUM-170)
 
-- MVP에서는 만들지 않는다 (입점 심사·신고 처리 등 운영은 DB/API 수동 — 60 문서).
-- 생성 시점이 오면 api와 동일 구조/규칙(JSON API 기반)으로 만들고, web-common의 GlobalExceptionHandler를 재사용한다.
+```
+boot/admin/src/main/java/com/aechak/admin/
+├── AdminApplication.java
+├── config/          # JpaConfig · OpenApiConfig · WebConfig
+└── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
+```
+
+- A-5(MVP 제외)를 해소하고 신설 — 셀러 입점 심사부터 운영자 기능이 실제 API로 필요해졌다.
+- **Java(+Lombok)로 작성한다** (팀 결정) — 경계는 boot/admin과 `Admin*` 클래스까지. 공용 모듈(application의 support 등)에 두는 코드는 Kotlin 유지. 빌드는 `aechak.java-spring-boot-app` 컨벤션(50 문서 §1).
+- **application의 어드민 전용 컴포넌트 구현체는 `Admin` 접두사를 쓰고, 구매자·셀러 실행 모듈은 그 구현체를 스캔에서 제외한다**(seller-api의 excludeFilters). 심사처럼 운영자만 쓰는 유스케이스가 셀러와 같은 BC 패키지에 사는데 컴포넌트 스캔은 패키지 단위라 가릴 수 없다 — 제외하지 않으면 셀러센터가 쓰지도 않는 빈을 조립하다 의존을 못 찾고 부팅이 깨진다(SCRUM-208 선례).
+- api와 동일 구조/규칙(JSON API 기반) — web-common의 응답 봉투·GlobalExceptionHandler 재사용.
+- **자격 게이트는 모듈 SecurityConfig가 전역 강제**한다(role=ADMIN, 실패 시 20011·403). 컨트롤러별 `@PreAuthorize`를 쓰는 셀러측과 다른 점 — 모듈 전체가 운영자 전용이라 게이트가 하나면 된다. 전역 자원 접근이라 소유권 검증 계층도 없다.
+- 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(seller-api와 같은 검증 전용 모드).
+- DB 마이그레이션은 api 단일 소유 그대로 — admin은 접속만 한다.
+- 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.

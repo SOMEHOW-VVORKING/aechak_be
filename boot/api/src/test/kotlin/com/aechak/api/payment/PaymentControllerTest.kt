@@ -2,7 +2,11 @@ package com.aechak.api.payment
 
 import com.aechak.api.payment.config.PaymentStoreProperties
 import com.aechak.application.payment.usecase.PaymentUseCase
+import com.aechak.application.payment.usecase.command.CompletePaymentByGatewayCommand
+import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCommand
+import com.aechak.application.payment.usecase.command.CompletePaymentCommand
 import com.aechak.application.payment.usecase.command.PreparePaymentCommand
+import com.aechak.application.payment.usecase.result.CompletePaymentResult
 import com.aechak.application.payment.usecase.result.PreparePaymentResult
 import com.aechak.domain.payment.enums.PaymentMethod
 import com.aechak.domain.user.user.enums.UserRole
@@ -40,6 +44,15 @@ class PaymentControllerTest {
                 capturedCommand = command
                 return PreparePaymentResult(paymentId = command.orderGroupPublicId, targetAmount = 13_000L)
             }
+
+            override fun completePayment(command: CompletePaymentCommand): CompletePaymentResult =
+                error("이 테스트는 결제 준비 EP만 다룬다 — completePayment 호출은 계약 밖")
+
+            override fun completePaymentByWebhook(command: CompletePaymentByWebhookCommand): CompletePaymentResult =
+                error("이 테스트는 결제 준비 EP만 다룬다 — 웹훅 확정 호출은 계약 밖")
+
+            override fun completePaymentByGateway(command: CompletePaymentByGatewayCommand): CompletePaymentResult =
+                error("이 테스트는 결제 준비 EP만 다룬다 — 식별자 확정 호출은 계약 밖")
         }
 
     private val principalResolver =
@@ -110,6 +123,18 @@ class PaymentControllerTest {
             .andExpect(jsonPath("$.errorCode").value(90001))
 
         assertNull(capturedCommand, "결제수단 없이 결제행을 만들면 안 된다")
+    }
+
+    @Test
+    fun `결제수단을 null로 보내도 파싱 단계에서 90001로 끊는다`() {
+        val store = PaymentStoreProperties("store-a", "channel-a")
+
+        mockMvc(store)
+            .perform(prepare("og-6", body = """{"method":null}"""))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+
+        assertNull(capturedCommand, "명시적 null도 키 누락과 같이 유스케이스 전에 끊어야 한다")
     }
 
     @Test

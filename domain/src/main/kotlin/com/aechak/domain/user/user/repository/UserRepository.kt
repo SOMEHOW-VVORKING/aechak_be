@@ -7,6 +7,12 @@ interface UserRepository {
 
     fun save(user: User): User
 
+    /** 적립금 잔액 캐시를 원자 증감한다. */
+    fun addPointBalance(
+        userId: Long,
+        amount: Long,
+    ): Int
+
     /** 닉네임 선점 여부 — 본인(excludeUserId) 제외. 비교는 컬럼 collation(ci) 기준. */
     fun isNicknameTaken(
         nickname: String,
@@ -21,11 +27,6 @@ interface UserRepository {
 
     /** 적립금 잔액 조건부 원자 차감 — 차감 성공 여부가 곧 잔액 검증이다. false면 잔액 부족. */
     fun deductPointBalance(
-        userId: Long,
-        amount: Long,
-    ): Boolean
-
-    fun addPointBalance(
         userId: Long,
         amount: Long,
     ): Boolean

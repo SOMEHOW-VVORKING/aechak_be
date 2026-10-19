@@ -2,6 +2,9 @@
 
 > 성격: 유스케이스 조율 계층. 트랜잭션 경계, 도메인 간 조합, 입출력 계약(Command/Result/View)의 소유자.
 > 허용 의존: common, domain, spring-context, spring-tx.
+> 예외 — 순수 인메모리 계산 라이브러리: I/O도 프레임워크도 없는 순수 알고리즘 라이브러리는 유스케이스 로직에서 직접 써도 된다
+> (domain의 ulid-creator와 같은 결). 다만 라이브러리를 이 모듈 밖에 두고 싶으면 포트로 감싸 실행 모듈에서 구현한다 — 리뷰 금칙어 판정은 ProfanityScanner 포트로 두고 api 모듈이 아호코라식으로 구현한다.
+> I/O가 섞이는 순간(외부 API·저장소·메시지 브로커 등)은 포트로 감싸 infra로 내린다.
 > A-1 결정(L2): 리포지토리는 domain의 포트를 주입받는다 — 이 모듈에 Spring Data 없음 (§5).
 > 금지: web-common, spring-web, infra/*. — HTTP도 기술 구현도 모른다.
 
@@ -43,6 +46,9 @@ package com.aechak.application.order.usecase
  *   구매자 앱만 쓰는 조회와 셀러센터만 쓰는 쓰기를 한 타입에 두면 양쪽이 안 쓰는 절반을 주입받는다
  *   (ProductUseCase / SellerProductUseCase). Facade는 하나로 두고 두 인터페이스를 함께 구현한다 —
  *   쪼개면 같은 Service 주입이 양쪽에 복제된다(선례: AuthFacade가 4개 구현).
+ *   예외: 소비 모듈이 다르고 **주입 의존까지 겹치지 않으면** 같은 BC에 Facade를 하나 더 둘 수 있다 —
+ *   조회 전용(OrderQueryFacade), 배치 전용(PaymentReconciliationFacade — 확정 파사드의 웹훅 검증기 등을
+ *   배치가 끌고 오지 않게). 트랜잭션 경계·Service 호출 규칙은 그대로다.
  * - 이 인터페이스만이 외부(Controller / Consumer / Batch / 타 도메인 Facade)에 노출된다.
  * - 타 도메인이 order를 부를 때도 반드시 이 인터페이스로만 — OrderService 직접 호출 금지.
  *

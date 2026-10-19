@@ -1,10 +1,14 @@
 package com.aechak.batch.support
 
+import com.aechak.api.support.IntegrationTestConfig
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.mysql.MySQLContainer
 
+/**
+ * batch 통합 테스트 공용 베이스. 컨테이너(MySQL·Redis)는 api test-fixtures의 IntegrationTestConfig가 띄운 것을 공유한다 —
+ * 모듈마다 컨테이너를 따로 띄우지 않는다. 스키마는 ddl-auto(create)가 만든다(배치는 Flyway를 들지 않는다).
+ */
 @SpringBootTest(
     properties = [
         "spring.jpa.hibernate.ddl-auto=create",
@@ -12,15 +16,8 @@ import org.testcontainers.mysql.MySQLContainer
 )
 abstract class BatchIntegrationTestBase {
     companion object {
-        // 컨테이너를 빈으로 두면 컨텍스트가 닫힐 때 함께 멈춤. JVM 종료 시 Testcontainers가 정리함
-        private val mysql = MySQLContainer("mysql:8.4").apply { start() }
-
         @JvmStatic
         @DynamicPropertySource
-        fun datasource(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", mysql::getJdbcUrl)
-            registry.add("spring.datasource.username", mysql::getUsername)
-            registry.add("spring.datasource.password", mysql::getPassword)
-        }
+        fun containers(registry: DynamicPropertyRegistry) = IntegrationTestConfig.registerContainers(registry)
     }
 }

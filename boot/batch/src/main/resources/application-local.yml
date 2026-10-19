@@ -6,7 +6,7 @@ spring:
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
 
-# LOCAL 전용 고정 PII 키. 실환경 사용 금지 (api application-local.yml과 동일 값)
+# TEST/LOCAL 전용 고정 키 — 실환경 사용 금지. api의 application-local.yml과 같은 값이라 같은 로컬 DB를 복호한다.
 aechak:
   pii:
     aes-keys:

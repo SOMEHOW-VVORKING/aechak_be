@@ -51,15 +51,10 @@ interface UserJpaRepository : JpaRepository<User, Long> {
     ): Int
 
     @Modifying
-    @Query(
-        "update User u " +
-            "set u.pointBalance = u.pointBalance + :amount, u.updatedAt = :now " +
-            "where u.id = :userId",
-    )
+    @Query("update User u set u.pointBalance = u.pointBalance + :amount where u.id = :id")
     fun addPointBalance(
-        @Param("userId") userId: Long,
+        @Param("id") id: Long,
         @Param("amount") amount: Long,
-        @Param("now") now: LocalDateTime,
     ): Int
 }
 
@@ -75,6 +70,11 @@ class UserRepositoryAdapter(
 
     override fun save(user: User): User = jpaRepository.save(user)
 
+    override fun addPointBalance(
+        userId: Long,
+        amount: Long,
+    ): Int = jpaRepository.addPointBalance(userId, amount)
+
     override fun isNicknameTaken(
         nickname: String,
         excludeUserId: Long,
@@ -89,9 +89,4 @@ class UserRepositoryAdapter(
         userId: Long,
         amount: Long,
     ): Boolean = jpaRepository.deductPointBalance(userId, amount, LocalDateTime.now()) == 1
-
-    override fun addPointBalance(
-        userId: Long,
-        amount: Long,
-    ): Boolean = jpaRepository.addPointBalance(userId, amount, LocalDateTime.now()) == 1
 }

@@ -2,6 +2,7 @@ package com.aechak.application.product.stats.service
 
 import com.aechak.domain.product.stats.ProductStats
 import com.aechak.domain.product.stats.repository.ProductStatsRepository
+import java.math.BigDecimal
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -20,6 +21,13 @@ class ProductStatsServiceTest {
         override fun increaseLikeCount(productId: Long): Int = error("이 테스트에서 호출하지 않는다")
 
         override fun decreaseLikeCount(productId: Long): Int = error("이 테스트에서 호출하지 않는다")
+
+        override fun upsertReviewStats(
+            productId: Long,
+            reviewCount: Int,
+            ratingSum: Long,
+            averageRating: BigDecimal?,
+        ) = error("이 테스트에서 호출하지 않는다")
     }
 
     @Test

@@ -73,7 +73,7 @@ class ReviewListQueryAdapter(
             .groupBy(review.rating)
             .fetch()
 
-    private fun visible(): Predicate = review.reviewStatus.`in`(VISIBLE_STATUSES).and(review.deletedAt.isNull)
+    private fun visible(): Predicate = review.reviewStatus.`in`(VISIBLE_STATUSES)
 
     private fun photoOnlyFilter(photoOnly: Boolean): Predicate? =
         if (photoOnly) {
@@ -85,17 +85,17 @@ class ReviewListQueryAdapter(
         }
 
     private fun keyset(condition: ReviewListCondition): Predicate? {
-        val lastId = condition.lastId ?: return null
+        val lastReviewId = condition.lastReviewId ?: return null
         return when (condition.sort) {
             ReviewListSort.LATEST -> {
-                review.id.lt(lastId)
+                review.id.lt(lastReviewId)
             }
 
             ReviewListSort.RATING_DESC -> {
                 val lastRating = requireNotNull(condition.lastRating)
                 review.rating
                     .lt(lastRating)
-                    .or(review.rating.eq(lastRating).and(review.id.lt(lastId)))
+                    .or(review.rating.eq(lastRating).and(review.id.lt(lastReviewId)))
             }
         }
     }

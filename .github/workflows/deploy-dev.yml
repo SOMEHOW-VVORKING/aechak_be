@@ -22,6 +22,7 @@ jobs:
     outputs:
       api: ${{ steps.filter.outputs.api }}
       seller-api: ${{ steps.filter.outputs.seller-api }}
+      admin: ${{ steps.filter.outputs.admin }}
       infra: ${{ steps.filter.outputs.infra }}
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +56,23 @@ jobs:
               - '.github/workflows/deploy-module.yml'
             seller-api:
               - 'boot/seller/**'
+              - 'domain/**'
+              - 'application/**'
+              - 'common/**'
+              - 'web-common/**'
+              - 'web-security/**'
+              - 'pii/**'
+              - 'infra/**'
+              - 'gradle/**'
+              - 'gradlew*'
+              - 'gradle.properties'
+              - 'settings.gradle.kts'
+              - 'build-logic/**'
+              - 'Dockerfile'
+              - '.dockerignore'
+              - '.github/workflows/deploy-module.yml'
+            admin:
+              - 'boot/admin/**'
               - 'domain/**'
               - 'application/**'
               - 'common/**'
@@ -122,4 +140,13 @@ jobs:
       id-token: write
       contents: read
     uses: ./.github/workflows/deploy-dev-seller-api.yml
+    secrets: inherit
+
+  deploy-admin:
+    needs: [detect, deploy-infra]
+    if: ${{ !cancelled() && needs.deploy-infra.result != 'failure' && (needs.detect.outputs.admin == 'true' || needs.detect.outputs.infra == 'true') }}
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/deploy-dev-admin.yml
     secrets: inherit

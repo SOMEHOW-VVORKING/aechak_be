@@ -2,7 +2,7 @@ package com.aechak.domain.user.error
 
 import com.aechak.common.error.ErrorCode
 
-/** 사용자 도메인 = 30000번대. 20000번대는 인증/인가 소속(에러코드 대역 합의 2026-07-13). */
+/** 사용자 도메인 오류에는 30000번대 코드를 사용, 인증과 인가는 20000번대를 사용 */
 enum class UserErrorCode(
     override val code: Int,
     override val message: String,
@@ -15,15 +15,18 @@ enum class UserErrorCode(
     ALREADY_WITHDRAWN(30003, "이미 탈퇴한 계정입니다.", 409),
     ONBOARDING_ALREADY_COMPLETED(30004, "이미 온보딩을 완료한 계정입니다.", 409),
 
-    // 전화 인증 — 인증 코드는 세션류(애그리거트 아님)라 User 루트 대역을 잇는다
-    // 코드·번호 불일치만 한 코드로 묶는다(구분 비노출 — "코드는 맞고 번호가 틀렸다"가 새면 6자리 정답 여부가 드러난다).
-    // 만료·시도 초과·상한류는 호출자가 이미 아는 사실이라 구분해도 새는 정보가 없고, 다음 행동이 서로 다르다.
+    // 전화 인증 코드는 별도 도메인 모델이 아니므로 사용자 오류 코드에 이어서 배정한다.
+    // 코드 오류와 번호 불일치는 SMS_CODE_INVALID로 통합해 인증번호의 정답 여부가 노출되지 않게 한다.
+    // 만료, 시도 횟수 초과, 발송 제한은 사용자가 취해야 할 조치가 달라 별도 코드로 구분한다.
     SMS_CODE_INVALID(30005, "인증번호가 올바르지 않습니다.", 400),
     SMS_RESEND_COOLDOWN(30006, "재발송은 잠시 후에 가능합니다.", 429),
     SMS_SEND_FAILED(30007, "인증번호 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.", 502),
     SMS_DAILY_LIMIT_EXCEEDED(30008, "오늘 발송 가능 횟수를 모두 사용했습니다. 내일 다시 시도해 주세요.", 429),
     SMS_CODE_EXPIRED(30009, "인증번호가 만료되었습니다. 재발송 시도해 주세요.", 400),
     SMS_ATTEMPTS_EXCEEDED(30010, "인증번호 입력 횟수를 초과했습니다. 재발송 시도해 주세요.", 429),
+
+    // 탈퇴
+    WITHDRAWAL_BLOCKED(30011, "정리되지 않은 거래가 있어 탈퇴할 수 없습니다.", 409),
 
     // 적립금
     INVALID_POINT_AMOUNT(30100, "적립금 거래 금액은 0보다 커야 합니다.", 400),

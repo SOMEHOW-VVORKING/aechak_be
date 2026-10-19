@@ -13,4 +13,13 @@ enum class PaymentErrorCode(
     INVALID_PAYMENT_AMOUNT(60007, "결제 금액이 올바르지 않습니다.", 400),
     PAYMENT_ORDER_GROUP_NOT_FOUND(60008, "주문 정보를 찾을 수 없습니다.", 404),
     PAYMENT_ORDER_GROUP_NOT_PAYABLE(60009, "결제를 진행할 수 없는 주문입니다. 주문을 다시 진행해 주세요.", 409),
+    PAYMENT_AMOUNT_MISMATCH(60010, "결제 금액이 주문 금액과 일치하지 않습니다. 고객센터로 문의해 주세요.", 409),
+    PAYMENT_STATE_NOT_SUPPORTED(60011, "지원하지 않는 결제 상태입니다. 고객센터로 문의해 주세요.", 409),
+    PAYMENT_ORDER_GROUP_CANCELLED(60012, "만료로 취소된 주문입니다. 결제가 진행되었다면 환불 처리됩니다.", 409),
+    PAYMENT_WEBHOOK_INVALID_SIGNATURE(60013, "웹훅 서명 검증에 실패했습니다.", 401),
+
+    // 60100대: 결제 대사(reconciliation) 루트
+    RECONCILIATION_SOURCE_UNAVAILABLE(60100, "대사할 PG 소스가 설정되지 않았습니다.", 500),
+    RECONCILIATION_SOURCE_ERROR(60101, "PG 대사 조회에 실패했습니다.", 502),
+    RECONCILIATION_RUN_TAKEN_OVER(60102, "대사 회차를 다른 실행이 이어받아 중단했습니다.", 409),
 }

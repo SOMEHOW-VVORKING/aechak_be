@@ -11,7 +11,6 @@ import com.aechak.domain.order.group.QOrderGroup
 import com.aechak.domain.order.order.QOrder
 import com.aechak.domain.order.order.QOrderItem
 import com.aechak.domain.order.order.enums.OrderStatus
-import com.aechak.domain.product.option.QOptionCombination
 import com.aechak.domain.product.version.QProductVersion
 import com.querydsl.core.types.Predicate
 import com.querydsl.core.types.Projections
@@ -23,7 +22,6 @@ private val orderGroup = QOrderGroup.orderGroup
 private val order = QOrder.order
 private val orderItem = QOrderItem.orderItem
 private val productVersion = QProductVersion.productVersion
-private val optionCombination = QOptionCombination.optionCombination
 
 @Repository
 class OrderListQueryAdapter(
@@ -78,7 +76,7 @@ class OrderListQueryAdapter(
                     order.id,
                     productVersion.nameSnapshot,
                     productVersion.thumbnailKeySnapshot,
-                    optionCombination.name,
+                    orderItem.optionNameSnapshot,
                     orderItem.quantity,
                     orderItem.unitPriceSnapshot,
                     orderItem.itemStatus,
@@ -87,8 +85,6 @@ class OrderListQueryAdapter(
             .join(order._items, orderItem)
             .join(productVersion)
             .on(productVersion.id.eq(orderItem.productVersionId))
-            .join(optionCombination)
-            .on(optionCombination.id.eq(orderItem.optionCombinationId))
             .where(order.id.`in`(orderIds))
             .orderBy(order.id.asc(), orderItem.id.asc())
             .fetch()
