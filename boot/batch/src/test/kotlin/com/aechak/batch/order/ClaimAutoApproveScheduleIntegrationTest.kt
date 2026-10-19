@@ -3,6 +3,8 @@ package com.aechak.batch.order
 import com.aechak.application.order.claim.service.ClaimAmountCalculator
 import com.aechak.application.order.claim.usecase.ClaimAutoApproveUseCase
 import com.aechak.application.order.claim.usecase.ClaimRefundUseCase
+import com.aechak.application.order.claim.usecase.command.AutoApproveClaimCommand
+import com.aechak.application.order.claim.usecase.result.AutoApproveClaimStatus
 import com.aechak.batch.support.BatchIntegrationTestBase
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
@@ -31,9 +33,14 @@ import com.aechak.domain.user.user.User
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import java.time.LocalDateTime
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 클레임 자동승인 배치 통합. 승인에서 끝나지 않고 환불 집행까지 같은 회차에서 가므로 실 MySQL이 전제다 —
@@ -182,6 +189,72 @@ class ClaimAutoApproveScheduleIntegrationTest : BatchIntegrationTestBase() {
         assertEquals(500L + USED_POINT, pointBalanceOf(fixture.buyerId))
         assertEquals(1, releaseLedgerCountOf(fixture.buyerId))
         assertEquals(1, historyCountOf(fixture.orderId, OrderStatus.PAID, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
+    }
+
+    /**
+     * 두 요청이 같은 버전을 읽는 지점까지는 붙들 수 없어 겹친 호출의 결과만 고정한다 —
+     * 승인을 확정하는 쪽이 하나라는 것과 환불이 한 번만 나가는 것까지 본다.
+     */
+    @Test
+    fun `자동승인이 셀러 승인과 겹치면 한 쪽만 승인을 확정한다`() {
+        val fixture = seedClaimRequestedOrder()
+        val command = AutoApproveClaimCommand(fixture.claimPublicId)
+        val approved = AtomicInteger()
+        val start = CountDownLatch(1)
+        val done = CountDownLatch(2)
+        val pool = Executors.newFixedThreadPool(2)
+
+        pool.submit {
+            start.await()
+            runCatching { autoApproveUseCase.autoApprove(command) }
+                .onSuccess { if (it.status == AutoApproveClaimStatus.APPROVED) approved.incrementAndGet() }
+            done.countDown()
+        }
+        pool.submit {
+            start.await()
+            runCatching { tx.execute { claimOf(fixture.claimPublicId).approveBySeller(null) } }
+                .onSuccess { approved.incrementAndGet() }
+            done.countDown()
+        }
+        start.countDown()
+        assertTrue(done.await(10, TimeUnit.SECONDS), "두 호출이 끝나야 한다")
+        pool.shutdown()
+        em.clear()
+
+        assertEquals(1, approved.get(), "승인을 확정하는 쪽은 하나여야 한다")
+        assertEquals(ClaimStatus.APPROVED, claimStatusOf(fixture.claimPublicId))
+        assertEquals(RefundStatus.NONE, claimRefundStatusOf(fixture.claimPublicId), "승인만으로 돈이 나가면 안 된다")
+
+        schedule.run()
+
+        assertEquals(
+            emptyList<String>(),
+            paymentGateway.cancelledPaymentIds,
+            "승인이 끝난 건은 자동승인 스캔에서 빠진다 — 집행은 환불 배치 몫이다",
+        )
+    }
+
+    /**
+     * PG 취소가 성공한 뒤 정산 트랜잭션이 터지는 경로. 원장 차감·주문그룹 전이·재고·적립금이
+     * 한 트랜잭션이라 전부 함께 되돌아가고, 클레임은 환불 요청 상태로 남아 대사가 사람을 부른다.
+     */
+    @Test
+    fun `PG 취소 뒤 정산이 터지면 원장과 자산 복원이 함께 되돌아간다`() {
+        val fixture = seedClaimRequestedOrder(usedPoint = USED_POINT, pointBalance = 500L)
+        deleteUser(fixture.buyerId)
+
+        schedule.run()
+
+        assertEquals(1, paymentGateway.cancelledPaymentIds.size, "PG에서는 이미 돈이 나갔다")
+        assertEquals(RefundStatus.REQUESTED, claimRefundStatusOf(fixture.claimPublicId), "끝나지 않은 요청으로 남아야 한다")
+        assertEquals(ClaimStatus.APPROVED, claimStatusOf(fixture.claimPublicId))
+        assertNull(claimResolvedAtOf(fixture.claimPublicId))
+        assertEquals(PaymentStatus.CANCEL_REQUESTED, paymentStatusOf(fixture.orderGroupId))
+        assertEquals(fixture.finalPaymentAmount, paymentCancellableOf(fixture.orderGroupId), "원장 차감이 되돌아가야 한다")
+        assertEquals(OrderGroupStatus.PAID, groupStatusOf(fixture.orderGroupId))
+        assertEquals(OrderStatus.PAID, orderStatusOf(fixture.orderId))
+        assertEquals(STOCK, stockOf(fixture.optionCombinationId), "적립금 복원이 터지면 앞서 늘린 재고도 돌아가야 한다")
+        assertEquals(0, releaseLedgerCountOf(fixture.buyerId))
     }
 
     @Test
@@ -334,6 +407,17 @@ class ClaimAutoApproveScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     private fun rejectBySeller(claimPublicId: String) {
         tx.execute { claimOf(claimPublicId).rejectBySeller("재고를 이미 출고했습니다") }
+        em.clear()
+    }
+
+    /** 적립금 복원 단계에서 터지게 만든다 — 복원 대상 사용자가 없으면 원장을 만들 수 없다 */
+    private fun deleteUser(userId: Long) {
+        tx.execute {
+            em
+                .createQuery("delete from User u where u.id = :id")
+                .setParameter("id", userId)
+                .executeUpdate()
+        }
         em.clear()
     }
 
