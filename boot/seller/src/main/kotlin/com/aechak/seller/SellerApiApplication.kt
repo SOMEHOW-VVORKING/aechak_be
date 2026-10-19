@@ -33,6 +33,7 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.application.product", // 상품 등록·카테고리 조회
         "com.aechak.application.order.seller", // 셀러 주문 관리 — 구매자 주문서·장바구니 조립은 끌고 오지 않는다
         "com.aechak.application.order.claim", // 클레임 승인·거부 — 구매자 요청 계약과 파사드를 공유한다. 환불 집행은 아래 제외 필터로 뺀다
+        "com.aechak.application.order.shipment", // 택배사 마스터 조회 — order BC 중 이 하위만 쓴다
         "com.aechak.infra.persistence", // JPA 어댑터 (QuerydslConfig 포함)
         "com.aechak.infra.s3", // FileStorage 어댑터
         "com.aechak.infra.redis", // 인증 코드 저장소

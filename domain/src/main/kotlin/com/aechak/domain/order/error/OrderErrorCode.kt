@@ -26,7 +26,8 @@ enum class OrderErrorCode(
     ORDER_AMOUNT_CHANGED(50106, "주문 금액이 변경되었습니다. 주문서를 다시 확인해 주세요.", 409),
     INSUFFICIENT_STOCK(50107, "재고가 부족한 상품이 포함되어 있습니다.", 409),
     ORDER_AMOUNT_BELOW_MINIMUM(50108, "최소 결제 금액에 미치지 못합니다.", 422),
-    ORDER_GROUP_NOT_CANCELLABLE(50109, "취소할 수 없는 주문입니다.", 409),
+    ORDER_GROUP_NOT_FOUND(50109, "주문 정보를 찾을 수 없습니다.", 404),
+    ORDER_GROUP_NOT_CANCELLABLE(50110, "취소할 수 없는 주문입니다.", 409),
 
     // 장바구니
     INVALID_CART_ITEM_QUANTITY(50200, "장바구니 담을 수량은 1 이상이어야 합니다.", 400),
@@ -43,6 +44,9 @@ enum class OrderErrorCode(
     // 배송
     SHIPMENT_NOT_FOUND(50300, "배송 정보를 찾을 수 없습니다.", 404),
     SHIPMENT_ALREADY_DELIVERED(50301, "이미 배송완료 처리된 배송입니다.", 409),
+    SHIPMENT_ALREADY_REGISTERED(50302, "이미 송장이 등록된 주문입니다.", 409),
+    COURIER_NOT_FOUND(50303, "택배사를 찾을 수 없습니다.", 404),
+    INVALID_TRACKING_NUMBER(50304, "송장번호 형식이 올바르지 않습니다.", 400),
 
     // 클레임
     CLAIM_NOT_FOUND(50400, "클레임을 찾을 수 없습니다.", 404),

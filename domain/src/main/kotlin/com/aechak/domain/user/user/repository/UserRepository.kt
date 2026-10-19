@@ -1,6 +1,7 @@
 package com.aechak.domain.user.user.repository
 
 import com.aechak.domain.user.user.User
+import com.aechak.domain.user.user.enums.UserRole
 
 interface UserRepository {
     fun findById(id: Long): User?
@@ -30,4 +31,16 @@ interface UserRepository {
         userId: Long,
         amount: Long,
     ): Boolean
+
+    /** 역할 기준 목록 — id 오름차순. */
+    fun findAllByRole(
+        role: UserRole,
+        page: Int,
+        size: Int,
+    ): List<User>
+
+    fun countByRole(role: UserRole): Long
+
+    /** 역할 보유 행을 id 오름차순으로 잠그고 그 id를 돌려준다 — 관리자 수 판정과 강등이 한 트랜잭션에서 직렬화된다. */
+    fun lockIdsByRole(role: UserRole): List<Long>
 }
