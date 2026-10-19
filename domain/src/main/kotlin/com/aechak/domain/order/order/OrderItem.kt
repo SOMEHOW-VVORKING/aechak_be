@@ -54,7 +54,7 @@ class OrderItem protected constructor(
     @Column(nullable = false)
     val productVersionId: Long = productVersionId
 
-    /** 클레임 환불 집행에 따른 품목 취소. */
+    /** 주문 취소 또는 클레임 환불 집행에 따른 품목 취소. */
     fun markCancelled() {
         transitionTo(OrderItemStatus.CANCELLED)
     }

@@ -1,6 +1,7 @@
 package com.aechak.batch.order
 
 import com.aechak.application.order.usecase.OrderExpiryUseCase
+import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.order.usecase.command.ExpireOrderGroupCommand
 import com.aechak.application.order.usecase.result.ExpireOrderGroupStatus
 import com.aechak.application.payment.port.PaymentGatewayStatus
@@ -12,6 +13,7 @@ import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.group.enums.OrderGroupStatus
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.OrderItem
+import com.aechak.domain.order.order.enums.OrderItemStatus
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.payment.Payment
@@ -24,6 +26,8 @@ import com.aechak.domain.product.product.Product
 import com.aechak.domain.user.point.enums.PointTransactionType
 import com.aechak.domain.user.user.User
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -50,6 +54,9 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
     @Autowired
     private lateinit var paymentUseCase: PaymentUseCase
 
+    @Autowired
+    private lateinit var orderUseCase: OrderUseCase
+
     @Test
     fun `만료된 주문그룹은 취소되고 하위 주문도 취소 이력과 함께 취소된다`() {
         val fixture = seedExpiredOrderGroup(stock = 3, quantity = 2)
@@ -59,6 +66,18 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
         assertEquals(OrderGroupStatus.CANCELLED, groupStatusOf(fixture.orderGroupId))
         assertEquals(listOf(OrderStatus.CANCELLED), orderStatusesOf(fixture.orderGroupId))
         assertEquals(1, historyCountOf(fixture.orderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
+    }
+
+    @Test
+    fun `만료되면 주문 품목도 취소로 내려가 리뷰 작성 자격을 잃는다`() {
+        val fixture = seedExpiredOrderGroup(stock = 3, quantity = 2)
+
+        schedule.run()
+
+        assertEquals(listOf(OrderItemStatus.CANCELLED), itemStatusesOf(fixture.orderGroupId))
+        val reviewTarget = orderUseCase.getOrderItemForReview(fixture.orderItemId, fixture.buyerId)
+        assertNotNull(reviewTarget, "품목 행은 남아 있어야 한다")
+        assertFalse(reviewTarget!!.isItemReviewable, "취소된 품목은 리뷰 작성 자격이 없어야 한다")
     }
 
     @Test
@@ -120,6 +139,7 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
 
         assertEquals(OrderGroupStatus.PENDING_PAYMENT, groupStatusOf(fixture.orderGroupId))
         assertEquals(listOf(OrderStatus.PENDING_PAYMENT), orderStatusesOf(fixture.orderGroupId))
+        assertEquals(listOf(OrderItemStatus.ORDERED), itemStatusesOf(fixture.orderGroupId))
         assertEquals(3, stockOf(fixture.optionCombinationId))
     }
 
@@ -148,6 +168,7 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
             "재고를 되돌리지 못한 채 취소를 확정하면 복원 의무가 사라진다",
         )
         assertEquals(OptionCombination.MAX_STOCK_QUANTITY, stockOf(fixture.optionCombinationId))
+        assertEquals(listOf(OrderItemStatus.ORDERED), itemStatusesOf(fixture.orderGroupId), "보류된 건의 품목 상태도 되돌아가야 한다")
         assertEquals(0, releaseLedgerCountOf(fixture.buyerId))
         assertEquals(0, historyCountOf(fixture.orderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
     }
@@ -262,6 +283,7 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
         assertEquals(OrderGroupStatus.PENDING_PAYMENT, groupStatusOf(fixture.orderGroupId))
         assertEquals(listOf(OrderStatus.PENDING_PAYMENT), orderStatusesOf(fixture.orderGroupId))
         assertEquals(3, stockOf(fixture.optionCombinationId), "적립금 복원이 터지면 앞서 늘린 재고도 돌아가야 한다")
+        assertEquals(listOf(OrderItemStatus.ORDERED), itemStatusesOf(fixture.orderGroupId), "품목 상태도 함께 돌아가야 한다")
         assertEquals(0, historyCountOf(fixture.orderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
     }
 
@@ -277,6 +299,19 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
         assertEquals(6, stockOf(fixture.optionCombinationId), "결제대기 두 주문의 2 + 3만 되돌아와야 한다")
         assertEquals(1, historyCountOf(secondOrderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
         assertEquals(0, historyCountOf(cancelledOrderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
+    }
+
+    @Test
+    fun `결제대기 주문에 이미 취소된 품목이 섞여 있으면 그 수량은 되돌리지 않는다`() {
+        val fixture = seedExpiredOrderGroup(stock = 1, quantity = 2)
+        val mixedOrderId = addOrder(fixture, sellerId = 8L, quantities = listOf(3, 4))
+        markItemCancelled(itemIdOf(mixedOrderId, quantity = 3))
+
+        schedule.run()
+
+        assertEquals(OrderGroupStatus.CANCELLED, groupStatusOf(fixture.orderGroupId))
+        assertEquals(7, stockOf(fixture.optionCombinationId), "선취소된 3은 빼고 2 + 4만 되돌아와야 한다")
+        assertEquals(1, historyCountOf(mixedOrderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
     }
 
     @Test
@@ -321,6 +356,7 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
         val orderGroupId: Long,
         val orderGroupPublicId: String,
         val orderId: Long,
+        val orderItemId: Long,
         val optionCombinationId: Long,
         val finalPaymentAmount: Long,
     )
@@ -370,7 +406,7 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
                     sellerNameSnapshot = "스토어",
                     allocatedCouponDiscount = 0,
                     sellerShippingFee = SHIPPING_FEE,
-                    baseShippingFeeSnapshot = SHIPPING_FEE,
+                    baseShippingFeeSnapshot = null,
                     freeShippingThresholdSnapshot = null,
                     items =
                         listOf(
@@ -392,6 +428,7 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
                 orderGroupId = group.id,
                 orderGroupPublicId = group.publicId,
                 orderId = order.id,
+                orderItemId = order.items.single().id,
                 optionCombinationId = combination.id,
                 finalPaymentAmount = group.finalPaymentAmount,
             )
@@ -402,6 +439,13 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
         fixture: Fixture,
         sellerId: Long,
         quantity: Int,
+    ): Long = addOrder(fixture, sellerId, listOf(quantity))
+
+    /** 품목 여러 개를 가진 셀러 주문을 붙인다 — 수량으로 품목을 식별한다 */
+    private fun addOrder(
+        fixture: Fixture,
+        sellerId: Long,
+        quantities: List<Int>,
     ): Long =
         tx.execute {
             val group = em.find(OrderGroup::class.java, fixture.orderGroupId)
@@ -412,10 +456,10 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
                     sellerNameSnapshot = "스토어-$sellerId",
                     allocatedCouponDiscount = 0,
                     sellerShippingFee = SHIPPING_FEE,
-                    baseShippingFeeSnapshot = SHIPPING_FEE,
+                    baseShippingFeeSnapshot = null,
                     freeShippingThresholdSnapshot = null,
                     items =
-                        listOf(
+                        quantities.map { quantity ->
                             OrderItem.of(
                                 productId = PRODUCT_ID_UNUSED,
                                 optionCombinationId = fixture.optionCombinationId,
@@ -424,8 +468,8 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
                                 unitPriceSnapshot = PRODUCT_PRICE,
                                 discountAllocatedAmount = 0,
                                 productVersionId = PRODUCT_VERSION_ID,
-                            ),
-                        ),
+                            )
+                        },
                 )
             em.persist(order)
             em.flush()
@@ -438,6 +482,17 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
                 .createQuery("update Order o set o.status = :status where o.id = :id")
                 .setParameter("status", OrderStatus.CANCELLED)
                 .setParameter("id", orderId)
+                .executeUpdate()
+        }
+    }
+
+    /** 결제대기 주문에 이미 취소된 품목이 섞인 상태를 만든다 */
+    private fun markItemCancelled(orderItemId: Long) {
+        tx.execute {
+            em
+                .createQuery("update OrderItem oi set oi.itemStatus = :status where oi.id = :id")
+                .setParameter("status", OrderItemStatus.CANCELLED)
+                .setParameter("id", orderItemId)
                 .executeUpdate()
         }
     }
@@ -496,7 +551,7 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
                 status = status,
                 totalAmount = fixture.finalPaymentAmount,
                 paidAmount = fixture.finalPaymentAmount,
-                cancelledAmount = 0L,
+                cancelledAmount = 0,
                 pgTxId = "tx-${fixture.orderGroupPublicId}",
                 paidAt = if (status == PaymentGatewayStatus.PAID) LocalDateTime.now() else null,
                 failureCode = if (status == PaymentGatewayStatus.FAILED) "CARD_DECLINED" else null,
@@ -536,6 +591,27 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
         em
             .createQuery("select o.status from Order o where o.orderGroup.id = :id", OrderStatus::class.java)
             .setParameter("id", orderGroupId)
+            .resultList
+
+    private fun itemIdOf(
+        orderId: Long,
+        quantity: Int,
+    ): Long =
+        em
+            .createQuery(
+                "select oi.id from Order o join o._items oi where o.id = :id and oi.quantity = :quantity",
+                java.lang.Long::class.java,
+            ).setParameter("id", orderId)
+            .setParameter("quantity", quantity)
+            .singleResult
+            .toLong()
+
+    private fun itemStatusesOf(orderGroupId: Long): List<OrderItemStatus> =
+        em
+            .createQuery(
+                "select oi.itemStatus from Order o join o._items oi where o.orderGroup.id = :id",
+                OrderItemStatus::class.java,
+            ).setParameter("id", orderGroupId)
             .resultList
 
     private fun stockOf(optionCombinationId: Long): Int =

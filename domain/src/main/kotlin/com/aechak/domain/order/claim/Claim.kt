@@ -171,6 +171,17 @@ class Claim protected constructor(
         resolvedAt = LocalDateTime.now()
     }
 
+    /** 자동승인 대상인지 — 셀러가 판단하지 않은 채 응답 기한이 지난 건만. */
+    fun isAutoApprovable(now: LocalDateTime): Boolean =
+        status == ClaimStatus.CLAIM_REQUESTED &&
+            sellerApprovalStatus == SellerApprovalStatus.REQUESTED &&
+            autoApproveDueAt?.isBefore(now) == true
+
+    /** 기한이 지난 셀러 미응답 건을 시스템이 승인한다 — 반품비 부담 주체는 정하지 않는다. */
+    fun approveByTimeout() {
+        approveBySeller(null)
+    }
+
     /**
      * 회수 송장 등록 — 셀러가 승인해 회수 대기로 넘어온 반품·교환만. 상태는 그대로 두고 시작 시각만 남긴다.
      * 회수 완료 전까지 status가 COLLECTING에 머무는 것이 "물건을 받기 전에는 환불하지 않는다"의 근거다.

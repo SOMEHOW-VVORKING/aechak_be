@@ -112,6 +112,10 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
 중복 클레임 차단 질의가 이 집합을 그대로 쓰므로, 상태를 더할 때 어느 쪽인지 정하지 않으면 같은 품목에
 클레임이 두 번 걸린다.
 
+**자동승인은 셀러 승인과 같은 전이를 탄다** — `approveByTimeout()`이 `sellerApprovalStatus`를 APPROVED로 올린다.
+클레임에 "누가 승인했는가"를 담는 컬럼이 없어 셀러 승인과 자동승인이 클레임만 보고는 구별되지 않는다 —
+구별이 필요한 자리는 주문 상태 이력의 `triggered_by`(자동승인 건은 SYSTEM)다.
+
 **반품·교환은 회수가 상태에 드러나야 한다.** 셀러 승인이 `COLLECTING`까지만 끌어올리고, 회수 완료가
 `APPROVED`로 닫는다. 환불 집행 선점이 `APPROVED`만 받으므로 이 두 단계를 합치면 물건을 받기 전에 돈이 나간다.
 회수 송장과 교환 재발송 송장은 같은 `shipments` 테이블에 `shipment_type`(`RETURN_COLLECT`/`EXCHANGE_RESHIP`)으로

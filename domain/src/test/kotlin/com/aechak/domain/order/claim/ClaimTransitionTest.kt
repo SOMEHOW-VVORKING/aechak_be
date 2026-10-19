@@ -254,6 +254,43 @@ class ClaimTransitionTest {
         assertTrue(ClaimType.EXCHANGE.requiresCollection())
     }
 
+    @Test
+    fun `응답 기한이 지난 미응답 클레임은 자동승인 대상이다`() {
+        val claim = requestedClaim(autoApproveDueAt = DUE_AT)
+
+        assertTrue(claim.isAutoApprovable(DUE_AT.plusSeconds(1)))
+        assertFalse(claim.isAutoApprovable(DUE_AT), "기한 정각은 아직 지난 것이 아니다")
+        assertFalse(claim.isAutoApprovable(DUE_AT.minusSeconds(1)))
+    }
+
+    @Test
+    fun `자동승인은 셀러 승인과 같은 전이를 태우고 환불은 미집행으로 남는다`() {
+        val claim = requestedClaim()
+
+        claim.approveByTimeout()
+
+        assertEquals(ClaimStatus.APPROVED, claim.status)
+        assertEquals(SellerApprovalStatus.APPROVED, claim.sellerApprovalStatus)
+        assertEquals(RefundStatus.NONE, claim.refundStatus)
+        assertNull(claim.returnCostBearer, "자동승인은 반품비 부담 주체를 정하지 않는다")
+    }
+
+    @Test
+    fun `셀러가 이미 판단했거나 구매자가 철회한 클레임은 자동승인 대상이 아니다`() {
+        val approved = requestedClaim().apply { approveBySeller(null) }
+        val rejected = requestedClaim().apply { rejectBySeller("하자가 확인되지 않습니다") }
+        val withdrawn = requestedClaim().apply { withdrawByBuyer() }
+        val after = DUE_AT.plusDays(1)
+
+        assertFalse(approved.isAutoApprovable(after))
+        assertFalse(rejected.isAutoApprovable(after))
+        assertFalse(withdrawn.isAutoApprovable(after))
+        assertEquals(
+            OrderErrorCode.CLAIM_ALREADY_RESOLVED,
+            assertFailsWith<BusinessException> { approved.approveByTimeout() }.errorCode,
+        )
+    }
+
     private fun collectionClaim(claimType: ClaimType): Claim {
         val order = order(OrderStatus.DELIVERED)
         return Claim.request(
@@ -262,11 +299,11 @@ class ClaimTransitionTest {
             reasonCode = "DEFECT",
             reasonDetail = null,
             items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 10_000L)),
-            autoApproveDueAt = LocalDateTime.of(2026, 10, 20, 14, 0, 0),
+            autoApproveDueAt = DUE_AT,
         )
     }
 
-    private fun requestedClaim(): Claim {
+    private fun requestedClaim(autoApproveDueAt: LocalDateTime = DUE_AT): Claim {
         val order = order()
         return Claim.request(
             order = order,
@@ -274,7 +311,7 @@ class ClaimTransitionTest {
             reasonCode = "CHANGE_OF_MIND",
             reasonDetail = null,
             items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 10_000L)),
-            autoApproveDueAt = LocalDateTime.of(2026, 10, 20, 14, 0, 0),
+            autoApproveDueAt = autoApproveDueAt,
         )
     }
 
@@ -330,4 +367,8 @@ class ClaimTransitionTest {
             idempotencyKey = "claim-transition-1",
             expiresAt = LocalDateTime.of(2026, 10, 18, 12, 0, 0),
         )
+
+    private companion object {
+        private val DUE_AT = LocalDateTime.of(2026, 10, 20, 14, 0, 0)
+    }
 }
