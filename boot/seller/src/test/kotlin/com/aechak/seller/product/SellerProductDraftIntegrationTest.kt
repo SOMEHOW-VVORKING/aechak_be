@@ -278,6 +278,13 @@ class SellerProductDraftIntegrationTest : IntegrationTestBase() {
                     ),
             ).andExpect(status().isCreated)
 
+        // 초안이 내려준 tmp 키가 등록 경로의 승격을 실제로 탔는지는 저장된 키가 증명한다
+        assertEquals(
+            listOf("products/d1.webp", "products/rep.webp"),
+            storedProductImageKeys(),
+            "등록은 초안이 보관한 tmp 키를 정식 키로 승격해 저장해야 한다",
+        )
+
         // 등록은 초안을 대신 지워 주지 않는다 — 치우는 주체가 삭제 EP임을 고정한다
         mockMvc.perform(getDrafts(token)).andExpect(jsonPath("$.data.totalCount").value(1))
 
@@ -308,10 +315,18 @@ class SellerProductDraftIntegrationTest : IntegrationTestBase() {
             createDraft(
                 """
                 {
+                  "categoryId": $leafCategoryId,
                   "productName": "채운 초안",
+                  "description": "설명",
                   "regularPrice": 1000,
+                  "discountPrice": 900,
+                  "discountStartAt": "2026-08-11T10:00:00",
+                  "discountEndAt": "2026-08-12T10:00:00",
+                  "thumbnailImageKey": "${tmpKey("rep.webp")}",
+                  "additionalImageKeys": ["${tmpKey("a1.webp")}"],
                   "detailImageKeys": ["${tmpKey("d1.webp")}"],
-                  "optionGroups": [{"name": "중량", "values": ["100g"]}]
+                  "optionGroups": [{"name": "중량", "values": ["100g"]}],
+                  "optionCombinations": [{"optionValues": ["100g"], "additionalPrice": 0, "stockQuantity": 1}]
                 }
                 """.trimIndent(),
             )
@@ -326,10 +341,26 @@ class SellerProductDraftIntegrationTest : IntegrationTestBase() {
 
         mockMvc
             .perform(getDraft(token, draftId))
+            .andExpect(jsonPath("$.data.categoryId").doesNotExist())
             .andExpect(jsonPath("$.data.productName").doesNotExist())
+            .andExpect(jsonPath("$.data.description").doesNotExist())
             .andExpect(jsonPath("$.data.regularPrice").doesNotExist())
+            .andExpect(jsonPath("$.data.discountPrice").doesNotExist())
+            .andExpect(jsonPath("$.data.discountStartAt").doesNotExist())
+            .andExpect(jsonPath("$.data.discountEndAt").doesNotExist())
+            .andExpect(jsonPath("$.data.thumbnailImageKey").doesNotExist())
+            .andExpect(jsonPath("$.data.additionalImageKeys").isEmpty)
             .andExpect(jsonPath("$.data.detailImageKeys").isEmpty)
             .andExpect(jsonPath("$.data.optionGroups").isEmpty)
+            .andExpect(jsonPath("$.data.optionCombinations").isEmpty)
+    }
+
+    @Test
+    fun `조합이 지목하는 옵션값이 상한을 넘으면 90001을 반환한다`() {
+        val values = (1..ProductDraftPayload.COMBINATION_VALUES_MAX + 1).joinToString(", ") { "\"v$it\"" }
+        val body = """{"optionCombinations": [{"optionValues": [$values]}]}"""
+
+        mockMvc.perform(createRequest(token, body)).andExpect(status().isBadRequest).andExpect(errorCode(90001))
     }
 
     @Test
@@ -358,7 +389,7 @@ class SellerProductDraftIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `상세 설명이 컬럼 용량을 넘으면 90001을 반환한다`() {
+    fun `상세 설명이 상한을 넘으면 90001을 반환한다`() {
         val body = """{"description": "${"가".repeat(ProductDraft.DESCRIPTION_MAX + 1)}"}"""
 
         mockMvc.perform(createRequest(token, body)).andExpect(status().isBadRequest).andExpect(errorCode(90001))
@@ -525,6 +556,15 @@ class SellerProductDraftIntegrationTest : IntegrationTestBase() {
                 .executeUpdate()
         }
     }
+
+    private fun storedProductImageKeys(): List<String> =
+        tx.execute {
+            em
+                .createQuery(
+                    "select i.storageKey from Product p join p._images i order by i.storageKey asc",
+                    String::class.java,
+                ).resultList
+        }!!
 
     private fun draftRowCount(): Long =
         tx.execute {

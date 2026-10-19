@@ -12,6 +12,7 @@ import com.aechak.domain.product.error.ProductErrorCode
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 @Service
 class ProductDraftFacade(
@@ -21,7 +22,7 @@ class ProductDraftFacade(
     @Transactional(readOnly = true)
     override fun getMyDrafts(sellerId: Long): ProductDraftListResult {
         requireActiveSeller(sellerId)
-        return ProductDraftListResult.from(productDraftService.getDrafts(sellerId, LocalDateTime.now()))
+        return ProductDraftListResult.from(productDraftService.getDrafts(sellerId, now()))
     }
 
     @Transactional(readOnly = true)
@@ -30,13 +31,13 @@ class ProductDraftFacade(
         draftId: String,
     ): ProductDraftResult {
         requireActiveSeller(sellerId)
-        return ProductDraftResult.from(productDraftService.getDraft(sellerId, draftId, LocalDateTime.now()))
+        return ProductDraftResult.from(productDraftService.getDraft(sellerId, draftId, now()))
     }
 
     @Transactional
     override fun saveMyDraft(command: SaveProductDraftCommand): ProductDraftSaveResult {
         requireActiveSeller(command.sellerId)
-        return ProductDraftSaveResult.from(productDraftService.save(command, LocalDateTime.now()))
+        return ProductDraftSaveResult.from(productDraftService.save(command, now()))
     }
 
     @Transactional
@@ -45,8 +46,14 @@ class ProductDraftFacade(
         draftId: String,
     ) {
         requireActiveSeller(sellerId)
-        productDraftService.delete(sellerId, draftId, LocalDateTime.now())
+        productDraftService.delete(sellerId, draftId, now())
     }
+
+    /**
+     * saved_at은 DATETIME(6)이라 나노초를 넘기면 DB가 반올림한다 —
+     * 그러면 저장 응답의 savedAt이 바로 뒤 조회와 어긋난다. 마이크로초로 끊어 둘을 같게 만든다.
+     */
+    private fun now(): LocalDateTime = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)
 
     private fun requireActiveSeller(sellerId: Long) {
         if (!sellerUseCase.isActiveSeller(sellerId)) {
