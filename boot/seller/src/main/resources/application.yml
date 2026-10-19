@@ -43,6 +43,11 @@ management:
 api:
   base-path: /api/v1         # 호스트로 분리되므로 접두는 api와 동일 — FE가 경로를 바꿀 필요가 없다
 
+# 발송 기한. 주문일로부터 이 일수(역일)가 지나도 발송되지 않은 건을 대시보드가 배송 지연으로 센다.
+order:
+  dispatch:
+    sla-days: 3
+
 aws:
   s3:
     media-bucket: ${AWS_S3_MEDIA_BUCKET:}

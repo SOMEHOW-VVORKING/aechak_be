@@ -10,6 +10,7 @@ enum class SellerErrorCode(
     // 셀러
     SELLER_NOT_FOUND(10000, "셀러를 찾을 수 없습니다.", 404),
     ALREADY_SELLER(10001, "이미 셀러로 등록된 계정입니다.", 409),
+    SELLER_CENTER_READ_FORBIDDEN(10003, "셀러센터를 조회할 권한이 없습니다.", 403),
 
     // 입점 신청
     SELLER_APPLICATION_NOT_FOUND(10100, "입점 신청을 찾을 수 없습니다.", 404),
