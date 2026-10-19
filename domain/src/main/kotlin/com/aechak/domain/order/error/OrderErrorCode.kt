@@ -15,6 +15,8 @@ enum class OrderErrorCode(
     ORDER_NOT_ACCEPTABLE(50004, "결제완료 상태의 주문만 발주 확인할 수 있습니다.", 409),
     ORDER_NOT_DISPATCHABLE(50005, "발송 대기 상태의 주문만 발송 처리할 수 있습니다.", 409),
     INVALID_ORDER_ITEM_STATUS_TRANSITION(50006, "허용되지 않은 주문품목 상태 전이입니다.", 409),
+    ORDER_NOT_CONFIRMABLE(50007, "배송완료 상태이고 진행 중 클레임이 없는 주문만 구매확정할 수 있습니다.", 409),
+    ORDER_ALREADY_CONFIRMED(50008, "이미 구매확정된 주문입니다.", 409),
 
     // 주문그룹
     INVALID_ORDER_GROUP_STATUS_TRANSITION(50100, "허용되지 않은 주문그룹 상태 전이입니다.", 409),

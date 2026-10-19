@@ -4,6 +4,8 @@ import com.aechak.api.order.request.OrderListRequest
 import com.aechak.api.order.response.OrderDetailResponse
 import com.aechak.api.order.response.OrderListResponse
 import com.aechak.application.order.usecase.OrderQueryUseCase
+import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
@@ -12,11 +14,13 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
 class OrderController(
     private val orderQueryUseCase: OrderQueryUseCase,
+    private val orderUseCase: OrderUseCase,
 ) {
     @GetMapping("/order-groups")
     fun getOrderGroups(
@@ -35,4 +39,13 @@ class OrderController(
         ResponseEntity.ok(
             ApiResponse.of(OrderDetailResponse.from(orderQueryUseCase.getOrderDetail(orderId, principal.userId))),
         )
+
+    @PostMapping("/orders/{orderPublicId}/confirm")
+    fun confirmPurchase(
+        @PathVariable orderPublicId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<Void> {
+        orderUseCase.confirmPurchase(ConfirmPurchaseCommand(buyerId = principal.userId, orderPublicId = orderPublicId))
+        return ResponseEntity.noContent().build()
+    }
 }

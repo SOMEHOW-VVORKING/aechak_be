@@ -5,6 +5,7 @@ import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
 import com.aechak.domain.order.claim.enums.SellerApprovalStatus
+import com.aechak.domain.order.claim.policy.ClaimProgressPolicy
 import com.aechak.domain.order.claim.repository.ClaimRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
@@ -15,6 +16,12 @@ import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
 interface ClaimJpaRepository : JpaRepository<Claim, Long> {
+    @Query("select count(c) > 0 from Claim c where c.orderId = :orderId and c.status in :statuses")
+    fun existsByOrderIdAndStatusIn(
+        @Param("orderId") orderId: Long,
+        @Param("statuses") statuses: Collection<ClaimStatus>,
+    ): Boolean
+
     // 품목과 주문품목까지 함께 끌어온다 — 목록 응답이 품목마다 추가 질의를 내지 않게.
     @Query(
         "select distinct c from Claim c " +
@@ -123,4 +130,7 @@ class ClaimRepositoryAdapter(
             dueBefore = dueBefore,
             pageable = PageRequest.of(0, limit),
         )
+
+    override fun existsInProgressByOrderId(orderId: Long): Boolean =
+        jpaRepository.existsByOrderIdAndStatusIn(orderId, ClaimProgressPolicy.IN_PROGRESS)
 }

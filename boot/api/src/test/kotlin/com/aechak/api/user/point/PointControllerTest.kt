@@ -3,6 +3,7 @@ package com.aechak.api.user.point
 import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.auth.port.UserStatusReader
 import com.aechak.application.user.point.usecase.PointUseCase
+import com.aechak.application.user.point.usecase.command.EarnPurchaseRewardCommand
 import com.aechak.application.user.point.usecase.command.ReleasePointCommand
 import com.aechak.application.user.point.usecase.command.UsePointCommand
 import com.aechak.application.user.point.usecase.result.PointBalanceResult
@@ -52,6 +53,8 @@ class PointControllerTest {
                 reviewId: Long,
                 hasPhoto: Boolean,
             ) = Unit
+
+            override fun earnPurchaseReward(command: EarnPurchaseRewardCommand) = error("이 테스트는 잔액 조회 EP만 다룬다 — 구매확정 적립 호출은 계약 밖")
 
             override fun usePoint(command: UsePointCommand) = error("이 테스트는 잔액 조회 EP만 다룬다 — usePoint 호출은 계약 밖")
 
