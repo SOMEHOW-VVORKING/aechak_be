@@ -213,7 +213,8 @@ class ClaimAutoApproveScheduleIntegrationTest : BatchIntegrationTestBase() {
                     tx.execute {
                         val claim = claimOf(fixture.claimPublicId)
                         sellerLoaded.countDown()
-                        autoApproved.await(10, TimeUnit.SECONDS)
+                        // 기다리지 못하면 순서가 풀려 락이 아닌 다른 것을 재게 되므로 못 기다린 사실을 드러낸다
+                        check(autoApproved.await(10, TimeUnit.SECONDS)) { "자동승인 커밋을 기다리지 못했다" }
                         claim.approveBySeller(null)
                     }
                     Unit
@@ -221,15 +222,19 @@ class ClaimAutoApproveScheduleIntegrationTest : BatchIntegrationTestBase() {
             }
         val autoSide =
             pool.submit<AutoApproveClaimResult> {
-                sellerLoaded.await(10, TimeUnit.SECONDS)
+                check(sellerLoaded.await(10, TimeUnit.SECONDS)) { "셀러가 클레임을 읽는 것을 기다리지 못했다" }
                 val result = autoApproveUseCase.autoApprove(AutoApproveClaimCommand(fixture.claimPublicId))
                 autoApproved.countDown()
                 result
             }
 
-        assertEquals(AutoApproveClaimStatus.APPROVED, autoSide.get(10, TimeUnit.SECONDS).status)
-        val sellerFailure = sellerSide.get(10, TimeUnit.SECONDS).exceptionOrNull()
-        pool.shutdown()
+        val sellerFailure =
+            try {
+                assertEquals(AutoApproveClaimStatus.APPROVED, autoSide.get(10, TimeUnit.SECONDS).status)
+                sellerSide.get(10, TimeUnit.SECONDS).exceptionOrNull()
+            } finally {
+                pool.shutdownNow()
+            }
         em.clear()
 
         assertTrue(
