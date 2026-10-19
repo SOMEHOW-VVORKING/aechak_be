@@ -218,6 +218,32 @@ abstract class SellerSettlementIntegrationTestBase : IntegrationTestBase() {
             .executeUpdate()
     }
 
+    /**
+     * 주문 행이 없는 정산 행을 심는다. 정산과 주문 사이에 FK가 없어 DB가 허용하는 상태이고,
+     * 목록·총건수·월 목록이 같은 행 집합을 보는지 가르는 입력이다.
+     */
+    protected fun seedSettlementWithoutOrder(
+        sellerId: Long = sellerUserId,
+        confirmedAt: LocalDateTime = DEFAULT_CONFIRMED_AT,
+    ): Long =
+        tx.execute {
+            val orphan = seq++
+            val settlement =
+                Settlement.createOnPurchaseConfirm(
+                    feePolicy = SettlementFeePolicyFixture.global(),
+                    sellerId = sellerId,
+                    orderId = MISSING_ORDER_ID + orphan,
+                    orderItemId = MISSING_ORDER_ITEM_ID + orphan,
+                    grossAmount = 10_000L,
+                    shippingFee = 0L,
+                    sellerCouponBurden = 0L,
+                    confirmedOn = SettlementCalendar.settlementDateOf(confirmedAt),
+                )
+            em.persist(settlement)
+            em.flush()
+            settlement.id
+        }!!
+
     protected fun holdSettlement(settlementId: Long) {
         tx.execute {
             em.find(Settlement::class.java, settlementId).hold()
@@ -339,6 +365,10 @@ abstract class SellerSettlementIntegrationTestBase : IntegrationTestBase() {
         const val LIST_URL = "/api/v1/sellers/me/settlements"
         const val BASE_SHIPPING_FEE = 3_000L
         const val BUYER_ID = 9_999L
+
+        /** 어떤 주문·주문품목도 쓰지 않는 식별자 — 짝 없는 정산 행을 만들 때 쓴다 */
+        const val MISSING_ORDER_ID = 900_000L
+        const val MISSING_ORDER_ITEM_ID = 950_000L
         val DEFAULT_CONFIRMED_AT: LocalDateTime = LocalDateTime.of(2026, 6, 18, 10, 0)
         val PLATFORM_FEE_RATE: BigDecimal = SettlementFeePolicyFixture.PLATFORM_FEE_RATE
         val PG_FEE_RATE: BigDecimal = SettlementFeePolicyFixture.PG_FEE_RATE

@@ -24,6 +24,12 @@ class OffsetPageResultTest {
     }
 
     @Test
+    fun `page가 Int 최댓값이어도 hasNext가 뒤집히지 않는다`() {
+        assertFalse(page(totalCount = 41, current = Int.MAX_VALUE).hasNext)
+        assertFalse(page(totalCount = 0, current = Int.MAX_VALUE).hasNext)
+    }
+
+    @Test
     fun `map은 페이지 정보를 유지한 채 항목만 변환한다`() {
         val mapped = OffsetPageResult(items = listOf(1, 2), totalCount = 41, page = 1, size = 20).map { it.toString() }
         assertEquals(listOf("1", "2"), mapped.items)

@@ -61,6 +61,16 @@ class SellerSettlementMonthsIntegrationTest : SellerSettlementIntegrationTestBas
     }
 
     @Test
+    fun `주문 행이 없는 정산 행의 월은 고를 수 없다`() {
+        seedSettlementWithoutOrder(confirmedAt = LocalDateTime.of(2026, 2, 3, 10, 0))
+        seedSettledOrder(confirmedAt = LocalDateTime.of(2026, 6, 18, 10, 0))
+
+        requestMonths()
+            .andExpect(jsonPath("$.data.months.length()").value(1))
+            .andExpect(jsonPath("$.data.months[0]").value("2026-06"))
+    }
+
+    @Test
     fun `정산이 없으면 빈 목록을 반환한다`() {
         requestMonths()
             .andExpect(status().isOk)

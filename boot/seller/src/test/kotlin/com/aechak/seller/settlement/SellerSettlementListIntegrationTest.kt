@@ -153,6 +153,31 @@ class SellerSettlementListIntegrationTest : SellerSettlementIntegrationTestBase(
     }
 
     @Test
+    fun `주문 행이 없는 정산 행은 목록과 총건수에서 함께 빠진다`() {
+        seedSettlementWithoutOrder()
+
+        requestList()
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.settlements.length()").value(0))
+            .andExpect(jsonPath("$.data.totalCount").value(0))
+
+        requestList("month" to "2026-06", "status" to "pending")
+            .andExpect(jsonPath("$.data.settlements.length()").value(0))
+            .andExpect(jsonPath("$.data.totalCount").value(0))
+    }
+
+    @Test
+    fun `page가 Int 최댓값이어도 다음 페이지가 있다고 하지 않는다`() {
+        seedSettledOrder()
+
+        requestList("page" to Int.MAX_VALUE.toString())
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.settlements.length()").value(0))
+            .andExpect(jsonPath("$.data.totalCount").value(1))
+            .andExpect(jsonPath("$.data.hasNext").value(false))
+    }
+
+    @Test
     fun `월 형식과 상태 어휘가 틀리면 400으로 거절한다`() {
         requestList("month" to "2026-6")
             .andExpect(status().isBadRequest)

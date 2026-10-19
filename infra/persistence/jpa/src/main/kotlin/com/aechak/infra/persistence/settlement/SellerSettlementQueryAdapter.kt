@@ -18,6 +18,7 @@ import com.querydsl.core.types.dsl.Expressions
 import com.querydsl.core.types.dsl.NumberExpression
 import com.querydsl.core.types.dsl.NumberPath
 import com.querydsl.jpa.JPAExpressions
+import com.querydsl.jpa.impl.JPAQuery
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.springframework.stereotype.Repository
 
@@ -36,11 +37,8 @@ class SellerSettlementQueryAdapter(
     private val queryFactory: JPAQueryFactory,
 ) : SellerSettlementQueryPort {
     override fun findOrderPage(condition: SellerSettlementCondition): List<SellerSettlementOrderView> =
-        queryFactory
+        settlementsWithOrder()
             .select(orderProjection())
-            .from(settlement)
-            .join(order)
-            .on(order.id.eq(settlement.orderId))
             .where(
                 settlement.sellerId.eq(condition.sellerId),
                 settlementMonthEq(settlement, condition.settlementMonth),
@@ -57,9 +55,8 @@ class SellerSettlementQueryAdapter(
      * 정산 행을 그냥 걸러 세면 "일부 품목만 지급 완료"인 주문이 완료로도 대기로도 잡힌다.
      */
     override fun countOrders(condition: SellerSettlementCondition): Long =
-        queryFactory
+        settlementsWithOrder()
             .select(settlement.orderId.countDistinct())
-            .from(settlement)
             .where(
                 settlement.sellerId.eq(condition.sellerId),
                 settlementMonthEq(settlement, condition.settlementMonth),
@@ -68,11 +65,8 @@ class SellerSettlementQueryAdapter(
             ).fetchOne() ?: 0L
 
     override fun findOrder(orderPublicId: String): SellerSettlementOrderView? =
-        queryFactory
+        settlementsWithOrder()
             .select(orderProjection())
-            .from(settlement)
-            .join(order)
-            .on(order.id.eq(settlement.orderId))
             .where(order.publicId.eq(orderPublicId), notCancelled(settlement))
             .groupBy(settlement.sellerId, settlement.orderId, order.publicId, order.purchaseConfirmedAt)
             .fetchOne()
@@ -110,14 +104,24 @@ class SellerSettlementQueryAdapter(
         sellerId: Long,
         limit: Int,
     ): List<String> =
-        queryFactory
+        settlementsWithOrder()
             .select(settlement.settlementMonth)
             .distinct()
-            .from(settlement)
             .where(settlement.sellerId.eq(sellerId), notCancelled(settlement))
             .orderBy(settlement.settlementMonth.desc())
             .limit(limit.toLong())
             .fetch()
+
+    /**
+     * 네 조회가 공유하는 행 집합 — 주문이 있는 정산 행만 본다.
+     * 목록만 주문을 조인하면 짝 없는 정산 행(주문·정산에 FK가 없다)이 목록에서는 빠지고 총건수·월 목록에는
+     * 남아, 고를 수는 있지만 비어 있는 월과 행 수가 안 맞는 페이지가 생긴다.
+     */
+    private fun settlementsWithOrder(): JPAQuery<*> =
+        queryFactory
+            .from(settlement)
+            .join(order)
+            .on(order.id.eq(settlement.orderId))
 
     private fun orderProjection(): Expression<SellerSettlementOrderView> =
         Projections.constructor(
