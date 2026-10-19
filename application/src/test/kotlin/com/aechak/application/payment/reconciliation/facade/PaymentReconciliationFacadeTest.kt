@@ -10,6 +10,7 @@ import com.aechak.application.payment.reconciliation.usecase.command.ReconcilePa
 import com.aechak.application.payment.reconciliation.usecase.result.ReconcileOutcome
 import com.aechak.application.payment.service.PaymentService
 import com.aechak.application.payment.usecase.PaymentUseCase
+import com.aechak.application.payment.usecase.command.ApplyPaymentCancelCommand
 import com.aechak.application.payment.usecase.command.CancelPaymentCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByGatewayCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCommand
@@ -18,10 +19,12 @@ import com.aechak.application.payment.usecase.command.PreparePaymentCommand
 import com.aechak.application.payment.usecase.result.CancelPaymentResult
 import com.aechak.application.payment.usecase.result.CompletePaymentResult
 import com.aechak.application.payment.usecase.result.CompletePaymentStatus
+import com.aechak.application.payment.usecase.result.GatewayCancelResult
 import com.aechak.application.payment.usecase.result.PreparePaymentResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
+import com.aechak.domain.order.group.enums.OrderGroupStatus
 import com.aechak.domain.order.group.repository.OrderGroupRepository
 import com.aechak.domain.payment.Payment
 import com.aechak.domain.payment.enums.PaymentMethod
@@ -654,6 +657,12 @@ class PaymentReconciliationFacadeTest {
 
         override fun markPaidIfPending(id: Long): Boolean = throw UnsupportedOperationException()
 
+        override fun transitionStatusIf(
+            id: Long,
+            expected: OrderGroupStatus,
+            next: OrderGroupStatus,
+        ): Boolean = throw UnsupportedOperationException()
+
         override fun cancelIfPending(id: Long): Boolean = throw UnsupportedOperationException()
 
         override fun findExpiredPending(
@@ -756,6 +765,10 @@ class PaymentReconciliationFacadeTest {
 
         /** 대사는 취소를 집행하지 않는다 — 호출되면 테스트 전제가 깨진 것 */
         override fun cancelPayment(command: CancelPaymentCommand): CancelPaymentResult = throw UnsupportedOperationException()
+
+        override fun requestCancelAtGateway(command: CancelPaymentCommand): GatewayCancelResult = throw UnsupportedOperationException()
+
+        override fun applyCancelledAmount(command: ApplyPaymentCancelCommand): CancelPaymentResult = throw UnsupportedOperationException()
     }
 
     private class RecordingAlert : PaymentReconciliationAlertPort {

@@ -57,6 +57,12 @@ payment:
     secret-key: ${TOSS_SECRET_KEY:}
 
 order:
+  claim:
+    refund:
+      # 기본값 false — 실제로 PG 환불이 나가는 경로다. dev 상점이 테스트 상점인지 확인한 뒤 켠다
+      enabled: ${ORDER_CLAIM_REFUND_ENABLED:false}
+      cron: "0 * * * * *"   # 매분 — 승인과 환불 사이의 "승인됐는데 돈은 안 나갔다" 구간을 짧게 둔다
+      page-size: 50         # 한 회차 처리 건수. 집행된 건은 스캔 조건에서 빠지므로 커서가 필요 없다
   expiry:
     # 기본값 false — 환불 집행이 붙기 전까지는 승인과 경합에서 취소가 이긴 건을 되돌릴 경로가 없다
     enabled: ${ORDER_EXPIRY_ENABLED:false}

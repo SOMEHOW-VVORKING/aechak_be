@@ -171,6 +171,9 @@ class Claim protected constructor(
         resolvedAt = LocalDateTime.now()
     }
 
+    /** 환불 집행 대상인지 — 셀러가 승인했고 아직 집행이 시작되지 않은 건만. */
+    fun isRefundExecutable(): Boolean = status == ClaimStatus.APPROVED && refundStatus == RefundStatus.NONE
+
     /** 환불 집행 선점 표시. 이 1행이 집행의 멱등 게이트다. */
     fun markRefundRequested() {
         if (status != ClaimStatus.APPROVED || refundStatus != RefundStatus.NONE) {

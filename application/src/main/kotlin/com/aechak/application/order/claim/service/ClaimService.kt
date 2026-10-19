@@ -129,6 +129,9 @@ class ClaimService(
             if (target.quantity <= 0) throw BusinessException(CommonErrorCode.INVALID_REQUEST)
             val item = orderItems[target.orderItemId] ?: throw BusinessException(OrderErrorCode.ORDER_NOT_FOUND)
             if (target.quantity > item.quantity) throw BusinessException(OrderErrorCode.CLAIM_QUANTITY_EXCEEDS_ORDERED)
+            // 수량을 쪼갠 요청은 받지 않는다 — order_items에 취소 수량을 담을 자리가 없고 중복 차단도 품목 단위라
+            // 남은 수량이 환불도 이행도 후속 클레임도 받지 못한 채 묶인다
+            if (target.quantity < item.quantity) throw BusinessException(OrderErrorCode.CLAIM_PARTIAL_QUANTITY_NOT_SUPPORTED)
             target.orderItemId to target.quantity
         }
     }

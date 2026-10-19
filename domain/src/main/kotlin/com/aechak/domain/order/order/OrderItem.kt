@@ -54,9 +54,24 @@ class OrderItem protected constructor(
     @Column(nullable = false)
     val productVersionId: Long = productVersionId
 
-    /** 주문 취소에 따른 품목 취소. */
+    /** 주문 취소 또는 클레임 환불 집행에 따른 품목 취소. */
     fun markCancelled() {
         transitionTo(OrderItemStatus.CANCELLED)
+    }
+
+    /** 반품 요청 접수. */
+    fun markReturnRequested() {
+        transitionTo(OrderItemStatus.RETURN_REQUESTED)
+    }
+
+    /** 회수 완료. */
+    fun markReturned() {
+        transitionTo(OrderItemStatus.RETURNED)
+    }
+
+    /** 교환 요청 접수. */
+    fun markExchangeRequested() {
+        transitionTo(OrderItemStatus.EXCHANGE_REQUESTED)
     }
 
     private fun transitionTo(next: OrderItemStatus) {
