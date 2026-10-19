@@ -1,7 +1,9 @@
 package com.aechak.application.order.usecase
 
+import com.aechak.application.order.usecase.command.AutoConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
+import com.aechak.application.order.usecase.command.MarkConfirmNotifiedCommand
 import com.aechak.application.order.usecase.query.AutoConfirmScanQuery
 import com.aechak.application.order.usecase.query.ConfirmNotifyScanQuery
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
@@ -39,15 +41,18 @@ interface OrderUseCase {
 
     /**
      * 기한이 지난 건의 자동확정 — 수동 확정과 같은 전이·적립 경로를 탄다(적립 멱등키도 같다).
-     * 확정할 수 없는 상태나 진행 중 클레임이면 BusinessException으로 거절하고 전이 선점도 함께 되돌린다.
+     * 기한 미도래·확정 불가 상태·진행 중 클레임이면 BusinessException으로 거절하고 전이 선점도 함께 되돌린다.
      */
-    fun autoConfirmPurchase(orderId: Long)
+    fun autoConfirmPurchase(command: AutoConfirmPurchaseCommand)
 
     /** 사전 안내 대상 주문 id — 안내 구간 안이고 아직 안내하지 않은 건. 커서 오름차순. */
     fun findConfirmNotifyTargetIds(query: ConfirmNotifyScanQuery): List<Long>
 
-    /** 구매확정 사전 안내 기록 — 알림 발송 경로가 붙기 전까지 안내 시각만 남긴다. 재실행은 시각을 덮지 않는다. */
-    fun markConfirmNotified(orderId: Long)
+    /**
+     * 구매확정 사전 안내 기록 — 알림 발송 경로가 붙기 전까지 안내 시각만 남긴다. 기록했으면 true.
+     * 이미 안내한 건과 이미 확정된 건은 조건부 UPDATE가 걸러 false를 돌려준다.
+     */
+    fun markConfirmNotified(command: MarkConfirmNotifiedCommand): Boolean
 
     /**
      * 확정 커밋 뒤 주문한 항목을 장바구니에서 걷어낸다 — 자기 트랜잭션.

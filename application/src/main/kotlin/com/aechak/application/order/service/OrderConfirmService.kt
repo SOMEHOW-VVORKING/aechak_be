@@ -1,6 +1,8 @@
 package com.aechak.application.order.service
 
+import com.aechak.application.order.usecase.command.AutoConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
+import com.aechak.application.order.usecase.command.MarkConfirmNotifiedCommand
 import com.aechak.application.order.usecase.query.AutoConfirmScanQuery
 import com.aechak.application.order.usecase.query.ConfirmNotifyScanQuery
 import com.aechak.common.error.BusinessException
@@ -14,7 +16,6 @@ import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.order.repository.OrderStatusHistoryRepository
 import org.springframework.stereotype.Service
-import java.time.LocalDateTime
 
 /**
  * 구매확정 로직 보관함 — Facade에서만 호출된다.
@@ -35,9 +36,13 @@ class OrderConfirmService(
     }
 
     /** 기한이 지난 건의 자동확정 — 구매자가 누른 확정과 같은 전이·선점·클레임 판정을 탄다. */
-    fun autoConfirmPurchase(orderId: Long): ConfirmedPurchase {
-        val order = orderRepository.findById(orderId) ?: throw BusinessException(OrderErrorCode.ORDER_NOT_FOUND)
+    fun autoConfirmPurchase(command: AutoConfirmPurchaseCommand): ConfirmedPurchase {
+        val order = orderRepository.findById(command.orderId) ?: throw BusinessException(OrderErrorCode.ORDER_NOT_FOUND)
 
+        // 기한 판정을 확정 직전에 한 번 더 한다 — 스캔만 믿으면 그 사이 기한이 미뤄진 주문을 앞질러 확정한다
+        if (!order.isAutoConfirmDue(command.dueAtOrBefore)) {
+            throw BusinessException(OrderErrorCode.ORDER_NOT_CONFIRMABLE)
+        }
         return confirm(order, ConfirmType.AUTO, TriggeredBy.SYSTEM)
     }
 
@@ -47,14 +52,12 @@ class OrderConfirmService(
     fun findConfirmNotifyTargetIds(query: ConfirmNotifyScanQuery): List<Long> =
         orderRepository.findConfirmNotifyTargetIds(query.dueAtAfter, query.dueAtOrBefore, query.afterOrderId, query.limit)
 
-    /** 사전 안내 기록 — 알림 발송 경로가 붙기 전까지 안내 시각만 남긴다. */
-    fun markConfirmNotified(
-        orderId: Long,
-        notifiedAt: LocalDateTime,
-    ) {
-        val order = orderRepository.findById(orderId) ?: throw BusinessException(OrderErrorCode.ORDER_NOT_FOUND)
-        order.markConfirmNotified(notifiedAt)
-    }
+    /**
+     * 사전 안내 기록 — 알림 발송 경로가 붙기 전까지 안내 시각만 남긴다.
+     * 조건부 UPDATE가 심판이라 이미 확정된 건이나 이미 안내한 건은 조용히 지나간다.
+     */
+    fun markConfirmNotified(command: MarkConfirmNotifiedCommand): Boolean =
+        orderRepository.markConfirmNotifiedIf(command.orderId, command.notifiedAt)
 
     private fun confirm(
         order: Order,

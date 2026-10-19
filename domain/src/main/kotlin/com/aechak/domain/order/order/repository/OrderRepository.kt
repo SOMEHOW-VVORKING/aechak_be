@@ -46,6 +46,15 @@ interface OrderRepository {
     ): List<Long>
 
     /**
+     * 구매확정 사전 안내 시각 기록 — 배송완료이고 아직 안내하지 않은 행만. 기록했으면 true.
+     * 안내 컬럼만 건드리는 조건부 UPDATE다 — 엔티티 갱신으로 하면 확정 컬럼까지 되돌릴 수 있다.
+     */
+    fun markConfirmNotifiedIf(
+        id: Long,
+        notifiedAt: LocalDateTime,
+    ): Boolean
+
+    /**
      * 구매확정 사전 안내 대상 주문 id — 기한이 [dueAtAfter] 초과 [dueAtOrBefore] 이하이고 아직 안내하지 않은 배송완료 주문.
      * [afterId] 다음 id부터 오름차순 최대 [limit] 건.
      */

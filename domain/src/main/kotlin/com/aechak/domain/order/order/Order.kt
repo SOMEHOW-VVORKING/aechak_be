@@ -153,16 +153,8 @@ class Order protected constructor(
         this.autoConfirmDueAt = autoConfirmDueAt
     }
 
-    /** 구매확정 사전 안내 기록 — 이미 안내한 건은 시각을 덮지 않는다. */
-    fun markConfirmNotified(notifiedAt: LocalDateTime) {
-        if (status != OrderStatus.DELIVERED) {
-            throw BusinessException(OrderErrorCode.ORDER_NOT_CONFIRMABLE)
-        }
-        if (purchaseConfirmNotifiedAt != null) {
-            return
-        }
-        purchaseConfirmNotifiedAt = notifiedAt
-    }
+    /** 구매확정 기한이 [at] 시점에 지났는지 — 기한이 없는 주문은 자동확정 대상이 아니다. */
+    fun isAutoConfirmDue(at: LocalDateTime): Boolean = autoConfirmDueAt?.let { it <= at } == true
 
     /** 할인 안분액을 뺀 상품금액 합계 — 배송비는 포함하지 않는다. */
     fun productAmountAfterDiscount(): Long =

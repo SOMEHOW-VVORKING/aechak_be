@@ -53,6 +53,19 @@ interface OrderJpaRepository : JpaRepository<Order, Long> {
         @Param("now") now: LocalDateTime,
     ): Int
 
+    @Modifying
+    @Query(
+        "update Order o " +
+            "set o.purchaseConfirmNotifiedAt = :notifiedAt, o.updatedAt = :now " +
+            "where o.id = :id and o.status = :status and o.purchaseConfirmNotifiedAt is null",
+    )
+    fun markConfirmNotified(
+        @Param("id") id: Long,
+        @Param("status") status: OrderStatus,
+        @Param("notifiedAt") notifiedAt: LocalDateTime,
+        @Param("now") now: LocalDateTime,
+    ): Int
+
     @Query(
         "select o.id from Order o " +
             "where o.status = :status and o.autoConfirmDueAt <= :dueAtOrBefore and o.id > :afterId " +
@@ -137,6 +150,18 @@ class OrderRepositoryAdapter(
             claimStatuses = ClaimProgressPolicy.IN_PROGRESS,
             pageable = PageRequest.of(0, limit),
         )
+
+    // 안내 컬럼만 조건부로 바꾼다 — 엔티티 갱신은 전 컬럼을 덮어 그 사이 커밋된 구매확정을 되돌린다
+    override fun markConfirmNotifiedIf(
+        id: Long,
+        notifiedAt: LocalDateTime,
+    ): Boolean =
+        jpaRepository.markConfirmNotified(
+            id = id,
+            status = OrderStatus.DELIVERED,
+            notifiedAt = notifiedAt,
+            now = LocalDateTime.now(),
+        ) == 1
 
     override fun findConfirmNotifyTargetIds(
         dueAtAfter: LocalDateTime,

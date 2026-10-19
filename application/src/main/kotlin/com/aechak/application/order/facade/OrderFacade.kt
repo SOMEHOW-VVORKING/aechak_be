@@ -5,8 +5,10 @@ import com.aechak.application.order.port.OrderItemForReviewQueryPort
 import com.aechak.application.order.service.OrderConfirmService
 import com.aechak.application.order.service.OrderService
 import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.AutoConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
+import com.aechak.application.order.usecase.command.MarkConfirmNotifiedCommand
 import com.aechak.application.order.usecase.query.AutoConfirmScanQuery
 import com.aechak.application.order.usecase.query.ConfirmNotifyScanQuery
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
@@ -23,7 +25,6 @@ import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
-import java.time.LocalDateTime
 
 /**
  * OrderUseCase의 유일한 구현체. 트랜잭션 경계는 여기 고정.
@@ -86,8 +87,8 @@ class OrderFacade(
 
     /** 수동 확정과 같은 트랜잭션 구성·격리 수준을 쓴다 — 적립 실패는 확정까지 되돌린다. */
     @Transactional(isolation = Isolation.READ_COMMITTED)
-    override fun autoConfirmPurchase(orderId: Long) {
-        earnPurchaseReward(orderConfirmService.autoConfirmPurchase(orderId))
+    override fun autoConfirmPurchase(command: AutoConfirmPurchaseCommand) {
+        earnPurchaseReward(orderConfirmService.autoConfirmPurchase(command))
     }
 
     @Transactional(readOnly = true)
@@ -95,9 +96,7 @@ class OrderFacade(
         orderConfirmService.findConfirmNotifyTargetIds(query)
 
     @Transactional
-    override fun markConfirmNotified(orderId: Long) {
-        orderConfirmService.markConfirmNotified(orderId, LocalDateTime.now())
-    }
+    override fun markConfirmNotified(command: MarkConfirmNotifiedCommand): Boolean = orderConfirmService.markConfirmNotified(command)
 
     @Transactional
     override fun clearOrderedCartItems(

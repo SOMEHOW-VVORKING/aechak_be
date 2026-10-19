@@ -1,10 +1,14 @@
 package com.aechak.batch.order
 
+import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.AutoConfirmPurchaseCommand
 import com.aechak.batch.support.BatchIntegrationTestBase
+import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
+import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.order.Order
@@ -21,6 +25,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import java.time.LocalDateTime
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -32,6 +37,9 @@ import kotlin.test.assertNull
 class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
     @Autowired
     private lateinit var schedule: OrderAutoConfirmSchedule
+
+    @Autowired
+    private lateinit var orderUseCase: OrderUseCase
 
     private var buyerId = 0L
     private var sig = 0
@@ -112,8 +120,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
     }
 
     @Test
-    fun `스캔 크기를 넘는 대상도 커서를 밀어 회차 안에서 전부 확정한다`() {
-        // 테스트 설정의 scan-size는 2 — 커서가 전진하지 않으면 앞 두 건만 확정되고 멈춘다
+    fun `스캔 크기를 넘는 대상도 회차 안에서 전부 확정한다`() {
         val fixtures = (1..5).map { seedOrder(autoConfirmDueAt = LocalDateTime.now().minusMinutes(1)) }
 
         schedule.runDaily()
@@ -123,6 +130,19 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
             fixtures.map { findOrder(it.orderId).status },
         )
         assertEquals(5 * 97L, pointBalance(buyerId))
+    }
+
+    @Test
+    fun `첫 페이지가 전부 유보로 남아도 커서가 전진해 다음 페이지를 처리한다`() {
+        // 테스트 설정의 scan-size는 2. 앞 두 건은 적립이 실패해 DELIVERED로 남아 스캔 대상에서 빠지지 않는다 —
+        // 커서가 전진하지 않으면 같은 두 건만 다시 읽으며 세 번째 건에 영원히 닿지 못한다
+        val blocked = (1..2).map { seedOrder(autoConfirmDueAt = LocalDateTime.now().minusMinutes(1), buyer = MISSING_USER_ID) }
+        val target = seedOrder(autoConfirmDueAt = LocalDateTime.now().minusMinutes(1))
+
+        schedule.runDaily()
+
+        assertEquals(List(2) { OrderStatus.DELIVERED }, blocked.map { findOrder(it.orderId).status })
+        assertEquals(OrderStatus.PURCHASE_CONFIRMED, findOrder(target.orderId).status, "커서가 전진해야 뒷 페이지에 닿는다")
     }
 
     @Test
@@ -160,6 +180,34 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
         assertNull(findOrder(fixture.orderId).purchaseConfirmNotifiedAt)
     }
 
+    @Test
+    fun `이미 확정된 주문에는 사전 안내가 남지 않고 확정 컬럼도 그대로다`() {
+        // 안내 구간에 있던 주문이 구매자 손으로 먼저 확정된 자리 — 안내 갱신이 확정을 되돌리면 비가역 전이가 깨진다
+        val fixture = seedOrder(autoConfirmDueAt = LocalDateTime.now().plusHours(5))
+        confirmManually(fixture.orderId)
+
+        schedule.runDaily()
+
+        val order = findOrder(fixture.orderId)
+        assertEquals(OrderStatus.PURCHASE_CONFIRMED, order.status, "안내가 확정 상태를 되돌리면 안 된다")
+        assertEquals(ConfirmType.MANUAL, order.confirmType, "안내가 확정 유형을 지우면 안 된다")
+        assertNotNull(order.purchaseConfirmedAt)
+        assertNull(order.purchaseConfirmNotifiedAt, "확정된 주문에는 안내 시각을 남기지 않는다")
+    }
+
+    @Test
+    fun `기한이 아직 안 된 주문은 자동확정 유스케이스를 직접 불러도 거절된다`() {
+        val fixture = seedOrder(autoConfirmDueAt = LocalDateTime.now().plusDays(3))
+
+        val exception =
+            assertFailsWith<BusinessException> {
+                orderUseCase.autoConfirmPurchase(AutoConfirmPurchaseCommand(fixture.orderId, LocalDateTime.now()))
+            }
+
+        assertEquals(OrderErrorCode.ORDER_NOT_CONFIRMABLE, exception.errorCode)
+        assertEquals(OrderStatus.DELIVERED, findOrder(fixture.orderId).status, "거절된 확정이 선점을 남기면 안 된다")
+    }
+
     private fun createActiveUser(): Long =
         tx.execute {
             val user = User.preRegister()
@@ -172,6 +220,19 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
                 .executeUpdate()
             user.id
         }!!
+
+    /** 구매자 확정을 흉내낸다 — 확정 경로는 api 소관이라 전이·확정 컬럼만 맞춘다. */
+    private fun confirmManually(orderId: Long) =
+        tx.execute {
+            em
+                .createQuery(
+                    "update Order o set o.status = :status, o.confirmType = :type, o.purchaseConfirmedAt = :at where o.id = :id",
+                ).setParameter("status", OrderStatus.PURCHASE_CONFIRMED)
+                .setParameter("type", ConfirmType.MANUAL)
+                .setParameter("at", LocalDateTime.now())
+                .setParameter("id", orderId)
+                .executeUpdate()
+        }
 
     private fun findOrder(orderId: Long): Order =
         tx.execute {
