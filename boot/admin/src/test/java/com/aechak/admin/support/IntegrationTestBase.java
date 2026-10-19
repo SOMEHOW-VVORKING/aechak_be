@@ -55,14 +55,23 @@ public abstract class IntegrationTestBase {
         return createUser(UserStatus.ACTIVE);
     }
 
-    /** 원하는 상태의 유저를 심고 그 id를 반환한다. 어드민 승격은 role 클레임이 결정하므로 users.role은 손대지 않는다. */
+    /** 원하는 상태의 유저를 심고 그 id를 반환한다. role은 기본값(GENERAL)이다. */
     protected long createUser(UserStatus status) {
+        return createUser(status, UserRole.GENERAL);
+    }
+
+    /**
+     * 원하는 상태·역할의 유저를 심고 그 id를 반환한다.
+     * 요청 인가는 토큰의 role 클레임이 결정하지만 users.role은 관리자 명부의 저장값이라 따로 심는다.
+     */
+    protected long createUser(UserStatus status, UserRole role) {
         return Objects.requireNonNull(tx.execute(txStatus -> {
             User user = User.Companion.preRegister();
             em.persist(user);
             em.flush();
-            em.createQuery("update User u set u.status = :st where u.id = :id")
+            em.createQuery("update User u set u.status = :st, u.role = :role where u.id = :id")
                     .setParameter("st", status)
+                    .setParameter("role", role)
                     .setParameter("id", user.getId())
                     .executeUpdate();
             return user.getId();

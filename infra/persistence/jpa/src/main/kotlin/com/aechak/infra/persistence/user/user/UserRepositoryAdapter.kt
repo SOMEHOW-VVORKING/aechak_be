@@ -2,9 +2,14 @@ package com.aechak.infra.persistence.user.user
 
 import com.aechak.application.user.user.port.view.UserAuthorView
 import com.aechak.domain.user.user.User
+import com.aechak.domain.user.user.enums.UserRole
 import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.domain.user.user.repository.UserRepository
+import jakarta.persistence.LockModeType
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.findByIdOrNull
@@ -56,6 +61,22 @@ interface UserJpaRepository : JpaRepository<User, Long> {
         @Param("id") id: Long,
         @Param("amount") amount: Long,
     ): Int
+
+    // 정렬은 JPQL 소유 — 페이지 경계가 흔들리지 않게 가입 순(id)으로 고정한다
+    @Query("select u from User u where u.role = :role order by u.id asc")
+    fun findPageByRole(
+        @Param("role") role: UserRole,
+        pageable: Pageable,
+    ): List<User>
+
+    fun countByRole(role: UserRole): Long
+
+    // 정렬을 id 오름차순으로 고정해 동시 강등 간 락 획득 순서가 엇갈리지 않게 한다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u.id from User u where u.role = :role order by u.id asc")
+    fun lockIdsByRole(
+        @Param("role") role: UserRole,
+    ): List<Long>
 }
 
 /**
@@ -89,4 +110,14 @@ class UserRepositoryAdapter(
         userId: Long,
         amount: Long,
     ): Boolean = jpaRepository.deductPointBalance(userId, amount, LocalDateTime.now()) == 1
+
+    override fun findAllByRole(
+        role: UserRole,
+        page: Int,
+        size: Int,
+    ): List<User> = jpaRepository.findPageByRole(role, PageRequest.of(page, size))
+
+    override fun countByRole(role: UserRole): Long = jpaRepository.countByRole(role)
+
+    override fun lockIdsByRole(role: UserRole): List<Long> = jpaRepository.lockIdsByRole(role)
 }

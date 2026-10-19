@@ -11,7 +11,7 @@ spring:
   task:
     scheduling:
       pool:
-        size: 2        # 아웃박스 스위퍼(5초 주기)가 대사(새벽 1회)를 막지 않게. 각 스케줄은 fixedDelay/cron이라 자기 겹침은 없다
+        size: 8        # 아웃박스 스위퍼(5초 주기)와 대사·주문·정산 스케줄이 서로를 막지 않게. 각 스케줄은 fixedDelay/cron이라 자기 겹침은 없다
 
   # 정책값은 api application.yml과 동일하게 유지. 브로커 주소만 프로파일 yml 소유
   kafka:
