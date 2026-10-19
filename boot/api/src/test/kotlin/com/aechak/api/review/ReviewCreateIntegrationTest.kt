@@ -7,7 +7,6 @@ import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.OrderItem
-import com.aechak.domain.order.order.enums.OrderItemStatus
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.option.OptionCombination
@@ -273,11 +272,8 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
         val buyerId = createActiveUser()
         val fixture = persistReviewableOrderItem(buyerId)
         tx.execute {
-            em
-                .createQuery("update OrderItem oi set oi.itemStatus = :st where oi.id = :id")
-                .setParameter("st", OrderItemStatus.CANCELLED)
-                .setParameter("id", fixture.orderItemId)
-                .executeUpdate()
+            em.find(OrderItem::class.java, fixture.orderItemId).markCancelled()
+            em.flush()
         }
 
         val body =
