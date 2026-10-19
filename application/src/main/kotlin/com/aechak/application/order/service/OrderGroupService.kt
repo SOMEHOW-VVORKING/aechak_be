@@ -4,7 +4,7 @@ import com.aechak.application.order.service.model.CancelledOrderGroup
 import com.aechak.application.order.usecase.result.OrderGroupDetailResult
 import com.aechak.application.payment.port.PaymentGatewayStatus
 import com.aechak.application.payment.port.PaymentGatewayView
-import com.aechak.application.pii.port.PiiCrypto
+import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -15,14 +15,13 @@ import com.aechak.domain.order.order.repository.OrderRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
-import java.util.Base64
 
 /** 주문그룹 애그리거트 로직 보관함 — Facade에서만 호출된다 */
 @Service
 class OrderGroupService(
     private val orderGroupRepository: OrderGroupRepository,
     private val orderRepository: OrderRepository,
-    private val piiCrypto: PiiCrypto,
+    private val piiStringCodec: PiiStringCodec,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -95,13 +94,11 @@ class OrderGroupService(
 
     fun decryptDeliveryAddress(snapshot: DeliveryAddressSnapshot): OrderGroupDetailResult.DeliveryAddressSnapshotResult =
         OrderGroupDetailResult.DeliveryAddressSnapshotResult(
-            receiverName = decrypt(snapshot.receiverNameEnc),
-            contactNumber = decrypt(snapshot.contactNumberEnc),
+            receiverName = piiStringCodec.decrypt(snapshot.receiverNameEnc),
+            contactNumber = piiStringCodec.decrypt(snapshot.contactNumberEnc),
             zipCode = snapshot.zipCode,
             baseAddress = snapshot.baseAddress,
             detailAddress = snapshot.detailAddress,
             deliveryMemo = snapshot.deliveryMemo,
         )
-
-    private fun decrypt(cipher: String): String = piiCrypto.decrypt(Base64.getDecoder().decode(cipher))
 }
