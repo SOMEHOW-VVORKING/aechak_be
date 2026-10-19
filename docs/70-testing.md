@@ -189,6 +189,14 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
 - ~~**Outbox/이벤트 검증**~~ → **본문 승격 완료(§3.0, 2026-07-23)**. EmbeddedKafka 채택, Awaitility 배선 완료.
 - **Flyway**: `DatabaseCleaner` 이력 테이블 truncate 제외는 완료(2026-07-23). 남은 것 — `ddl-auto=create` 제거, 테스트 스키마 전체를 마이그레이션으로
   생성 + `ddl-auto=validate` 전환(전체 DDL 이관 시점에).
+  - 이관이 끝나기 전까지의 정합 검증 수단은 `boot/api/src/test/.../schema/V27SchemaMigrationIntegrationTest`다.
+    `ddl-auto=validate` 부팅은 아직 Flyway 밖인 테이블(users·products 등)에서 먼저 깨지므로 쓸 수 없다. 대신
+    `jakarta.persistence.schema-generation.scripts.action=create`로 "Hibernate가 만들 DDL"만 파일로 받아 별도 스키마에 적용하고,
+    Flyway만 적용한 스키마와 컬럼·인덱스를 테이블 단위로 대조한다. 새 테이블을 Flyway로 옮길 때 이 테스트의 대상 목록에 추가한다.
+    이미 Flyway가 소유한 테이블(orders·payments)도 목록에 둔다 — 그 테이블에 컬럼·인덱스를 더할 때 엔티티 선언을 같이 고치지 않은 것이 여기서 잡힌다.
+    ddl-auto가 만든 DB를 재현한 스키마와의 대조는 타입까지 엄격하게 본다 — 마이그레이션이 기존 네이티브 enum 컬럼을
+    VARCHAR로 수렴시키기 때문이다. 엔티티 선언과의 대조에서만 enum↔VARCHAR을 허용하고, 이때도 VARCHAR 길이가 모든
+    enum 값을 담는지 확인한다. ddl-auto가 FK 때문에 만든 보조 인덱스는 양쪽 비교에서 제외한다.
 - **MockMvc**: 컨트롤러 통합 착수 시 `spring-boot-webmvc-test-autoconfigure` 배선(Boot 4에서 별도 아티팩트), `@AutoConfigureMockMvc`는 베이스에.
 - **픽스처 빌더**: 유스케이스 테스트 착수 시 `OrderFixture.aCart()` 형태의 Object Mother 도입. 그 전까지 도메인 팩토리 직접 호출 허용.
 - **인증**: Security가 컨트롤러 통합에 붙으면 `@WithMockUser`/커스텀 시큐리티 테스트 지원 구체화.

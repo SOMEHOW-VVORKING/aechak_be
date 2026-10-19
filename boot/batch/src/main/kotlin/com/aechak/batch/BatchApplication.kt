@@ -40,6 +40,9 @@ import org.springframework.context.annotation.FilterType
         ComponentScan.Filter(type = FilterType.CUSTOM, classes = [AutoConfigurationExcludeFilter::class]),
         // 어드민 전용 구현체 제외(seller-api와 같은 규약). 바이너리 이름의 '$'까지 받도록 .*로 받는다.
         ComponentScan.Filter(type = FilterType.REGEX, pattern = ["com\\.aechak\\.application\\..*\\.Admin.*"]),
+        // 셀러센터 전용 주문 유스케이스 제외. order BC를 스캔하지만 이 묶음은 셀러 자격(application.seller)을 요구해
+        // 조립하면 배치가 쓰지도 않는 의존을 끌고 온다.
+        ComponentScan.Filter(type = FilterType.REGEX, pattern = ["com\\.aechak\\.application\\.order\\.seller\\..*"]),
     ],
 )
 class BatchApplication

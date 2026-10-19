@@ -6,6 +6,7 @@ import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
 import com.aechak.domain.order.claim.enums.ReturnCostBearer
 import com.aechak.domain.order.claim.enums.SellerApprovalStatus
+import com.aechak.domain.order.order.Order
 import com.aechak.domain.support.AggregateRoot
 import com.aechak.domain.support.Ulid
 import jakarta.persistence.CascadeType
@@ -16,6 +17,7 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.OneToMany
 import jakarta.persistence.Table
@@ -29,9 +31,16 @@ import java.time.LocalDateTime
     uniqueConstraints = [
         UniqueConstraint(name = "uk_claims_public_id", columnNames = ["public_id"]),
     ],
+    indexes = [
+        Index(name = "idx_claims_seller_id_status", columnList = "seller_id, status, id"),
+        Index(name = "idx_claims_order_id", columnList = "order_id"),
+        Index(name = "idx_claims_auto_approve_due_at", columnList = "status, auto_approve_due_at"),
+    ],
 )
 class Claim protected constructor(
     claimType: ClaimType,
+    sellerId: Long,
+    orderId: Long,
 ) : AggregateRoot() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -43,6 +52,13 @@ class Claim protected constructor(
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     val claimType: ClaimType = claimType
+
+    /** 요청 시점 스냅샷 — claim_items를 거치는 2홉 조인 없이 셀러·주문 기준으로 조회한다 */
+    @Column(nullable = false, updatable = false)
+    val sellerId: Long = sellerId
+
+    @Column(nullable = false, updatable = false)
+    val orderId: Long = orderId
 
     @Column(length = 60)
     var reasonCode: String? = null
@@ -68,6 +84,11 @@ class Claim protected constructor(
 
     @Column(length = 500)
     var adminReason: String? = null
+        protected set
+
+    /** 셀러 운영 메모. 어드민 개입 사유(adminReason)와 쓰는 주체가 다르다 */
+    @Column(length = 500)
+    var sellerMemo: String? = null
         protected set
 
     @Enumerated(EnumType.STRING)
@@ -120,13 +141,26 @@ class Claim protected constructor(
     val items: List<ClaimItem> get() = _items.toList()
 
     companion object {
+        /**
+         * 대상 품목은 이 주문 애그리거트가 들고 있는 품목이어야 한다 — 스냅샷(sellerId·orderId)과
+         * 품목 경로가 다른 주문을 가리키면 셀러 목록과 상세가 갈린다. 그래서 ClaimItem은 조회한
+         * 주문의 items에서 만들어 넘겨야 한다.
+         */
         fun request(
             claimType: ClaimType,
+            order: Order,
             items: List<ClaimItem>,
-        ): Claim =
-            Claim(claimType).apply {
+        ): Claim {
+            require(order.id > 0L) { "클레임은 저장된 주문에만 걸 수 있습니다 — 스냅샷이 0으로 굳는다" }
+            require(items.isNotEmpty()) { "클레임에는 대상 품목이 하나 이상 필요합니다" }
+            val orderItems = order.items
+            require(items.all { claimItem -> orderItems.any { it === claimItem.orderItem } }) {
+                "클레임 품목은 모두 이 주문의 품목이어야 합니다 (orderId=${order.id})"
+            }
+            return Claim(claimType, order.sellerId, order.id).apply {
                 requestedAt = LocalDateTime.now()
                 items.forEach { _items += it }
             }
+        }
     }
 }

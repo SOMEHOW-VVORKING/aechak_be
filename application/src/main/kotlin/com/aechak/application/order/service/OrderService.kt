@@ -36,6 +36,8 @@ class OrderService(
     private val orderCatalogQueryPort: OrderCatalogQueryPort,
     private val piiStringCodec: PiiStringCodec,
 ) {
+    fun findOrders(orderGroupId: Long): List<Order> = orderRepository.findAllByOrderGroupId(orderGroupId)
+
     /** 멱등 재요청이면 최초 생성 결과. 남의 키면 응답 유출을 막으려 거부한다. */
     fun findByIdempotencyKey(
         idempotencyKey: String,
@@ -152,6 +154,8 @@ class OrderService(
                 sellerNameSnapshot = sellerLines.first().view.storeName,
                 allocatedCouponDiscount = 0,
                 sellerShippingFee = pricing.shippingFees.getValue(sellerId),
+                baseShippingFeeSnapshot = sellerLines.first().view.baseShippingFee,
+                freeShippingThresholdSnapshot = sellerLines.first().view.freeShippingThreshold,
                 items =
                     sellerLines.map { line ->
                         OrderItem.of(

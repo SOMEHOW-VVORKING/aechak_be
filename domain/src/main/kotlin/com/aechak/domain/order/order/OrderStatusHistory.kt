@@ -11,6 +11,7 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
@@ -20,7 +21,12 @@ import jakarta.persistence.Table
  * 전이 시각과 벌어진다(기록을 async/백필로 옮기려면 명시적 transitionedAt 컬럼을 되살려라).
  */
 @Entity
-@Table(name = "order_status_histories")
+@Table(
+    name = "order_status_histories",
+    indexes = [
+        Index(name = "idx_order_status_histories_order_id", columnList = "order_id, id"),
+    ],
+)
 class OrderStatusHistory protected constructor(
     order: Order,
     fromStatus: OrderStatus?,

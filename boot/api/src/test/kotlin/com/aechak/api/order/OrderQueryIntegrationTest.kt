@@ -127,6 +127,8 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
                             sellerNameSnapshot = spec.sellerName,
                             allocatedCouponDiscount = 0,
                             sellerShippingFee = spec.shippingFee,
+                            baseShippingFeeSnapshot = null,
+                            freeShippingThresholdSnapshot = null,
                             items =
                                 listOf(
                                     OrderItem.of(
