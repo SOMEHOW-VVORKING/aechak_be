@@ -9,6 +9,8 @@ enum class SettlementErrorCode(
 ) : ErrorCode {
     INVALID_SETTLEMENT_AMOUNT(70000, "정산 금액이 올바르지 않습니다.", 400),
     SETTLEMENT_NOT_PENDING(70001, "정산대기 상태에서만 처리할 수 있습니다.", 409),
+    SETTLEMENT_NOT_FOUND(70002, "정산 내역을 찾을 수 없습니다.", 404),
+    SETTLEMENT_ACCESS_DENIED(70003, "해당 정산 내역에 접근할 수 없습니다.", 403),
 
     // 요율 정책 행이 없으면 원장을 만들 수 없다. 운영 설정 누락이라 사용자가 고칠 수 없어 500이다.
     SETTLEMENT_FEE_POLICY_NOT_FOUND(70005, "정산 수수료율 정책을 찾을 수 없습니다.", 500),
