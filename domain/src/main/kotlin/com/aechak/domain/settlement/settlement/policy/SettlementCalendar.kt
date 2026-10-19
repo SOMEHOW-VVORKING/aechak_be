@@ -12,6 +12,10 @@ import java.time.ZoneId
 object SettlementCalendar {
     val ZONE: ZoneId = ZoneId.of("Asia/Seoul")
 
+    /**
+     * writtenIn 기본값은 변환 시점의 JVM 기본 시간대다 — 기록부터 변환까지 그 시간대가 유지된다는 전제가 선다.
+     * 시간대가 바뀐 뒤 같은 주문을 재처리하면 기준일이 달라지므로, 그때는 기록 시간대를 직접 넘겨야 한다.
+     */
     fun settlementDateOf(
         confirmedAt: LocalDateTime,
         writtenIn: ZoneId = ZoneId.systemDefault(),
