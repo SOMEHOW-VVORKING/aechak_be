@@ -102,6 +102,14 @@ class Payout protected constructor(
     companion object {
         private const val FAIL_REASON_MAX_LENGTH = 255
 
+        /** 배치·셀러 조합 하나당 지급 1건. 배치가 다시 돌아도 키가 같아 UNIQUE가 두 번째 행을 막는다. */
+        const val TRANSFER_KEY_PREFIX = "PAYOUT:"
+
+        fun transferKeyOf(
+            batchId: Long,
+            sellerId: Long,
+        ): String = "$TRANSFER_KEY_PREFIX$batchId:$sellerId"
+
         fun create(
             batch: SettlementExecutionBatch,
             sellerId: Long,

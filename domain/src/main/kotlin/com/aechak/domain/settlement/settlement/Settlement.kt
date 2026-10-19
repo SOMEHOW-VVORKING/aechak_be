@@ -113,6 +113,23 @@ class Settlement protected constructor(
         this.payout = payout
     }
 
+    /**
+     * 집행 배치가 이 원장을 지급 묶음에 넣는다. 상태는 PENDING 그대로다 —
+     * 실제 입금이 확인되는 시점에 markPaid가 PAID를 찍는다.
+     */
+    fun assignPayout(payout: Payout) {
+        if (!isPayoutEligible()) {
+            throw BusinessException(SettlementErrorCode.SETTLEMENT_NOT_PENDING)
+        }
+        this.payout = payout
+    }
+
+    /**
+     * 지급 집행 대상인지 — 정산대기이고, 아직 지급 묶음에 들어가지 않았고, 환불 차감이 없어야 한다.
+     * 차감이 생긴 원장은 금액이 더 움직일 수 있어 사람이 확인한 뒤 내보낸다.
+     */
+    fun isPayoutEligible(): Boolean = status == SettlementStatus.PENDING && payout == null && refundDeduction == 0L
+
     fun cancel() = transitionTo(SettlementStatus.CANCELLED)
 
     /** 진행 중 클레임이 있어 지급 대상에서 뺀다. */
