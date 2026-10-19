@@ -304,13 +304,13 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
     @Test
     fun `결제대기 주문에 이미 취소된 품목이 섞여 있으면 그 수량은 되돌리지 않는다`() {
         val fixture = seedExpiredOrderGroup(stock = 1, quantity = 2)
-        val mixedOrderId = addOrder(fixture, sellerId = 8L, quantity = 3)
-        markItemCancelled(itemIdsOf(mixedOrderId).single())
+        val mixedOrderId = addOrder(fixture, sellerId = 8L, quantities = listOf(3, 4))
+        markItemCancelled(itemIdOf(mixedOrderId, quantity = 3))
 
         schedule.run()
 
         assertEquals(OrderGroupStatus.CANCELLED, groupStatusOf(fixture.orderGroupId))
-        assertEquals(3, stockOf(fixture.optionCombinationId), "이번에 취소한 2만 되돌아와야 한다")
+        assertEquals(7, stockOf(fixture.optionCombinationId), "선취소된 3은 빼고 2 + 4만 되돌아와야 한다")
         assertEquals(1, historyCountOf(mixedOrderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
     }
 
@@ -437,6 +437,13 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
         fixture: Fixture,
         sellerId: Long,
         quantity: Int,
+    ): Long = addOrder(fixture, sellerId, listOf(quantity))
+
+    /** 품목 여러 개를 가진 셀러 주문을 붙인다 — 수량으로 품목을 식별한다 */
+    private fun addOrder(
+        fixture: Fixture,
+        sellerId: Long,
+        quantities: List<Int>,
     ): Long =
         tx.execute {
             val group = em.find(OrderGroup::class.java, fixture.orderGroupId)
@@ -448,7 +455,7 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
                     allocatedCouponDiscount = 0,
                     sellerShippingFee = SHIPPING_FEE,
                     items =
-                        listOf(
+                        quantities.map { quantity ->
                             OrderItem.of(
                                 productId = PRODUCT_ID_UNUSED,
                                 optionCombinationId = fixture.optionCombinationId,
@@ -457,8 +464,8 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
                                 unitPriceSnapshot = PRODUCT_PRICE,
                                 discountAllocatedAmount = 0,
                                 productVersionId = PRODUCT_VERSION_ID,
-                            ),
-                        ),
+                            )
+                        },
                 )
             em.persist(order)
             em.flush()
@@ -581,12 +588,18 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
             .setParameter("id", orderGroupId)
             .resultList
 
-    private fun itemIdsOf(orderId: Long): List<Long> =
+    private fun itemIdOf(
+        orderId: Long,
+        quantity: Int,
+    ): Long =
         em
-            .createQuery("select oi.id from Order o join o._items oi where o.id = :id", java.lang.Long::class.java)
-            .setParameter("id", orderId)
-            .resultList
-            .map { it.toLong() }
+            .createQuery(
+                "select oi.id from Order o join o._items oi where o.id = :id and oi.quantity = :quantity",
+                java.lang.Long::class.java,
+            ).setParameter("id", orderId)
+            .setParameter("quantity", quantity)
+            .singleResult
+            .toLong()
 
     private fun itemStatusesOf(orderGroupId: Long): List<OrderItemStatus> =
         em
