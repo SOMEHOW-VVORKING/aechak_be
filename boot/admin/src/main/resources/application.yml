@@ -37,6 +37,12 @@ management:
 api:
   base-path: /api/v1         # 계약 경로는 api와 동일(/api/v1/admin/**) — 모듈 분리는 배포 토폴로지 관심사
 
+# 기동마다 명부의 userId를 관리자로 승격한다 — 관리자가 0명이 된 상태의 복구 경로.
+# 기본은 끔. 명부(user-ids)는 환경별 프로파일이 주입한다 (local=.env, dev=SSM).
+admin:
+  bootstrap:
+    enabled: false
+
 aws:
   s3:
     # 서류 다운로드 URL 발급에 사용. local은 .env로 dev 버킷을 지정한다 — dev/prod는 프로파일 yml이 fail-fast

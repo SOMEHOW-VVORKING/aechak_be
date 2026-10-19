@@ -17,7 +17,7 @@ spring:
       ddl-auto: update                      # RDS 스키마 부트스트랩 — 전체 DDL 이관 완료 시 validate로
 
 api:
-  cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}       # 예: https://dev.aechak.com (쉼표 구분 복수 가능)
+  cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}       # 구매자·셀러·어드민 웹 오리진 전부 (쉼표 구분)
 
 aws:
   s3:
@@ -26,8 +26,8 @@ aws:
 
 auth:
   web:
-    return-urls: ${AUTH_WEB_RETURN_URLS:}              # 예: https://dev.aechak.com/login/complete (쉼표 구분)
-    callback-base-url: ${AUTH_WEB_CALLBACK_BASE_URL:}  # 예: https://api-dev.aechak.com/api/v1/auth/callback
+    return-urls: ${AUTH_WEB_RETURN_URLS:}              # 예: https://dev.aechak.co.kr/login/complete (쉼표 구분, 세 웹 모두)
+    callback-base-url: ${AUTH_WEB_CALLBACK_BASE_URL:}  # 예: https://api-dev.aechak.co.kr/api/v1/auth/callback
 
 # 실발송(CoolSMS) 설정 — 3개 모두 필수, 미존재 시 부팅 실패(fail-fast). 값은 SSM 수기 등재
 sms:

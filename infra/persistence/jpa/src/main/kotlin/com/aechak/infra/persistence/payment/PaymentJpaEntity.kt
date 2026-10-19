@@ -10,13 +10,17 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import jakarta.persistence.Version
+import java.time.LocalDateTime
 
 @Entity
 @Table(
     name = "payments",
+    // 대사가 창 안에서 바뀐 결제를 찾는 경로. V26이 만들지만 엔티티 선언이 빠져 ddl-auto 환경에는 없었다
+    indexes = [Index(name = "idx_payments_updated_at", columnList = "updated_at")],
     uniqueConstraints = [
         UniqueConstraint(name = "uk_payments_order_group_id", columnNames = ["order_group_id"]),
         UniqueConstraint(name = "uk_payments_payment_id", columnNames = ["payment_id"]),
@@ -47,6 +51,10 @@ class PaymentJpaEntity(
     val failureCode: String?,
     @Column
     val cancellableAmount: Long?,
+    @Column(nullable = false)
+    val cancelledAmount: Long,
+    @Column
+    val cancelRequestedAt: LocalDateTime?,
     @Version
     @Column(nullable = false)
     var version: Int,
