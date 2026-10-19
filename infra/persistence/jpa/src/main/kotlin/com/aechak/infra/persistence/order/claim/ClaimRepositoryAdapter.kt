@@ -70,15 +70,17 @@ interface ClaimJpaRepository : JpaRepository<Claim, Long> {
         pageable: Pageable,
     ): List<Claim>
 
+    // 상태 선두 인덱스(status, auto_approve_due_at)를 상태 등가 + 기한 범위로 그대로 탄다
     @Query(
         "select c from Claim c " +
-            "where c.status = :status and c.sellerApprovalStatus = :approvalStatus " +
+            "where c.status = :status and c.sellerApprovalStatus = :approvalStatus and c.claimType = :claimType " +
             "and c.autoApproveDueAt is not null and c.autoApproveDueAt < :dueBefore " +
             "order by c.autoApproveDueAt asc",
     )
     fun findAutoApprovable(
         @Param("status") status: ClaimStatus,
         @Param("approvalStatus") approvalStatus: SellerApprovalStatus,
+        @Param("claimType") claimType: ClaimType,
         @Param("dueBefore") dueBefore: LocalDateTime,
         pageable: Pageable,
     ): List<Claim>
@@ -117,6 +119,7 @@ class ClaimRepositoryAdapter(
         jpaRepository.findAutoApprovable(
             status = ClaimStatus.CLAIM_REQUESTED,
             approvalStatus = SellerApprovalStatus.REQUESTED,
+            claimType = ClaimType.CANCEL,
             dueBefore = dueBefore,
             pageable = PageRequest.of(0, limit),
         )
