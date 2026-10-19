@@ -90,6 +90,8 @@ class PaymentReconciliationIntegrationTest : IntegrationTestBase() {
                     sellerNameSnapshot = "멍멍상회",
                     allocatedCouponDiscount = 0L,
                     sellerShippingFee = 0L,
+                    baseShippingFeeSnapshot = null,
+                    freeShippingThresholdSnapshot = null,
                     items = listOf(OrderItem.of(1L, 501L, "기본", 1, amount, 0L, 1L)),
                 ),
             )
@@ -135,6 +137,7 @@ class PaymentReconciliationIntegrationTest : IntegrationTestBase() {
         status = status,
         totalAmount = 13_000L,
         paidAmount = paid,
+        cancelledAmount = 0L,
         pgTxId = if (status == PaymentGatewayStatus.PAID) "stub-tx" else null,
         paidAt = if (status == PaymentGatewayStatus.PAID) LocalDateTime.of(2026, 10, 15, 14, 0) else null,
         failureCode = null,

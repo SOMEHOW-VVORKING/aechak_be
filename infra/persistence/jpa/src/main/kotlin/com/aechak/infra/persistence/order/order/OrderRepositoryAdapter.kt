@@ -13,6 +13,11 @@ import java.time.LocalDateTime
 interface OrderJpaRepository : JpaRepository<Order, Long> {
     fun findAllByOrderGroupIdOrderByIdAsc(orderGroupId: Long): List<Order>
 
+    fun findByPublicIdAndSellerId(
+        publicId: String,
+        sellerId: Long,
+    ): Order?
+
     @Modifying
     @Query(
         "update Order o " +
@@ -21,6 +26,19 @@ interface OrderJpaRepository : JpaRepository<Order, Long> {
     )
     fun transitionAllStatus(
         @Param("groupId") groupId: Long,
+        @Param("expected") expected: OrderStatus,
+        @Param("next") next: OrderStatus,
+        @Param("now") now: LocalDateTime,
+    ): Int
+
+    @Modifying
+    @Query(
+        "update Order o " +
+            "set o.status = :next, o.updatedAt = :now " +
+            "where o.id = :id and o.status = :expected",
+    )
+    fun transitionStatus(
+        @Param("id") id: Long,
         @Param("expected") expected: OrderStatus,
         @Param("next") next: OrderStatus,
         @Param("now") now: LocalDateTime,
@@ -35,6 +53,11 @@ class OrderRepositoryAdapter(
 
     override fun findAllByOrderGroupId(orderGroupId: Long): List<Order> = jpaRepository.findAllByOrderGroupIdOrderByIdAsc(orderGroupId)
 
+    override fun findByPublicIdAndSellerId(
+        publicId: String,
+        sellerId: Long,
+    ): Order? = jpaRepository.findByPublicIdAndSellerId(publicId, sellerId)
+
     // 벌크 JPQL은 @PreUpdate를 우회하므로 updated_at을 쿼리에서 함께 SET한다
     override fun markAllPaidByOrderGroupId(orderGroupId: Long): Int =
         jpaRepository.transitionAllStatus(
@@ -43,4 +66,17 @@ class OrderRepositoryAdapter(
             next = OrderStatus.PAID,
             now = LocalDateTime.now(),
         )
+
+    // 벌크 JPQL은 @PreUpdate를 우회하므로 updated_at을 쿼리에서 함께 SET한다
+    override fun transitionStatusIf(
+        id: Long,
+        expected: OrderStatus,
+        next: OrderStatus,
+    ): Boolean =
+        jpaRepository.transitionStatus(
+            id = id,
+            expected = expected,
+            next = next,
+            now = LocalDateTime.now(),
+        ) == 1
 }

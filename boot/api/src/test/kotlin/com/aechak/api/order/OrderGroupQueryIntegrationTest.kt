@@ -160,6 +160,8 @@ class OrderGroupQueryIntegrationTest : IntegrationTestBase() {
                         sellerNameSnapshot = seed.sellerName,
                         allocatedCouponDiscount = 0,
                         sellerShippingFee = seed.shippingFee,
+                        baseShippingFeeSnapshot = null,
+                        freeShippingThresholdSnapshot = null,
                         items = seed.items.map { seedItem(seed.sellerId, it) },
                     ),
                 )

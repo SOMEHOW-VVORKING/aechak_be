@@ -84,6 +84,8 @@ class PaymentCompleteIntegrationTest : IntegrationTestBase() {
                     sellerNameSnapshot = "멍멍상회",
                     allocatedCouponDiscount = 0L,
                     sellerShippingFee = 0L,
+                    baseShippingFeeSnapshot = null,
+                    freeShippingThresholdSnapshot = null,
                     items =
                         listOf(
                             OrderItem.of(
@@ -124,6 +126,7 @@ class PaymentCompleteIntegrationTest : IntegrationTestBase() {
         status = status,
         totalAmount = 13_000L,
         paidAmount = paidAmount,
+        cancelledAmount = 0L,
         pgTxId = if (status == PaymentGatewayStatus.PAID) "stub-tx" else null,
         paidAt = if (status == PaymentGatewayStatus.PAID) LocalDateTime.of(2026, 1, 1, 0, 0) else null,
         failureCode = failureCode,

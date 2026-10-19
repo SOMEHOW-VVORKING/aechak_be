@@ -151,6 +151,8 @@ class OrderService(
                 sellerNameSnapshot = sellerLines.first().view.storeName,
                 allocatedCouponDiscount = 0,
                 sellerShippingFee = pricing.shippingFees.getValue(sellerId),
+                baseShippingFeeSnapshot = sellerLines.first().view.baseShippingFee,
+                freeShippingThresholdSnapshot = sellerLines.first().view.freeShippingThreshold,
                 items =
                     sellerLines.map { line ->
                         OrderItem.of(

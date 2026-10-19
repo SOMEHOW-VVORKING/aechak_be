@@ -144,6 +144,9 @@ class OrderMessageConsumer(private val someUseCase: SomeUseCase) {
 - 라우팅은 **호스트 분리**(`seller-api.<도메인>`) 전제 — `api.base-path`(/api/v1)와 경로는 api 시절 그대로라 FE 경로 수정이 없다.
 - **선별 스캔**: 루트(com.aechak) 스캔은 auth·kafka 등 api 전용 조립까지 요구해 부팅이 깨진다.
   스캔 목록은 `SellerApiApplication` 소유 — application 패키지를 추가로 쓰면 그 패키지가 요구하는 infra 어댑터·config 조립도 함께 늘린다.
+- **셀러센터 전용 주문 유스케이스는 `application.order.seller` 하위에 둔다.** BC 패키지 전체(`application.order`)를 스캔하면
+  구매자 주문서·장바구니 파사드가 딸려와 배송지·적립금 조립까지 요구한다. 뒤집어, batch는 `application.order`를 스캔하므로
+  이 하위 패키지를 excludeFilters로 뺀다 — 셀러 자격(`application.seller`)을 배치가 끌고 오지 않게 한다.
 - **Flyway 미탑재**: 스키마 관리는 api가 유일 소유자. seller 단독 배포 시 새 마이그레이션은 api 선배포가 전제.
 - 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(web-security JwtConfig 공유, 같은 키 주입).
 - 온보딩 허용 경로 없음 — 셀러센터 전 EP가 ACTIVE 전용(UserStatusFilter 화이트리스트 empty).
@@ -177,8 +180,10 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 ```
 boot/admin/src/main/java/com/aechak/admin/
 ├── AdminApplication.java
-├── config/          # JpaConfig · OpenApiConfig · WebConfig
-└── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
+├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config}
+├── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
+├── seller/          # 입점 심사 컨트롤러 + request/response
+└── user/            # 관리자 명부 컨트롤러 + request/response
 ```
 
 - A-5(MVP 제외)를 해소하고 신설 — 셀러 입점 심사부터 운영자 기능이 실제 API로 필요해졌다.
@@ -187,5 +192,8 @@ boot/admin/src/main/java/com/aechak/admin/
 - api와 동일 구조/규칙(JSON API 기반) — web-common의 응답 봉투·GlobalExceptionHandler 재사용.
 - **자격 게이트는 모듈 SecurityConfig가 전역 강제**한다(role=ADMIN, 실패 시 20011·403). 컨트롤러별 `@PreAuthorize`를 쓰는 셀러측과 다른 점 — 모듈 전체가 운영자 전용이라 게이트가 하나면 된다. 전역 자원 접근이라 소유권 검증 계층도 없다.
 - 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(seller-api와 같은 검증 전용 모드).
+- **관리자 명부의 저장값은 `users.role`이고, 기동 부트스트랩(`admin.bootstrap.enabled`/`user-ids`)이 기동마다 설정 명부를 멱등 승격한다.** 최초 관리자를 만드는 경로이자 관리자가 0명이 된 상태의 유일한 복구 경로라 "최초 1회"가 아니라 기동마다 돈다. 명부에 적힌 계정이 없거나 비활성이면 경고 로그만 남기고 부팅을 계속한다 — 어드민이 뜨지 않으면 명부를 고칠 수단도 사라진다. 두 경우 모두 에러 코드가 붙은 비즈니스 예외로 분류돼 경고 로그에 남고(비활성은 409), 이미 관리자인 계정은 멱등 건너뜀으로 처리한다. 부트스트랩이 admin에 사는 이유는 이 모듈만 ECS 태스크가 1대로 고정이고(api는 오토스케일) `users` 쓰기 배선이 이미 조립돼 있어서다.
+  - 토큰의 `role` 클레임은 로그인 시점 스냅샷이다 — 승격 직후 ADMIN 토큰을 받으려면 api에서 다시 로그인해야 하고, 강등해도 발급돼 있던 토큰은 만료까지 ADMIN으로 통과한다.
+  - 명부를 손으로 바꾸는 경로는 `/admin/admins`(목록·승격·강등)다. 자기 역할 변경은 403(30014), 관리자가 0명이 되는 강등은 409(30013), 활성 상태가 아닌 계정의 승격은 409(30017)로 막는다.
 - DB 마이그레이션은 api 단일 소유 그대로 — admin은 접속만 한다.
 - 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.
