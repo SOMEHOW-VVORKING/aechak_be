@@ -77,7 +77,7 @@ variable "github_repo" {
 
 variable "frontend_origins" {
   type        = list(string)
-  description = "presigned 업로드 CORS 허용 오리진 (웹 dev 포트별 복수)"
+  description = "구매자 웹의 로컬 개발 오리진 (포트별 복수). 배포 도메인은 locals가 붙인다"
 }
 
 variable "inquiry_notification_enabled" {
@@ -101,13 +101,13 @@ variable "inquiry_ops_recipients" {
 }
 
 variable "seller_frontend_origins" {
-  description = "셀러센터 웹 로컬 개발 오리진 — 배포된 셀러 웹 도메인이 생기면 CORS 로컬에 그 값을 합류시킨다"
+  description = "셀러센터 웹의 로컬 개발 오리진 (포트별 복수). 배포 도메인은 locals가 붙인다"
   type        = list(string)
   default     = []
 }
 
 variable "admin_frontend_origins" {
-  description = "어드민 웹 오리진 — FE 착수 시 로컬 포트·배포 도메인을 추가한다"
+  description = "어드민 웹의 로컬 개발 오리진 (포트별 복수). 배포 도메인은 locals가 붙인다"
   type        = list(string)
   default     = []
 }

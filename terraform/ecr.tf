@@ -1,5 +1,5 @@
 resource "aws_ecr_repository" "app" {
-  name = "${var.project}-api" # boot/api 모듈 배포용. batch 이미지화 시 aechak-batch 추가
+  name = "${var.project}-api" # boot/api 모듈 배포용
 
   image_scanning_configuration {
     scan_on_push = true
@@ -59,6 +59,31 @@ resource "aws_ecr_repository" "admin" {
 
 resource "aws_ecr_lifecycle_policy" "admin" {
   repository = aws_ecr_repository.admin.name
+
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "keep last 10"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
+      }
+      action = { type = "expire" }
+    }]
+  })
+}
+
+resource "aws_ecr_repository" "batch" {
+  name = "${var.project}-batch" # boot/batch 모듈 배포용 (SCRUM-251)
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+resource "aws_ecr_lifecycle_policy" "batch" {
+  repository = aws_ecr_repository.batch.name
 
   policy = jsonencode({
     rules = [{
