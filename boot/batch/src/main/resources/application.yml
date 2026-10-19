@@ -38,6 +38,10 @@ aws:
     docs-bucket: ${AWS_S3_DOCS_BUCKET:}
     media-public-base-url: ${AWS_S3_MEDIA_PUBLIC_BASE_URL:}
 
+settlement:
+  execution:
+    cron: "0 0 5 * * *"                        # KST 05:00 — 결제 대사(04:30)가 끝난 뒤. 기준일은 실행 당일(KST)
+
 payment:
   portone:
     base-url: https://api.portone.io

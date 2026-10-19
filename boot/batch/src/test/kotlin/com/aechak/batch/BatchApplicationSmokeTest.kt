@@ -3,8 +3,10 @@ package com.aechak.batch
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.payment.port.PaymentReconciliationSourcePort
 import com.aechak.application.payment.reconciliation.usecase.PaymentReconciliationUseCase
+import com.aechak.application.settlement.usecase.SettlementPayoutUseCase
 import com.aechak.application.settlement.usecase.SettlementUseCase
 import com.aechak.batch.payment.PaymentReconciliationSchedule
+import com.aechak.batch.settlement.SettlementExecutionSchedule
 import com.aechak.batch.support.BatchIntegrationTestBase
 import com.aechak.domain.payment.reconciliation.ReconciliationSource
 import org.springframework.beans.factory.annotation.Autowired
@@ -37,6 +39,13 @@ class BatchApplicationSmokeTest : BatchIntegrationTestBase() {
         // 스캔에서 application.settlement가 빠지면 자동확정 배치가 부팅에서 깨진다
         context.getBean(OrderUseCase::class.java)
         context.getBean(SettlementUseCase::class.java)
+    }
+
+    @Test
+    fun `정산 집행 스케줄과 지급 유스케이스가 조립된다`() {
+        // 집행 배치는 정산 BC의 지급 파사드만 요구한다 — 스캔에서 application.settlement가 빠지면 부팅에서 깨진다
+        context.getBean(SettlementExecutionSchedule::class.java)
+        context.getBean(SettlementPayoutUseCase::class.java)
     }
 
     @Test
