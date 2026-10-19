@@ -204,8 +204,21 @@ class Seller protected constructor(
         if (fees.any { it < 0 }) {
             throw BusinessException(SellerErrorCode.INVALID_SHIPPING_POLICY, detail = "배송 관련 금액은 0원 이상이어야 합니다.")
         }
+        // 상한이 없으면 셀러별 배송비를 합산하는 주문 금액 계산이 Long 범위를 넘겨 작은 금액으로 되돌아간다
+        if (fees.any { it > MAX_SHIPPING_FEE }) {
+            throw BusinessException(
+                SellerErrorCode.INVALID_SHIPPING_POLICY,
+                detail = "배송 관련 금액은 ${MAX_SHIPPING_FEE}원 이하여야 합니다.",
+            )
+        }
         if (freeShippingThreshold != null && freeShippingThreshold < 0) {
             throw BusinessException(SellerErrorCode.INVALID_SHIPPING_POLICY, detail = "무료배송 기준 금액은 0원 이상이어야 합니다.")
+        }
+        if (freeShippingThreshold != null && freeShippingThreshold > MAX_FREE_SHIPPING_THRESHOLD) {
+            throw BusinessException(
+                SellerErrorCode.INVALID_SHIPPING_POLICY,
+                detail = "무료배송 기준 금액은 ${MAX_FREE_SHIPPING_THRESHOLD}원 이하여야 합니다.",
+            )
         }
         // 임계가 기본 배송비보다 낮으면 "임계를 넘겨도 배송비가 더 비싼" 자기모순이 된다
         if (freeShippingThreshold != null && freeShippingThreshold < baseShippingFee) {
@@ -228,6 +241,12 @@ class Seller protected constructor(
 
         /** shipping_policy_text가 TEXT 컬럼이라 바이트 한도를 넘지 않게 글자 수로 먼저 막는다. */
         const val MAX_SHIPPING_POLICY_TEXT_LENGTH = 2000
+
+        /** 기본 배송비·지역 추가비·반품비·교환비의 상한. */
+        const val MAX_SHIPPING_FEE = 1_000_000L
+
+        /** 무료배송 기준 금액의 상한. */
+        const val MAX_FREE_SHIPPING_THRESHOLD = 100_000_000L
 
         const val MIN_DISPATCH_DAYS = 1
         const val MAX_DISPATCH_DAYS = 7

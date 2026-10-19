@@ -159,6 +159,54 @@ class ShippingPolicyIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `기본 배송비가 상한을 넘으면 400과 10005다`() {
+        mockMvc
+            .perform(
+                putRequest(
+                    token,
+                    policyJson(baseShippingFee = Seller.MAX_SHIPPING_FEE + 1, freeShippingThreshold = null),
+                ),
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(10005))
+
+        assertEquals(3000L, loadSeller(sellerUserId).baseShippingFee, "거절된 요청이 값을 바꾸면 안 된다")
+    }
+
+    /**
+     * 셀러별 배송비는 주문 금액 계산에서 합산되므로 Long 상한에 가까운 값을 저장시키면
+     * 합이 되돌아가 터무니없이 싼 주문이 만들어진다. 상한 검증이 사라지면 이 테스트가 먼저 깨진다.
+     */
+    @Test
+    fun `Long 상한에 가까운 배송비는 저장되지 않는다`() {
+        mockMvc
+            .perform(
+                putRequest(
+                    token,
+                    policyJson(baseShippingFee = 6_148_914_691_236_517_539L, freeShippingThreshold = null),
+                ),
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(10005))
+
+        assertEquals(3000L, loadSeller(sellerUserId).baseShippingFee)
+    }
+
+    @Test
+    fun `반품비가 상한을 넘으면 400과 10005다`() {
+        mockMvc
+            .perform(putRequest(token, policyJson(returnFee = Seller.MAX_SHIPPING_FEE + 1)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(10005))
+    }
+
+    @Test
+    fun `무료배송 기준이 상한을 넘으면 400과 10005다`() {
+        mockMvc
+            .perform(putRequest(token, policyJson(freeShippingThreshold = Seller.MAX_FREE_SHIPPING_THRESHOLD + 1)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(10005))
+    }
+
+    @Test
     fun `배송 정책 안내가 허용 길이를 넘으면 400과 90001이다`() {
         val tooLong = "가".repeat(Seller.MAX_SHIPPING_POLICY_TEXT_LENGTH + 1)
 
