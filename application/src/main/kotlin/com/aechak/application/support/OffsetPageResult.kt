@@ -13,7 +13,10 @@ data class OffsetPageResult<T>(
         require(totalCount >= 0) { "totalCount는 음수일 수 없습니다." }
     }
 
-    val totalPages: Int get() = ((totalCount + size - 1) / size).toInt()
+    // 올림을 분자 더하기로 하면 totalCount가 Long 최댓값 근처에서 넘친다 — 나머지로 올린다.
+    // Int 범위를 넘는 페이지 수는 상한에서 멈춘다. 줄여 담으면 음수로 뒤집혀 hasNext가 거짓이 된다.
+    val totalPages: Int
+        get() = (totalCount / size + if (totalCount % size == 0L) 0L else 1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
 
     // Int로 더하면 page가 Int 최댓값일 때 넘쳐 음수가 되고, 마지막 페이지에서 hasNext가 true로 뒤집힌다.
     val hasNext: Boolean get() = page.toLong() + 1 < totalPages.toLong()

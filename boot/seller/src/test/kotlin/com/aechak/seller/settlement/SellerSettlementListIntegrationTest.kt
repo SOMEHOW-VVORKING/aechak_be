@@ -153,17 +153,20 @@ class SellerSettlementListIntegrationTest : SellerSettlementIntegrationTestBase(
     }
 
     @Test
-    fun `주문 행이 없는 정산 행은 목록과 총건수에서 함께 빠진다`() {
+    fun `주문 행이 없는 정산 행은 목록과 총건수에서 함께 빠지고 정상 주문은 남는다`() {
         seedSettlementWithoutOrder()
+        val normal = seedSettledOrder()
 
         requestList()
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.settlements.length()").value(0))
-            .andExpect(jsonPath("$.data.totalCount").value(0))
+            .andExpect(jsonPath("$.data.settlements.length()").value(1))
+            .andExpect(jsonPath("$.data.settlements[0].orderId").value(normal.orderPublicId))
+            .andExpect(jsonPath("$.data.totalCount").value(1))
 
         requestList("month" to "2026-06", "status" to "pending")
-            .andExpect(jsonPath("$.data.settlements.length()").value(0))
-            .andExpect(jsonPath("$.data.totalCount").value(0))
+            .andExpect(jsonPath("$.data.settlements.length()").value(1))
+            .andExpect(jsonPath("$.data.settlements[0].orderId").value(normal.orderPublicId))
+            .andExpect(jsonPath("$.data.totalCount").value(1))
     }
 
     @Test

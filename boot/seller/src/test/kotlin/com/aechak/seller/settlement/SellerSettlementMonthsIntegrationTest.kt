@@ -50,9 +50,11 @@ class SellerSettlementMonthsIntegrationTest : SellerSettlementIntegrationTestBas
     }
 
     @Test
-    fun `최근 24개월까지만 반환한다`() {
+    fun `최근 24개월까지만 반환하고 상한은 행 수가 아니라 월 수에 걸린다`() {
         val confirmedAt = LocalDateTime.of(2026, 6, 18, 10, 0)
         repeat(26) { seedSettledOrder(confirmedAt = confirmedAt.minusMonths(it.toLong())) }
+        // 같은 달에 주문이 둘이어도 월 하나로 접혀야 한다 — 행을 세면 가장 오래된 월이 밀려 나간다
+        seedSettledOrder(confirmedAt = confirmedAt.minusDays(2))
 
         requestMonths()
             .andExpect(jsonPath("$.data.months.length()").value(24))
