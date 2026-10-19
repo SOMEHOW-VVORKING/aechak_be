@@ -10,7 +10,9 @@ import java.time.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * 결제 이후 주문 상태머신 계약. 깨지면 발주 확인·발송·배송완료를 건너뛰는 전이가 열린다 —
@@ -99,6 +101,23 @@ class OrderTransitionTest {
 
         assertEquals(OrderStatus.PURCHASE_CONFIRMED, order.status)
         assertEquals(ConfirmType.MANUAL, order.confirmType)
+    }
+
+    @Test
+    fun `구매확정 기한 판정은 기한 시각 자체를 지난 것으로 본다`() {
+        val dueAt = LocalDateTime.of(2026, 10, 23, 0, 0)
+        val order = dispatchPendingOrder().apply { markShipping() }.apply { markDelivered(dueAt) }
+
+        assertTrue(order.isAutoConfirmDue(dueAt), "기한 시각에 도달하면 자동확정 대상이다")
+        assertTrue(order.isAutoConfirmDue(dueAt.plusSeconds(1)))
+        assertFalse(order.isAutoConfirmDue(dueAt.minusSeconds(1)), "기한 전에 확정되면 구매자가 받을 수 있는 반품 기간이 줄어든다")
+    }
+
+    @Test
+    fun `기한이 없는 주문은 자동확정 대상이 아니다`() {
+        val order = dispatchPendingOrder()
+
+        assertFalse(order.isAutoConfirmDue(LocalDateTime.now()))
     }
 
     @Test
