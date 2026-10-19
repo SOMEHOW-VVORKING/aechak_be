@@ -142,15 +142,48 @@ class ClaimReturnExchangeIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `구매자가 부담하는 반품 발송비는 환불액에서 빠진다`() {
-        val seeded = seedDeliveredOrder(listOf(ItemSpec(10_000L, 2)))
+    fun `구매자 부담 반품비는 기록만 되고 환불액을 깎지 않는다`() {
+        val seeded = seedDeliveredOrder(listOf(ItemSpec(5_000L, 1)))
         val claimPublicId = collectedClaim(seeded, ClaimType.RETURN, ReturnCostBearer.BUYER)
 
         val result = claimRefundUseCase.executeRefund(ExecuteClaimRefundCommand(claimPublicId))
 
-        assertEquals(15_000L, result.refundAmount, "반품비 5,000원이 빠진 금액만 돌려줘야 한다")
-        assertEquals(15_000L, paymentGateway.cancelCommands.single().amount)
-        assertEquals(OrderGroupStatus.PARTIALLY_CANCELLED, groupStatusOf(seeded.orderGroupPublicId), "취소가능액이 남으면 부분취소다")
+        // 반품비를 환불액에서 빼면 상품가가 반품비 이하인 반품이 0원 환불로 집행 실패에 걸려 자산 복원까지 멈춘다
+        assertEquals(5_000L, result.refundAmount)
+        assertEquals(ReturnCostBearer.BUYER, claimOf(claimPublicId).returnCostBearer)
+        assertEquals(RefundStatus.DONE, claimOf(claimPublicId).refundStatus)
+        assertEquals(INITIAL_STOCK + 1, stockOf(seeded.optionCombinationIds.single()))
+    }
+
+    @Test
+    fun `품목을 나눈 반품은 세 건 모두 환불된다`() {
+        val seeded = seedDeliveredOrder(listOf(ItemSpec(10_000L, 1), ItemSpec(3_000L, 1), ItemSpec(2_000L, 1)))
+        val claims =
+            seeded.orderItemIds.map { orderItemId ->
+                collectedClaim(seeded, ClaimType.RETURN, ReturnCostBearer.SELLER, targets = mapOf(orderItemId to 1))
+            }
+
+        // 회수가 전부 끝난 시점에 모든 품목이 이행 대상에서 빠진다 — 첫 환불이 주문을 닫아도 뒤의 두 건이 실패하면 안 되고,
+        // 가운데 환불은 주문그룹을 부분취소에서 부분취소로 다시 전이시킨다
+        val refunded = claims.map { claimRefundUseCase.executeRefund(ExecuteClaimRefundCommand(it)).refundAmount }
+
+        assertEquals(listOf(10_000L, 3_000L, 2_000L), refunded)
+        claims.forEach { assertEquals(RefundStatus.DONE, claimOf(it).refundStatus) }
+        assertEquals(OrderGroupStatus.CANCELLED, groupStatusOf(seeded.orderGroupPublicId))
+        assertEquals(OrderStatus.CANCELLED, orderStatusOf(seeded.orderId))
+        assertEquals(1, historyCount(seeded.orderId, OrderStatus.CANCELLED), "주문 취소 이력이 여러 번 쌓이면 안 된다")
+        seeded.optionCombinationIds.forEach { assertEquals(INITIAL_STOCK + 1, stockOf(it)) }
+    }
+
+    @Test
+    fun `기한을 하루 넘긴 반품은 거절된다`() {
+        val seeded = seedDeliveredOrder(listOf(ItemSpec(10_000L, 1)), deliveredDaysAgo = 7)
+
+        // 기산점이 7일 전이면 요청 시점은 그 기한을 막 지난 뒤다 — 경계는 열지 않는다
+        mockMvc
+            .perform(claimRequest(seeded, ClaimType.RETURN))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(50401))
     }
 
     @Test
@@ -264,10 +297,11 @@ class ClaimReturnExchangeIntegrationTest : IntegrationTestBase() {
     private fun requestClaim(
         seeded: SeededOrder,
         claimType: ClaimType,
+        targets: Map<Long, Int>? = null,
     ): String {
         val response =
             mockMvc
-                .perform(claimRequest(seeded, claimType))
+                .perform(claimRequest(seeded, claimType, targets))
                 .andExpect(status().isCreated)
                 .andReturn()
                 .response
@@ -279,11 +313,17 @@ class ClaimReturnExchangeIntegrationTest : IntegrationTestBase() {
     private fun claimRequest(
         seeded: SeededOrder,
         claimType: ClaimType,
-    ): MockHttpServletRequestBuilder =
-        post("/api/v1/orders/${seeded.orderPublicId}/claims")
+        targets: Map<Long, Int>? = null,
+    ): MockHttpServletRequestBuilder {
+        val itemsJson =
+            targets?.entries?.joinToString(",", prefix = ""","items":[""", postfix = "]") {
+                """{"orderItemId":${it.key},"quantity":${it.value}}"""
+            } ?: ""
+        return post("/api/v1/orders/${seeded.orderPublicId}/claims")
             .bearer(token)
             .contentType(MediaType.APPLICATION_JSON)
-            .content("""{"claimType":"$claimType","reasonCode":"DEFECT"}""")
+            .content("""{"claimType":"$claimType","reasonCode":"DEFECT"$itemsJson}""")
+    }
 
     private fun startCollection(claimPublicId: String) {
         sellerClaimUseCase.startCollection(
@@ -297,8 +337,9 @@ class ClaimReturnExchangeIntegrationTest : IntegrationTestBase() {
         seeded: SeededOrder,
         claimType: ClaimType,
         returnCostBearer: ReturnCostBearer,
+        targets: Map<Long, Int>? = null,
     ): String {
-        val claimPublicId = requestClaim(seeded, claimType)
+        val claimPublicId = requestClaim(seeded, claimType, targets)
         sellerClaimUseCase.approveClaim(ApproveClaimCommand(sellerUserId, claimPublicId, returnCostBearer))
         startCollection(claimPublicId)
         sellerClaimUseCase.completeCollection(CompleteClaimCollectionCommand(sellerUserId, claimPublicId))
@@ -477,6 +518,22 @@ class ClaimReturnExchangeIntegrationTest : IntegrationTestBase() {
                 .firstOrNull()
                 .also { em.clear() }
         }
+
+    private fun historyCount(
+        orderId: Long,
+        to: OrderStatus,
+    ): Int =
+        tx.execute {
+            em
+                .createQuery(
+                    "select count(h) from OrderStatusHistory h where h.order.id = :orderId and h.toStatus = :to",
+                    java.lang.Long::class.java,
+                ).setParameter("orderId", orderId)
+                .setParameter("to", to)
+                .singleResult
+                .toInt()
+                .also { em.clear() }
+        }!!
 
     private fun claimCountOf(orderId: Long): Int =
         scalar("select count(c) from Claim c where c.orderId = :key", orderId, java.lang.Long::class.java).toInt()

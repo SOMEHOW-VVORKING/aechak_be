@@ -14,7 +14,6 @@ import com.aechak.application.user.point.usecase.command.ReleasePointCommand
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.enums.ClaimType
-import com.aechak.domain.order.claim.enums.ReturnCostBearer
 import com.aechak.domain.order.claim.repository.ClaimRepository
 import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.group.OrderGroup
@@ -28,7 +27,6 @@ import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.order.repository.OrderStatusHistoryRepository
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 
 /**
@@ -45,7 +43,6 @@ class ClaimRefundService(
     private val paymentUseCase: PaymentUseCase,
     private val optionStockUseCase: OptionStockUseCase,
     private val pointUseCase: PointUseCase,
-    @param:Value("\${order.claim.default-return-fee:5000}") private val defaultReturnFee: Long,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -188,6 +185,9 @@ class ClaimRefundService(
      * 정산이 받지도 않은 물건의 대금을 지급 대상으로 잡는다.
      */
     private fun closeOrderIfAllItemsResolved(order: Order) {
+        // 품목을 나눈 반품은 회수 완료만으로 모든 품목이 RESOLVED가 된다 — 첫 환불이 주문을 닫은 뒤
+        // 두 번째 환불이 같은 전이를 또 요구하면, PG 취소는 끝났는데 원장·자산 복원이 롤백된다
+        if (order.status == OrderStatus.CANCELLED) return
         if (order.items.any { it.itemStatus !in OrderItemStatus.RESOLVED }) return
         val from = order.status
         order.cancelByClaimApproval()
@@ -262,19 +262,11 @@ class ClaimRefundService(
         val usedPoint = order.orderGroup.usedPoint
         val groupOrders = if (usedPoint > 0L) orderRepository.findAllByOrderGroupId(order.orderGroup.id) else listOf(order)
         val shippingFeeRefund = claimAmountCalculator.shippingFeeRefund(order, groupOrders, usedPoint, targets)
-        val gross = Math.addExact(claim.itemRefundTotal(), shippingFeeRefund)
         return RefundAmounts(
-            refundAmount = maxOf(0L, gross - returnFeeOf(claim)),
+            refundAmount = Math.addExact(claim.itemRefundTotal(), shippingFeeRefund),
             pointRefund = claimAmountCalculator.pointRefund(order, groupOrders, usedPoint, targets),
         )
     }
-
-    /**
-     * 구매자가 부담하는 반품 발송비는 환불액에서 뺀다. 셀러 배송 정책의 반품비가 들어오기 전까지는 설정 기본값을 쓴다 —
-     * 부담 주체를 정하지 않은 반품은 셀러 부담으로 보고 깎지 않는다.
-     */
-    private fun returnFeeOf(claim: Claim): Long =
-        if (claim.claimType == ClaimType.RETURN && claim.returnCostBearer == ReturnCostBearer.BUYER) defaultReturnFee else 0L
 
     private fun loadClaim(claimPublicId: String): Claim =
         claimRepository.findByPublicId(claimPublicId)

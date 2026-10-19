@@ -116,7 +116,10 @@ class ClaimService(
     fun rejectClaim(command: RejectClaimCommand) {
         val claim = sellerClaim(command.claimPublicId, command.sellerId)
         claim.rejectBySeller(command.rejectionReason)
-        revertRequestedItems(claim, claimedOrder(claim))
+        // 취소 클레임은 요청 시점에 품목을 건드리지 않았으므로 주문을 읽을 이유도 없다
+        if (claim.claimType.requiresCollection()) {
+            revertRequestedItems(claim, claimedOrder(claim))
+        }
         claimRepository.save(claim)
     }
 
