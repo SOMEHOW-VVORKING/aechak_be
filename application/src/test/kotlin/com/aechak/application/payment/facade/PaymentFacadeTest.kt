@@ -1,6 +1,7 @@
 package com.aechak.application.payment.facade
 
 import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
@@ -228,6 +229,8 @@ private class UnusedOrderUseCase : OrderUseCase {
     ): OrderItemForReviewResult? = throw UnsupportedOperationException()
 
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = throw UnsupportedOperationException()
+
+    override fun confirmPurchase(command: ConfirmPurchaseCommand) = throw UnsupportedOperationException()
 
     override fun clearOrderedCartItems(
         buyerId: Long,

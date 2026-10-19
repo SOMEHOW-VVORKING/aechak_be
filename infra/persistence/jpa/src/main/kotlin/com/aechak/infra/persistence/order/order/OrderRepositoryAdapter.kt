@@ -18,6 +18,11 @@ interface OrderJpaRepository : JpaRepository<Order, Long> {
         sellerId: Long,
     ): Order?
 
+    fun findByPublicIdAndOrderGroupBuyerId(
+        publicId: String,
+        buyerId: Long,
+    ): Order?
+
     @Modifying
     @Query(
         "update Order o " +
@@ -52,6 +57,11 @@ class OrderRepositoryAdapter(
     override fun saveAll(orders: List<Order>): List<Order> = jpaRepository.saveAll(orders)
 
     override fun findAllByOrderGroupId(orderGroupId: Long): List<Order> = jpaRepository.findAllByOrderGroupIdOrderByIdAsc(orderGroupId)
+
+    override fun findByPublicIdAndBuyerId(
+        publicId: String,
+        buyerId: Long,
+    ): Order? = jpaRepository.findByPublicIdAndOrderGroupBuyerId(publicId, buyerId)
 
     override fun findByPublicIdAndSellerId(
         publicId: String,

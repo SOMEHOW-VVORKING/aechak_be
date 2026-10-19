@@ -10,6 +10,12 @@ interface OrderRepository {
     /** 주문 id 오름차순 */
     fun findAllByOrderGroupId(orderGroupId: Long): List<Order>
 
+    /** 구매자 스코프 단건 조회 — 타인 주문은 없는 것으로 본다. */
+    fun findByPublicIdAndBuyerId(
+        publicId: String,
+        buyerId: Long,
+    ): Order?
+
     /** 셀러 스코프 단건 조회 — 타 셀러 주문은 없는 것으로 본다. */
     fun findByPublicIdAndSellerId(
         publicId: String,

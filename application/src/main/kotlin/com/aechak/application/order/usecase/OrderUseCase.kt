@@ -1,5 +1,6 @@
 package com.aechak.application.order.usecase
 
+import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
@@ -24,6 +25,12 @@ interface OrderUseCase {
      * 호출 트랜잭션에 참여한다(REQUIRED) — 결제 기록과 주문 전이가 한 트랜잭션이어야 하는 확정 흐름 전제.
      */
     fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult
+
+    /**
+     * 구매자 구매확정 — 배송완료 건만, 진행 중 클레임이 없을 때. 확정과 적립금 지급이 한 트랜잭션이다.
+     * 재호출은 50007로 거절되고 적립금은 다시 지급되지 않는다.
+     */
+    fun confirmPurchase(command: ConfirmPurchaseCommand)
 
     /**
      * 확정 커밋 뒤 주문한 항목을 장바구니에서 걷어낸다 — 자기 트랜잭션.

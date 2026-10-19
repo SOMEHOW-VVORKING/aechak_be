@@ -14,6 +14,8 @@ enum class OrderErrorCode(
     ORDER_ACCESS_DENIED(50003, "셀러 주문을 처리할 권한이 없습니다.", 403),
     ORDER_NOT_ACCEPTABLE(50004, "결제완료 상태의 주문만 발주 확인할 수 있습니다.", 409),
     ORDER_NOT_DISPATCHABLE(50005, "발송 대기 상태의 주문만 발송 처리할 수 있습니다.", 409),
+    ORDER_NOT_CONFIRMABLE(50006, "배송완료 상태이고 진행 중 클레임이 없는 주문만 구매확정할 수 있습니다.", 409),
+    ORDER_ALREADY_CONFIRMED(50007, "이미 구매확정된 주문입니다.", 409),
 
     // 주문그룹
     INVALID_ORDER_GROUP_STATUS_TRANSITION(50100, "허용되지 않은 주문그룹 상태 전이입니다.", 409),
@@ -42,4 +44,7 @@ enum class OrderErrorCode(
     // 배송
     SHIPMENT_NOT_FOUND(50300, "배송 정보를 찾을 수 없습니다.", 404),
     SHIPMENT_ALREADY_DELIVERED(50301, "이미 배송완료 처리된 배송입니다.", 409),
+    SHIPMENT_ALREADY_REGISTERED(50302, "이미 송장이 등록된 주문입니다.", 409),
+    COURIER_NOT_FOUND(50303, "택배사를 찾을 수 없습니다.", 404),
+    INVALID_TRACKING_NUMBER(50304, "송장번호 형식이 올바르지 않습니다.", 400),
 }
