@@ -100,4 +100,10 @@ class OrderGroupRepositoryAdapter(
         }
         return jpaRepository.findExpiredAfter(OrderGroupStatus.PENDING_PAYMENT, now, afterExpiresAt, afterId, page)
     }
+
+    override fun transitionStatusIf(
+        id: Long,
+        expected: OrderGroupStatus,
+        next: OrderGroupStatus,
+    ): Boolean = jpaRepository.transitionStatus(id = id, expected = expected, next = next, now = LocalDateTime.now()) == 1
 }

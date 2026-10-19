@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
@@ -65,6 +66,8 @@ class OrderRepositoryAdapter(
 ) : OrderRepository {
     override fun saveAll(orders: List<Order>): List<Order> = jpaRepository.saveAll(orders)
 
+    override fun findById(id: Long): Order? = jpaRepository.findByIdOrNull(id)
+
     override fun findAllByOrderGroupId(orderGroupId: Long): List<Order> = jpaRepository.findAllByOrderGroupIdOrderByIdAsc(orderGroupId)
 
     override fun findByPublicIdAndBuyerId(
@@ -73,8 +76,6 @@ class OrderRepositoryAdapter(
     ): Order? = jpaRepository.findByPublicIdAndOrderGroupBuyerId(publicId, buyerId)
 
     override fun findByPublicIdForUpdate(publicId: String): Order? = jpaRepository.findForUpdateByPublicId(publicId)
-
-    override fun findById(id: Long): Order? = jpaRepository.findById(id).orElse(null)
 
     override fun findByPublicIdAndSellerId(
         publicId: String,

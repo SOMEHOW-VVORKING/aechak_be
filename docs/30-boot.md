@@ -163,7 +163,9 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 ├── outbox/                      # OutboxSweepSchedule — 아웃박스 재발행(5초 주기)
 ├── payment/                     # PaymentReconciliationSchedule — 결제 대사(매일 04:30 KST, 빠진 날 따라잡기)
 ├── order/                       # OrderExpirySchedule — 주문서 TTL 만료와 재고·적립금 복원(매분, 기본 꺼짐)
-│                                # OrderDeliverySchedule — 집화 지연 경고·배송완료 자동 전이(매일 03:00 KST, 기본 꺼짐)
+│                               # OrderDeliverySchedule — 집화 지연 경고·배송완료 자동 전이(매일 03:00 KST, 기본 꺼짐)
+│                               # ClaimRefundSchedule — 승인된 취소 클레임의 환불 집행(매분, 기본 꺼짐)
+│                               # ClaimAutoApproveSchedule — 셀러 미응답 클레임의 자동승인과 환불(매시, 기본 꺼짐)
 │   └── config/                  # 배치별 정책값(@ConfigurationProperties) — 켜고 끄는 플래그 포함
 ├── job/{도메인}/                 # (예정) Spring Batch Job/Step — ItemProcessor 등에서 UseCase 호출
 └── support/
@@ -179,6 +181,16 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 - 만료 배치가 쓰는 application 패키지는 `order` 외에 `product.option`(재고 변이 UseCase)이다 — 선별 스캔에 함께 등재돼 있다.
 - **상태를 바꾸는 스케줄은 `@ConditionalOnProperty` 로 기본 off**로 올리고, 배포가 끝난 환경에서 설정으로 켠다.
   꺼진 상태에서는 스케줄 빈 자체가 조립되지 않는 것을 `BatchApplicationSmokeTest` 가 고정한다.
+- **클레임 제외 필터는 패키지가 아니라 클래스 단위다.** 구매자·셀러 클레임 파사드는 셀러 자격 검증(`application.seller`)을 요구해
+  배치가 조립하면 쓰지도 않는 의존이 딸려오지만, 같은 패키지의 환불 집행·자동승인 파사드는 자격 검증을 쓰지 않고 배치가 소비한다.
+  패키지 단위로 가리면 그 두 스케줄이 조립되지 않는다.
+  반대로 셀러센터는 `ClaimRefund*`·`ClaimAutoApprove*` 두 이름 규약으로 그 구현체를 뺀다 — 자동승인은 셀러 자격을 대조하지 않고
+  승인하는 경로라 셀러센터에 두면 컨트롤러가 그 빈을 집는 순간 자격 검증이 비어 버린다.
+- **환불 집행 배치는 `order.claim.refund.enabled`로 꺼 둘 수 있고 기본값이 false다.** 이 경로가 실제로 PG 환불을 보내므로,
+  상점이 테스트 상점인지 확인되기 전에는 닫아 둔다. 금액 상한(`payment.cancel.max-amount`)도 기본 0으로 닫혀 있어 이중 안전장치다.
+- **자동승인 배치는 `order.claim.refund.enabled`와 `order.claim.auto-approve.enabled`가 함께 true일 때만 조립된다.**
+  자동승인은 승인에서 끝나지 않고 같은 회차에서 환불을 집행하므로, 환불 스위치가 닫혀 있는데 자동승인만 켜면
+  돈을 내보내지 않기로 한 결정을 우회한다. `@ConditionalOnProperty`에 두 이름을 함께 적어 둘 다 켜져야 돌게 했다.
 - **만료 배치는 `order.expiry.enabled`로 꺼 둘 수 있고 기본값이 false다.** 결제 승인과 만료 취소가 경합하면 돈은 나갔는데 주문은
   취소된 건이 남는데, 환불 집행 경로가 아직 없어 그때는 수동 환불이 필요하다. 켜기 전에 환불 배선이 있어야 한다.
   경합 자체는 건마다 결제 결과를 먼저 확정한 뒤(외부 조회이므로 트랜잭션 밖) 그래도 결제대기로 남은 건만 취소하는 순서로 줄인다.
