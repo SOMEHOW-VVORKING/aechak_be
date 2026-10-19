@@ -1,11 +1,22 @@
 package com.aechak.api.order
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.application.pii.support.PiiStringCodec
+import com.aechak.domain.order.claim.Claim
+import com.aechak.domain.order.claim.ClaimItem
+import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
+import com.aechak.domain.order.group.enums.OrderGroupStatus
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.OrderItem
 import com.aechak.domain.order.order.enums.OrderStatus
+import com.aechak.domain.order.shipment.CourierMaster
+import com.aechak.domain.order.shipment.Shipment
+import com.aechak.domain.order.shipment.enums.ShipmentType
+import com.aechak.domain.payment.Payment
+import com.aechak.domain.payment.enums.PaymentMethod
+import com.aechak.domain.payment.repository.PaymentRepository
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.option.OptionCombination
 import com.aechak.domain.product.product.Product
@@ -42,6 +53,12 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var securityFilterChain: FilterChainProxy
+
+    @Autowired
+    private lateinit var piiStringCodec: PiiStringCodec
+
+    @Autowired
+    private lateinit var paymentRepository: PaymentRepository
 
     private lateinit var mockMvc: MockMvc
 
@@ -91,6 +108,8 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         buyerId: Long,
         sellers: List<SellerOrderSpec>,
         groupStatus: com.aechak.domain.order.group.enums.OrderGroupStatus,
+        receiverName: String = RECEIVER_NAME,
+        contactNumber: String = CONTACT_NUMBER,
     ): Pair<String, List<String>> =
         tx.execute {
             val productAmount = sellers.sumOf { it.unitPrice * it.quantity }
@@ -101,12 +120,12 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
                     deliveryAddressId = 1L,
                     deliveryAddress =
                         DeliveryAddressSnapshot(
-                            receiverNameEnc = "enc",
-                            contactNumberEnc = "enc",
+                            receiverNameEnc = piiStringCodec.encrypt(receiverName),
+                            contactNumberEnc = piiStringCodec.encrypt(contactNumber),
                             zipCode = "12345",
                             baseAddress = "서울시 애착구 멍냥로 1",
                             detailAddress = "101동",
-                            deliveryMemo = null,
+                            deliveryMemo = "문 앞에 놓아주세요",
                         ),
                     usedPoint = 0,
                     totalProductAmount = productAmount,
@@ -143,6 +162,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
                                 ),
                         )
                     forceOrderStatus(order, spec.status)
+                    spec.autoConfirmDueAt?.let { forceAutoConfirmDueAt(order, it) }
                     em.persist(order)
                     order.publicId
                 }
@@ -158,6 +178,15 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         val field = Order::class.java.getDeclaredField("status")
         field.isAccessible = true
         field.set(order, status)
+    }
+
+    private fun forceAutoConfirmDueAt(
+        order: Order,
+        dueAt: LocalDateTime,
+    ) {
+        val field = Order::class.java.getDeclaredField("autoConfirmDueAt")
+        field.isAccessible = true
+        field.set(order, dueAt)
     }
 
     private fun forceGroupStatus(
@@ -179,6 +208,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         val quantity: Int,
         val shippingFee: Long,
         val status: OrderStatus,
+        val autoConfirmDueAt: LocalDateTime? = null,
     )
 
     private fun specOf(
@@ -188,6 +218,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         price: Long,
         status: OrderStatus,
         quantity: Int = 1,
+        autoConfirmDueAt: LocalDateTime? = null,
     ): SellerOrderSpec {
         val (comboId, versionId) = seedCombo(sellerId, sellerName, price, productName)
         val productId =
@@ -196,8 +227,78 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
                 .setParameter("id", comboId)
                 .singleResult
                 .toLong()
-        return SellerOrderSpec(sellerId, sellerName, productId, comboId, versionId, price, quantity, 3000L, status)
+        return SellerOrderSpec(sellerId, sellerName, productId, comboId, versionId, price, quantity, 3000L, status, autoConfirmDueAt)
     }
+
+    /** 택배사 마스터를 없으면 심고 운송장을 하나 등록한다. */
+    private fun seedShipment(
+        orderPublicId: String,
+        courierCode: String,
+        courierName: String,
+        trackingNumber: String,
+        shipmentType: ShipmentType = ShipmentType.INITIAL,
+    ) {
+        tx.executeWithoutResult {
+            val courier =
+                em.find(CourierMaster::class.java, courierCode)
+                    ?: CourierMaster.register(courierCode, courierName).also { em.persist(it) }
+            val order = loadOrder(orderPublicId)
+            em.persist(Shipment.dispatch(courier, order, trackingNumber, shipmentType))
+            em.flush()
+        }
+    }
+
+    /** 취소 클레임을 요청 상태로 심고 그 publicId를 돌려준다. */
+    private fun seedRequestedClaim(orderPublicId: String): String =
+        tx.execute {
+            val order = loadOrder(orderPublicId)
+            val claim =
+                Claim.request(
+                    order = order,
+                    claimType = ClaimType.CANCEL,
+                    reasonCode = "CHANGE_MIND",
+                    reasonDetail = "단순 변심",
+                    items = order.items.map { ClaimItem.of(it, it.quantity, it.unitPriceSnapshot * it.quantity) },
+                    autoApproveDueAt = LocalDateTime.now().plusDays(2),
+                )
+            em.persist(claim)
+            em.flush()
+            claim.publicId
+        }!!
+
+    private fun seedApprovedPayment(
+        orderGroupPublicId: String,
+        method: PaymentMethod,
+        paidAmount: Long,
+    ) {
+        tx.executeWithoutResult {
+            val groupId =
+                em
+                    .createQuery("select g.id from OrderGroup g where g.publicId = :pid", java.lang.Long::class.java)
+                    .setParameter("pid", orderGroupPublicId)
+                    .singleResult
+                    .toLong()
+            val prepared = Payment.prepare(groupId, "pay-${sig++}", method, paidAmount)
+            paymentRepository.save(prepared.approve("tx-${sig++}", paidAmount))
+        }
+    }
+
+    private fun loadOrder(orderPublicId: String): Order =
+        em
+            .createQuery("select o from Order o where o.publicId = :pid", Order::class.java)
+            .setParameter("pid", orderPublicId)
+            .singleResult
+
+    private fun detailBody(
+        token: String,
+        orderPublicId: String,
+    ): String =
+        mockMvc
+            .perform(get("/api/v1/orders/$orderPublicId").bearer(token))
+            .andExpect(status().isOk)
+            .andReturn()
+            .response
+            .getContentAsString(Charsets.UTF_8)
 
     private fun MockHttpServletRequestBuilder.bearer(token: String): MockHttpServletRequestBuilder =
         this.header(HttpHeaders.AUTHORIZATION, "Bearer $token")
@@ -560,5 +661,221 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
             .perform(get("/api/v1/orders/01JXFYK3S9GQ4T7VBW2N8DHMCE").bearer(token))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value(50000))
+    }
+
+    @Test
+    fun `상세는 리뷰 작성용 품목 식별자와 상품 식별자를 싣는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val spec = specOf(71L, "냥이상점", "고양이 자동 급식기", 64000L, OrderStatus.PURCHASE_CONFIRMED)
+        val (_, orderPublicIds) = seedOrderGroup(buyerId, listOf(spec), OrderGroupStatus.PAID)
+
+        val body = detailBody(token, orderPublicIds.first())
+
+        assertEquals(spec.productId, JsonPath.read<Int>(body, "$.data.items[0].productId").toLong(), "상품 식별자가 실려야 한다")
+        assertTrue(JsonPath.read<Int>(body, "$.data.items[0].orderItemId") > 0, "리뷰 작성에 쓸 주문품목 식별자가 실려야 한다: $body")
+    }
+
+    @Test
+    fun `상세는 주문 당시 배송지 스냅샷을 복호해 싣는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                buyerId,
+                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.PAID)),
+                OrderGroupStatus.PAID,
+            )
+
+        mockMvc
+            .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.deliveryAddress.receiverName").value(RECEIVER_NAME))
+            .andExpect(jsonPath("$.data.deliveryAddress.contactNumber").value(CONTACT_NUMBER))
+            .andExpect(jsonPath("$.data.deliveryAddress.zipCode").value("12345"))
+            .andExpect(jsonPath("$.data.deliveryAddress.baseAddress").value("서울시 애착구 멍냥로 1"))
+            .andExpect(jsonPath("$.data.deliveryAddress.detailAddress").value("101동"))
+            .andExpect(jsonPath("$.data.deliveryAddress.deliveryMemo").value("문 앞에 놓아주세요"))
+    }
+
+    @Test
+    fun `상세는 결제수단을 싣고 결제 행이 없으면 비운다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (paidGroup, paidOrders) =
+            seedOrderGroup(buyerId, listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.PAID)), OrderGroupStatus.PAID)
+        val (_, noPaymentOrders) =
+            seedOrderGroup(buyerId, listOf(specOf(72L, "멍멍마트", "사료", 20000L, OrderStatus.PAID)), OrderGroupStatus.PAID)
+        seedApprovedPayment(paidGroup, PaymentMethod.KAKAO_PAY, 67000L)
+
+        mockMvc
+            .perform(get("/api/v1/orders/${paidOrders.first()}").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.payment.paymentMethod").value("KAKAO_PAY"))
+        mockMvc
+            .perform(get("/api/v1/orders/${noPaymentOrders.first()}").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.payment.paymentMethod").doesNotExist())
+    }
+
+    @Test
+    fun `상세는 등록된 운송장과 배송 추적을 싣는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                buyerId,
+                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.SHIPPING)),
+                OrderGroupStatus.PAID,
+            )
+        seedShipment(orderPublicIds.first(), "CJ", "CJ대한통운", "123456789012")
+
+        mockMvc
+            .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.shipment.courierCode").value("CJ"))
+            .andExpect(jsonPath("$.data.shipment.courierName").value("CJ대한통운"))
+            .andExpect(jsonPath("$.data.shipment.trackingNumber").value("123456789012"))
+            .andExpect(jsonPath("$.data.shipment.dispatchedAt").exists())
+            .andExpect(jsonPath("$.data.shipment.deliveredAt").doesNotExist())
+            .andExpect(jsonPath("$.data.shipment.lastTrackingStatus").doesNotExist())
+    }
+
+    @Test
+    fun `교환 재발송이 있으면 가장 나중에 등록된 운송장을 싣는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                buyerId,
+                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.SHIPPING)),
+                OrderGroupStatus.PAID,
+            )
+        seedShipment(orderPublicIds.first(), "CJ", "CJ대한통운", "111111111111")
+        seedShipment(orderPublicIds.first(), "HANJIN", "한진택배", "222222222222", ShipmentType.EXCHANGE_RESHIP)
+
+        mockMvc
+            .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.shipment.trackingNumber").value("222222222222"))
+            .andExpect(jsonPath("$.data.shipment.courierCode").value("HANJIN"))
+    }
+
+    @Test
+    fun `배송 정보가 없는 주문 상세는 운송장과 구매확정 기한과 클레임을 비운다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                buyerId,
+                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.PAID)),
+                OrderGroupStatus.PAID,
+            )
+
+        mockMvc
+            .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.shipment").doesNotExist())
+            .andExpect(jsonPath("$.data.purchaseConfirmDueAt").doesNotExist())
+            .andExpect(jsonPath("$.data.activeClaim").doesNotExist())
+    }
+
+    @Test
+    fun `배송완료 주문 상세는 구매확정 기한을 싣는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val dueAt = LocalDateTime.now().plusDays(7).withNano(0)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                buyerId,
+                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.DELIVERED, autoConfirmDueAt = dueAt)),
+                OrderGroupStatus.PAID,
+            )
+
+        val body = detailBody(token, orderPublicIds.first())
+
+        assertTrue(
+            JsonPath.read<String>(body, "$.data.purchaseConfirmDueAt").startsWith(dueAt.toLocalDate().toString()),
+            "배송완료 건은 자동 구매확정 기한을 실어야 한다: $body",
+        )
+    }
+
+    @Test
+    fun `진행 중 클레임이 있으면 상세가 그 클레임을 싣는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                buyerId,
+                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.PAID)),
+                OrderGroupStatus.PAID,
+            )
+        val claimPublicId = seedRequestedClaim(orderPublicIds.first())
+
+        mockMvc
+            .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.activeClaim.claimPublicId").value(claimPublicId))
+            .andExpect(jsonPath("$.data.activeClaim.claimType").value("CANCEL"))
+            .andExpect(jsonPath("$.data.activeClaim.status").value("CLAIM_REQUESTED"))
+            .andExpect(jsonPath("$.data.activeClaim.refundStatus").value("NONE"))
+    }
+
+    @Test
+    fun `거부된 클레임은 진행 중으로 싣지 않는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                buyerId,
+                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.PAID)),
+                OrderGroupStatus.PAID,
+            )
+        seedRequestedClaim(orderPublicIds.first())
+        tx.executeWithoutResult {
+            em
+                .createQuery("select c from Claim c", Claim::class.java)
+                .singleResult
+                .rejectBySeller("하자가 확인되지 않습니다")
+        }
+
+        mockMvc
+            .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.activeClaim").doesNotExist())
+    }
+
+    @Test
+    fun `남의 주문 상세는 배송지 스냅샷도 내주지 않는다`() {
+        val mine = createActiveUser()
+        val other = createActiveUser()
+        val token = mintAccessToken(mine)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                other,
+                listOf(specOf(71L, "남의상점", "남의 상품", 5000L, OrderStatus.DELIVERED)),
+                OrderGroupStatus.PAID,
+                receiverName = "남의수령인",
+                contactNumber = "01099998888",
+            )
+        seedShipment(orderPublicIds.first(), "CJ", "CJ대한통운", "999999999999")
+
+        val body =
+            mockMvc
+                .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
+                .andExpect(status().isNotFound)
+                .andExpect(jsonPath("$.errorCode").value(50000))
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+
+        assertTrue(!body.contains("남의수령인"), "타인 배송지 수령인이 응답에 새면 안 된다: $body")
+        assertTrue(!body.contains("01099998888"), "타인 연락처가 응답에 새면 안 된다: $body")
+        assertTrue(!body.contains("999999999999"), "타인 운송장 번호가 응답에 새면 안 된다: $body")
+    }
+
+    private companion object {
+        private const val RECEIVER_NAME = "김구매"
+        private const val CONTACT_NUMBER = "01012345678"
     }
 }
