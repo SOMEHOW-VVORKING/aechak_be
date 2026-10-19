@@ -42,6 +42,14 @@ abstract class IntegrationTestBase {
     @BeforeEach
     fun cleanDatabase() = cleaner.truncateAll()
 
+    /** 구매확정을 태우는 테스트가 요구하는 전역 수수료율 정책 1행을 심는다. */
+    protected fun seedGlobalSettlementFeePolicy() {
+        tx.execute {
+            em.persist(SettlementFeePolicyFixture.global())
+            em.flush()
+        }
+    }
+
     /** ACTIVE 유저를 심고 그 id를 반환한다. 인증이 필요한 통합 테스트 공용. */
     protected fun createActiveUser(): Long =
         tx.execute {

@@ -713,9 +713,12 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
             val order = em.find(Order::class.java, orderId)
             val claim =
                 Claim.request(
-                    claimType = claimType,
                     order = order,
+                    claimType = claimType,
+                    reasonCode = "CHANGE_OF_MIND",
+                    reasonDetail = null,
                     items = listOf(ClaimItem.of(order.items.first(), 1, 25_000L)),
+                    autoApproveDueAt = LocalDateTime.now().plusDays(2),
                 )
             em.persist(claim)
             em.flush()

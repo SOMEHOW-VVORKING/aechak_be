@@ -2,11 +2,13 @@ package com.aechak.application.order.facade
 
 import com.aechak.application.order.cart.service.CartService
 import com.aechak.application.order.port.OrderItemForReviewQueryPort
+import com.aechak.application.order.service.OrderConfirmService
 import com.aechak.application.order.service.OrderExpiryService
 import com.aechak.application.order.service.OrderService
 import com.aechak.application.order.support.OrderPointLedger
 import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.command.ExpireOrderGroupCommand
 import com.aechak.application.order.usecase.query.ExpiredOrderGroupQuery
@@ -15,30 +17,36 @@ import com.aechak.application.order.usecase.result.CreateOrderGroupResult
 import com.aechak.application.order.usecase.result.ExpireOrderGroupResult
 import com.aechak.application.order.usecase.result.ExpiredOrderGroupResult
 import com.aechak.application.order.usecase.result.OrderItemForReviewResult
+import com.aechak.application.settlement.usecase.SettlementUseCase
+import com.aechak.application.settlement.usecase.command.CreateSettlementLedgerCommand
 import com.aechak.application.user.address.usecase.DeliveryAddressUseCase
 import com.aechak.application.user.point.usecase.PointUseCase
+import com.aechak.application.user.point.usecase.command.EarnPurchaseRewardCommand
 import com.aechak.application.user.point.usecase.command.UsePointCommand
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDateTime
 
 /**
  * order 도메인 진입점의 유일한 구현체. 트랜잭션 경계는 여기 고정.
- * 타 BC 협력(배송지·적립금)은 그쪽 UseCase를, 같은 BC의 장바구니는 CartService를 주입받는다.
+ * 타 BC 협력(배송지·적립금·정산)은 그쪽 UseCase를, 같은 BC의 장바구니는 CartService를 주입받는다.
  * 만료 계약을 인터페이스로 가른 이유는 소비 모듈이 갈려서다 — 구매자 앱은 쓰지 않고 배치만 쓴다.
  */
 @Service
 class OrderFacade(
     private val orderService: OrderService,
     private val orderExpiryService: OrderExpiryService,
+    private val orderConfirmService: OrderConfirmService,
     private val cartService: CartService,
     private val deliveryAddressUseCase: DeliveryAddressUseCase,
     private val pointUseCase: PointUseCase,
     private val orderItemForReviewQueryPort: OrderItemForReviewQueryPort,
+    private val settlementUseCase: SettlementUseCase,
     transactionManager: PlatformTransactionManager,
 ) : OrderUseCase,
     OrderExpiryUseCase {
@@ -83,6 +91,35 @@ class OrderFacade(
     @Transactional
     override fun expireOrderGroup(command: ExpireOrderGroupCommand): ExpireOrderGroupResult =
         orderExpiryService.expire(command.orderGroupId, LocalDateTime.now())
+
+    /**
+     * 확정·적립금·정산 원장을 한 트랜잭션에 묶는다 — 셋 중 하나가 실패하면 확정도 함께 롤백된다.
+     * READ_COMMITTED: 선점 UPDATE 뒤의 클레임 조회가 REPEATABLE READ 스냅샷에 갇히면 그 사이 커밋된 클레임을 놓친다.
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    override fun confirmPurchase(command: ConfirmPurchaseCommand) {
+        val confirmed = orderConfirmService.confirmPurchase(command)
+        pointUseCase.earnPurchaseReward(
+            EarnPurchaseRewardCommand(
+                buyerUserId = command.buyerId,
+                orderId = confirmed.orderId,
+                orderPublicId = command.orderPublicId,
+                productAmount = confirmed.productAmount,
+            ),
+        )
+        settlementUseCase.createLedgerOnConfirm(
+            CreateSettlementLedgerCommand(
+                sellerId = confirmed.sellerId,
+                orderId = confirmed.orderId,
+                confirmedAt = confirmed.confirmedAt,
+                sellerShippingFee = confirmed.sellerShippingFee,
+                items =
+                    confirmed.items.map {
+                        CreateSettlementLedgerCommand.Item(orderItemId = it.orderItemId, grossAmount = it.grossAmount)
+                    },
+            ),
+        )
+    }
 
     @Transactional
     override fun clearOrderedCartItems(

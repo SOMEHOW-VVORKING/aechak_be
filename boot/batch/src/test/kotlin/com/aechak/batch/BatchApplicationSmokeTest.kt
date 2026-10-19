@@ -2,8 +2,10 @@ package com.aechak.batch
 
 import com.aechak.application.order.claim.usecase.ClaimRefundUseCase
 import com.aechak.application.order.usecase.OrderExpiryUseCase
+import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.payment.port.PaymentReconciliationSourcePort
 import com.aechak.application.payment.reconciliation.usecase.PaymentReconciliationUseCase
+import com.aechak.application.settlement.usecase.SettlementUseCase
 import com.aechak.batch.order.ClaimRefundSchedule
 import com.aechak.batch.order.OrderExpirySchedule
 import com.aechak.batch.payment.PaymentReconciliationSchedule
@@ -46,6 +48,14 @@ class BatchApplicationSmokeTest : BatchIntegrationTestBase() {
         context.getBean(ClaimRefundSchedule::class.java)
         context.getBean(ClaimRefundUseCase::class.java)
         assertFalse(context.containsBean("claimFacade"), "셀러 자격 검증을 요구하는 클레임 파사드가 배치에 섞이면 안 된다")
+    }
+
+    @Test
+    fun `구매확정 주문 파사드와 그 정산 의존이 조립된다`() {
+        // 확정이 정산 원장을 만들게 되면서 OrderUseCase가 SettlementUseCase를 요구한다 —
+        // 스캔에서 application.settlement가 빠지면 자동확정 배치가 부팅에서 깨진다
+        context.getBean(OrderUseCase::class.java)
+        context.getBean(SettlementUseCase::class.java)
     }
 
     @Test

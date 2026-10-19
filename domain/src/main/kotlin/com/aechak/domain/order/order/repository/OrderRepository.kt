@@ -9,6 +9,7 @@ interface OrderRepository {
 
     fun findById(id: Long): Order?
 
+    /** 주문 id 오름차순 */
     fun findAllByOrderGroupId(orderGroupId: Long): List<Order>
 
     /**

@@ -1,7 +1,9 @@
 package com.aechak.application.order.seller.usecase
 
 import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
+import com.aechak.application.order.seller.usecase.command.RegisterShipmentCommand
 import com.aechak.application.order.seller.usecase.query.SellerOrderSearchQuery
+import com.aechak.application.order.seller.usecase.result.RegisterShipmentResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderDetailResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderSummaryResult
 import com.aechak.application.support.OffsetPageResult
@@ -22,4 +24,7 @@ interface SellerOrderUseCase {
         sellerId: Long,
         orderPublicId: String,
     ): SellerOrderDetailResult
+
+    /** 송장 등록 — 최초 발송 1건을 만들고 주문을 배송중으로 전이한다. */
+    fun registerShipment(command: RegisterShipmentCommand): RegisterShipmentResult
 }

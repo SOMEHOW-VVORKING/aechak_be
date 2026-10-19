@@ -54,6 +54,9 @@ class OrderItem protected constructor(
     @Column(nullable = false)
     val productVersionId: Long = productVersionId
 
+    /** 할인 안분액을 뺀 이 품목의 상품금액 — 구매확정 적립과 정산 원장이 같은 값을 기준으로 삼는다. */
+    fun productAmountAfterDiscount(): Long = Math.multiplyExact(unitPriceSnapshot, quantity.toLong()) - discountAllocatedAmount
+
     /** 클레임 환불 집행에 따른 품목 취소. */
     fun markCancelled() {
         transitionTo(OrderItemStatus.CANCELLED)

@@ -5,6 +5,7 @@ import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
 import com.aechak.domain.order.claim.enums.SellerApprovalStatus
+import com.aechak.domain.order.claim.policy.ClaimProgressPolicy
 import com.aechak.domain.order.claim.repository.ClaimRepository
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
@@ -82,6 +83,12 @@ interface ClaimJpaRepository : JpaRepository<Claim, Long> {
         @Param("dueBefore") dueBefore: LocalDateTime,
         pageable: Pageable,
     ): List<Claim>
+
+    @Query("select count(c) > 0 from Claim c where c.orderId = :orderId and c.status in :statuses")
+    fun existsByOrderIdAndStatusIn(
+        @Param("orderId") orderId: Long,
+        @Param("statuses") statuses: Collection<ClaimStatus>,
+    ): Boolean
 }
 
 @Repository
@@ -120,4 +127,7 @@ class ClaimRepositoryAdapter(
             dueBefore = dueBefore,
             pageable = PageRequest.of(0, limit),
         )
+
+    override fun existsInProgressByOrderId(orderId: Long): Boolean =
+        jpaRepository.existsByOrderIdAndStatusIn(orderId, ClaimProgressPolicy.IN_PROGRESS)
 }
