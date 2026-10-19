@@ -1,9 +1,11 @@
 package com.aechak.application.payment.usecase
 
+import com.aechak.application.payment.usecase.command.CancelPaymentCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByGatewayCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentCommand
 import com.aechak.application.payment.usecase.command.PreparePaymentCommand
+import com.aechak.application.payment.usecase.result.CancelPaymentResult
 import com.aechak.application.payment.usecase.result.CompletePaymentResult
 import com.aechak.application.payment.usecase.result.PreparePaymentResult
 
@@ -28,4 +30,11 @@ interface PaymentUseCase {
      * 우리가 모르는 결제면 null. 결과 status가 PAID일 때만 확정이 성립한 것이다(그 외는 미성사 상태 보고).
      */
     fun completePaymentByGateway(command: CompletePaymentByGatewayCommand): CompletePaymentResult?
+
+    /**
+     * 승인된 결제의 전액·부분 취소. 취소 선점을 먼저 커밋해 동시 취소를 하나로 좁히고,
+     * PG 호출은 트랜잭션 밖에서 하고, PG가 확정한 금액만 원장(취소가능액)에서 뺀다.
+     * 원승인액은 줄지 않는다. PG가 비동기로 접수만 하면 원장을 건드리지 않고 요청 상태로 남긴다.
+     */
+    fun cancelPayment(command: CancelPaymentCommand): CancelPaymentResult
 }

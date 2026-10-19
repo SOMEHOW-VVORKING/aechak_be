@@ -17,6 +17,7 @@ import com.aechak.domain.payment.reconciliation.ReconciliationResolution
  * 2. 돈이 걸린 나머지(금액 불일치·우리만 승인·PG 취소 미반영·모르는 결제·취소된 그룹의 승인)는 사람 몫이다.
  *
  * 우선순위: 결제 행 없음 → 우리 원장 내부 불일치 → (PG 승인) 그룹 취소 → 금액 → 상태.
+ * 취소 선점만 남은 건은 금액이 일치해도 일치로 접지 않는다 — 접으면 이월 대상에서 빠져 선점이 영구히 남는다.
  * 우리 결제가 이미 승인이면 어느 분기에서든 승인 원장(등록금액·실결제액)이 PG 승인액과 같아야 한다 — 다르면 자동 보정으로 보내지 않는다.
  */
 object PaymentReconciliationClassifier {
@@ -33,7 +34,8 @@ object PaymentReconciliationClassifier {
         if (payment == null) return manual(MismatchType.PG_ONLY_UNKNOWN)
         // 결제 행은 항상 그룹을 가리킨다 — 없으면 PG와 무관하게 우리 데이터가 깨진 것
         if (group == null) return manual(MismatchType.OURS_INCONSISTENT)
-        val oursApproved = payment.status == PaymentStatus.APPROVED
+        // 취소 요청·부분취소·전액취소도 "승인이 성립한 뒤"다 — 좁게 보면 모든 취소 건이 원장 깨짐으로 읽힌다
+        val oursApproved = payment.status.isApprovedOrLater
         // 결제완료 이후 상태(PAID·부분취소)의 그룹에 결제 행이 미승인이면 확정 트랜잭션이 반만 남은 것 — PG 대답과 무관하게 사람이 봐야 한다
         val groupSettled = group.status == OrderGroupStatus.PAID || group.status == OrderGroupStatus.PARTIALLY_CANCELLED
         if (groupSettled && !oursApproved) return manual(MismatchType.OURS_INCONSISTENT)
@@ -66,8 +68,10 @@ object PaymentReconciliationClassifier {
         if (oursApproved) {
             // 승인 원장이 PG와 다르면 그룹 상태와 무관하게 사람 확인 — 확정 본체의 approve()는 이미 승인된 행을 고치지 않는다
             if (!approvedLedgerAgrees(group, payment, gateway)) return manual(MismatchType.AMOUNT_MISMATCH)
-            // 취소가능액도 원장의 일부다 — PG가 취소한 적 없으면 승인액 그대로 남아 있어야 한다
+            // 취소가능액도 원장의 일부다 — PG가 취소한 적 없으면 승인액 그대로 남아 있어야 한다.
+            // 선점(CANCEL_REQUESTED)은 금액을 건드리지 않으므로 이 비교를 먼저 해야, 잘못 깎은 원장이 대기로 숨지 않는다
             if (payment.cancellableAmount != gateway.paidAmount - gateway.cancelledAmount) return manual(MismatchType.AMOUNT_MISMATCH)
+            if (payment.status == PaymentStatus.CANCEL_REQUESTED) return manual(MismatchType.CANCEL_IN_FLIGHT)
             if (group.status == OrderGroupStatus.PAID) return matched()
         }
         // 그룹이 결제대기 — 둘 다 못 들었거나 승인 기록만 남고 전이가 유실된 것. 확정 본체가 다시 PG에 묻고 금액을 대조한 뒤 선점한다
@@ -85,6 +89,8 @@ object PaymentReconciliationClassifier {
         // 취소 전 원승인액부터 같아야 취소액 비교가 의미 있다
         if (!approvedLedgerAgrees(group, payment, gateway)) return manual(MismatchType.AMOUNT_MISMATCH)
         val cancellableAgrees = payment.cancellableAmount == gateway.paidAmount - gateway.cancelledAmount
+        // 이전 취소가 정합이어도 선점이 남아 있으면 끝나지 않은 요청이 있다 — 일치로 접으면 그 요청이 사라진다
+        if (cancellableAgrees && payment.status == PaymentStatus.CANCEL_REQUESTED) return manual(MismatchType.CANCEL_IN_FLIGHT)
         val groupAgrees =
             when (gateway.status) {
                 PaymentGatewayStatus.CANCELLED -> group.status == OrderGroupStatus.CANCELLED
@@ -93,7 +99,10 @@ object PaymentReconciliationClassifier {
         return if (cancellableAgrees && groupAgrees) matched() else manual(MismatchType.PG_CANCELLED_OURS_UNSYNCED)
     }
 
-    /** 주문금액·등록금액·우리 실결제액·PG 승인액이 전부 같아야 한다 — 하나라도 어긋나면 사람 확인 */
+    /**
+     * 주문금액·등록금액·우리 실결제액·PG 승인액이 전부 같아야 한다 — 하나라도 어긋나면 사람 확인.
+     * 취소는 이 넷을 바꾸지 않는다(줄어드는 것은 취소가능액뿐) — 그래서 취소 건에도 그대로 적용된다.
+     */
     private fun approvedLedgerAgrees(
         group: OrderGroup,
         payment: Payment,

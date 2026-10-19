@@ -15,8 +15,6 @@ import com.aechak.domain.order.shipment.CourierMaster
 import com.aechak.domain.order.shipment.Shipment
 import com.aechak.domain.order.shipment.enums.ShipmentType
 import com.aechak.infra.persistence.order.order.OrderRepositoryAdapter
-import jakarta.persistence.EntityManager
-import jakarta.persistence.PersistenceContext
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -29,7 +27,6 @@ import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.TestPropertySource
-import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.ConcurrentHashMap
@@ -51,12 +48,6 @@ private const val CONFIGURED_AUTO_CONFIRM_DAYS = 7L
     ],
 )
 class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
-    @PersistenceContext
-    private lateinit var em: EntityManager
-
-    @Autowired
-    private lateinit var tx: TransactionTemplate
-
     @Autowired
     private lateinit var jdbcTemplate: JdbcTemplate
 
