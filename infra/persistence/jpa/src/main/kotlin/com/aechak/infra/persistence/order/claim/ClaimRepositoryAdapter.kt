@@ -67,13 +67,13 @@ interface ClaimJpaRepository : JpaRepository<Claim, Long> {
     // 상태 선두 인덱스(status, auto_approve_due_at)의 접두를 타고 승인 건만 훑는다
     @Query(
         "select c from Claim c " +
-            "where c.status = :status and c.refundStatus = :refundStatus and c.claimType = :claimType " +
+            "where c.status = :status and c.refundStatus = :refundStatus and c.claimType in :claimTypes " +
             "order by c.id asc",
     )
     fun findRefundPending(
         @Param("status") status: ClaimStatus,
         @Param("refundStatus") refundStatus: RefundStatus,
-        @Param("claimType") claimType: ClaimType,
+        @Param("claimTypes") claimTypes: Collection<ClaimType>,
         pageable: Pageable,
     ): List<Claim>
 
@@ -115,7 +115,7 @@ class ClaimRepositoryAdapter(
         jpaRepository.findRefundPending(
             status = ClaimStatus.APPROVED,
             refundStatus = RefundStatus.NONE,
-            claimType = ClaimType.CANCEL,
+            claimTypes = ClaimType.REFUNDABLE,
             pageable = PageRequest.of(0, limit),
         )
 

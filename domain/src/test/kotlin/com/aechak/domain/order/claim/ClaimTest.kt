@@ -96,10 +96,27 @@ class ClaimTest {
     }
 
     @Test
-    fun `반품과 교환은 아직 요청을 받지 않는다`() {
+    fun `반품과 교환은 배송완료 주문에만 걸린다`() {
         val delivered = order(status = OrderStatus.DELIVERED)
 
-        val exception = assertFailsWith<BusinessException> { request(delivered, ClaimType.RETURN) }
+        assertEquals(ClaimType.RETURN, request(delivered, ClaimType.RETURN).claimType)
+        assertEquals(ClaimType.EXCHANGE, request(delivered, ClaimType.EXCHANGE).claimType)
+    }
+
+    @Test
+    fun `배송 중 주문에는 반품을 요청할 수 없다`() {
+        val shipping = order(status = OrderStatus.SHIPPING)
+
+        val exception = assertFailsWith<BusinessException> { request(shipping, ClaimType.RETURN) }
+
+        assertEquals(OrderErrorCode.CLAIM_NOT_REQUESTABLE, exception.errorCode)
+    }
+
+    @Test
+    fun `배송완료 주문에는 취소를 요청할 수 없다`() {
+        val delivered = order(status = OrderStatus.DELIVERED)
+
+        val exception = assertFailsWith<BusinessException> { request(delivered, ClaimType.CANCEL) }
 
         assertEquals(OrderErrorCode.CLAIM_NOT_REQUESTABLE, exception.errorCode)
     }

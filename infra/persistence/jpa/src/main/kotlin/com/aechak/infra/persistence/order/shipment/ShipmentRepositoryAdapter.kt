@@ -12,6 +12,11 @@ import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
 interface ShipmentJpaRepository : JpaRepository<Shipment, Long> {
+    fun findByClaimIdAndShipmentType(
+        claimId: Long,
+        shipmentType: ShipmentType,
+    ): Shipment?
+
     @Query("select s from Shipment s where s.order.id = :orderId and s.shipmentType = :shipmentType")
     fun findByOrderIdAndShipmentType(
         @Param("orderId") orderId: Long,
@@ -40,6 +45,11 @@ class ShipmentRepositoryAdapter(
     private val jpaRepository: ShipmentJpaRepository,
 ) : ShipmentRepository {
     override fun save(shipment: Shipment): Shipment = jpaRepository.save(shipment)
+
+    override fun findByClaimIdAndShipmentType(
+        claimId: Long,
+        shipmentType: ShipmentType,
+    ): Shipment? = jpaRepository.findByClaimIdAndShipmentType(claimId, shipmentType)
 
     override fun findByOrderIdAndShipmentType(
         orderId: Long,
