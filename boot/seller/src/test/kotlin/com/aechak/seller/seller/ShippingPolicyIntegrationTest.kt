@@ -159,6 +159,18 @@ class ShippingPolicyIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `배송 정책 안내가 허용 길이를 넘으면 400과 90001이다`() {
+        val tooLong = "가".repeat(Seller.MAX_SHIPPING_POLICY_TEXT_LENGTH + 1)
+
+        mockMvc
+            .perform(putRequest(token, policyJson().replace("오후 2시 이전 결제분은 당일 출고합니다.", tooLong)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+
+        assertNull(loadSeller(sellerUserId).shippingPolicyText, "거절된 요청이 값을 바꾸면 안 된다")
+    }
+
+    @Test
     fun `없는 택배사로 저장하면 404와 50303이다`() {
         mockMvc
             .perform(putRequest(token, policyJson(defaultCourierCode = "NOPE")))

@@ -1,6 +1,7 @@
 package com.aechak.seller.seller.request
 
 import com.aechak.application.seller.usecase.command.UpdateShippingPolicyCommand
+import com.aechak.domain.seller.seller.Seller
 import jakarta.validation.constraints.Size
 
 /**
@@ -30,6 +31,7 @@ data class ShippingPolicyUpdateRequest(
     val returnFee: Long,
     val exchangeFee: Long,
     val avgDispatchDays: Int,
+    @field:Size(max = Seller.MAX_SHIPPING_POLICY_TEXT_LENGTH, message = "배송 정책 안내는 {max}자 이하여야 합니다.")
     val shippingPolicyText: String? = null,
 ) {
     fun toCommand(sellerId: Long): UpdateShippingPolicyCommand =

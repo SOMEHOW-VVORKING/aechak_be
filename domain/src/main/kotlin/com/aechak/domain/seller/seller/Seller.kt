@@ -226,6 +226,9 @@ class Seller protected constructor(
         /** MySQL 중복 키 메시지의 PK 식별자 — 같은 신청 동시 승인의 개점 INSERT 충돌 판별용. */
         const val PK_CONFLICT_MARKER = "sellers.PRIMARY"
 
+        /** shipping_policy_text가 TEXT 컬럼이라 바이트 한도를 넘지 않게 글자 수로 먼저 막는다. */
+        const val MAX_SHIPPING_POLICY_TEXT_LENGTH = 2000
+
         const val MIN_DISPATCH_DAYS = 1
         const val MAX_DISPATCH_DAYS = 7
         const val DEFAULT_DISPATCH_DAYS = 2
