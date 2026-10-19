@@ -1,7 +1,7 @@
 # 로컬 개발 — MySQL은 docker compose(api와 공유). 스키마·마이그레이션은 api 모듈 소유.
 # api가 발급한 토큰으로 로컬 어드민을 호출하려면 api와 같은 AUTH_JWT_* 키를 환경변수로 주입한다.
 server:
-  port: 8081   # api(8080)와 동시 기동
+  port: 8082   # api(8080)·seller(8081)와 동시 기동
 
 spring:
   datasource:
@@ -10,7 +10,7 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:local}
 
 api:
-  cors-allowed-origins: ""   # 어드민 웹 FE 미착수 — dev 포트 확정 시 추가
+  cors-allowed-origins: http://localhost:5174   # web-admin dev
 
 # 최초 관리자 만들기 — api에서 소셜 로그인으로 가입하고 온보딩까지 마쳐 ACTIVE가 된 뒤(ACTIVE만 승격된다)
 # 그 userId를 쉼표로 넣고 어드민을 재기동한다.
