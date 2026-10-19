@@ -268,7 +268,7 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
     }
 
     @Test
-    fun `취소·반품한 주문 품목이면 400을 반환한다`() {
+    fun `취소된 주문 품목이면 400을 반환한다`() {
         val buyerId = createActiveUser()
         val fixture = persistReviewableOrderItem(buyerId)
         tx.execute {

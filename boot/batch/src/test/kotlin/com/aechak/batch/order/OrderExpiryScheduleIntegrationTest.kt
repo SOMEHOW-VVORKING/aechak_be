@@ -283,6 +283,7 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
         assertEquals(OrderGroupStatus.PENDING_PAYMENT, groupStatusOf(fixture.orderGroupId))
         assertEquals(listOf(OrderStatus.PENDING_PAYMENT), orderStatusesOf(fixture.orderGroupId))
         assertEquals(3, stockOf(fixture.optionCombinationId), "적립금 복원이 터지면 앞서 늘린 재고도 돌아가야 한다")
+        assertEquals(listOf(OrderItemStatus.ORDERED), itemStatusesOf(fixture.orderGroupId), "품목 상태도 함께 돌아가야 한다")
         assertEquals(0, historyCountOf(fixture.orderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
     }
 
@@ -298,6 +299,19 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
         assertEquals(6, stockOf(fixture.optionCombinationId), "결제대기 두 주문의 2 + 3만 되돌아와야 한다")
         assertEquals(1, historyCountOf(secondOrderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
         assertEquals(0, historyCountOf(cancelledOrderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
+    }
+
+    @Test
+    fun `결제대기 주문에 이미 취소된 품목이 섞여 있으면 그 수량은 되돌리지 않는다`() {
+        val fixture = seedExpiredOrderGroup(stock = 1, quantity = 2)
+        val mixedOrderId = addOrder(fixture, sellerId = 8L, quantity = 3)
+        markItemCancelled(itemIdsOf(mixedOrderId).single())
+
+        schedule.run()
+
+        assertEquals(OrderGroupStatus.CANCELLED, groupStatusOf(fixture.orderGroupId))
+        assertEquals(3, stockOf(fixture.optionCombinationId), "이번에 취소한 2만 되돌아와야 한다")
+        assertEquals(1, historyCountOf(mixedOrderId, OrderStatus.PENDING_PAYMENT, OrderStatus.CANCELLED, TriggeredBy.SYSTEM))
     }
 
     @Test
@@ -461,6 +475,17 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
         }
     }
 
+    /** 결제대기 주문에 이미 취소된 품목이 섞인 상태를 만든다 */
+    private fun markItemCancelled(orderItemId: Long) {
+        tx.execute {
+            em
+                .createQuery("update OrderItem oi set oi.itemStatus = :status where oi.id = :id")
+                .setParameter("status", OrderItemStatus.CANCELLED)
+                .setParameter("id", orderItemId)
+                .executeUpdate()
+        }
+    }
+
     /** 되돌릴 옵션조합이 사라진 상태를 만든다 — order_items는 값 참조라 행이 남는다 */
     private fun deleteOptionCombination(optionCombinationId: Long) {
         tx.execute {
@@ -555,6 +580,13 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
             .createQuery("select o.status from Order o where o.orderGroup.id = :id", OrderStatus::class.java)
             .setParameter("id", orderGroupId)
             .resultList
+
+    private fun itemIdsOf(orderId: Long): List<Long> =
+        em
+            .createQuery("select oi.id from Order o join o._items oi where o.id = :id", java.lang.Long::class.java)
+            .setParameter("id", orderId)
+            .resultList
+            .map { it.toLong() }
 
     private fun itemStatusesOf(orderGroupId: Long): List<OrderItemStatus> =
         em
