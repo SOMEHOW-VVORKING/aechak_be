@@ -239,8 +239,8 @@ UPDATE settlements s
           WHERE seller_id IS NULL
           ORDER BY effective_from ASC, id ASC
           LIMIT 1) p
-SET s.platform_fee_rate = p.platform_fee_rate,
-    s.pg_fee_rate       = p.pg_fee_rate,
+SET s.platform_fee_rate = COALESCE(s.platform_fee_rate, p.platform_fee_rate),
+    s.pg_fee_rate       = COALESCE(s.pg_fee_rate, p.pg_fee_rate),
     s.updated_at        = NOW(6)
 WHERE s.platform_fee_rate IS NULL
    OR s.pg_fee_rate IS NULL;

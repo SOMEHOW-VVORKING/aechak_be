@@ -2,6 +2,7 @@ package com.aechak.domain.settlement.settlement
 
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.settlement.error.SettlementErrorCode
+import com.aechak.domain.settlement.feepolicy.SettlementFeePolicy
 import com.aechak.domain.settlement.payout.Payout
 import com.aechak.domain.settlement.settlement.enums.SettlementStatus
 import com.aechak.domain.support.AggregateRoot
@@ -171,6 +172,10 @@ class Settlement protected constructor(
         ): Settlement {
             if (grossAmount < 0 || shippingFee < 0 || commission < 0 || pgFee < 0 || sellerCouponBurden < 0) {
                 throw BusinessException(SettlementErrorCode.INVALID_SETTLEMENT_AMOUNT)
+            }
+            // 스냅샷 컬럼도 DECIMAL(5,4)다 — 더 긴 요율을 받으면 저장될 때 반올림돼 원장이 근거를 잃는다.
+            if (!SettlementFeePolicy.isStorableRate(platformFeeRate) || !SettlementFeePolicy.isStorableRate(pgFeeRate)) {
+                throw BusinessException(SettlementErrorCode.INVALID_SETTLEMENT_FEE_RATE)
             }
             val netAmount = grossAmount + shippingFee - commission - pgFee - sellerCouponBurden
             return Settlement(

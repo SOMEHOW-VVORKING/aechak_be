@@ -68,6 +68,21 @@ class SettlementFeePolicyTest {
         )
     }
 
+    @Test
+    fun `소수 넷째 자리를 넘는 요율은 정책이 되지 못한다`() {
+        // DECIMAL(5,4)에 저장되면 0.0801로 반올림돼, 저장 전 8005원과 저장 후 8010원이 갈린다.
+        val exception = assertFailsWith<BusinessException> { policyWithRate(BigDecimal("0.08005")) }
+
+        assertEquals(SettlementErrorCode.INVALID_SETTLEMENT_FEE_RATE, exception.errorCode)
+    }
+
+    @Test
+    fun `뒤에 0만 더 붙은 요율은 그대로 받는다`() {
+        val policy = policyWithRate(BigDecimal("0.080000"))
+
+        assertEquals(8_000L, policy.platformFeeOf(100_000L))
+    }
+
     private fun globalPolicy(): SettlementFeePolicy =
         SettlementFeePolicy.of(null, LocalDate.of(2026, 1, 1), BigDecimal("0.0800"), BigDecimal("0.0280"))
 

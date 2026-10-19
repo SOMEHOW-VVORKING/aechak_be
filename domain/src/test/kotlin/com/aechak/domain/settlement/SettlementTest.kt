@@ -111,6 +111,29 @@ class SettlementTest {
         assertEquals(SettlementErrorCode.SETTLEMENT_NOT_PENDING, exception.errorCode)
     }
 
+    @Test
+    fun `저장할 수 없는 요율 스냅샷은 원장이 되지 못한다`() {
+        val exception =
+            assertFailsWith<BusinessException> {
+                Settlement.create(
+                    sellerId = 1L,
+                    orderId = 2L,
+                    orderItemId = 3L,
+                    grossAmount = 100_000L,
+                    shippingFee = 0L,
+                    commission = 8_005L,
+                    pgFee = 2_800L,
+                    sellerCouponBurden = 0L,
+                    platformFeeRate = BigDecimal("0.08005"),
+                    pgFeeRate = BigDecimal("0.0280"),
+                    confirmedOn = LocalDate.of(2026, 3, 10),
+                    idempotencyKey = "SETTLE:ORDER_ITEM:3",
+                )
+            }
+
+        assertEquals(SettlementErrorCode.INVALID_SETTLEMENT_FEE_RATE, exception.errorCode)
+    }
+
     private fun settlement(
         grossAmount: Long = 100_000L,
         shippingFee: Long = 3_000L,

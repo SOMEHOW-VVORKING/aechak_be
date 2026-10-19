@@ -62,11 +62,12 @@ class V29SchemaMigrationIntegrationTest {
     private fun buildDriftSchema(
         name: String,
         rows: List<String>,
+        extraStatements: List<String> = emptyList(),
         migrateToLatest: Boolean = true,
     ): String {
         val url = recreateDatabase(name)
         migrateUpTo(url, "28")
-        execute(url, preV29DriftStatements() + rows + driftForeignKeyStatements())
+        execute(url, preV29DriftStatements() + rows + extraStatements + driftForeignKeyStatements())
         if (migrateToLatest) flyway(url).migrate()
         return url
     }
@@ -192,6 +193,30 @@ class V29SchemaMigrationIntegrationTest {
 
         assertThatThrownBy { execute(freshUrl, insert("0")) }
             .hasMessageContaining("uk_settlement_execution_batches_base_date")
+    }
+
+    @Test
+    fun `이미 채워진 요율 스냅샷은 백필이 덮지 않는다`() {
+        // 보강 컬럼 하나만 먼저 생겨 값이 든 DB — 두 요율을 한꺼번에 대입하면 확정된 스냅샷이 전역 정책으로 바뀐다.
+        val partialUrl =
+            buildDriftSchema(
+                "v29_partial",
+                rows = legacySettlementRows(),
+                extraStatements =
+                    listOf(
+                        "ALTER TABLE settlements ADD COLUMN platform_fee_rate DECIMAL(5, 4) NULL",
+                        "UPDATE settlements SET platform_fee_rate = 0.0500 WHERE id = $SEEDED_SETTLEMENT_ID",
+                    ),
+            )
+
+        val rates =
+            query(
+                partialUrl,
+                "SELECT platform_fee_rate, pg_fee_rate FROM settlements WHERE id = $SEEDED_SETTLEMENT_ID",
+            ) { it.getString(1) to it.getString(2) }
+
+        assertThat(rates).containsExactly("0.0500" to "0.0280")
+        assertSameShape(actualUrl = partialUrl, expectedUrl = freshUrl, tolerateNativeEnum = false)
     }
 
     @Test
