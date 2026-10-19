@@ -1,7 +1,9 @@
 package com.aechak.batch
 
+import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.payment.port.PaymentReconciliationSourcePort
 import com.aechak.application.payment.reconciliation.usecase.PaymentReconciliationUseCase
+import com.aechak.batch.order.OrderExpirySchedule
 import com.aechak.batch.payment.PaymentReconciliationSchedule
 import com.aechak.batch.support.BatchIntegrationTestBase
 import com.aechak.domain.payment.reconciliation.ReconciliationSource
@@ -27,6 +29,13 @@ class BatchApplicationSmokeTest : BatchIntegrationTestBase() {
         val sources = context.getBeansOfType(PaymentReconciliationSourcePort::class.java).values.map { it.source }
 
         assertEquals(listOf(ReconciliationSource.PORTONE), sources, "토스 소스는 설정으로 켜기 전엔 조립되지 않아야 한다")
+    }
+
+    @Test
+    fun `만료 스케줄과 그 의존이 조립된다`() {
+        // 선별 스캔이라 order BC 파사드가 요구하는 어댑터가 빠지면 여기서 깨진다
+        context.getBean(OrderExpirySchedule::class.java)
+        context.getBean(OrderExpiryUseCase::class.java)
     }
 
     @Test

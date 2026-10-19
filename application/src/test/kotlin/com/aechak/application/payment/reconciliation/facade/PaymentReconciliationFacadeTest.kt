@@ -653,6 +653,15 @@ class PaymentReconciliationFacadeTest {
         override fun findByPublicId(publicId: String) = rows.values.find { it.publicId == publicId }
 
         override fun markPaidIfPending(id: Long): Boolean = throw UnsupportedOperationException()
+
+        override fun cancelIfPending(id: Long): Boolean = throw UnsupportedOperationException()
+
+        override fun findExpiredPending(
+            now: LocalDateTime,
+            afterExpiresAt: LocalDateTime?,
+            afterId: Long?,
+            limit: Int,
+        ): List<OrderGroup> = throw UnsupportedOperationException()
     }
 
     private class FakeSource(
