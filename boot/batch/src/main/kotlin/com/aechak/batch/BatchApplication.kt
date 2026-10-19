@@ -43,6 +43,9 @@ import org.springframework.context.annotation.FilterType
         // 셀러센터 전용 주문 유스케이스 제외. order BC를 스캔하지만 이 묶음은 셀러 자격(application.seller)을 요구해
         // 조립하면 배치가 쓰지도 않는 의존을 끌고 온다.
         ComponentScan.Filter(type = FilterType.REGEX, pattern = ["com\\.aechak\\.application\\.order\\.seller\\..*"]),
+        // 셀러센터 전용 정산 조회 제외. 구매확정 원장 생성을 위해 settlement BC를 스캔하지만 이 묶음은
+        // 셀러 자격(application.seller)을 요구해 조립하면 배치가 쓰지도 않는 의존을 끌고 온다.
+        ComponentScan.Filter(type = FilterType.REGEX, pattern = ["com\\.aechak\\.application\\.settlement\\.seller\\..*"]),
     ],
 )
 class BatchApplication
