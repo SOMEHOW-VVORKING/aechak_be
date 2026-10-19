@@ -7,6 +7,7 @@ interface OrderRepository {
     /** 주문품목은 Order의 cascade로 함께 저장된다. */
     fun saveAll(orders: List<Order>): List<Order>
 
+    /** 식별자 단건 조회 — 소유자 없는 호출자(배치)가 쓴다. */
     fun findById(id: Long): Order?
 
     /** 주문 id 오름차순 */

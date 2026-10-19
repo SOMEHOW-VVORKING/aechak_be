@@ -57,6 +57,15 @@ payment:
     secret-key: ${TOSS_SECRET_KEY:}
 
 order:
+  auto-confirm:
+    days: 5    # 배송완료부터 구매확정 기한까지 — 셀러 수동 전이와 배치 자동 전이가 같은 값을 쓴다
+  delivery:
+    # 배치 모듈이 dev에 배포되기 전까지는 꺼 둔다 — 켜면 시간만 보고 주문을 배송완료로 넘긴다
+    enabled: ${ORDER_DELIVERY_BATCH_ENABLED:false}
+    cron: "0 0 3 * * *"       # KST 03:00 — 대사(04:30)와 겹치지 않게 앞에 둔다
+    dispatch-delay-days: 1    # 송장 등록 후 1일이 지나도 배송완료가 아니면 집화 지연으로 경고
+    auto-complete-days: 4     # 송장 등록 후 4일이 지나면 배송완료로 자동 전이
+    scan-limit: 200
   claim:
     refund:
       # 기본값 false — 실제로 PG 환불이 나가는 경로다. dev 상점이 테스트 상점인지 확인한 뒤 켠다

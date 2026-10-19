@@ -1,5 +1,6 @@
 package com.aechak.application.order.seller.service
 
+import com.aechak.application.order.delivery.service.OrderDeliveryService
 import com.aechak.application.order.seller.port.SellerOrderListCondition
 import com.aechak.application.order.seller.port.SellerOrderQueryPort
 import com.aechak.application.order.seller.port.view.SellerOrderClaimView
@@ -7,6 +8,7 @@ import com.aechak.application.order.seller.port.view.SellerOrderLineView
 import com.aechak.application.order.seller.port.view.SellerOrderShipmentView
 import com.aechak.application.order.seller.port.view.SellerOrderSummaryView
 import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
+import com.aechak.application.order.seller.usecase.command.CompleteDeliveryCommand
 import com.aechak.application.order.seller.usecase.command.RegisterShipmentCommand
 import com.aechak.application.order.seller.usecase.query.SellerOrderSearchQuery
 import com.aechak.application.order.seller.usecase.result.RegisterShipmentResult
@@ -36,6 +38,7 @@ class SellerOrderService(
     private val orderStatusHistoryRepository: OrderStatusHistoryRepository,
     private val courierMasterRepository: CourierMasterRepository,
     private val shipmentRepository: ShipmentRepository,
+    private val orderDeliveryService: OrderDeliveryService,
     private val sellerOrderQueryPort: SellerOrderQueryPort,
     private val piiStringCodec: PiiStringCodec,
 ) {
@@ -90,6 +93,11 @@ class SellerOrderService(
             dispatchedAt = dispatchedAt,
             orderStatus = order.status,
         )
+    }
+
+    fun completeDelivery(command: CompleteDeliveryCommand) {
+        val order = findSellerOrder(command.sellerId, command.orderPublicId)
+        orderDeliveryService.complete(order, LocalDateTime.now(), TriggeredBy.SELLER)
     }
 
     /** 패턴이 깨져 검증을 건너뛴 사실은 조용히 지나가면 안 된다 — 마스터를 고칠 단서를 남긴다. */
