@@ -31,6 +31,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.TestPropertySource
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.ConcurrentHashMap
 
 /** 기본값 5와 다른 값을 설정해야 "설정이 반영되는가"를 가를 수 있다. */
@@ -81,7 +82,7 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `배송완료 기한이 지난 주문은 배송완료로 전이된다`() {
-        val dispatchedAt = LocalDateTime.now().minusDays(properties.autoCompleteDays).minusHours(1)
+        val dispatchedAt = overdue()
         val orderPublicId = seedShippingOrder(dispatchedAt)
 
         schedule.run()
@@ -96,7 +97,7 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `자동 배송완료도 설정된 일수만큼 구매확정 기한을 부여한다`() {
-        val dispatchedAt = LocalDateTime.now().minusDays(properties.autoCompleteDays).minusHours(1)
+        val dispatchedAt = overdue()
         val orderPublicId = seedShippingOrder(dispatchedAt)
 
         schedule.run()
@@ -111,7 +112,7 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `자동 배송완료는 시스템이 일으킨 이력 1행을 남긴다`() {
-        val orderPublicId = seedShippingOrder(LocalDateTime.now().minusDays(properties.autoCompleteDays).minusHours(1))
+        val orderPublicId = seedShippingOrder(overdue())
 
         schedule.run()
 
@@ -124,7 +125,7 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `배송완료 기한이 안 된 주문은 전이되지 않는다`() {
-        val orderPublicId = seedShippingOrder(LocalDateTime.now().minusDays(properties.autoCompleteDays - 1))
+        val orderPublicId = seedShippingOrder(now().minusDays(properties.autoCompleteDays - 1))
 
         schedule.run()
 
@@ -136,7 +137,7 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `방금 발송한 주문은 집화 지연에도 걸리지 않고 전이되지 않는다`() {
-        val orderPublicId = seedShippingOrder(LocalDateTime.now().minusHours(1))
+        val orderPublicId = seedShippingOrder(now().minusHours(1))
 
         schedule.run()
 
@@ -146,7 +147,7 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `두 번 돌려도 구매확정 기한이 바뀌지 않는다`() {
-        val orderPublicId = seedShippingOrder(LocalDateTime.now().minusDays(properties.autoCompleteDays).minusHours(1))
+        val orderPublicId = seedShippingOrder(overdue())
 
         schedule.run()
         val firstDueAt = autoConfirmDueAtOf(orderPublicId)
@@ -160,7 +161,7 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `이미 배송완료된 주문은 대상이 아니다`() {
-        val orderPublicId = seedShippingOrder(LocalDateTime.now().minusDays(properties.autoCompleteDays).minusHours(1))
+        val orderPublicId = seedShippingOrder(overdue())
         markDeliveredByHand(orderPublicId)
 
         schedule.run()
@@ -215,8 +216,14 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     // ---------- 헬퍼 ----------
 
+    /**
+     * DATETIME(6)은 마이크로초까지만 담고 그 아래를 반올림해 저장한다. 나노초 해상도 시계(리눅스)에서
+     * 심은 발송 시각과 배치가 DB에서 읽은 발송 시각이 어긋나므로, 심기 전에 마이크로초로 자른다.
+     */
+    private fun now(): LocalDateTime = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)
+
     /** 배송완료 기한을 이미 넘긴 발송 시각. */
-    private fun overdue(): LocalDateTime = LocalDateTime.now().minusDays(properties.autoCompleteDays).minusHours(1)
+    private fun overdue(): LocalDateTime = now().minusDays(properties.autoCompleteDays).minusHours(1)
 
     private fun seedCourier() {
         tx.execute { em.persist(CourierMaster.register(courierCode = "CJ", courierName = "씨제이대한통운")) }
@@ -242,7 +249,7 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
                     totalProductAmount = 25_000L,
                     totalShippingFee = 0L,
                     idempotencyKey = "delivery-batch-${System.nanoTime()}",
-                    expiresAt = LocalDateTime.now().plusMinutes(10),
+                    expiresAt = now().plusMinutes(10),
                 )
             em.persist(group)
             val order =
@@ -291,7 +298,7 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
         tx.execute {
             em
                 .createQuery("update Shipment s set s.deliveredAt = :at where s.order.publicId = :publicId")
-                .setParameter("at", LocalDateTime.now())
+                .setParameter("at", now())
                 .setParameter("publicId", orderPublicId)
                 .executeUpdate()
             em
