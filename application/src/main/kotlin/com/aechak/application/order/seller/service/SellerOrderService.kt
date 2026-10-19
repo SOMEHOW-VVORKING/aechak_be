@@ -11,9 +11,12 @@ import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.order.repository.OrderStatusHistoryRepository
+import com.aechak.domain.order.shipment.CourierMaster
 import com.aechak.domain.order.shipment.enums.ShipmentType
+import com.aechak.domain.order.shipment.enums.TrackingNumberCheck
 import com.aechak.domain.order.shipment.repository.CourierMasterRepository
 import com.aechak.domain.order.shipment.repository.ShipmentRepository
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
@@ -24,6 +27,8 @@ class SellerOrderService(
     private val courierMasterRepository: CourierMasterRepository,
     private val shipmentRepository: ShipmentRepository,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     fun acceptOrder(command: AcceptOrderCommand) {
         val order = findSellerOrder(command.sellerId, command.orderPublicId)
 
@@ -49,7 +54,7 @@ class SellerOrderService(
         val courier =
             courierMasterRepository.findActiveByCourierCode(command.courierCode)
                 ?: throw BusinessException(OrderErrorCode.COURIER_NOT_FOUND)
-        courier.validateTrackingNumber(command.trackingNumber)
+        warnIfTrackingPatternBroken(courier, courier.validateTrackingNumber(command.trackingNumber))
 
         // 애그리거트가 dirty해지기 전에 두 전이를 모두 선점한다 — 더티체킹 플러시가 조건부 UPDATE를 앞지르면 0행이 된다
         val fromPreparing = order.status == OrderStatus.PREPARING
@@ -72,6 +77,21 @@ class SellerOrderService(
             shipmentId = shipment.id,
             dispatchedAt = dispatchedAt,
             orderStatus = order.status,
+        )
+    }
+
+    /** 패턴이 깨져 검증을 건너뛴 사실은 조용히 지나가면 안 된다 — 마스터를 고칠 단서를 남긴다. */
+    private fun warnIfTrackingPatternBroken(
+        courier: CourierMaster,
+        check: TrackingNumberCheck,
+    ) {
+        if (check != TrackingNumberCheck.SKIPPED_BROKEN_PATTERN) {
+            return
+        }
+        log.warn(
+            "택배사 송장번호 패턴이 정규식으로 컴파일되지 않아 형식 검증을 건너뜁니다. courierCode={}, trackingFormatPattern={}",
+            courier.courierCode,
+            courier.trackingFormatPattern,
         )
     }
 
