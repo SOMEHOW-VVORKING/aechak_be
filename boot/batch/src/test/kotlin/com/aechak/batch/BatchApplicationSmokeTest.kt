@@ -1,9 +1,11 @@
 package com.aechak.batch
 
+import com.aechak.application.order.claim.usecase.ClaimAutoApproveUseCase
 import com.aechak.application.order.claim.usecase.ClaimRefundUseCase
 import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.payment.port.PaymentReconciliationSourcePort
 import com.aechak.application.payment.reconciliation.usecase.PaymentReconciliationUseCase
+import com.aechak.batch.order.ClaimAutoApproveSchedule
 import com.aechak.batch.order.ClaimRefundSchedule
 import com.aechak.batch.order.OrderExpirySchedule
 import com.aechak.batch.payment.PaymentReconciliationSchedule
@@ -46,6 +48,13 @@ class BatchApplicationSmokeTest : BatchIntegrationTestBase() {
         context.getBean(ClaimRefundSchedule::class.java)
         context.getBean(ClaimRefundUseCase::class.java)
         assertFalse(context.containsBean("claimFacade"), "셀러 자격 검증을 요구하는 클레임 파사드가 배치에 섞이면 안 된다")
+    }
+
+    @Test
+    fun `자동승인 스케줄과 그 의존이 조립된다`() {
+        // 자동승인은 환불 집행 계약까지 함께 부른다 — 둘 중 하나라도 빠지면 기한 넘긴 클레임이 멈춰 선다
+        context.getBean(ClaimAutoApproveSchedule::class.java)
+        context.getBean(ClaimAutoApproveUseCase::class.java)
     }
 
     @Test
