@@ -2,14 +2,17 @@ package com.aechak.application.order.facade
 
 import com.aechak.application.order.cart.service.CartService
 import com.aechak.application.order.port.OrderItemForReviewQueryPort
+import com.aechak.application.order.service.OrderConfirmService
 import com.aechak.application.order.service.OrderService
 import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
 import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 import com.aechak.application.user.address.usecase.DeliveryAddressUseCase
 import com.aechak.application.user.point.usecase.PointUseCase
+import com.aechak.application.user.point.usecase.command.EarnPurchaseRewardCommand
 import com.aechak.application.user.point.usecase.command.UsePointCommand
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -25,6 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate
 @Service
 class OrderFacade(
     private val orderService: OrderService,
+    private val orderConfirmService: OrderConfirmService,
     private val cartService: CartService,
     private val deliveryAddressUseCase: DeliveryAddressUseCase,
     private val pointUseCase: PointUseCase,
@@ -63,6 +67,20 @@ class OrderFacade(
     /** 결제 확정 트랜잭션에 참여해야 하므로 REQUIRED — 결제 기록이 롤백되면 주문 전이도 함께 롤백된다 */
     @Transactional
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = orderService.confirmGroupPaid(orderGroupId)
+
+    /** 확정과 적립금을 한 트랜잭션에 묶는다 — 적립이 실패하면 확정도 함께 롤백된다 */
+    @Transactional
+    override fun confirmPurchase(command: ConfirmPurchaseCommand) {
+        val confirmed = orderConfirmService.confirmPurchase(command)
+        pointUseCase.earnPurchaseReward(
+            EarnPurchaseRewardCommand(
+                buyerUserId = command.buyerId,
+                orderId = confirmed.orderId,
+                orderPublicId = command.orderPublicId,
+                productAmount = confirmed.productAmount,
+            ),
+        )
+    }
 
     @Transactional
     override fun clearOrderedCartItems(
