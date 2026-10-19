@@ -137,6 +137,7 @@ class PaymentReconciliationIntegrationTest : IntegrationTestBase() {
         status = status,
         totalAmount = 13_000L,
         paidAmount = paid,
+        cancelledAmount = 0L,
         pgTxId = if (status == PaymentGatewayStatus.PAID) "stub-tx" else null,
         paidAt = if (status == PaymentGatewayStatus.PAID) LocalDateTime.of(2026, 10, 15, 14, 0) else null,
         failureCode = null,

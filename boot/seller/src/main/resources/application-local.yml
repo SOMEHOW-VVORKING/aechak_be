@@ -16,8 +16,8 @@ spring:
       ddl-auto: update
 
 api:
-  # 셀러센터 웹 FE dev 오리진 — FE 리포 포트 확정 시 갱신
-  cors-allowed-origins: http://localhost:5174
+  # 셀러센터 웹 dev 오리진
+  cors-allowed-origins: http://localhost:5173
 
 # TEST/LOCAL 전용 고정 키 — 실환경 사용 금지. api application-local.yml과 동일 값(같은 로컬 DB를 복호).
 aechak:
