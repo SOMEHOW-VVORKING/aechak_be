@@ -42,4 +42,5 @@ enum class OrderErrorCode(
     // 배송
     SHIPMENT_NOT_FOUND(50300, "배송 정보를 찾을 수 없습니다.", 404),
     SHIPMENT_ALREADY_DELIVERED(50301, "이미 배송완료 처리된 배송입니다.", 409),
+    COURIER_NOT_FOUND(50303, "택배사를 찾을 수 없습니다.", 404),
 }

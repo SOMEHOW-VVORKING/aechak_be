@@ -20,6 +20,9 @@ class SellerOrderFacade(
         sellerOrderService.acceptOrder(command)
     }
 
+    @Transactional(readOnly = true)
+    override fun verifyActiveCourier(courierCode: String) = sellerOrderService.verifyActiveCourier(courierCode)
+
     private fun requireActiveSeller(sellerId: Long) {
         if (!sellerUseCase.isActiveSeller(sellerId)) {
             throw BusinessException(OrderErrorCode.ORDER_ACCESS_DENIED)

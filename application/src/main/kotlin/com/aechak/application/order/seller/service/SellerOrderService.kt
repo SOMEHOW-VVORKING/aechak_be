@@ -8,13 +8,22 @@ import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.order.repository.OrderStatusHistoryRepository
+import com.aechak.domain.order.shipment.repository.CourierMasterRepository
 import org.springframework.stereotype.Service
 
 @Service
 class SellerOrderService(
     private val orderRepository: OrderRepository,
     private val orderStatusHistoryRepository: OrderStatusHistoryRepository,
+    private val courierMasterRepository: CourierMasterRepository,
 ) {
+    fun verifyActiveCourier(courierCode: String) {
+        val courier = courierMasterRepository.findByCourierCode(courierCode)
+        if (courier == null || !courier.isActive) {
+            throw BusinessException(OrderErrorCode.COURIER_NOT_FOUND)
+        }
+    }
+
     fun acceptOrder(command: AcceptOrderCommand) {
         val order =
             orderRepository.findByPublicIdAndSellerId(command.orderPublicId, command.sellerId)
