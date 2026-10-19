@@ -124,6 +124,7 @@ class SellerDashboardFacadeTest {
             assertEquals(SellerErrorCode.SELLER_CENTER_READ_FORBIDDEN, exception.errorCode)
         }
         assertTrue(orders.queries.isEmpty(), "게이트가 집계보다 뒤에 있으면 거절된 요청도 쿼리를 태운다")
+        assertTrue(claims.queries.isEmpty(), "집계 하나만 게이트 앞으로 올라가도 거절된 요청이 그 BC를 읽는다")
         assertTrue(settlement.sellerIds.isEmpty())
         assertTrue(products.sellerIds.isEmpty())
     }
