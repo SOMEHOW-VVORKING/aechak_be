@@ -18,6 +18,7 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 
@@ -68,8 +69,11 @@ class OrderFacade(
     @Transactional
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = orderService.confirmGroupPaid(orderGroupId)
 
-    /** 확정과 적립금을 한 트랜잭션에 묶는다 — 적립이 실패하면 확정도 함께 롤백된다 */
-    @Transactional
+    /**
+     * 확정과 적립금을 한 트랜잭션에 묶는다 — 적립이 실패하면 확정도 함께 롤백된다.
+     * READ_COMMITTED: 선점 UPDATE 뒤의 클레임 조회가 REPEATABLE READ 스냅샷에 갇히면 그 사이 커밋된 클레임을 놓친다.
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun confirmPurchase(command: ConfirmPurchaseCommand) {
         val confirmed = orderConfirmService.confirmPurchase(command)
         pointUseCase.earnPurchaseReward(

@@ -1,6 +1,9 @@
 package com.aechak.api.order
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.application.user.point.facade.PointFacade
+import com.aechak.application.user.point.usecase.PointUseCase
+import com.aechak.application.user.point.usecase.command.EarnPurchaseRewardCommand
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
 import com.aechak.domain.order.claim.enums.ClaimStatus
@@ -68,6 +71,12 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var transitionBarrier: TransitionBarrier
 
+    @Autowired
+    private lateinit var transitionHook: TransitionHook
+
+    @Autowired
+    private lateinit var pointFailureSwitch: PointFailureSwitch
+
     private lateinit var mockMvc: MockMvc
     private var buyerId = 0L
     private lateinit var token: String
@@ -85,8 +94,10 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
     }
 
     @AfterEach
-    fun resetBarrier() {
+    fun resetDevices() {
         transitionBarrier.disable()
+        transitionHook.disarm()
+        pointFailureSwitch.enabled = false
     }
 
     @Test
@@ -266,6 +277,64 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `환불 실패로 멈춘 클레임도 확정을 막는다`() {
+        val fixture = seedOrder()
+        seedClaim(fixture, ClaimStatus.REFUND_FAILED)
+
+        mockMvc
+            .perform(confirmRequest(token, fixture.orderPublicId))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(50006))
+
+        assertEquals(OrderStatus.DELIVERED, findOrder(fixture.orderPublicId).status)
+    }
+
+    @Test
+    fun `주문을 읽은 뒤 클레임이 접수돼도 그 클레임을 보고 거절한다`() {
+        val fixture = seedOrder()
+        // 선점 UPDATE 직전에 다른 트랜잭션이 클레임을 커밋한다 — 확정 트랜잭션이 자기 스냅샷에 갇히면 이 클레임을 놓친다
+        transitionHook.armOnce { commitClaimInOtherTransaction(fixture) }
+
+        mockMvc
+            .perform(confirmRequest(token, fixture.orderPublicId))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(50006))
+
+        assertEquals(OrderStatus.DELIVERED, findOrder(fixture.orderPublicId).status)
+        assertNull(findOrder(fixture.orderPublicId).purchaseConfirmedAt)
+        assertEquals(emptyList<Reward>(), rewards(fixture.orderPublicId))
+        assertEquals(emptyList<Triple<OrderStatus, OrderStatus, TriggeredBy>>(), histories(fixture.orderPublicId))
+    }
+
+    @Test
+    fun `이미 같은 멱등키의 적립 원장이 있으면 다시 지급하지 않는다`() {
+        val fixture = seedOrder()
+        seedReward(fixture, amount = 1L)
+
+        mockMvc.perform(confirmRequest(token, fixture.orderPublicId)).andExpect(status().isNoContent)
+
+        assertEquals(OrderStatus.PURCHASE_CONFIRMED, findOrder(fixture.orderPublicId).status)
+        assertEquals(listOf(1L), rewards(fixture.orderPublicId).map { it.amount }, "멱등키 선검사가 이중 지급을 막아야 한다")
+        assertEquals(0L, pointBalance(buyerId), "잔액도 다시 오르면 안 된다")
+    }
+
+    @Test
+    fun `적립이 실패하면 확정도 함께 롤백된다`() {
+        val fixture = seedOrder()
+        pointFailureSwitch.enabled = true
+
+        mockMvc.perform(confirmRequest(token, fixture.orderPublicId)).andExpect(status().is5xxServerError)
+
+        val order = findOrder(fixture.orderPublicId)
+        assertEquals(OrderStatus.DELIVERED, order.status, "확정됐는데 적립이 없는 주문이 남으면 안 된다")
+        assertNull(order.purchaseConfirmedAt)
+        assertNull(order.confirmType)
+        assertEquals(emptyList<Triple<OrderStatus, OrderStatus, TriggeredBy>>(), histories(fixture.orderPublicId))
+        assertEquals(emptyList<Reward>(), rewards(fixture.orderPublicId))
+        assertEquals(0L, pointBalance(buyerId))
+    }
+
+    @Test
     fun `동시에 확정하면 하나만 204이고 적립 원장도 1행이다`() {
         val fixture = seedOrder()
         transitionBarrier.enable()
@@ -338,10 +407,42 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
 
     private fun userUpdatedAt(userId: Long): LocalDateTime = tx.execute { em.find(User::class.java, userId).updatedAt }!!
 
+    /** 확정 요청과 겹친 클레임 접수를 재현한다 — 별 스레드라 자기 트랜잭션에서 커밋된다. */
+    private fun commitClaimInOtherTransaction(fixture: Fixture) {
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            pool.submit { tx.execute { seedClaimRow(fixture) } }.get(20, TimeUnit.SECONDS)
+        } finally {
+            pool.shutdown()
+        }
+    }
+
+    private fun seedReward(
+        fixture: Fixture,
+        amount: Long,
+    ) = tx.execute {
+        em.persist(
+            com.aechak.domain.user.point.PointTransaction.record(
+                buyer = em.find(User::class.java, buyerId),
+                amount = amount,
+                transactionType = com.aechak.domain.user.point.enums.PointTransactionType.EARN,
+                idempotencyKey = "EARN:PURCHASE:${fixture.orderPublicId}",
+                sourceType = "ORDER",
+                sourceId = fixture.orderId,
+            ),
+        )
+        em.flush()
+    }
+
     private fun seedClaim(
         fixture: Fixture,
         status: ClaimStatus,
-    ) = tx.execute {
+    ) = tx.execute { seedClaimRow(fixture, status) }
+
+    private fun seedClaimRow(
+        fixture: Fixture,
+        status: ClaimStatus = ClaimStatus.CLAIM_REQUESTED,
+    ) {
         val order = em.find(Order::class.java, fixture.orderId)
         val claim =
             Claim.request(
@@ -518,16 +619,49 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
         }
     }
 
+    /** 선점 UPDATE 직전에 끼워 넣을 동작. 켠 테스트에서만 돈다. */
+    class TransitionHook {
+        @Volatile
+        private var action: (() -> Unit)? = null
+
+        fun armOnce(action: () -> Unit) {
+            this.action = action
+        }
+
+        fun disarm() {
+            action = null
+        }
+
+        fun fire() {
+            val armed = action ?: return
+            action = null
+            armed()
+        }
+    }
+
+    /** 적립 실패를 주입하는 장치. 켠 테스트에서만 던진다. */
+    class PointFailureSwitch {
+        @Volatile
+        var enabled = false
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     class TransitionRaceConfig {
         @Bean
         fun transitionBarrier(): TransitionBarrier = TransitionBarrier()
 
         @Bean
+        fun transitionHook(): TransitionHook = TransitionHook()
+
+        @Bean
+        fun pointFailureSwitch(): PointFailureSwitch = PointFailureSwitch()
+
+        @Bean
         @Primary
         fun barrieredOrderRepository(
             delegate: OrderRepositoryAdapter,
             barrier: TransitionBarrier,
+            hook: TransitionHook,
         ): OrderRepository =
             object : OrderRepository by delegate {
                 override fun transitionStatusIf(
@@ -535,8 +669,24 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
                     expected: OrderStatus,
                     next: OrderStatus,
                 ): Boolean {
+                    hook.fire()
                     barrier.awaitBothArrived()
                     return delegate.transitionStatusIf(id, expected, next)
+                }
+            }
+
+        @Bean
+        @Primary
+        fun failablePointUseCase(
+            delegate: PointFacade,
+            switch: PointFailureSwitch,
+        ): PointUseCase =
+            object : PointUseCase by delegate {
+                override fun earnPurchaseReward(command: EarnPurchaseRewardCommand) {
+                    if (switch.enabled) {
+                        throw IllegalStateException("적립 실패 주입")
+                    }
+                    delegate.earnPurchaseReward(command)
                 }
             }
     }

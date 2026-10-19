@@ -135,7 +135,13 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                 .response
                 .getContentAsString(Charsets.UTF_8)
 
-        awaitRewardProcessed(JsonPath.read<Int>(responseBody, "$.data.reviewId").toLong())
+        val reviewId = JsonPath.read<Int>(responseBody, "$.data.reviewId").toLong()
+        awaitRewardProcessed(reviewId)
+
+        // 상품금액 10,000원의 0.5% 구매확정 적립 + 텍스트 리뷰 적립이 같은 구매자 잔액에 쌓인다
+        assertEquals(1L, purchaseRewardCount(fixture.orderPublicId))
+        assertEquals(1L, rewardCount(reviewId))
+        assertEquals(50L + ReviewRewardPolicy.amountFor(hasPhoto = false), pointBalance(buyerId))
     }
 
     @Test
@@ -497,6 +503,13 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
             .sql("select count(*) from processed_message where consumer = :consumer and event_id = :eventId")
             .param("consumer", consumer)
             .param("eventId", eventId)
+            .query(Long::class.javaObjectType)
+            .single()
+
+    private fun purchaseRewardCount(orderPublicId: String): Long =
+        db
+            .sql("select count(*) from point_transactions where idempotency_key = :key")
+            .param("key", "EARN:PURCHASE:$orderPublicId")
             .query(Long::class.javaObjectType)
             .single()
 

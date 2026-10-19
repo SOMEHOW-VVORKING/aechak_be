@@ -56,16 +56,7 @@ class PointCommandService(
             return
         }
         val buyer = userService.getById(command.buyerUserId)
-        pointTransactionRepository.save(
-            PointTransaction.record(
-                buyer = buyer,
-                amount = amount,
-                transactionType = PointTransactionType.EARN,
-                idempotencyKey = idempotencyKey,
-                sourceType = SOURCE_TYPE_PURCHASE,
-                sourceId = command.orderId,
-            ),
-        )
+        pointTransactionRepository.save(command.toEntity(buyer, amount, idempotencyKey))
         userRepository.addPointBalance(command.buyerUserId, amount)
     }
 
@@ -95,7 +86,6 @@ class PointCommandService(
 
     companion object {
         private const val SOURCE_TYPE = "REVIEW_REWARD"
-        private const val SOURCE_TYPE_PURCHASE = "ORDER"
 
         private fun reviewRewardKey(reviewId: Long): String = "EARN:$SOURCE_TYPE:$reviewId"
 
