@@ -6,7 +6,7 @@ import com.aechak.domain.order.order.enums.OrderItemStatus
 data class OrderLineView(
     val orderId: Long,
     val orderItemId: Long,
-    val productId: Long,
+    val productPublicId: String,
     val productName: String,
     val thumbnailKey: String,
     val optionName: String,

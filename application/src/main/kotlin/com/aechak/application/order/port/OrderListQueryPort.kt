@@ -27,6 +27,6 @@ interface OrderListQueryPort {
     /** 교환 재발송까지 고려해 가장 나중에 등록된 운송장 한 건. */
     fun findLatestShipment(orderId: Long): OrderShipmentView?
 
-    /** 주문품목을 붙잡고 있는 클레임 중 가장 나중 요청 한 건. */
+    /** 주문품목을 붙잡고 있고 아직 종결되지 않은 클레임 중 가장 나중 한 건. */
     fun findActiveClaim(orderId: Long): OrderActiveClaimView?
 }

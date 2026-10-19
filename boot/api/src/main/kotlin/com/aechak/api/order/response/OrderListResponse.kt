@@ -70,7 +70,7 @@ data class SellerOrderItemResponse(
 
 data class OrderLineItemResponse(
     val orderItemId: Long,
-    val productId: Long,
+    val productId: String,
     val productName: String,
     val thumbnailUrl: String?,
     val optionName: String,

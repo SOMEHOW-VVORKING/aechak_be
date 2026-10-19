@@ -18,6 +18,7 @@ import com.aechak.domain.order.order.QOrderItem
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.shipment.QCourierMaster
 import com.aechak.domain.order.shipment.QShipment
+import com.aechak.domain.product.product.QProduct
 import com.aechak.domain.product.version.QProductVersion
 import com.aechak.infra.persistence.payment.QPaymentJpaEntity
 import com.querydsl.core.types.Predicate
@@ -30,6 +31,7 @@ private val orderGroup = QOrderGroup.orderGroup
 private val order = QOrder.order
 private val orderItem = QOrderItem.orderItem
 private val productVersion = QProductVersion.productVersion
+private val product = QProduct.product
 private val payment = QPaymentJpaEntity.paymentJpaEntity
 private val shipment = QShipment.shipment
 private val courier = QCourierMaster.courierMaster
@@ -87,7 +89,7 @@ class OrderListQueryAdapter(
                     OrderLineView::class.java,
                     order.id,
                     orderItem.id,
-                    orderItem.productId,
+                    product.publicId,
                     productVersion.nameSnapshot,
                     productVersion.thumbnailKeySnapshot,
                     orderItem.optionNameSnapshot,
@@ -99,6 +101,8 @@ class OrderListQueryAdapter(
             .join(order._items, orderItem)
             .join(productVersion)
             .on(productVersion.id.eq(orderItem.productVersionId))
+            .join(product)
+            .on(product.id.eq(orderItem.productId))
             .where(order.id.`in`(orderIds))
             .orderBy(order.id.asc(), orderItem.id.asc())
             .fetch()
@@ -177,7 +181,7 @@ class OrderListQueryAdapter(
                     claim.refundStatus,
                 ),
             ).from(claim)
-            .where(claim.orderId.eq(orderId), claim.status.`in`(ClaimStatus.HOLDING))
+            .where(claim.orderId.eq(orderId), claim.status.`in`(ClaimStatus.HOLDING), claim.resolvedAt.isNull)
             .orderBy(claim.id.desc())
             .limit(1)
             .fetchFirst()

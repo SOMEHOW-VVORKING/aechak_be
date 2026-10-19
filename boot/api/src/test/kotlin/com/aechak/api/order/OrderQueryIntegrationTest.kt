@@ -25,10 +25,13 @@ import com.aechak.domain.product.version.ProductVersion
 import com.aechak.domain.product.version.enums.VersionChangedBy
 import com.aechak.domain.seller.seller.Seller
 import com.jayway.jsonpath.JsonPath
+import org.hibernate.SessionFactory
+import org.hibernate.stat.Statistics
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
@@ -42,6 +45,8 @@ import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
 
 /**
  * 주문 목록·상세 조회 API 통합. HTTP 경계부터 실 MySQL까지 태워 결제대기 제외·타인 은닉·커서 경계 계약을 고정함.
@@ -282,6 +287,114 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
             paymentRepository.save(prepared.approve("tx-${sig++}", paidAmount))
         }
     }
+
+    /** 셀러 주문 한 건이 품목 N개를 들도록 심고 그 주문 publicId를 돌려준다. */
+    private fun seedOrderWithItemCount(
+        buyerId: Long,
+        itemCount: Int,
+    ): String =
+        tx.execute {
+            val tag = "m${sig++}"
+            val sellerId = 300L + sig
+            em.persist(Seller.open(sellerId, "묶음가게-$tag", 3000L))
+            val category = Category.create(null, 1, "카테고리-$tag", null, 1)
+            em.persist(category)
+            val product = Product.register(category, sellerId, "상품-$tag", null, null, 1000L, null, null, null)
+            em.persist(product)
+            val version =
+                ProductVersion.snapshot(
+                    product = product,
+                    versionNo = 1,
+                    nameSnapshot = "상품-$tag",
+                    priceSnapshot = 1000L,
+                    statusSnapshot = SaleStatus.ON_SALE,
+                    thumbnailKeySnapshot = "thumb-$tag",
+                    changedBy = VersionChangedBy.SELLER,
+                )
+            em.persist(version)
+            val combos =
+                (1..itemCount).map { i ->
+                    OptionCombination.create(product, "옵션 $i", 0L, 100, "sig-$tag-$i").also { em.persist(it) }
+                }
+            em.flush()
+            val group =
+                OrderGroup.create(
+                    buyerId = buyerId,
+                    deliveryAddressId = 1L,
+                    deliveryAddress =
+                        DeliveryAddressSnapshot(
+                            receiverNameEnc = piiStringCodec.encrypt(RECEIVER_NAME),
+                            contactNumberEnc = piiStringCodec.encrypt(CONTACT_NUMBER),
+                            zipCode = "12345",
+                            baseAddress = "서울시 애착구 멍냥로 1",
+                            detailAddress = "101동",
+                            deliveryMemo = null,
+                        ),
+                    usedPoint = 0,
+                    totalProductAmount = 1000L * itemCount,
+                    totalShippingFee = 3000L,
+                    idempotencyKey = "bundle-$tag",
+                    expiresAt = LocalDateTime.now().plusMinutes(10),
+                )
+            forceGroupStatus(group, OrderGroupStatus.PAID)
+            em.persist(group)
+            val order =
+                Order.create(
+                    orderGroup = group,
+                    sellerId = sellerId,
+                    sellerNameSnapshot = "묶음가게-$tag",
+                    allocatedCouponDiscount = 0,
+                    sellerShippingFee = 3000L,
+                    baseShippingFeeSnapshot = null,
+                    freeShippingThresholdSnapshot = null,
+                    items =
+                        combos.map { combo ->
+                            OrderItem.of(
+                                productId = product.id,
+                                optionCombinationId = combo.id,
+                                optionNameSnapshot = combo.name,
+                                quantity = 1,
+                                unitPriceSnapshot = 1000L,
+                                discountAllocatedAmount = 0,
+                                productVersionId = version.id,
+                            )
+                        },
+                )
+            forceOrderStatus(order, OrderStatus.SHIPPING)
+            em.persist(order)
+            em.flush()
+            order.publicId
+        }!!
+
+    private fun productPublicIdOf(productId: Long): String =
+        em
+            .createQuery("select p.publicId from Product p where p.id = :id", String::class.java)
+            .setParameter("id", productId)
+            .singleResult
+
+    private fun orderItemIdOf(orderPublicId: String): Long = tx.execute { loadOrder(orderPublicId).items.first().id }!!
+
+    /** 배송완료와 마지막 추적 상태를 심는다. 추적 동기화 경로가 없어 상태 문구는 리플렉션으로 넣는다. */
+    private fun seedDeliveredTracking(
+        orderPublicId: String,
+        lastTrackingStatus: String,
+        deliveredAt: LocalDateTime,
+    ) {
+        tx.executeWithoutResult {
+            val shipment =
+                em
+                    .createQuery("select s from Shipment s where s.order.publicId = :pid order by s.id desc", Shipment::class.java)
+                    .setParameter("pid", orderPublicId)
+                    .resultList
+                    .first()
+            shipment.markDelivered(deliveredAt)
+            val field = Shipment::class.java.getDeclaredField("lastTrackingStatus")
+            field.isAccessible = true
+            field.set(shipment, lastTrackingStatus)
+        }
+    }
+
+    private fun loadClaims(): List<Claim> = em.createQuery("select c from Claim c order by c.id asc", Claim::class.java).resultList
 
     private fun loadOrder(orderPublicId: String): Order =
         em
@@ -664,7 +777,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `상세는 리뷰 작성용 품목 식별자와 상품 식별자를 싣는다`() {
+    fun `상세는 리뷰 작성용 품목 식별자와 상품 공개 식별자를 싣는다`() {
         val buyerId = createActiveUser()
         val token = mintAccessToken(buyerId)
         val spec = specOf(71L, "냥이상점", "고양이 자동 급식기", 64000L, OrderStatus.PURCHASE_CONFIRMED)
@@ -672,8 +785,16 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
 
         val body = detailBody(token, orderPublicIds.first())
 
-        assertEquals(spec.productId, JsonPath.read<Int>(body, "$.data.items[0].productId").toLong(), "상품 식별자가 실려야 한다")
-        assertTrue(JsonPath.read<Int>(body, "$.data.items[0].orderItemId") > 0, "리뷰 작성에 쓸 주문품목 식별자가 실려야 한다: $body")
+        assertEquals(
+            productPublicIdOf(spec.productId),
+            JsonPath.read<String>(body, "$.data.items[0].productId"),
+            "상품 식별자는 상품 상세 API가 받는 공개 id여야 한다 — 내부 숫자 PK를 주면 링크가 깨진다",
+        )
+        assertEquals(
+            orderItemIdOf(orderPublicIds.first()),
+            JsonPath.read<Int>(body, "$.data.items[0].orderItemId").toLong(),
+            "주문품목 식별자는 리뷰 작성 API가 받는 order_items.id여야 한다",
+        )
     }
 
     @Test
@@ -712,10 +833,10 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
             .perform(get("/api/v1/orders/${paidOrders.first()}").bearer(token))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.payment.paymentMethod").value("KAKAO_PAY"))
-        mockMvc
-            .perform(get("/api/v1/orders/${noPaymentOrders.first()}").bearer(token))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.payment.paymentMethod").doesNotExist())
+        assertNull(
+            JsonPath.parse(detailBody(token, noPaymentOrders.first())).read<Any?>("$.data.payment.paymentMethod"),
+            "결제 행이 없는 주문은 결제수단이 null이어야 한다",
+        )
     }
 
     @Test
@@ -737,8 +858,10 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.shipment.courierName").value("CJ대한통운"))
             .andExpect(jsonPath("$.data.shipment.trackingNumber").value("123456789012"))
             .andExpect(jsonPath("$.data.shipment.dispatchedAt").exists())
-            .andExpect(jsonPath("$.data.shipment.deliveredAt").doesNotExist())
-            .andExpect(jsonPath("$.data.shipment.lastTrackingStatus").doesNotExist())
+
+        val body = detailBody(token, orderPublicIds.first())
+        assertNull(JsonPath.parse(body).read<Any?>("$.data.shipment.deliveredAt"), "배송 완료 전에는 null이어야 한다")
+        assertNull(JsonPath.parse(body).read<Any?>("$.data.shipment.lastTrackingStatus"), "추적 동기화 전에는 null이어야 한다")
     }
 
     @Test
@@ -772,12 +895,11 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
                 OrderGroupStatus.PAID,
             )
 
-        mockMvc
-            .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.shipment").doesNotExist())
-            .andExpect(jsonPath("$.data.purchaseConfirmDueAt").doesNotExist())
-            .andExpect(jsonPath("$.data.activeClaim").doesNotExist())
+        val body = detailBody(token, orderPublicIds.first())
+
+        assertNull(JsonPath.parse(body).read<Any?>("$.data.shipment"), "운송장이 없으면 null이어야 한다")
+        assertNull(JsonPath.parse(body).read<Any?>("$.data.purchaseConfirmDueAt"), "배송완료 전에는 구매확정 기한이 null이어야 한다")
+        assertNull(JsonPath.parse(body).read<Any?>("$.data.activeClaim"), "클레임이 없으면 null이어야 한다")
     }
 
     @Test
@@ -794,9 +916,10 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
 
         val body = detailBody(token, orderPublicIds.first())
 
-        assertTrue(
-            JsonPath.read<String>(body, "$.data.purchaseConfirmDueAt").startsWith(dueAt.toLocalDate().toString()),
-            "배송완료 건은 자동 구매확정 기한을 실어야 한다: $body",
+        assertEquals(
+            dueAt.atZone(ZoneId.systemDefault()).toOffsetDateTime(),
+            OffsetDateTime.parse(JsonPath.read<String>(body, "$.data.purchaseConfirmDueAt")),
+            "배송완료 건은 자동 구매확정 기한을 오프셋까지 그대로 실어야 한다",
         )
     }
 
@@ -839,10 +962,10 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
                 .rejectBySeller("하자가 확인되지 않습니다")
         }
 
-        mockMvc
-            .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.activeClaim").doesNotExist())
+        assertNull(
+            JsonPath.parse(detailBody(token, orderPublicIds.first())).read<Any?>("$.data.activeClaim"),
+            "거부된 클레임은 품목을 풀어주므로 진행 중으로 실리면 안 된다",
+        )
     }
 
     @Test
@@ -872,6 +995,168 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         assertTrue(!body.contains("남의수령인"), "타인 배송지 수령인이 응답에 새면 안 된다: $body")
         assertTrue(!body.contains("01099998888"), "타인 연락처가 응답에 새면 안 된다: $body")
         assertTrue(!body.contains("999999999999"), "타인 운송장 번호가 응답에 새면 안 된다: $body")
+    }
+
+    @Test
+    fun `상세는 배송완료된 운송장의 완료 시각과 마지막 추적 상태를 싣는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val deliveredAt = LocalDateTime.now().minusDays(1).withNano(0)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                buyerId,
+                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.DELIVERED)),
+                OrderGroupStatus.PAID,
+            )
+        seedShipment(orderPublicIds.first(), "CJ", "CJ대한통운", "123456789012")
+        seedDeliveredTracking(orderPublicIds.first(), "배송완료", deliveredAt)
+
+        val body = detailBody(token, orderPublicIds.first())
+
+        assertEquals(
+            deliveredAt.atZone(ZoneId.systemDefault()).toOffsetDateTime(),
+            OffsetDateTime.parse(JsonPath.read<String>(body, "$.data.shipment.deliveredAt")),
+            "배송완료 시각을 그대로 실어야 한다",
+        )
+        assertEquals("배송완료", JsonPath.read<String>(body, "$.data.shipment.lastTrackingStatus"), "마지막 추적 상태를 실어야 한다")
+    }
+
+    @Test
+    fun `철회된 클레임은 진행 중으로 싣지 않는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                buyerId,
+                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.PAID)),
+                OrderGroupStatus.PAID,
+            )
+        seedRequestedClaim(orderPublicIds.first())
+        tx.executeWithoutResult { loadClaims().first().withdrawByBuyer() }
+
+        assertNull(
+            JsonPath.parse(detailBody(token, orderPublicIds.first())).read<Any?>("$.data.activeClaim"),
+            "철회된 클레임은 품목을 풀어주므로 진행 중으로 실리면 안 된다",
+        )
+    }
+
+    @Test
+    fun `승인 후 환불 대기 중인 클레임은 싣고 환불이 끝나면 비운다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                buyerId,
+                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.PAID)),
+                OrderGroupStatus.PAID,
+            )
+        seedRequestedClaim(orderPublicIds.first())
+        tx.executeWithoutResult {
+            loadClaims().first().apply {
+                approveBySeller(null)
+                markRefundRequested()
+            }
+        }
+
+        mockMvc
+            .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.activeClaim.status").value("APPROVED"))
+            .andExpect(jsonPath("$.data.activeClaim.refundStatus").value("REQUESTED"))
+
+        tx.executeWithoutResult { loadClaims().first().markRefunded() }
+
+        assertNull(
+            JsonPath.parse(detailBody(token, orderPublicIds.first())).read<Any?>("$.data.activeClaim"),
+            "환불까지 끝난 클레임은 종결이라 진행 중으로 실리면 안 된다",
+        )
+    }
+
+    @Test
+    fun `환불에 실패한 클레임은 미해결이라 계속 싣는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                buyerId,
+                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.PAID)),
+                OrderGroupStatus.PAID,
+            )
+        seedRequestedClaim(orderPublicIds.first())
+        tx.executeWithoutResult {
+            loadClaims().first().apply {
+                approveBySeller(null)
+                markRefundRequested()
+                markRefundFailed()
+            }
+        }
+
+        mockMvc
+            .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.activeClaim.status").value("REFUND_FAILED"))
+            .andExpect(jsonPath("$.data.activeClaim.refundStatus").value("REFUND_FAILED"))
+    }
+
+    @Test
+    fun `클레임이 여러 건이면 가장 나중 요청 한 건을 싣는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val (_, orderPublicIds) =
+            seedOrderGroup(
+                buyerId,
+                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.PAID)),
+                OrderGroupStatus.PAID,
+            )
+        seedRequestedClaim(orderPublicIds.first())
+        tx.executeWithoutResult { loadClaims().first().rejectBySeller("하자가 확인되지 않습니다") }
+        val second = seedRequestedClaim(orderPublicIds.first())
+
+        mockMvc
+            .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.activeClaim.claimPublicId").value(second))
+    }
+
+    /**
+     * 통계는 프로퍼티가 아니라 런타임에 켬. properties를 바꾸면 컨텍스트가 갈라져 공유 MySQL 컨테이너가 조기 종료될 수 있음.
+     */
+    @Nested
+    inner class DetailQueryCount {
+        private lateinit var statistics: Statistics
+
+        @BeforeEach
+        fun enableStatistics() {
+            statistics = em.entityManagerFactory.unwrap(SessionFactory::class.java).statistics
+            statistics.isStatisticsEnabled = true
+        }
+
+        @Test
+        fun `품목이 늘어도 상세 조회 쿼리 수는 그대로다`() {
+            val buyerId = createActiveUser()
+            val token = mintAccessToken(buyerId)
+            val oneItem = seedOrderWithItemCount(buyerId, 1)
+            val fiveItems = seedOrderWithItemCount(buyerId, 5)
+
+            val withOneItem = countStatementsOnDetail(token, oneItem)
+            val withFiveItems = countStatementsOnDetail(token, fiveItems)
+
+            assertEquals(
+                withOneItem,
+                withFiveItems,
+                "품목마다 운송장·클레임을 단건 조회하면 품목 수만큼 쿼리가 늘어난다 (1개=$withOneItem, 5개=$withFiveItems)",
+            )
+            assertTrue(withFiveItems in 1..9, "상세 조회 쿼리 수가 예상 범위를 벗어났다: $withFiveItems")
+        }
+
+        private fun countStatementsOnDetail(
+            token: String,
+            orderPublicId: String,
+        ): Long {
+            statistics.clear()
+            detailBody(token, orderPublicId)
+            return statistics.prepareStatementCount
+        }
     }
 
     private companion object {

@@ -4,7 +4,7 @@ import com.aechak.application.order.port.view.OrderLineView
 
 data class OrderLineItemResult(
     val orderItemId: Long,
-    val productId: Long,
+    val productId: String,
     val productName: String,
     val thumbnailUrl: String?,
     val optionName: String,
@@ -19,7 +19,7 @@ data class OrderLineItemResult(
         ): OrderLineItemResult =
             OrderLineItemResult(
                 orderItemId = view.orderItemId,
-                productId = view.productId,
+                productId = view.productPublicId,
                 productName = view.productName,
                 thumbnailUrl = thumbnailUrl,
                 optionName = view.optionName,
