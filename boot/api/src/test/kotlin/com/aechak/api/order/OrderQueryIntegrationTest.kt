@@ -260,7 +260,8 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
     ): String =
         tx.execute {
             val order = loadOrder(orderPublicId)
-            val targets = if (itemIndex == null) order.items else listOf(order.items[itemIndex])
+            // 주문 품목 컬렉션에 정렬 지정이 없어 인덱스 선택은 id로 줄 세운 뒤에 한다
+            val targets = if (itemIndex == null) order.items else listOf(order.items.sortedBy { it.id }[itemIndex])
             val claim =
                 Claim.request(
                     order = order,
@@ -398,6 +399,13 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
             field.set(shipment, lastTrackingStatus)
         }
     }
+
+    private fun claimedOrderItemIds(): Set<Long> =
+        em
+            .createQuery("select ci.orderItem.id from ClaimItem ci", java.lang.Long::class.java)
+            .resultList
+            .map { it.toLong() }
+            .toSet()
 
     private fun loadClaims(): List<Claim> = em.createQuery("select c from Claim c order by c.id asc", Claim::class.java).resultList
 
@@ -1111,12 +1119,17 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         val first = seedRequestedClaim(orderPublicId, itemIndex = 0)
         val second = seedRequestedClaim(orderPublicId, itemIndex = 1)
 
+        assertEquals(
+            2,
+            claimedOrderItemIds().size,
+            "두 클레임이 서로 다른 품목을 잡아야 둘 다 미해결로 남고 최신 선택이 검증된다",
+        )
+        assertTrue(first != second, "클레임 두 건이어야 한다")
+
         mockMvc
             .perform(get("/api/v1/orders/$orderPublicId").bearer(token))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.activeClaim.claimPublicId").value(second))
-
-        assertTrue(first != second, "서로 다른 품목에 걸린 미해결 클레임 두 건이어야 최신 선택이 검증된다")
     }
 
     /**
