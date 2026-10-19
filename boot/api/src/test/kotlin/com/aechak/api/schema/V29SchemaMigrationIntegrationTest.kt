@@ -197,25 +197,28 @@ class V29SchemaMigrationIntegrationTest {
 
     @Test
     fun `이미 채워진 요율 스냅샷은 백필이 덮지 않는다`() {
-        // 보강 컬럼 하나만 먼저 생겨 값이 든 DB — 두 요율을 한꺼번에 대입하면 확정된 스냅샷이 전역 정책으로 바뀐다.
+        // 요율 컬럼이 먼저 생겨 한쪽만 값이 든 DB — 두 요율을 한꺼번에 대입하면 확정된 스냅샷이 전역 정책으로 바뀐다.
+        // 두 컬럼을 각각 보려고 플랫폼 요율만 든 행과 결제 요율만 든 행을 같이 심는다.
         val partialUrl =
             buildDriftSchema(
                 "v29_partial",
-                rows = legacySettlementRows(),
+                rows = legacySettlementRows() + secondSettlementRow(),
                 extraStatements =
                     listOf(
                         "ALTER TABLE settlements ADD COLUMN platform_fee_rate DECIMAL(5, 4) NULL",
+                        "ALTER TABLE settlements ADD COLUMN pg_fee_rate DECIMAL(5, 4) NULL",
                         "UPDATE settlements SET platform_fee_rate = 0.0500 WHERE id = $SEEDED_SETTLEMENT_ID",
+                        "UPDATE settlements SET pg_fee_rate = 0.0180 WHERE id = $SECOND_SETTLEMENT_ID",
                     ),
             )
 
         val rates =
             query(
                 partialUrl,
-                "SELECT platform_fee_rate, pg_fee_rate FROM settlements WHERE id = $SEEDED_SETTLEMENT_ID",
+                "SELECT platform_fee_rate, pg_fee_rate FROM settlements ORDER BY id",
             ) { it.getString(1) to it.getString(2) }
 
-        assertThat(rates).containsExactly("0.0500" to "0.0280")
+        assertThat(rates).containsExactly("0.0500" to "0.0280", "0.0800" to "0.0180")
         assertSameShape(actualUrl = partialUrl, expectedUrl = freshUrl, tolerateNativeEnum = false)
     }
 
@@ -344,6 +347,17 @@ class V29SchemaMigrationIntegrationTest {
                                      seller_coupon_burden, net_amount, status, idempotency_key, created_at, updated_at)
             VALUES ($SEEDED_SETTLEMENT_ID, $SEEDED_SELLER_ID, $SEEDED_ORDER_ITEM_ID, 10000, 800, 280, 0, 8920, 'PENDING',
                     'SETTLE:ORDER_ITEM:$SEEDED_ORDER_ITEM_ID', NOW(6), NOW(6))
+            """.trimIndent(),
+        )
+
+    /** 같은 주문품목의 정산 1건 더 — 요율 백필을 컬럼별로 보려면 행이 둘 필요하다. */
+    private fun secondSettlementRow(): List<String> =
+        listOf(
+            """
+            INSERT INTO settlements (id, seller_id, order_item_id, gross_amount, commission, pg_fee,
+                                     seller_coupon_burden, net_amount, status, idempotency_key, created_at, updated_at)
+            VALUES ($SECOND_SETTLEMENT_ID, $SEEDED_SELLER_ID, $SEEDED_ORDER_ITEM_ID, 20000, 1600, 560, 0, 17840,
+                    'PENDING', 'SETTLE:ORDER_ITEM:SECOND', NOW(6), NOW(6))
             """.trimIndent(),
         )
 
@@ -514,6 +528,7 @@ class V29SchemaMigrationIntegrationTest {
         private const val SEEDED_ORDER_ITEM_ID = 9103L
         private const val SEEDED_SELLER_ID = 6101L
         private const val SEEDED_SETTLEMENT_ID = 9104L
+        private const val SECOND_SETTLEMENT_ID = 9106L
 
         private val CREATE_TABLE = Regex("^create table (?:if not exists )?`?([a-z_0-9]+)`?", RegexOption.IGNORE_CASE)
         private val CREATE_INDEX = Regex("^create index \\S+ on `?([a-z_0-9]+)`?", RegexOption.IGNORE_CASE)
