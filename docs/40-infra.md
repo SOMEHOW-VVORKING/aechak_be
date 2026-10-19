@@ -54,7 +54,7 @@ infra/kafka/src/main/kotlin/com/aechak/infra/kafka/
 ├── config/                         # MessagingJacksonConfig 등 직렬화 설정
 ├── consumer/                       # TraceIdRecordInterceptor, DLT 에러 핸들러
 ├── outbox/
-│   ├── OutboxSweeper.kt            # PENDING 잔여분 재발행(50행 청크). 구동 스케줄은 boot/batch 소유
+│   ├── OutboxSweeper.kt            # PENDING 잔여분 재발행(50행 청크). 구동 스케줄은 boot/batch 소유 — dev는 batch ECS 1대가 돈다
 │   └── OutboxStatus.kt             # PENDING/PUBLISHED/DEAD/HOLD. 전이는 PENDING에서만
 └── publisher/
     ├── MessagePublisherAdapter.kt  # 발행 포트의 유일 구현. 마커 타입으로 경로 선택

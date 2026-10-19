@@ -62,8 +62,9 @@ class PaymentReconciliationClassifierTest {
     private fun payment(
         status: PaymentStatus,
         target: Long = amount,
-        paid: Long? = if (status == PaymentStatus.APPROVED) amount else null,
+        paid: Long? = if (status == PaymentStatus.PENDING || status == PaymentStatus.FAILED) null else amount,
         cancellable: Long? = paid,
+        cancelledAmount: Long = 0L,
     ): Payment =
         Payment.restore(
             id = 7L,
@@ -72,10 +73,12 @@ class PaymentReconciliationClassifierTest {
             method = PaymentMethod.CARD,
             targetAmount = target,
             status = status,
-            transactionId = if (status == PaymentStatus.APPROVED) "pg-tx" else null,
+            transactionId = if (status == PaymentStatus.PENDING) null else "pg-tx",
             realPaidAmount = paid,
             failureCode = null,
             cancellableAmount = cancellable,
+            cancelledAmount = cancelledAmount,
+            cancelRequestedAt = if (status == PaymentStatus.CANCEL_REQUESTED) LocalDateTime.of(2026, 10, 15, 11, 0) else null,
             version = 0,
         )
 
@@ -331,6 +334,99 @@ class PaymentReconciliationClassifierTest {
             MismatchType.AMOUNT_MISMATCH,
             ReconciliationResolution.MANUAL_REQUIRED,
             payment(PaymentStatus.APPROVED, cancellable = 0L),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.PAID),
+        )
+
+    @Test
+    fun `취소 요청만 남고 PG에 반영되지 않았으면 끝나지 않은 취소로 사람 확인이다`() =
+        assertVerdict(
+            MismatchType.CANCEL_IN_FLIGHT,
+            // 열린 상태로 남겨야 다음 회차가 이월해 다시 본다 — 일치로 접으면 선점이 영구히 남고 재취소가 막힌다
+            ReconciliationResolution.MANUAL_REQUIRED,
+            // 선점은 금액 원장을 건드리지 않으므로 취소가능액은 승인액 그대로다
+            payment(PaymentStatus.CANCEL_REQUESTED),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.PAID),
+        )
+
+    @Test
+    fun `취소 요청 중인데 우리 잔액만 줄어 있으면 대기가 아니라 금액 불일치다`() =
+        assertVerdict(
+            MismatchType.AMOUNT_MISMATCH,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.CANCEL_REQUESTED, cancellable = 8_000L),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.PAID),
+        )
+
+    @Test
+    fun `부분취소가 반영된 뒤의 두 번째 취소 요청도 끝나지 않은 취소로 남는다`() =
+        assertVerdict(
+            MismatchType.CANCEL_IN_FLIGHT,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            // 첫 부분취소 3,000원은 양쪽에 반영됐고, 두 번째 요청이 PG 응답을 기다리는 중이다
+            payment(PaymentStatus.CANCEL_REQUESTED, cancellable = 10_000L, cancelledAmount = 3_000L),
+            group(OrderGroupStatus.PARTIALLY_CANCELLED),
+            pg(PaymentGatewayStatus.PARTIAL_CANCELLED, cancelled = 3_000L),
+        )
+
+    @Test
+    fun `취소 요청 중인데 원승인액이 PG와 다르면 대기가 아니라 금액 불일치다`() =
+        assertVerdict(
+            MismatchType.AMOUNT_MISMATCH,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.CANCEL_REQUESTED),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.PAID, paid = 12_000L),
+        )
+
+    @Test
+    fun `취소 요청만 남았는데 PG는 이미 취소했으면 원장 미반영이라 사람 확인이다`() =
+        assertVerdict(
+            MismatchType.PG_CANCELLED_OURS_UNSYNCED,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.CANCEL_REQUESTED),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.CANCELLED, cancelled = amount),
+        )
+
+    @Test
+    fun `전액 취소가 원장과 그룹에 모두 반영됐으면 일치다`() =
+        assertVerdict(
+            MismatchType.MATCHED,
+            ReconciliationResolution.NOT_REQUIRED,
+            payment(PaymentStatus.CANCELLED, cancellable = 0L, cancelledAmount = amount),
+            group(OrderGroupStatus.CANCELLED),
+            pg(PaymentGatewayStatus.CANCELLED, cancelled = amount),
+        )
+
+    @Test
+    fun `부분 취소가 원장과 그룹에 모두 반영됐으면 일치다`() =
+        assertVerdict(
+            MismatchType.MATCHED,
+            ReconciliationResolution.NOT_REQUIRED,
+            payment(PaymentStatus.PARTIAL_CANCELLED, cancellable = 10_000L, cancelledAmount = 3_000L),
+            group(OrderGroupStatus.PARTIALLY_CANCELLED),
+            pg(PaymentGatewayStatus.PARTIAL_CANCELLED, cancelled = 3_000L),
+        )
+
+    @Test
+    fun `원장만 깎고 그룹을 전이하지 않았으면 사람 확인이다`() =
+        assertVerdict(
+            MismatchType.PG_CANCELLED_OURS_UNSYNCED,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.PARTIAL_CANCELLED, cancellable = 10_000L, cancelledAmount = 3_000L),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.PARTIAL_CANCELLED, cancelled = 3_000L),
+        )
+
+    @Test
+    fun `전액 취소가 끝난 결제를 PG가 결제완료로 말하면 금액 불일치다`() =
+        assertVerdict(
+            MismatchType.AMOUNT_MISMATCH,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.CANCELLED, cancellable = 0L, cancelledAmount = amount),
             group(OrderGroupStatus.PAID),
             pg(PaymentGatewayStatus.PAID),
         )

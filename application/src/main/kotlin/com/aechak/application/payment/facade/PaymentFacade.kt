@@ -2,6 +2,8 @@ package com.aechak.application.payment.facade
 
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
+import com.aechak.application.payment.port.PaymentCancelCommand
+import com.aechak.application.payment.port.PaymentCancelStatus
 import com.aechak.application.payment.port.PaymentGatewayPort
 import com.aechak.application.payment.port.PaymentGatewayStatus
 import com.aechak.application.payment.port.PaymentGatewayView
@@ -10,10 +12,13 @@ import com.aechak.application.payment.port.PaymentWebhookRequest
 import com.aechak.application.payment.port.PaymentWebhookVerifier
 import com.aechak.application.payment.service.PaymentService
 import com.aechak.application.payment.usecase.PaymentUseCase
+import com.aechak.application.payment.usecase.command.CancelPaymentCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByGatewayCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentCommand
 import com.aechak.application.payment.usecase.command.PreparePaymentCommand
+import com.aechak.application.payment.usecase.result.CancelPaymentResult
+import com.aechak.application.payment.usecase.result.CancelPaymentStatus
 import com.aechak.application.payment.usecase.result.CompletePaymentResult
 import com.aechak.application.payment.usecase.result.CompletePaymentStatus
 import com.aechak.application.payment.usecase.result.PreparePaymentResult
@@ -24,6 +29,7 @@ import com.aechak.domain.payment.Payment
 import com.aechak.domain.payment.error.PaymentErrorCode
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
@@ -47,6 +53,17 @@ class PaymentFacade(
     private val tx =
         TransactionTemplate(transactionManager).apply {
             isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
+        }
+
+    /**
+     * 취소 전용 경계. 호출자가 자기 트랜잭션 안에서 이 포트를 불러도 선점 커밋이 PG 호출보다 먼저 끝나야 하므로
+     * 바깥 트랜잭션에 합류하지 않는다. 합류하면 선점이 커밋되기 전에 PG가 호출되고, 호출자 롤백이
+     * "PG는 취소했는데 우리 원장은 승인" 상태를 만든다.
+     */
+    private val cancelTx =
+        TransactionTemplate(transactionManager).apply {
+            isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
+            propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
         }
 
     override fun preparePayment(command: PreparePaymentCommand): PreparePaymentResult {
@@ -94,6 +111,83 @@ class PaymentFacade(
     override fun completePaymentByGateway(command: CompletePaymentByGatewayCommand): CompletePaymentResult? {
         val target = paymentService.findCompletionTargetByPaymentId(command.paymentId) ?: return null
         return complete(target, target.group.buyerId)
+    }
+
+    override fun cancelPayment(command: CancelPaymentCommand): CancelPaymentResult {
+        // 1. 취소 선점을 먼저 커밋한다 — 이 1행 성공이 "이 취소는 내 것"의 유일한 근거다
+        val target =
+            try {
+                cancelTx.execute { paymentService.requestCancel(command.orderGroupId, command.amount) }!!
+            } catch (e: OptimisticLockingFailureException) {
+                // 같은 결제를 두 요청이 동시에 선점했다 — 진 쪽은 진행 중인 취소를 기다린다
+                throw BusinessException(PaymentErrorCode.PAYMENT_CANCEL_IN_PROGRESS, e)
+            }
+        val payment = target.payment
+
+        // 2. PG 호출은 트랜잭션 밖. 실패하면 선점을 풀어 재시도 경로를 남긴다 —
+        //    PG가 실제로는 취소에 성공한 경우(응답 유실)의 중복 취소는 취소가능액 대조가 막는다
+        val cancellation =
+            try {
+                paymentGateway.cancel(
+                    PaymentCancelCommand(
+                        paymentId = payment.paymentId,
+                        reason = command.reason,
+                        amount = if (target.isFullCancel) null else target.requestedAmount,
+                        currentCancellableAmount = target.cancellableBefore,
+                        requester = command.requester,
+                    ),
+                )
+            } catch (e: RuntimeException) {
+                releaseCancelRequest(command.orderGroupId)
+                throw e
+            }
+
+        // 3. PG가 확정한 금액만 원장에서 뺀다
+        return when (cancellation.status) {
+            PaymentCancelStatus.SUCCEEDED -> {
+                // PG가 확정한 금액만 반영한다 — 없으면 요청액으로 추정하지 않고, 선점을 남겨 재요청을 막고 대사로 넘긴다
+                val cancelled =
+                    cancellation.cancelledAmount ?: run {
+                        log.error(
+                            "PG가 취소 확정 금액 없이 성공을 보고함 — 원장 반영 보류, 선점 유지. paymentId={}, requestedAmount={}",
+                            payment.paymentId,
+                            target.requestedAmount,
+                        )
+                        throw BusinessException(PaymentErrorCode.PAYMENT_GATEWAY_ERROR)
+                    }
+                cancelTx.execute {
+                    // 밖에서 로딩한 결제 행은 낡았을 수 있어 저장 직전에 다시 읽는다
+                    val current = paymentService.getByOrderGroupId(command.orderGroupId)
+                    CancelPaymentResult.of(
+                        CancelPaymentStatus.COMPLETED,
+                        paymentService.completeCancel(current, cancelled),
+                        cancelled,
+                    )
+                }!!
+            }
+
+            // 비동기 승인 — 아직 PG도 깎지 않았다. 여기서 원장을 깎으면 대사가 금액 불일치 오보를 낸다
+            PaymentCancelStatus.REQUESTED -> {
+                log.info(
+                    "PG가 취소를 접수만 함 — 원장 반영 보류. paymentId={}, requestedAmount={}",
+                    payment.paymentId,
+                    target.requestedAmount,
+                )
+                CancelPaymentResult.of(CancelPaymentStatus.REQUESTED, payment, cancelledAmount = 0L)
+            }
+
+            PaymentCancelStatus.FAILED -> {
+                releaseCancelRequest(command.orderGroupId)
+                throw BusinessException(PaymentErrorCode.PAYMENT_CANCEL_FAILED)
+            }
+        }
+    }
+
+    /** 선점 해제는 보상 동작이라 실패해도 원래 예외를 가리지 않는다 — 남은 CANCEL_REQUESTED는 대사가 본다 */
+    private fun releaseCancelRequest(orderGroupId: Long) {
+        runCatching {
+            cancelTx.execute { paymentService.failCancel(paymentService.getByOrderGroupId(orderGroupId)) }
+        }.onFailure { log.error("취소 선점 해제 실패 — 결제 행이 요청 상태로 남음. orderGroupId={}", orderGroupId, it) }
     }
 
     /** 콜백·웹훅·대사가 공유하는 확정 본체. 대상을 어떻게 찾았는지(로그인 대조냐 서명이냐 서버 내부냐)만 입구가 다르다 */

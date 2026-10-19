@@ -74,6 +74,8 @@ data "aws_iam_policy_document" "ecs_task_runtime" {
       "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/seller/*",
       "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/admin",
       "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/admin/*",
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/batch",
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/batch/*",
     ]
   }
 
@@ -348,6 +350,78 @@ resource "aws_ecs_service" "admin" {
   health_check_grace_period_seconds = 300
 
   # 오토스케일링 없음 — 고정 1대(TF가 desired_count 관리)
+  lifecycle {
+    ignore_changes = [task_definition] # CI가 새 리비전 등록 — TF가 되돌리지 않게
+  }
+}
+
+# ── batch (SCRUM-251): 배치 실행 모듈 ──────────────────
+# 웹 모듈이 아니다 — portMappings·load_balancer·health_check_grace_period_seconds가 없다.
+# batch는 web starter와 actuator를 싣지 않아 /actuator/health가 없고 수신 포트도 열지 않는다.
+# 롤·서브넷·SG는 api와 공유 — 같은 버킷·같은 SSM 트리를 쓰는 동일 신뢰 수준이다.
+resource "aws_cloudwatch_log_group" "batch" {
+  name              = "/ecs/${var.project}-batch-${var.env}"
+  retention_in_days = 30
+}
+
+resource "aws_ecs_task_definition" "batch" {
+  family                   = "${var.project}-batch-${var.env}"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = 512 # 스위퍼 5초 폴링 + 새벽 대사 1회 — admin과 같은 최소 사양
+  memory                   = 1024
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
+  }
+
+  container_definitions = jsonencode([{
+    name      = "batch"
+    image     = "${aws_ecr_repository.batch.repository_url}:bootstrap" # 첫 CI 배포가 실제 태그로 교체
+    essential = true
+
+    environment = [
+      { name = "SPRING_PROFILES_ACTIVE", value = var.env },
+      { name = "AWS_REGION", value = var.region },
+    ]
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.batch.name
+        awslogs-region        = var.region
+        awslogs-stream-prefix = "batch"
+      }
+    }
+  }])
+}
+
+resource "aws_ecs_service" "batch" {
+  name            = "${var.project}-batch-${var.env}"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.batch.arn
+  desired_count   = 1 # 고정 1대. 2대 이상이면 같은 스케줄 회차가 동시에 돈다
+  launch_type     = "FARGATE"
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  # 신규 태스크를 띄우기 전에 기존 태스크를 먼저 내린다 — 기본값(100/200)이면 롤링 중 잠시 2대가 겹친다
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 100
+
+  network_configuration {
+    subnets          = [aws_subnet.app_a.id]
+    security_groups  = [aws_security_group.app.id]
+    assign_public_ip = false
+  }
+
+  # 오토스케일링 없음 — desired_count는 TF가 1로 고정 관리
   lifecycle {
     ignore_changes = [task_definition] # CI가 새 리비전 등록 — TF가 되돌리지 않게
   }

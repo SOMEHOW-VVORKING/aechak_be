@@ -10,6 +10,7 @@ import com.aechak.seller.product.response.OptionCombinationChangeResponse
 import com.aechak.seller.product.response.ProductRegisterResponse
 import com.aechak.seller.product.response.ProductSaleStatusChangeResponse
 import com.aechak.seller.product.response.ProductUpdateResponse
+import com.aechak.seller.product.response.SellerProductDetailResponse
 import com.aechak.seller.product.response.SellerProductListResponse
 import com.aechak.seller.product.response.SellerProductOptionsResponse
 import com.aechak.webcommon.response.ApiResponse
@@ -93,6 +94,18 @@ class SellerProductController(
     ): ResponseEntity<ApiResponse<SellerProductListResponse>> =
         ResponseEntity.ok(
             ApiResponse.of(SellerProductListResponse.from(sellerProductUseCase.getMyProducts(request.toQuery(principal.userId)))),
+        )
+
+    /** 내 상품 단건 — 수정 폼 프리필용 */
+    @GetMapping("/{productId}")
+    fun getMyProductDetail(
+        @PathVariable productId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<SellerProductDetailResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(
+                SellerProductDetailResponse.from(sellerProductUseCase.getMyProductDetail(principal.userId, productId)),
+            ),
         )
 
     /** 내 상품의 옵션 조합별 재고 — 목록 행 클릭 시 모달용 */
