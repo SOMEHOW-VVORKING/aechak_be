@@ -52,6 +52,15 @@ payment:
     enabled: ${TOSS_RECONCILIATION_ENABLED:false} # 토스 직접 연동(orderId == 우리 결제 식별자)을 확인한 환경만 켠다
     secret-key: ${TOSS_SECRET_KEY:}
 
+order:
+  delivery:
+    # 배치 모듈이 dev에 배포되기 전까지는 꺼 둔다 — 켜면 시간만 보고 주문을 배송완료로 넘긴다
+    enabled: ${ORDER_DELIVERY_BATCH_ENABLED:false}
+    cron: "0 0 3 * * *"       # KST 03:00 — 대사(04:30)와 겹치지 않게 앞에 둔다
+    dispatch-delay-days: 1    # 송장 등록 후 1일이 지나도 배송완료가 아니면 집화 지연으로 경고
+    auto-complete-days: 4     # 송장 등록 후 4일이 지나면 배송완료로 자동 전이
+    scan-limit: 200
+
 # PII 암호화 키 — api와 동일 키(같은 데이터를 복호). dev·prod는 SSM, local·test는 프로파일 파일의 고정 키가 덮는다.
 aechak:
   pii:

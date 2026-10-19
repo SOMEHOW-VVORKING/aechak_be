@@ -147,6 +147,8 @@ class OrderMessageConsumer(private val someUseCase: SomeUseCase) {
 - **셀러센터 전용 주문 유스케이스는 `application.order.seller` 하위에 둔다.** BC 패키지 전체(`application.order`)를 스캔하면
   구매자 주문서·장바구니 파사드가 딸려와 배송지·적립금 조립까지 요구한다. 뒤집어, batch는 `application.order`를 스캔하므로
   이 하위 패키지를 excludeFilters로 뺀다 — 셀러 자격(`application.seller`)을 배치가 끌고 오지 않게 한다.
+- **셀러와 배치가 같은 전이를 일으키는 로직은 `application.order.{하위}` 를 따로 파고 양쪽 스캔에 넣는다**(`application.order.delivery`).
+  `application.order.seller` 에 두면 batch의 제외 필터에 걸려 배치가 쓸 수 없고, 복제해 두면 전이 순서·이력 기록이 갈린다.
 - **Flyway 미탑재**: 스키마 관리는 api가 유일 소유자. seller 단독 배포 시 새 마이그레이션은 api 선배포가 전제.
 - 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(web-security JwtConfig 공유, 같은 키 주입).
 - 온보딩 허용 경로 없음 — 셀러센터 전 EP가 ACTIVE 전용(UserStatusFilter 화이트리스트 empty).
@@ -160,6 +162,8 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 ├── config/                      # JpaConfig(@EntityScan에 L3 엔티티 패키지 포함) · SchedulingConfig
 ├── outbox/                      # OutboxSweepSchedule — 아웃박스 재발행(5초 주기)
 ├── payment/                     # PaymentReconciliationSchedule — 결제 대사(매일 04:30 KST, 빠진 날 따라잡기)
+├── order/                       # OrderDeliverySchedule — 집화 지연 경고·배송완료 자동 전이(매일 03:00 KST)
+│   └── config/                  # 배치별 정책값(@ConfigurationProperties) — 켜고 끄는 플래그 포함
 ├── job/{도메인}/                 # (예정) Spring Batch Job/Step — ItemProcessor 등에서 UseCase 호출
 └── support/
     └── BusinessSkipPolicy.kt    # (예정) BusinessException → errorCode 로깅 + 스킵 판단 (HTTP 개념 없음)
@@ -172,6 +176,8 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 - 예외 소비 방식: web-common의 핸들러가 아니라 스케줄/SkipPolicy에서 errorCode 기준 처리. 한 건의 실패가 회차를 멈추지 않게 건별로 격리한다.
 - 배치가 자체 발신하는 에러 코드의 status는 500 고정 (05 문서 ErrorCode 컨벤션).
 - dev 배포 라인(ECR·ECS·SSM)은 아직 없다(SCRUM-226) — 배치에 올린 기능은 그 전까지 dev에서 돌지 않는다.
+  그래서 **상태를 바꾸는 스케줄은 `@ConditionalOnProperty` 로 기본 off**로 올리고, 배포가 끝난 환경에서 설정으로 켠다.
+  꺼진 상태에서는 스케줄 빈 자체가 조립되지 않는 것을 `BatchApplicationSmokeTest` 가 고정한다.
 
 ## 7. admin — 어드민 실행 모듈 (SCRUM-170)
 
