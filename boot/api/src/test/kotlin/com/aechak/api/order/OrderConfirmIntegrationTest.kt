@@ -54,7 +54,9 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CyclicBarrier
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 구매자 구매확정 통합. 확정은 비가역이고 적립금·리뷰·정산의 기산점이라
@@ -330,8 +332,8 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
         assertNull(order.purchaseConfirmedAt)
         assertNull(order.confirmType)
         assertEquals(emptyList<Triple<OrderStatus, OrderStatus, TriggeredBy>>(), histories(fixture.orderPublicId))
-        assertEquals(emptyList<Reward>(), rewards(fixture.orderPublicId))
-        assertEquals(0L, pointBalance(buyerId))
+        assertEquals(emptyList<Reward>(), rewards(fixture.orderPublicId), "원장도 함께 되돌아가야 한다")
+        assertEquals(0L, pointBalance(buyerId), "잔액 캐시도 함께 되돌아가야 한다")
     }
 
     @Test
@@ -410,10 +412,16 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
     /** 확정 요청과 겹친 클레임 접수를 재현한다 — 별 스레드라 자기 트랜잭션에서 커밋된다. */
     private fun commitClaimInOtherTransaction(fixture: Fixture) {
         val pool = Executors.newSingleThreadExecutor()
+        val task = pool.submit { tx.execute { seedClaimRow(fixture) } }
         try {
-            pool.submit { tx.execute { seedClaimRow(fixture) } }.get(20, TimeUnit.SECONDS)
+            task.get(20, TimeUnit.SECONDS)
+        } catch (e: TimeoutException) {
+            task.cancel(true)
+            throw e
         } finally {
-            pool.shutdown()
+            // 남은 작업이 다음 테스트의 데이터를 건드리지 않게 종료까지 기다린다
+            pool.shutdownNow()
+            pool.awaitTermination(10, TimeUnit.SECONDS)
         }
     }
 
@@ -619,23 +627,20 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
         }
     }
 
-    /** 선점 UPDATE 직전에 끼워 넣을 동작. 켠 테스트에서만 돈다. */
+    /** 선점 UPDATE 직전에 끼워 넣을 동작. 켠 테스트에서만 돌고, 동시 요청에서도 한 번만 실행된다. */
     class TransitionHook {
-        @Volatile
-        private var action: (() -> Unit)? = null
+        private val action = AtomicReference<(() -> Unit)?>(null)
 
         fun armOnce(action: () -> Unit) {
-            this.action = action
+            this.action.set(action)
         }
 
         fun disarm() {
-            action = null
+            action.set(null)
         }
 
         fun fire() {
-            val armed = action ?: return
-            action = null
-            armed()
+            action.getAndSet(null)?.invoke()
         }
     }
 
@@ -683,10 +688,11 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
         ): PointUseCase =
             object : PointUseCase by delegate {
                 override fun earnPurchaseReward(command: EarnPurchaseRewardCommand) {
+                    delegate.earnPurchaseReward(command)
+                    // 원장과 잔액이 이미 쓰인 뒤에 터뜨린다 — 양쪽 쓰기의 롤백까지 보려면 위임 후여야 한다
                     if (switch.enabled) {
                         throw IllegalStateException("적립 실패 주입")
                     }
-                    delegate.earnPurchaseReward(command)
                 }
             }
     }
