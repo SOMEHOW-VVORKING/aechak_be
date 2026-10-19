@@ -24,6 +24,7 @@ class ClaimAmountCalculator {
         return ClaimAmounts(
             itemRefunds = itemRefunds(order, targets, allocation),
             shippingFeeRefund = shippingRefund(order, targets, allocation),
+            pointRefund = pointRefund(order, targets, allocation),
         )
     }
 
@@ -34,6 +35,29 @@ class ClaimAmountCalculator {
         usedPoint: Long,
         targets: Map<Long, Int>,
     ): Long = shippingRefund(order, targets, allocatePoint(groupOrders, usedPoint))
+
+    /** 이미 저장된 클레임의 적립금 복원액. 입력(단가·수량·할인·배송비·사용 적립금)이 전부 불변이라 요청 시점 계산과 같은 값이 나온다. */
+    fun pointRefund(
+        order: Order,
+        groupOrders: List<Order>,
+        usedPoint: Long,
+        targets: Map<Long, Int>,
+    ): Long = pointRefund(order, targets, allocatePoint(groupOrders, usedPoint))
+
+    /** 취소 대상 품목에 안분된 몫 + 배송비를 돌려주는 경우 배송비 줄의 몫. */
+    private fun pointRefund(
+        order: Order,
+        targets: Map<Long, Int>,
+        allocation: PointAllocation,
+    ): Long {
+        val orderItems = order.items.associateBy { it.id }
+        val items =
+            targets.entries.fold(0L) { sum, (orderItemId, quantity) ->
+                val item = orderItems.getValue(orderItemId)
+                Math.addExact(sum, prorate(allocation.ofItem(orderItemId), quantity, item.quantity))
+            }
+        return if (coversWholeOrder(order, targets)) Math.addExact(items, allocation.ofShipping(order.id)) else items
+    }
 
     private fun itemRefunds(
         order: Order,
