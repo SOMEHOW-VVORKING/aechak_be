@@ -13,6 +13,7 @@ import com.aechak.domain.order.error.OrderErrorCode
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 
@@ -32,7 +33,14 @@ class ClaimRefundFacade(
 ) : ClaimRefundUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    private val tx = TransactionTemplate(transactionManager)
+    /**
+     * 두 경계 모두 호출자 트랜잭션에 합류하지 않는다. 합류하면 선점이 커밋되기 전에 PG가 호출되고,
+     * 호출자 롤백이 "PG는 취소했는데 클레임 선점은 사라진" 상태를 만들어 같은 클레임이 두 번 환불될 수 있다.
+     */
+    private val tx =
+        TransactionTemplate(transactionManager).apply {
+            propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
+        }
 
     @Transactional(readOnly = true)
     override fun findRefundPendingClaims(limit: Int): List<RefundPendingClaimResult> = claimRefundService.findRefundPending(limit)
@@ -67,6 +75,17 @@ class ClaimRefundFacade(
                 )
                 return ExecuteClaimRefundResult.requested(reservation.refundAmount)
             }
+        if (confirmed != reservation.refundAmount) {
+            // 확정액이 요청액과 다르면 어느 쪽도 정상 종결이 아니다. 원장을 깎으면 PG와 금액이 맞아떨어져
+            // 대사가 미환불 차액을 못 보므로, 원장을 그대로 두고 선점을 남겨 대사가 사람을 부르게 한다
+            log.error(
+                "PG 확정액이 요청액과 다름 — 원장 반영 보류, 선점 유지. claimPublicId={}, 요청액={}, 확정액={}",
+                reservation.claimPublicId,
+                reservation.refundAmount,
+                confirmed,
+            )
+            throw BusinessException(OrderErrorCode.CLAIM_REFUND_FAILED)
+        }
 
         return tx.execute { claimRefundService.settle(reservation.claimPublicId, confirmed) }!!
     }

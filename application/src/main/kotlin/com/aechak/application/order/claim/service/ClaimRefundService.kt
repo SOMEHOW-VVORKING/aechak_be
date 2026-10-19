@@ -109,16 +109,18 @@ class ClaimRefundService(
         transitionGroup(group, fullyCancelled = remainingCancellable == 0L)
         cancelClaimedItems(claim, order)
 
-        val result =
-            ExecuteClaimRefundResult(
-                status = ExecuteClaimRefundStatus.REFUNDED,
-                refundAmount = cancelledAmount,
-                releasedPoint = releasePoint(claim, group, amounts.pointRefund),
-                skippedStockItems = restoreStock(claim),
-            )
+        // 재고를 먼저 되돌린다 — 주문 생성과 만료 복원이 모두 재고 다음 적립금 순서로 잠근다.
+        // 순서를 뒤집으면 같은 구매자가 같은 옵션을 주문하는 동안의 환불이 교착상태에 걸린다
+        val skippedStockItems = restoreStock(claim)
+        val releasedPoint = releasePoint(claim, group, amounts.pointRefund)
         claim.markRefunded()
         claimRepository.save(claim)
-        return result
+        return ExecuteClaimRefundResult(
+            status = ExecuteClaimRefundStatus.REFUNDED,
+            refundAmount = cancelledAmount,
+            releasedPoint = releasedPoint,
+            skippedStockItems = skippedStockItems,
+        )
     }
 
     /**
@@ -136,13 +138,31 @@ class ClaimRefundService(
         group.applyClaimCancellation(fullyCancelled)
     }
 
-    /** 대상 품목을 취소하고, 그 결과 주문의 모든 품목이 취소됐으면 주문까지 전이시킨다. */
+    /**
+     * 주문 수량 전부를 덮는 품목만 취소하고, 그 결과 주문의 모든 품목이 취소됐으면 주문까지 전이시킨다.
+     *
+     * 수량 일부만 취소한 품목은 상태를 바꾸지 않는다 — order_items에 취소 수량을 담을 자리가 없어
+     * 품목을 취소로 바꾸면 남은 수량이 환불도 이행도 받지 못한 채 사라진다.
+     */
     private fun cancelClaimedItems(
         claim: Claim,
         order: Order,
     ) {
         val targets = claim.claimedQuantityByOrderItemId()
-        order.items.filter { it.id in targets }.forEach { it.markCancelled() }
+        order.items.forEach { item ->
+            val claimed = targets[item.id] ?: return@forEach
+            if (claimed >= item.quantity) {
+                item.markCancelled()
+            } else {
+                log.warn(
+                    "수량 일부만 취소된 품목은 상태를 바꾸지 않음 — 남은 수량은 이행 대상으로 남는다. claimPublicId={}, orderItemId={}, 취소수량={}, 주문수량={}",
+                    claim.publicId,
+                    item.id,
+                    claimed,
+                    item.quantity,
+                )
+            }
+        }
         if (order.items.any { it.itemStatus != OrderItemStatus.CANCELLED }) return
         val from = order.status
         order.cancelByClaimApproval()

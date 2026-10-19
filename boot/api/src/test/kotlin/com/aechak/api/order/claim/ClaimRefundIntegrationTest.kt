@@ -259,6 +259,67 @@ class ClaimRefundIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `수량 일부만 취소한 품목은 상태가 바뀌지 않고 주문도 살아 있다`() {
+        val seeded = seedPaidOrder(listOf(ItemSpec(10_000L, 2)))
+        val claimPublicId = approvedClaim(seeded, targets = mapOf(seeded.orderItemIds.single() to 1))
+
+        val result = claimRefundUseCase.executeRefund(ExecuteClaimRefundCommand(claimPublicId))
+
+        assertEquals(10_000L, result.refundAmount)
+        assertEquals(
+            listOf(OrderItemStatus.ORDERED),
+            itemStatusesOf(seeded.orderId),
+            "품목을 취소로 바꾸면 환불받지 못한 남은 수량이 이행 대상에서 사라진다",
+        )
+        assertEquals(OrderStatus.PAID, orderStatusOf(seeded.orderId))
+        assertEquals(OrderGroupStatus.PARTIALLY_CANCELLED, groupStatusOf(seeded.orderGroupPublicId))
+        assertEquals(INITIAL_STOCK + 1, stockOf(seeded.optionCombinationIds.single()), "취소한 수량만 재고로 돌아간다")
+        assertEquals(10_000L, paymentRow(seeded.orderGroupPublicId).cancellableAmount)
+    }
+
+    @Test
+    fun `PG 확정액이 요청액과 다르면 원장을 깎지 않고 선점을 남긴다`() {
+        val seeded = seedPaidOrder(listOf(ItemSpec(10_000L, 2)), usedPoint = 4_000L)
+        val claimPublicId = approvedClaim(seeded)
+        paymentGateway.stubCancelPartialConfirm(seeded.orderGroupPublicId, 15_000L)
+
+        val e =
+            assertThrows(BusinessException::class.java) {
+                claimRefundUseCase.executeRefund(ExecuteClaimRefundCommand(claimPublicId))
+            }
+
+        assertEquals(OrderErrorCode.CLAIM_REFUND_FAILED, e.errorCode)
+        val payment = paymentRow(seeded.orderGroupPublicId)
+        assertEquals("CANCEL_REQUESTED", payment.status, "원장을 PG 확정액에 맞추면 대사가 미환불 차액을 못 본다")
+        assertEquals(16_000L, payment.cancellableAmount)
+        assertEquals(0L, payment.cancelledAmount)
+        assertEquals(OrderGroupStatus.PAID, groupStatusOf(seeded.orderGroupPublicId))
+        assertEquals(INITIAL_STOCK, stockOf(seeded.optionCombinationIds.single()))
+        assertEquals(0L, pointBalanceOf(buyerId))
+        assertEquals(RefundStatus.REQUESTED, claimOf(claimPublicId).refundStatus, "끝나지 않은 요청으로 남아야 한다")
+    }
+
+    @Test
+    fun `호출자 트랜잭션 안에서 집행해도 선점과 반영은 독립 커밋된다`() {
+        val seeded = seedPaidOrder(listOf(ItemSpec(10_000L, 2)))
+        val claimPublicId = approvedClaim(seeded)
+
+        // 호출자가 롤백해도 환불은 커밋돼 있어야 한다 — 선점이 사라지면 같은 클레임이 두 번 환불된다
+        runCatching {
+            tx.execute {
+                claimRefundUseCase.executeRefund(ExecuteClaimRefundCommand(claimPublicId))
+                throw IllegalStateException("호출자 롤백")
+            }
+        }
+
+        assertEquals(RefundStatus.DONE, claimOf(claimPublicId).refundStatus)
+        assertEquals(0L, paymentRow(seeded.orderGroupPublicId).cancellableAmount)
+        assertEquals(OrderGroupStatus.CANCELLED, groupStatusOf(seeded.orderGroupPublicId))
+        assertEquals(ExecuteClaimRefundStatus.SKIPPED, claimRefundUseCase.executeRefund(ExecuteClaimRefundCommand(claimPublicId)).status)
+        assertEquals(1, paymentGateway.cancelCommands.size)
+    }
+
+    @Test
     fun `전액 환불 뒤 도착한 결제 확정 요청은 취소된 주문으로 끊는다`() {
         val seeded = seedPaidOrder(listOf(ItemSpec(10_000L, 1)))
         claimRefundUseCase.executeRefund(ExecuteClaimRefundCommand(approvedClaim(seeded)))
