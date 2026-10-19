@@ -1,7 +1,6 @@
 package com.aechak.batch.order
 
 import com.aechak.api.support.DatabaseCleaner
-import com.aechak.application.order.delivery.service.OrderDeliveryService
 import com.aechak.batch.order.config.OrderDeliveryProperties
 import com.aechak.batch.support.BatchIntegrationTestBase
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -32,6 +31,10 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.TestPropertySource
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDateTime
+import java.util.concurrent.ConcurrentHashMap
+
+/** 기본값 5와 다른 값을 설정해야 "설정이 반영되는가"를 가를 수 있다. */
+private const val CONFIGURED_AUTO_CONFIRM_DAYS = 7L
 
 /**
  * 집화·배송완료 자동 배치 통합. 실제 택배 추적이 없는 동안 발송 시각만 보고 넘기므로,
@@ -42,6 +45,8 @@ import java.time.LocalDateTime
     properties = [
         "order.delivery.enabled=true",
         "order.delivery.cron=0 0 0 29 2 *", // 스케줄이 저절로 돌지 않게 — 테스트가 직접 호출한다
+        "order.delivery.scan-limit=2", // 페이지 경계를 실제로 넘게 — 상한에서 끊고 끝내는 회귀를 잡는다
+        "order.auto-confirm.days=$CONFIGURED_AUTO_CONFIRM_DAYS", // 기본값(5)과 다른 값 — 설정이 무시되는 회귀를 잡는다
     ],
 )
 class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
@@ -90,14 +95,18 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
     }
 
     @Test
-    fun `자동 배송완료도 구매확정 기한을 부여한다`() {
+    fun `자동 배송완료도 설정된 일수만큼 구매확정 기한을 부여한다`() {
         val dispatchedAt = LocalDateTime.now().minusDays(properties.autoCompleteDays).minusHours(1)
         val orderPublicId = seedShippingOrder(dispatchedAt)
 
         schedule.run()
 
         val deliveredAt = requireNotNull(shipmentOf(orderPublicId).deliveredAt)
-        assertEquals(deliveredAt.plusDays(OrderDeliveryService.AUTO_CONFIRM_DAYS), autoConfirmDueAtOf(orderPublicId))
+        assertEquals(
+            deliveredAt.plusDays(CONFIGURED_AUTO_CONFIRM_DAYS),
+            autoConfirmDueAtOf(orderPublicId),
+            "order.auto-confirm.days 설정이 무시되면 기한이 기본값으로 박힌다",
+        )
     }
 
     @Test
@@ -160,8 +169,8 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
     }
 
     @Test
-    fun `한 건이 실패해도 나머지는 전이된다`() {
-        val dispatchedAt = LocalDateTime.now().minusDays(properties.autoCompleteDays).minusHours(1)
+    fun `같은 페이지에서 한 건이 실패해도 나머지는 전이된다`() {
+        val dispatchedAt = overdue()
         val failing = seedShippingOrder(dispatchedAt)
         val healthy = seedShippingOrder(dispatchedAt)
         failingTransition.failOn(orderIdOf(failing))
@@ -172,7 +181,42 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
         assertEquals(OrderStatus.DELIVERED, statusOf(healthy), "앞 건의 장애가 뒤 건을 막으면 안 된다")
     }
 
+    @Test
+    fun `스캔 상한을 채운 실패 건들이 다음 페이지를 막지 않는다`() {
+        val dispatchedAt = overdue()
+        val failingFirst = seedShippingOrder(dispatchedAt)
+        val failingSecond = seedShippingOrder(dispatchedAt)
+        val healthy = seedShippingOrder(dispatchedAt)
+        failingTransition.failOn(orderIdOf(failingFirst))
+        failingTransition.failOn(orderIdOf(failingSecond))
+
+        schedule.run()
+
+        assertEquals(OrderStatus.SHIPPING, statusOf(failingFirst))
+        assertEquals(OrderStatus.SHIPPING, statusOf(failingSecond))
+        assertEquals(
+            OrderStatus.DELIVERED,
+            statusOf(healthy),
+            "앞 페이지가 전부 실패해 상태가 남으면 커서 없이는 뒷건이 영구히 처리되지 않는다",
+        )
+    }
+
+    @Test
+    fun `대상이 스캔 상한을 넘어도 한 회차에 모두 전이된다`() {
+        val dispatchedAt = overdue()
+        val orderPublicIds = List(properties.scanLimit * 2 + 1) { seedShippingOrder(dispatchedAt) }
+
+        schedule.run()
+
+        orderPublicIds.forEach {
+            assertEquals(OrderStatus.DELIVERED, statusOf(it), "상한에서 끊으면 적체가 매 회차 남는다")
+        }
+    }
+
     // ---------- 헬퍼 ----------
+
+    /** 배송완료 기한을 이미 넘긴 발송 시각. */
+    private fun overdue(): LocalDateTime = LocalDateTime.now().minusDays(properties.autoCompleteDays).minusHours(1)
 
     private fun seedCourier() {
         tx.execute { em.persist(CourierMaster.register(courierCode = "CJ", courierName = "씨제이대한통운")) }
@@ -300,21 +344,20 @@ class OrderDeliveryScheduleIntegrationTest : BatchIntegrationTestBase() {
                 .resultList
         }!!
 
-    /** 지정한 주문의 전이에서만 터지는 장치 — 건별 격리가 실제로 동작하는지 가른다. */
+    /** 지정한 주문의 전이에서만 터지는 장치 — 건별 격리와 커서 전진이 실제로 동작하는지 가른다. */
     class FailingTransition {
-        @Volatile
-        private var orderId: Long? = null
+        private val orderIds = ConcurrentHashMap.newKeySet<Long>()
 
         fun failOn(orderId: Long) {
-            this.orderId = orderId
+            orderIds += orderId
         }
 
         fun clear() {
-            orderId = null
+            orderIds.clear()
         }
 
         fun raiseIfTarget(orderId: Long) {
-            if (this.orderId == orderId) {
+            if (orderId in orderIds) {
                 throw IllegalStateException("의도된 전이 실패 (orderId=$orderId)")
             }
         }

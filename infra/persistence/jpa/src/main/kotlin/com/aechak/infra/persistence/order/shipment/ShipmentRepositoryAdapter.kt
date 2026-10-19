@@ -23,12 +23,14 @@ interface ShipmentJpaRepository : JpaRepository<Shipment, Long> {
         "select s from Shipment s join fetch s.order o " +
             "where s.shipmentType = :shipmentType and s.deliveredAt is null " +
             "and s.dispatchedAt < :dispatchedBefore and o.status = :status " +
+            "and s.id > :afterShipmentId " +
             "order by s.id asc",
     )
     fun findPendingDispatchedBefore(
         @Param("shipmentType") shipmentType: ShipmentType,
         @Param("dispatchedBefore") dispatchedBefore: LocalDateTime,
         @Param("status") status: OrderStatus,
+        @Param("afterShipmentId") afterShipmentId: Long,
         limit: Limit,
     ): List<Shipment>
 }
@@ -46,12 +48,14 @@ class ShipmentRepositoryAdapter(
 
     override fun findPendingDispatchedBefore(
         dispatchedBefore: LocalDateTime,
+        afterShipmentId: Long,
         limit: Int,
     ): List<Shipment> =
         jpaRepository.findPendingDispatchedBefore(
             shipmentType = ShipmentType.INITIAL,
             dispatchedBefore = dispatchedBefore,
             status = OrderStatus.SHIPPING,
+            afterShipmentId = afterShipmentId,
             limit = Limit.of(limit),
         )
 }

@@ -12,7 +12,7 @@ data class OrderDeliveryProperties(
     val dispatchDelayDays: Long = DEFAULT_DISPATCH_DELAY_DAYS,
     /** 송장 등록 후 이 일수가 지나면 배송완료로 자동 전이한다. */
     val autoCompleteDays: Long = DEFAULT_AUTO_COMPLETE_DAYS,
-    /** 한 회차에 훑을 최대 건수. */
+    /** 한 페이지에 읽을 최대 건수. 회차는 커서로 페이지를 넘기며 대상을 모두 처리한다. */
     val scanLimit: Int = DEFAULT_SCAN_LIMIT,
 ) {
     companion object {

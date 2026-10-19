@@ -4,6 +4,7 @@ import com.aechak.domain.order.shipment.Shipment
 import java.time.LocalDateTime
 
 data class PendingDeliveryResult(
+    val shipmentId: Long,
     val orderId: Long,
     val orderPublicId: String,
     val dispatchedAt: LocalDateTime,
@@ -11,6 +12,7 @@ data class PendingDeliveryResult(
     companion object {
         fun from(shipment: Shipment): PendingDeliveryResult =
             PendingDeliveryResult(
+                shipmentId = shipment.id,
                 orderId = shipment.order.id,
                 orderPublicId = shipment.order.publicId,
                 dispatchedAt =

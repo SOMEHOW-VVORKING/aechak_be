@@ -20,11 +20,13 @@ class OrderDeliveryService(
     private val orderRepository: OrderRepository,
     private val orderStatusHistoryRepository: OrderStatusHistoryRepository,
     private val shipmentRepository: ShipmentRepository,
+    private val autoConfirmPolicy: AutoConfirmPolicy,
 ) {
     fun findPendingDeliveries(
         dispatchedBefore: LocalDateTime,
+        afterShipmentId: Long,
         limit: Int,
-    ): List<Shipment> = shipmentRepository.findPendingDispatchedBefore(dispatchedBefore, limit)
+    ): List<Shipment> = shipmentRepository.findPendingDispatchedBefore(dispatchedBefore, afterShipmentId, limit)
 
     fun completeBySystem(
         orderId: Long,
@@ -53,7 +55,7 @@ class OrderDeliveryService(
         }
 
         shipment.markDelivered(deliveredAt)
-        val autoConfirmDueAt = deliveredAt.plusDays(AUTO_CONFIRM_DAYS)
+        val autoConfirmDueAt = autoConfirmPolicy.dueAt(deliveredAt)
         order.markDelivered(autoConfirmDueAt)
         orderStatusHistoryRepository.save(
             OrderStatusHistory.record(
@@ -64,10 +66,5 @@ class OrderDeliveryService(
             ),
         )
         return autoConfirmDueAt
-    }
-
-    companion object {
-        /** 배송완료부터 구매확정 기한까지의 일수. */
-        const val AUTO_CONFIRM_DAYS = 5L
     }
 }

@@ -2,6 +2,8 @@ package com.aechak.batch.order
 
 import com.aechak.application.order.delivery.usecase.OrderDeliveryUseCase
 import com.aechak.application.order.delivery.usecase.command.CompleteDeliveryBySystemCommand
+import com.aechak.application.order.delivery.usecase.query.PendingDeliveryQuery
+import com.aechak.application.order.delivery.usecase.result.PendingDeliveryResult
 import com.aechak.batch.order.config.OrderDeliveryProperties
 import com.aechak.common.error.BusinessException
 import org.slf4j.LoggerFactory
@@ -27,31 +29,41 @@ class OrderDeliverySchedule(
     @Scheduled(cron = "\${order.delivery.cron:0 0 3 * * *}", zone = "Asia/Seoul")
     fun run() {
         val now = LocalDateTime.now(KST)
-        warnDelayedDispatches(now)
-        completeOverdueDeliveries(now)
-    }
+        // 두 기한 중 이른 쪽까지 거슬러 올라가 한 번만 훑고, 건별로 경고와 전이를 가른다
+        val scanBefore = now.minusDays(minOf(properties.dispatchDelayDays, properties.autoCompleteDays))
+        val autoCompleteBefore = now.minusDays(properties.autoCompleteDays)
 
-    /** 집화 지연 경고 — 전이는 하지 않는다. 배송 지연 지표의 근거만 남긴다. */
-    private fun warnDelayedDispatches(now: LocalDateTime) {
-        val delayed = useCase.findPendingDeliveries(now.minusDays(properties.dispatchDelayDays), properties.scanLimit)
-        delayed.forEach {
-            log.warn("집화 지연 의심. orderPublicId={}, dispatchedAt={}", it.orderPublicId, it.dispatchedAt)
+        var afterShipmentId = 0L
+        while (true) {
+            val page = useCase.findPendingDeliveries(PendingDeliveryQuery(scanBefore, afterShipmentId, properties.scanLimit))
+            if (page.isEmpty()) {
+                return
+            }
+            page.forEach { target ->
+                if (target.dispatchedAt.isBefore(autoCompleteBefore)) {
+                    completeDelivery(target)
+                } else {
+                    log.warn("집화 지연 의심. orderPublicId={}, dispatchedAt={}", target.orderPublicId, target.dispatchedAt)
+                }
+            }
+            // 실패한 건도 커서를 전진시킨다 — 상한에서 끊으면 앞자리 실패가 뒷건의 처리를 영구히 막는다
+            afterShipmentId = page.last().shipmentId
+            if (page.size < properties.scanLimit) {
+                return
+            }
         }
     }
 
-    private fun completeOverdueDeliveries(now: LocalDateTime) {
-        val targets = useCase.findPendingDeliveries(now.minusDays(properties.autoCompleteDays), properties.scanLimit)
-        targets.forEach { target ->
-            val deliveredAt = target.dispatchedAt.plusDays(properties.autoCompleteDays)
-            try {
-                useCase.completeDeliveryBySystem(CompleteDeliveryBySystemCommand(target.orderId, deliveredAt))
-                log.info("배송완료 자동 전이. orderPublicId={}, deliveredAt={}", target.orderPublicId, deliveredAt)
-            } catch (e: BusinessException) {
-                // 스캔과 전이 사이에 셀러가 먼저 처리한 건 — 한 건의 거절이 회차를 멈추지 않게 한다
-                log.warn("배송완료 자동 전이 건너뜀. orderPublicId={}, errorCode={}", target.orderPublicId, e.errorCode.code)
-            } catch (e: Exception) {
-                log.error("배송완료 자동 전이 실패. orderPublicId={}", target.orderPublicId, e)
-            }
+    private fun completeDelivery(target: PendingDeliveryResult) {
+        val deliveredAt = target.dispatchedAt.plusDays(properties.autoCompleteDays)
+        try {
+            useCase.completeDeliveryBySystem(CompleteDeliveryBySystemCommand(target.orderId, deliveredAt))
+            log.info("배송완료 자동 전이. orderPublicId={}, deliveredAt={}", target.orderPublicId, deliveredAt)
+        } catch (e: BusinessException) {
+            // 스캔과 전이 사이에 셀러가 먼저 처리한 건 — 한 건의 거절이 회차를 멈추지 않게 한다
+            log.warn("배송완료 자동 전이 건너뜀. orderPublicId={}, errorCode={}", target.orderPublicId, e.errorCode.code)
+        } catch (e: Exception) {
+            log.error("배송완료 자동 전이 실패. orderPublicId={}", target.orderPublicId, e)
         }
     }
 

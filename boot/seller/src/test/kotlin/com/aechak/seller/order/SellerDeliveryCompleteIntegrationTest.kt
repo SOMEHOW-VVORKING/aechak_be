@@ -1,7 +1,6 @@
 package com.aechak.seller.order
 
 import com.aechak.api.support.IntegrationTestBase
-import com.aechak.application.order.delivery.service.OrderDeliveryService
 import com.aechak.application.order.seller.usecase.SellerOrderUseCase
 import com.aechak.application.order.seller.usecase.command.CompleteDeliveryCommand
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -98,14 +97,14 @@ class SellerDeliveryCompleteIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `배송완료는 배송완료 시각 기준으로 구매확정 기한을 부여한다`() {
+    fun `배송완료는 배송완료 시각에 기본 5일을 더해 구매확정 기한을 부여한다`() {
         val orderPublicId = seedShippingOrder()
 
         mockMvc.perform(deliveryCompleteRequest(token, orderPublicId)).andExpect(status().isNoContent)
 
         val deliveredAt = requireNotNull(shipmentOf(orderPublicId).deliveredAt)
         assertEquals(
-            deliveredAt.plusDays(OrderDeliveryService.AUTO_CONFIRM_DAYS),
+            deliveredAt.plusDays(5),
             autoConfirmDueAtOf(orderPublicId),
             "구매확정 기한이 비거나 어긋나면 자동확정이 영구히 돌지 않는다",
         )
