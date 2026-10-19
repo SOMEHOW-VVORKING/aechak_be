@@ -309,6 +309,88 @@ resource "aws_ssm_parameter" "admin_pii_hmac_key" {
   }
 }
 
+# ── batch (SCRUM-251): /aechak/{env}/batch/ ────────────
+# api·seller·admin과 같은 결 — 값은 같은 원천(tf 리소스)을 재참조하고 경로만 모듈 단위로 분리한다.
+# batch는 웹 모듈이 아니라 CORS·JWT 공개키가 없다. redis도 쓰지 않는다.
+
+resource "aws_ssm_parameter" "batch_db_url" {
+  name  = "/${var.project}/${var.env}/batch/SPRING_DATASOURCE_URL"
+  type  = "String"
+  value = "jdbc:mysql://${aws_db_instance.main.address}:3306/${var.project}"
+}
+
+resource "aws_ssm_parameter" "batch_db_username" {
+  name  = "/${var.project}/${var.env}/batch/SPRING_DATASOURCE_USERNAME"
+  type  = "String"
+  value = aws_db_instance.main.username
+}
+
+resource "aws_ssm_parameter" "batch_db_password" {
+  name  = "/${var.project}/${var.env}/batch/SPRING_DATASOURCE_PASSWORD"
+  type  = "SecureString"
+  value = random_password.db.result
+}
+
+# 아웃박스 재발행이 쓰는 브로커 주소. api 경로 파라미터(ec2.tf)와 같은 값을 재참조한다
+resource "aws_ssm_parameter" "batch_kafka_bootstrap" {
+  name  = "/${var.project}/${var.env}/batch/SPRING_KAFKA_BOOTSTRAP_SERVERS"
+  type  = "String"
+  value = aws_ssm_parameter.kafka_bootstrap.value
+}
+
+# 배치는 파일을 다루지 않지만 주문·장바구니 파사드가 FileStorage 조립을 요구해 버킷명이 비면 안 된다
+resource "aws_ssm_parameter" "batch_media_bucket" {
+  name  = "/${var.project}/${var.env}/batch/AWS_S3_MEDIA_BUCKET"
+  type  = "String"
+  value = aws_s3_bucket.media.id
+}
+
+resource "aws_ssm_parameter" "batch_docs_bucket" {
+  name  = "/${var.project}/${var.env}/batch/AWS_S3_DOCS_BUCKET"
+  type  = "String"
+  value = aws_s3_bucket.docs.id
+}
+
+resource "aws_ssm_parameter" "batch_media_public_base_url" {
+  name  = "/${var.project}/${var.env}/batch/AWS_S3_MEDIA_PUBLIC_BASE_URL"
+  type  = "String"
+  value = "https://${local.media_domain}"
+}
+
+# 대사 조회 대상을 테스트 결제로 한정한다. dev는 테스트 채널이라 true, prod는 false
+resource "aws_ssm_parameter" "batch_portone_reconciliation_is_test" {
+  name  = "/${var.project}/${var.env}/batch/PORTONE_RECONCILIATION_IS_TEST"
+  type  = "String"
+  value = tostring(var.env != "prod")
+}
+
+# PII 키 — api·seller·admin과 같은 random_bytes 재참조(같은 DB의 같은 암호문을 복호)
+resource "aws_ssm_parameter" "batch_pii_aes_key_v1" {
+  name  = "/${var.project}/${var.env}/batch/PII_AES_KEY_V1"
+  type  = "SecureString"
+  value = random_bytes.pii_aes_key_v1.base64
+
+  lifecycle {
+    prevent_destroy = true # 파라미터 삭제 = batch 부팅 fail-fast
+  }
+}
+
+resource "aws_ssm_parameter" "batch_pii_hmac_key" {
+  name  = "/${var.project}/${var.env}/batch/PII_HMAC_KEY"
+  type  = "SecureString"
+  value = random_bytes.pii_hmac_key.base64
+
+  lifecycle {
+    prevent_destroy = true # 파라미터 삭제 = batch 부팅 fail-fast
+  }
+}
+
+# --- 포트원 시크릿: 수기 등재 (위 api 경로와 같은 방침) ---
+# 대사가 포트원 결제 목록 조회·재조회에 쓴다. 비면 부팅은 되고 대사 회차가 실패로 기록된다.
+#   /{project}/{env}/batch/PORTONE_API_SECRET     (SecureString)
+#   /{project}/{env}/batch/PORTONE_WEBHOOK_SECRET (SecureString)
+# 웹훅 시크릿은 배치가 웹훅을 받지 않아도 필요하다 — 결제 파사드 조립에 검증기가 딸려온다.
+
 # --- JWT RS256 키: 수기 등재 (헤더의 카카오·JWT 키 방침과 동일) ---
 # terraform으로 생성하면 개인키가 state에 남아 여기서는 관리하지 않는다.
 # 실행 모듈 간 키 공유가 전제라 아래 파라미터를 사람이 직접 등재한다:
