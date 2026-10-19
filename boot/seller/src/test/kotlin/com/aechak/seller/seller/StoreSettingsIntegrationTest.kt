@@ -253,6 +253,39 @@ class StoreSettingsIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `공백 문자만 든 상호는 10006으로 거절된다`() {
+        // NBSP는 Bean Validation의 @NotBlank를 통과하지만 정규화하면 빈 문자열이 된다 — 도메인이 막는다
+        mockMvc
+            .perform(putRequest(token, storeJson(storeName = "\u00a0")))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(SellerErrorCode.INVALID_STORE_SETTINGS.code))
+        assertEquals("애착상회$sellerUserId", loadSeller(sellerUserId).storeName, "빈 상호가 저장됐다")
+    }
+
+    @Test
+    fun `배너 승격이 거절되면 프로필도 상호도 저장되지 않는다`() {
+        val other = createActiveUser()
+        mockMvc
+            .perform(
+                putRequest(
+                    token,
+                    storeJson(
+                        profileImageKey = tmpKey("p.webp"),
+                        bannerImageKey = "${FileKey.tmpPrefixOf(other, UploadPurpose.SELLER_STORE)}b.webp",
+                    ),
+                ),
+            ).andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(FileErrorCode.FILE_ACCESS_DENIED.code))
+
+        // 프로필 승격은 이미 일어나 S3 고아를 남기지만, 저장 트랜잭션은 열리지 않아 행은 그대로다
+        assertEquals(listOf("sellers/store/p.webp"), promotedKeys())
+        val seller = loadSeller(sellerUserId)
+        assertEquals("애착상회$sellerUserId", seller.storeName)
+        assertNull(seller.profileImageKey, "승격만 된 키가 저장됐다")
+        assertNull(seller.bannerImageKey)
+    }
+
+    @Test
     fun `상호 앞뒤 공백은 떼고 저장된다`() {
         mockMvc
             .perform(putRequest(token, storeJson(storeName = "  애착스토어  ")))

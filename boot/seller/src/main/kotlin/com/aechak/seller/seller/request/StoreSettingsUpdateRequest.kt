@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Size
 /**
  * 스토어 설정 전체 덮어쓰기 요청. 바디에 없는 항목은 비운 것으로 본다 —
  * 이미지를 빼면 제거, 주소를 빼면 비워진다.
+ * 상호의 공백 정규화와 그 결과의 필수 판정은 도메인이 한다(Bean Validation과 Kotlin의 공백 정의가 다르다).
  */
 data class StoreSettingsUpdateRequest(
     @field:NotBlank(message = "상호(스토어명)는 필수입니다.")
@@ -29,8 +30,7 @@ data class StoreSettingsUpdateRequest(
     fun toCommand(sellerId: Long): UpdateStoreCommand =
         UpdateStoreCommand(
             sellerId = sellerId,
-            // 구매자에게 그대로 보이는 이름이라 앞뒤 공백은 떼고 저장한다
-            storeName = storeName.trim(),
+            storeName = storeName,
             brandIntro = brandIntro,
             profileImageKey = profileImageKey,
             bannerImageKey = bannerImageKey,

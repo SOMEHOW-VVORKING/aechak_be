@@ -144,6 +144,7 @@ class Seller protected constructor(
     /**
      * 스토어 설정 전체 덮어쓰기. 주소 3필드는 배송 정책의 출고지와 같은 컬럼이라 두 화면이 같은 값을 본다.
      * 이미지 키는 승격이 끝난 저장 키만 들어온다(승격은 트랜잭션 밖 호출부 책임).
+     * 상호는 앞뒤 공백을 떼고 저장하며, 떼고 나면 비는 값은 거절한다.
      */
     fun updateStore(
         storeName: String,
@@ -154,7 +155,10 @@ class Seller protected constructor(
         roadAddress: String?,
         detailAddress: String?,
     ) {
-        this.storeName = storeName
+        val normalizedStoreName = storeName.trim()
+        validateStoreName(normalizedStoreName)
+
+        this.storeName = normalizedStoreName
         this.brandIntro = brandIntro
         this.profileImageKey = profileImageKey
         this.bannerImageKey = bannerImageKey
@@ -211,6 +215,19 @@ class Seller protected constructor(
         this.exchangeFee = exchangeFee
         this.avgDispatchDays = avgDispatchDays
         this.shippingPolicyText = shippingPolicyText
+    }
+
+    /** 상호는 구매자에게 보이는 이름이라 빈 값·컬럼 초과를 엔티티가 막는다. */
+    private fun validateStoreName(storeName: String) {
+        if (storeName.isEmpty()) {
+            throw BusinessException(SellerErrorCode.INVALID_STORE_SETTINGS, detail = "상호(스토어명)는 필수입니다.")
+        }
+        if (storeName.length > MAX_STORE_NAME_LENGTH) {
+            throw BusinessException(
+                SellerErrorCode.INVALID_STORE_SETTINGS,
+                detail = "상호(스토어명)는 ${MAX_STORE_NAME_LENGTH}자 이하여야 합니다.",
+            )
+        }
     }
 
     private fun validateShippingPolicy(
