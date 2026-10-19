@@ -59,10 +59,12 @@ class SettlementPayoutFacade(
             }
         }
 
+        // 남은 일이 있는 회차는 종결하지 않는다 — 계좌가 채워지거나 실패가 걷히면 같은 기준일을 이어받아야 한다
+        val pendingWork = failedSellerIds.isNotEmpty() || plan.excludedSellers.isNotEmpty()
         return SettlementPayoutExecutionResult(
             baseDate = baseDate,
             outcome = if (plan.resumed) SettlementPayoutOutcome.RESUMED else SettlementPayoutOutcome.EXECUTED,
-            batchStatus = tx.execute { service.finish(baseDate) },
+            batchStatus = tx.execute { service.finish(baseDate, pendingWork) },
             createdPayoutCount = createdPayoutCount,
             createdPayoutAmount = createdPayoutAmount,
             excludedSellers = plan.excludedSellers,

@@ -15,5 +15,8 @@ enum class SettlementErrorCode(
     INVALID_SETTLEMENT_STATUS_TRANSITION(70006, "정산 상태를 변경할 수 없습니다.", 409),
     INVALID_SETTLEMENT_FEE_RATE(70007, "정산 수수료율이 올바르지 않습니다.", 400),
     INVALID_PAYOUT_STATUS_TRANSITION(70101, "지급 상태를 변경할 수 없습니다.", 409),
+
+    // 집행 배치가 지급 묶음 연결을 선점하지 못했을 때. 지급 건 생성 트랜잭션을 되돌리는 신호다.
+    PAYOUT_TARGET_TAKEN(70103, "다른 실행이 지급 대상 정산을 먼저 선점했습니다.", 409),
     INVALID_SETTLEMENT_BATCH_STATUS_TRANSITION(70201, "정산 집행 배치 상태를 변경할 수 없습니다.", 409),
 }

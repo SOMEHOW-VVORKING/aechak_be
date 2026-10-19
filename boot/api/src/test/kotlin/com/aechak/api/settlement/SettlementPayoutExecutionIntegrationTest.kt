@@ -20,6 +20,9 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * 정산 집행 배치의 대상 선정·지급 건 생성·멱등 통합 검증(실 MySQL).
@@ -148,6 +151,70 @@ class SettlementPayoutExecutionIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `종결된 회차에는 뒤늦게 대상이 생겨도 지급 건을 붙이지 않는다`() {
+        val closed = execute(BASE_DATE)
+        assertThat(closed.batchStatus).isEqualTo(SettlementBatchStatus.COMPLETED)
+        seedVerifiedAccount(SELLER_A)
+        val late = seedSettlement(SELLER_A, orderItemId = 1L)
+
+        val result = execute(BASE_DATE)
+
+        assertThat(result.outcome).isEqualTo(SettlementPayoutOutcome.RESUMED)
+        assertThat(result.createdPayoutCount).isEqualTo(0)
+        assertThat(payoutCount()).isEqualTo(0)
+        // 다음 기준일 회차가 집는다 — 지급 예정일 조건이 계속 참이다
+        assertThat(payoutIdOf(late)).isNull()
+        assertThat(execute(BASE_DATE.plusDays(1)).createdPayoutCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `기준일이 다른 두 회차가 겹쳐 돌아도 같은 정산의 송금 요청은 하나다`() {
+        // 배치가 달라 송금키 UNIQUE가 막지 못한다 — 연결 선점만이 같은 돈을 두 번 내보내는 것을 막는다
+        seedVerifiedAccount(SELLER_A)
+        val settlement = seedSettlement(SELLER_A, orderItemId = 1L)
+
+        raceTwoRuns(BASE_DATE, BASE_DATE.plusDays(1))
+
+        assertThat(payoutCount()).isEqualTo(1)
+        val payout = payoutOf(SELLER_A)!!
+        assertThat(payout.settlementTargetAmount).isEqualTo(NET_AMOUNT)
+        assertThat(payoutIdOf(settlement)).isEqualTo(payout.id)
+    }
+
+    @Test
+    fun `지급 대상 조건이 깨진 원장은 연결 선점에서 빠진다`() {
+        val held = seedSettlement(SELLER_A, orderItemId = 1L).also { mutate(it) { s -> s.hold() } }
+        val deducted = seedSettlement(SELLER_A, orderItemId = 2L).also { mutate(it) { s -> s.applyRefundDeduction(1_000L) } }
+        val eligible = seedSettlement(SELLER_A, orderItemId = 3L)
+        val payout = seedPayout()
+
+        val assigned = tx.execute { settlementRepository.assignPayoutIfEligible(payout, listOf(held, deducted, eligible)) }
+
+        assertThat(assigned).isEqualTo(1)
+        assertThat(payoutIdOf(eligible)).isEqualTo(payout.id)
+        assertThat(payoutIdOf(held)).isNull()
+        assertThat(payoutIdOf(deducted)).isNull()
+    }
+
+    @Test
+    fun `계좌 미검증으로 비워 둔 회차는 종결되지 않고 계좌가 검증되면 이어서 지급한다`() {
+        seedAccount(SELLER_A, AccountVerificationStatus.VERIFYING)
+        val settlement = seedSettlement(SELLER_A, orderItemId = 1L)
+        val first = execute(BASE_DATE)
+        assertThat(first.createdPayoutCount).isEqualTo(0)
+        // 지급할 셀러가 남아 있는 회차를 종결하면 이어받을 때 종결된 회차에 송금 요청이 붙는다
+        assertThat(batchOf(BASE_DATE)!!.status).isEqualTo(SettlementBatchStatus.PROCESSING)
+
+        verifyAccount(SELLER_A)
+        val second = execute(BASE_DATE)
+
+        assertThat(second.outcome).isEqualTo(SettlementPayoutOutcome.RESUMED)
+        assertThat(second.createdPayoutCount).isEqualTo(1)
+        assertThat(payoutIdOf(settlement)).isNotNull()
+        assertThat(batchOf(BASE_DATE)!!.status).isEqualTo(SettlementBatchStatus.PROCESSING)
+    }
+
+    @Test
     fun `지급 건은 송금 요청 상태로 남고 묶인 정산은 입금 확인 전이라 정산대기 그대로다`() {
         seedVerifiedAccount(SELLER_A)
         val settlement = seedSettlement(SELLER_A, orderItemId = 1L)
@@ -167,6 +234,42 @@ class SettlementPayoutExecutionIntegrationTest : IntegrationTestBase() {
 
     private fun execute(baseDate: LocalDate): SettlementPayoutExecutionResult =
         useCase.executePayout(ExecuteSettlementPayoutCommand(baseDate))
+
+    /** 기준일이 다른 두 집행을 함께 쏜다 — 겹치지 않고 직렬화돼도 결과 단언은 같아야 한다. */
+    private fun raceTwoRuns(
+        first: LocalDate,
+        second: LocalDate,
+    ) {
+        val pool = Executors.newFixedThreadPool(2)
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        try {
+            val futures =
+                listOf(first, second).map { baseDate ->
+                    pool.submit {
+                        ready.countDown()
+                        start.await()
+                        runCatching { execute(baseDate) }
+                    }
+                }
+            ready.await()
+            start.countDown()
+            futures.forEach { it.get(30, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdown()
+        }
+    }
+
+    private fun seedPayout(): Payout =
+        tx.execute {
+            val batch = em.merge(SettlementExecutionBatch.generate(BASE_DATE, 1, NET_AMOUNT))
+            em.persist(Payout.create(batch, SELLER_A, NET_AMOUNT, Payout.transferKeyOf(batch.id, SELLER_A)))
+            em.flush()
+            em
+                .createQuery("select p from Payout p", Payout::class.java)
+                .resultList
+                .first()
+        }!!
 
     private fun seedSettlement(
         sellerId: Long,
@@ -213,6 +316,16 @@ class SettlementPayoutExecutionIntegrationTest : IntegrationTestBase() {
     ) = tx.executeWithoutResult {
         em.persist(SettlementAccount.registerVerified(sellerId, "088", "enc", "홍길동"))
         em.flush()
+        updateVerificationStatus(sellerId, verificationStatus)
+    }
+
+    private fun verifyAccount(sellerId: Long) =
+        tx.executeWithoutResult { updateVerificationStatus(sellerId, AccountVerificationStatus.VERIFIED) }
+
+    private fun updateVerificationStatus(
+        sellerId: Long,
+        verificationStatus: AccountVerificationStatus,
+    ) {
         em
             .createQuery("update SettlementAccount a set a.verificationStatus = :st where a.sellerId = :sellerId")
             .setParameter("st", verificationStatus)

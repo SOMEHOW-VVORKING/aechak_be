@@ -1,8 +1,6 @@
 package com.aechak.domain.settlement
 
-import com.aechak.common.error.BusinessException
 import com.aechak.domain.settlement.batch.SettlementExecutionBatch
-import com.aechak.domain.settlement.error.SettlementErrorCode
 import com.aechak.domain.settlement.payout.Payout
 import com.aechak.domain.settlement.settlement.Settlement
 import com.aechak.domain.settlement.settlement.enums.SettlementStatus
@@ -10,15 +8,12 @@ import java.math.BigDecimal
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
- * 지급 집행 대상 판정과 지급 묶음 연결 계약. 깨지면 집행 배치가 보류·환불 차감 건까지 송금하거나,
- * 이미 묶인 정산을 다음 회차가 다시 집어 같은 돈을 두 번 내보낸다.
+ * 지급 집행 대상 판정과 회차 종결 계약. 깨지면 집행 배치가 보류·환불 차감 건까지 송금하거나,
+ * 입금 반영이 끝난 회차에 새 송금 요청이 섞인다.
  */
 class SettlementPayoutTargetTest {
     @Test
@@ -28,45 +23,32 @@ class SettlementPayoutTargetTest {
 
     @Test
     fun `보류된 원장은 지급 대상이 아니다`() {
-        val settlement = settlement().apply { hold() }
-
-        assertFalse(settlement.isPayoutEligible())
-        val exception = assertFailsWith<BusinessException> { settlement.assignPayout(payout()) }
-        assertEquals(SettlementErrorCode.SETTLEMENT_NOT_PENDING, exception.errorCode)
-        assertNull(settlement.payout)
+        assertFalse(settlement().apply { hold() }.isPayoutEligible())
     }
 
     @Test
     fun `환불 차감이 생긴 원장은 지급 대상이 아니다`() {
-        val settlement = settlement().apply { applyRefundDeduction(1L) }
-
-        assertFalse(settlement.isPayoutEligible())
-        assertFailsWith<BusinessException> { settlement.assignPayout(payout()) }
-        assertNull(settlement.payout)
+        assertFalse(settlement().apply { applyRefundDeduction(1L) }.isPayoutEligible())
     }
 
     @Test
-    fun `지급 묶음에 넣어도 입금 확인 전이라 정산대기 그대로다`() {
-        val settlement = settlement()
-        val payout = payout()
+    fun `이미 지급된 원장은 지급 대상이 아니다`() {
+        val settlement = settlement().apply { markPaid(payout()) }
 
-        settlement.assignPayout(payout)
-
-        assertSame(payout, settlement.payout)
-        assertEquals(SettlementStatus.PENDING, settlement.status)
-        // 다음 회차가 같은 원장을 다시 집지 못한다
+        assertEquals(SettlementStatus.PAID, settlement.status)
         assertFalse(settlement.isPayoutEligible())
     }
 
     @Test
-    fun `이미 지급 묶음에 들어간 원장은 다른 묶음에 다시 넣을 수 없다`() {
-        val first = payout()
-        val settlement = settlement().apply { assignPayout(first) }
+    fun `종결된 회차는 지급 건을 더 받지 않는다`() {
+        val batch = SettlementExecutionBatch.generate(LocalDate.of(2026, 3, 20), 0, 0L)
+        assertTrue(batch.acceptsPayout())
 
-        val exception = assertFailsWith<BusinessException> { settlement.assignPayout(payout()) }
+        batch.startProcessing()
+        assertTrue(batch.acceptsPayout(), "입금 확인 전인 회차에는 이어서 지급 건을 붙일 수 있어야 한다")
 
-        assertEquals(SettlementErrorCode.SETTLEMENT_NOT_PENDING, exception.errorCode)
-        assertSame(first, settlement.payout)
+        batch.complete()
+        assertFalse(batch.acceptsPayout())
     }
 
     @Test

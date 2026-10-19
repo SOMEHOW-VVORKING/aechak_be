@@ -2,11 +2,13 @@ package com.aechak.application.settlement.service
 
 import com.aechak.application.settlement.usecase.result.ExcludedPayoutSeller
 import com.aechak.application.settlement.usecase.result.PayoutExclusionReason
+import com.aechak.common.error.BusinessException
 import com.aechak.domain.settlement.account.enums.AccountVerificationStatus
 import com.aechak.domain.settlement.account.repository.SettlementAccountRepository
 import com.aechak.domain.settlement.batch.SettlementExecutionBatch
 import com.aechak.domain.settlement.batch.enums.SettlementBatchStatus
 import com.aechak.domain.settlement.batch.repository.SettlementExecutionBatchRepository
+import com.aechak.domain.settlement.error.SettlementErrorCode
 import com.aechak.domain.settlement.payout.Payout
 import com.aechak.domain.settlement.payout.repository.PayoutRepository
 import com.aechak.domain.settlement.settlement.Settlement
@@ -68,8 +70,13 @@ class SettlementPayoutService(
      * 셀러 하나의 지급 건을 만들고 그 셀러의 정산을 묶는다. 대상 정산은 이 트랜잭션에서 다시 읽는다 —
      * 편성 때 읽은 행을 들고 오면 영속성 컨텍스트 밖의 객체를 고치게 되고, 그 사이 바뀐 상태도 못 본다.
      *
-     * 이미 같은 송금키의 지급 건이 있으면(이어받는 회차) 아무것도 하지 않는다. 금액은 지급 예정액의 합이고,
-     * 묶인 정산은 PENDING 그대로 남는다 — 실제 입금 확인이 PAID를 찍는다.
+     * 이미 같은 송금키의 지급 건이 있거나 종결된 회차면(이어받는 회차) 아무것도 하지 않는다.
+     * 금액은 선점에 성공한 정산의 지급 예정액 합이고, 묶인 정산은 PENDING 그대로 남는다 —
+     * 실제 입금 확인이 PAID를 찍는다.
+     *
+     * 연결은 조건부 원자 UPDATE로 선점한다. 기준일이 다른 두 회차가 겹쳐 돌면 배치가 달라 송금키 UNIQUE가
+     * 막지 못하므로, 선점에 실패한 원장이 하나라도 있으면 이 트랜잭션을 되돌려 지급 건까지 없앤다 —
+     * 같은 정산이 금액만큼 두 번 송금 요청되는 것을 막는 유일한 방어선이다.
      */
     fun createPayout(
         baseDate: LocalDate,
@@ -79,7 +86,7 @@ class SettlementPayoutService(
             settlementExecutionBatchRepository.findBySettlementBaseDate(baseDate)
                 ?: throw IllegalStateException("기준일 $baseDate 집행 배치가 없다")
         val transferKey = Payout.transferKeyOf(batch.id, sellerId)
-        if (payoutRepository.findByTransferKey(transferKey) != null) {
+        if (!batch.acceptsPayout() || payoutRepository.findByTransferKey(transferKey) != null) {
             return null
         }
 
@@ -91,19 +98,25 @@ class SettlementPayoutService(
 
         // 송금 요청서 발행까지가 v1 범위다 — 지급대행 API를 부르지 않으므로 지급사 식별자는 비워 둔다.
         val payout = payoutRepository.save(Payout.create(batch, sellerId, amount, transferKey).also { it.markSent(null) })
-        settlements.forEach { it.assignPayout(payout) }
+        if (settlementRepository.assignPayoutIfEligible(payout, settlements.map { it.id }) != settlements.size) {
+            throw BusinessException(SettlementErrorCode.PAYOUT_TARGET_TAKEN)
+        }
         return payout
     }
 
     /**
      * 회차를 닫는다. 편성 상태의 배치만 움직이므로 이어받는 회차가 다시 전이시키지 않는다.
-     * 지급 건이 하나도 없는 회차는 반영할 입금이 없어 바로 종결한다.
+     * 종결은 더 처리할 것이 남지 않은 회차만 — 지급 건도, 실패도, 제외된 셀러도 없을 때다.
+     * 남은 것이 있는데 종결하면 같은 기준일을 다시 돌릴 때 종결된 회차에 송금 요청이 붙는다.
      */
-    fun finish(baseDate: LocalDate): SettlementBatchStatus? {
+    fun finish(
+        baseDate: LocalDate,
+        pendingWork: Boolean,
+    ): SettlementBatchStatus? {
         val batch = settlementExecutionBatchRepository.findBySettlementBaseDate(baseDate) ?: return null
         if (batch.status == SettlementBatchStatus.GENERATED) {
             batch.startProcessing()
-            if (payoutRepository.countByBatchId(batch.id) == 0L) {
+            if (!pendingWork && payoutRepository.countByBatchId(batch.id) == 0L) {
                 batch.complete()
             }
         }

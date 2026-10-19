@@ -1,5 +1,6 @@
 package com.aechak.domain.settlement.settlement.repository
 
+import com.aechak.domain.settlement.payout.Payout
 import com.aechak.domain.settlement.settlement.Settlement
 import java.time.LocalDate
 
@@ -23,4 +24,13 @@ interface SettlementRepository {
         sellerId: Long,
         baseDate: LocalDate,
     ): List<Settlement>
+
+    /**
+     * 지급 대상 조건을 만족하는 원장만 지급 묶음에 연결한다 — 동시 집행의 선점 심판.
+     * 연결된 행 수를 돌려주므로 요청보다 적으면 다른 실행이 그 사이에 같은 원장을 집어 간 것이다.
+     */
+    fun assignPayoutIfEligible(
+        payout: Payout,
+        settlementIds: List<Long>,
+    ): Int
 }
