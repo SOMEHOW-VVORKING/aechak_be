@@ -7,6 +7,12 @@ import java.time.LocalDateTime
 interface ShipmentRepository {
     fun save(shipment: Shipment): Shipment
 
+    /** 클레임에 걸린 송장은 유형당 한 건이다 — 회수와 재발송을 유형으로 가른다. */
+    fun findByClaimIdAndShipmentType(
+        claimId: Long,
+        shipmentType: ShipmentType,
+    ): Shipment?
+
     /** 한 주문에 최초 발송과 교환 재발송이 공존하므로 종류까지 좁혀서 찾는다. */
     fun findByOrderIdAndShipmentType(
         orderId: Long,
