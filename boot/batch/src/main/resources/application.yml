@@ -11,7 +11,7 @@ spring:
   task:
     scheduling:
       pool:
-        size: 2        # 아웃박스 스위퍼(5초 주기)가 대사(새벽 1회)를 막지 않게. 각 스케줄은 fixedDelay/cron이라 자기 겹침은 없다
+        size: 3        # 아웃박스 스위퍼(5초 주기)가 새벽 스케줄(대사·구매확정)을 막지 않게. 각 스케줄은 fixedDelay/cron이라 자기 겹침은 없다
 
   # 정책값은 api application.yml과 동일하게 유지. 브로커 주소만 프로파일 yml 소유
   kafka:
@@ -51,6 +51,14 @@ payment:
   toss:
     enabled: ${TOSS_RECONCILIATION_ENABLED:false} # 토스 직접 연동(orderId == 우리 결제 식별자)을 확인한 환경만 켠다
     secret-key: ${TOSS_SECRET_KEY:}
+
+order:
+  auto-confirm:
+    # 자동확정은 되돌릴 수 없고 반품 기한·정산의 기산점이라 기본은 꺼 둔다. 환경변수로 환경별로 켠다
+    enabled: ${ORDER_AUTO_CONFIRM_ENABLED:false}
+    cron: "0 0 2 * * *"      # KST 02:00 — 배송완료 집계가 끝난 뒤, 대사(04:30)보다 앞
+    notify-lead-days: 1      # 기한 D-1 구간의 주문에 사전 안내 기록을 남긴다
+    scan-size: 200           # 한 회차 안에서 커서로 끊어 읽는 건수
 
 # PII 암호화 키 — api와 동일 키(같은 데이터를 복호). dev·prod는 SSM, local·test는 프로파일 파일의 고정 키가 덮는다.
 aechak:
