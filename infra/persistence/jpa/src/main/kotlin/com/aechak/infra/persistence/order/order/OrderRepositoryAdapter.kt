@@ -53,6 +53,8 @@ class OrderRepositoryAdapter(
 
     override fun findAllByOrderGroupId(orderGroupId: Long): List<Order> = jpaRepository.findAllByOrderGroupId(orderGroupId)
 
+    override fun findById(id: Long): Order? = jpaRepository.findById(id).orElse(null)
+
     override fun findByPublicIdAndSellerId(
         publicId: String,
         sellerId: Long,

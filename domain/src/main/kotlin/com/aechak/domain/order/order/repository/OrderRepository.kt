@@ -9,6 +9,9 @@ interface OrderRepository {
 
     fun findAllByOrderGroupId(orderGroupId: Long): List<Order>
 
+    /** 식별자 단건 조회 — 소유자 없는 호출자(배치)가 쓴다. */
+    fun findById(id: Long): Order?
+
     /** 셀러 스코프 단건 조회 — 타 셀러 주문은 없는 것으로 본다. */
     fun findByPublicIdAndSellerId(
         publicId: String,
