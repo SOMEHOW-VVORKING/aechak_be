@@ -26,7 +26,10 @@ interface ClaimRepository {
      */
     fun findRefundPending(limit: Int): List<Claim>
 
-    /** 자동승인 기한이 지난 셀러 미응답 건. 자동승인 배치가 쓴다. */
+    /**
+     * 자동승인 기한이 지난 셀러 미응답 건. 자동승인 배치가 쓴다 —
+     * 승인 뒤 환불까지 집행하는 경로가 열려 있는 CANCEL만 대상이다.
+     */
     fun findAutoApprovable(
         dueBefore: LocalDateTime,
         limit: Int,
