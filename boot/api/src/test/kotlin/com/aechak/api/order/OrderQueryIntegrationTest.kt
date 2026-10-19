@@ -253,17 +253,21 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
         }
     }
 
-    /** 취소 클레임을 요청 상태로 심고 그 publicId를 돌려준다. */
-    private fun seedRequestedClaim(orderPublicId: String): String =
+    /** 취소 클레임을 요청 상태로 심고 그 publicId를 돌려준다. itemIndex를 주면 그 품목 한 건만 대상으로 잡는다. */
+    private fun seedRequestedClaim(
+        orderPublicId: String,
+        itemIndex: Int? = null,
+    ): String =
         tx.execute {
             val order = loadOrder(orderPublicId)
+            val targets = if (itemIndex == null) order.items else listOf(order.items[itemIndex])
             val claim =
                 Claim.request(
                     order = order,
                     claimType = ClaimType.CANCEL,
                     reasonCode = "CHANGE_MIND",
                     reasonDetail = "단순 변심",
-                    items = order.items.map { ClaimItem.of(it, it.quantity, it.unitPriceSnapshot * it.quantity) },
+                    items = targets.map { ClaimItem.of(it, it.quantity, it.unitPriceSnapshot * it.quantity) },
                     autoApproveDueAt = LocalDateTime.now().plusDays(2),
                 )
             em.persist(claim)
@@ -292,6 +296,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
     private fun seedOrderWithItemCount(
         buyerId: Long,
         itemCount: Int,
+        status: OrderStatus = OrderStatus.SHIPPING,
     ): String =
         tx.execute {
             val tag = "m${sig++}"
@@ -360,7 +365,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
                             )
                         },
                 )
-            forceOrderStatus(order, OrderStatus.SHIPPING)
+            forceOrderStatus(order, status)
             em.persist(order)
             em.flush()
             order.publicId
@@ -1099,23 +1104,19 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `클레임이 여러 건이면 가장 나중 요청 한 건을 싣는다`() {
+    fun `미해결 클레임이 여러 건이면 가장 나중 요청 한 건을 싣는다`() {
         val buyerId = createActiveUser()
         val token = mintAccessToken(buyerId)
-        val (_, orderPublicIds) =
-            seedOrderGroup(
-                buyerId,
-                listOf(specOf(71L, "냥이상점", "급식기", 64000L, OrderStatus.PAID)),
-                OrderGroupStatus.PAID,
-            )
-        seedRequestedClaim(orderPublicIds.first())
-        tx.executeWithoutResult { loadClaims().first().rejectBySeller("하자가 확인되지 않습니다") }
-        val second = seedRequestedClaim(orderPublicIds.first())
+        val orderPublicId = seedOrderWithItemCount(buyerId, 2, OrderStatus.PAID)
+        val first = seedRequestedClaim(orderPublicId, itemIndex = 0)
+        val second = seedRequestedClaim(orderPublicId, itemIndex = 1)
 
         mockMvc
-            .perform(get("/api/v1/orders/${orderPublicIds.first()}").bearer(token))
+            .perform(get("/api/v1/orders/$orderPublicId").bearer(token))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.activeClaim.claimPublicId").value(second))
+
+        assertTrue(first != second, "서로 다른 품목에 걸린 미해결 클레임 두 건이어야 최신 선택이 검증된다")
     }
 
     /**
@@ -1141,6 +1142,8 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
             val withOneItem = countStatementsOnDetail(token, oneItem)
             val withFiveItems = countStatementsOnDetail(token, fiveItems)
 
+            assertEquals(1, JsonPath.read<List<*>>(detailBody(token, oneItem), "$.data.items").size, "품목 1개 주문이어야 한다")
+            assertEquals(5, JsonPath.read<List<*>>(detailBody(token, fiveItems), "$.data.items").size, "품목 5개가 전부 실려야 한다")
             assertEquals(
                 withOneItem,
                 withFiveItems,
