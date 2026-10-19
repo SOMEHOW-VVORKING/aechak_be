@@ -44,6 +44,9 @@ enum class OrderErrorCode(
     // 배송
     SHIPMENT_NOT_FOUND(50300, "배송 정보를 찾을 수 없습니다.", 404),
     SHIPMENT_ALREADY_DELIVERED(50301, "이미 배송완료 처리된 배송입니다.", 409),
+    SHIPMENT_ALREADY_REGISTERED(50302, "이미 송장이 등록된 주문입니다.", 409),
+    COURIER_NOT_FOUND(50303, "택배사를 찾을 수 없습니다.", 404),
+    INVALID_TRACKING_NUMBER(50304, "송장번호 형식이 올바르지 않습니다.", 400),
 
     // 클레임
     CLAIM_NOT_FOUND(50400, "클레임을 찾을 수 없습니다.", 404),
