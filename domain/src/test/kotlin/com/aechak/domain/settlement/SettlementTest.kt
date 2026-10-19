@@ -3,6 +3,7 @@ package com.aechak.domain.settlement
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.settlement.batch.SettlementExecutionBatch
 import com.aechak.domain.settlement.error.SettlementErrorCode
+import com.aechak.domain.settlement.feepolicy.SettlementFeePolicy
 import com.aechak.domain.settlement.payout.Payout
 import com.aechak.domain.settlement.settlement.Settlement
 import com.aechak.domain.settlement.settlement.enums.SettlementStatus
@@ -133,6 +134,70 @@ class SettlementTest {
 
         assertEquals(SettlementErrorCode.INVALID_SETTLEMENT_FEE_RATE, exception.errorCode)
     }
+
+    @Test
+    fun `구매확정 원장의 수수료는 상품금액에만 붙고 배송비에는 붙지 않는다`() {
+        val settlement =
+            Settlement.createOnPurchaseConfirm(
+                feePolicy = feePolicy(),
+                sellerId = 1L,
+                orderId = 2L,
+                orderItemId = 3L,
+                grossAmount = 100_000L,
+                shippingFee = 3_000L,
+                sellerCouponBurden = 0L,
+                confirmedOn = LocalDate.of(2026, 3, 10),
+            )
+
+        assertEquals(8_000L, settlement.commission, "100,000의 8% — 배송비 3,000이 기준에 들어가면 8,240이 된다")
+        assertEquals(2_800L, settlement.pgFee, "100,000의 2.8% — 배송비가 기준에 들어가면 2,884가 된다")
+        assertEquals(92_200L, settlement.netAmount, "배송비는 과세하지 않고 지급액에 그대로 더한다")
+    }
+
+    @Test
+    fun `구매확정 원장은 요율을 스냅샷으로 박고 품목 기준 멱등키를 갖는다`() {
+        val settlement =
+            Settlement.createOnPurchaseConfirm(
+                feePolicy = feePolicy(platformFeeRate = BigDecimal("0.0500"), pgFeeRate = BigDecimal("0.0200")),
+                sellerId = 1L,
+                orderId = 2L,
+                orderItemId = 77L,
+                grossAmount = 10_000L,
+                shippingFee = 0L,
+                sellerCouponBurden = 0L,
+                confirmedOn = LocalDate.of(2026, 3, 10),
+            )
+
+        assertEquals(BigDecimal("0.0500"), settlement.platformFeeRate)
+        assertEquals(BigDecimal("0.0200"), settlement.pgFeeRate)
+        assertEquals("SETTLE:ORDER_ITEM:77", settlement.idempotencyKey)
+        assertEquals(SettlementStatus.PENDING, settlement.status)
+    }
+
+    @Test
+    fun `수수료의 원 단위 아래는 버린다`() {
+        val settlement =
+            Settlement.createOnPurchaseConfirm(
+                feePolicy = feePolicy(),
+                sellerId = 1L,
+                orderId = 2L,
+                orderItemId = 3L,
+                // 9,999 × 8% = 799.92, × 2.8% = 279.972
+                grossAmount = 9_999L,
+                shippingFee = 0L,
+                sellerCouponBurden = 0L,
+                confirmedOn = LocalDate.of(2026, 3, 10),
+            )
+
+        assertEquals(799L, settlement.commission)
+        assertEquals(279L, settlement.pgFee)
+        assertEquals(8_921L, settlement.netAmount)
+    }
+
+    private fun feePolicy(
+        platformFeeRate: BigDecimal = BigDecimal("0.0800"),
+        pgFeeRate: BigDecimal = BigDecimal("0.0280"),
+    ) = SettlementFeePolicy.of(null, LocalDate.of(2026, 1, 1), platformFeeRate, pgFeeRate)
 
     private fun settlement(
         grossAmount: Long = 100_000L,
