@@ -24,7 +24,6 @@ import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.time.LocalDateTime
 
 @Service
 class SellerOrderFacade(
@@ -82,7 +81,7 @@ class SellerOrderFacade(
     /** 자격 게이트 없음 — 계약 KDoc대로 호출자(대시보드 조립)가 이미 통과시킨 sellerId만 들어온다. */
     @Transactional(readOnly = true)
     override fun getOrderMetrics(query: SellerOrderMetricsQuery): SellerOrderMetricsResult =
-        SellerOrderMetricsResult.from(sellerOrderMetricsService.countMetrics(query, LocalDateTime.now()))
+        SellerOrderMetricsResult.from(sellerOrderMetricsService.countMetrics(query))
 
     private fun requireActiveSeller(sellerId: Long) {
         if (!sellerUseCase.isActiveSeller(sellerId)) {

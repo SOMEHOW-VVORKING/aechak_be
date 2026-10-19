@@ -37,10 +37,11 @@ class SellerDashboardFacade(
     @Transactional(readOnly = true)
     override fun getSummary(query: SellerDashboardSummaryQuery): SellerDashboardSummaryResult {
         requireDashboardReadableSeller(query.sellerId)
+        // 시계는 여기서 한 번만 뜬다 — 지표마다 다시 뜨면 발송 기한 경계의 주문이 현재·직전 기간에서 다르게 판정된다
         val window = query.period.windowAt(LocalDateTime.now())
         return SellerDashboardSummaryResult.of(
-            orders = orderMetrics(query.sellerId, window.current),
-            previousOrders = window.previous?.let { orderMetrics(query.sellerId, it) },
+            orders = orderMetrics(query.sellerId, window.at, window.current),
+            previousOrders = window.previous?.let { orderMetrics(query.sellerId, window.at, it) },
             claims = claimMetrics(query.sellerId, window.current),
             previousClaims = window.previous?.let { claimMetrics(query.sellerId, it) },
             settlement = sellerSettlementUseCase.getSummary(query.sellerId),
@@ -50,10 +51,12 @@ class SellerDashboardFacade(
 
     private fun orderMetrics(
         sellerId: Long,
+        at: LocalDateTime,
         range: DashboardWindow.Range?,
     ) = sellerOrderUseCase.getOrderMetrics(
         SellerOrderMetricsQuery(
             sellerId = sellerId,
+            at = at,
             orderedFrom = range?.from,
             orderedToExclusive = range?.toExclusive,
         ),

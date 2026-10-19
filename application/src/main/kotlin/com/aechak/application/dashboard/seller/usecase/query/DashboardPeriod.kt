@@ -21,10 +21,11 @@ enum class DashboardPeriod(
     fun windowAt(now: LocalDateTime): DashboardWindow =
         days?.let {
             DashboardWindow(
+                at = now,
                 current = DashboardWindow.Range(from = now.minusDays(it), toExclusive = now),
                 previous = DashboardWindow.Range(from = now.minusDays(it * 2), toExclusive = now.minusDays(it)),
             )
-        } ?: DashboardWindow(current = null, previous = null)
+        } ?: DashboardWindow(at = now, current = null, previous = null)
 
     companion object {
         val DEFAULT = ALL
