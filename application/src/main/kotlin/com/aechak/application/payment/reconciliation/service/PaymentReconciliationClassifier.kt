@@ -17,6 +17,7 @@ import com.aechak.domain.payment.reconciliation.ReconciliationResolution
  * 2. 돈이 걸린 나머지(금액 불일치·우리만 승인·PG 취소 미반영·모르는 결제·취소된 그룹의 승인)는 사람 몫이다.
  *
  * 우선순위: 결제 행 없음 → 우리 원장 내부 불일치 → (PG 승인) 그룹 취소 → 금액 → 상태.
+ * 금액 비교는 취소가능액과 누적 취소액을 함께 본다 — 부분취소가 실제로 일어나는 지금은 두 컬럼이 같이 움직인다.
  * 취소 선점만 남은 건은 금액이 일치해도 일치로 접지 않는다 — 접으면 이월 대상에서 빠져 선점이 영구히 남는다.
  * 우리 결제가 이미 승인이면 어느 분기에서든 승인 원장(등록금액·실결제액)이 PG 승인액과 같아야 한다 — 다르면 자동 보정으로 보내지 않는다.
  */
@@ -71,6 +72,7 @@ object PaymentReconciliationClassifier {
             // 취소가능액도 원장의 일부다 — PG가 취소한 적 없으면 승인액 그대로 남아 있어야 한다.
             // 선점(CANCEL_REQUESTED)은 금액을 건드리지 않으므로 이 비교를 먼저 해야, 잘못 깎은 원장이 대기로 숨지 않는다
             if (payment.cancellableAmount != gateway.paidAmount - gateway.cancelledAmount) return manual(MismatchType.AMOUNT_MISMATCH)
+            if (payment.cancelledAmount != gateway.cancelledAmount) return manual(MismatchType.AMOUNT_MISMATCH)
             if (payment.status == PaymentStatus.CANCEL_REQUESTED) return manual(MismatchType.CANCEL_IN_FLIGHT)
             if (group.status == OrderGroupStatus.PAID) return matched()
         }
@@ -86,17 +88,23 @@ object PaymentReconciliationClassifier {
     ): Verdict {
         // 승인 기록도 없는데 PG는 취소까지 갔다 — 승인·취소 통보를 전부 놓친 것
         if (!oursApproved) return manual(MismatchType.PG_CANCELLED_OURS_UNSYNCED)
+        // 결제는 승인 뒤인데 그룹이 아직 결제대기면 우리 원장끼리 어긋난 것 — 환불 미반영과 처방이 다르다
+        if (group.status == OrderGroupStatus.PENDING_PAYMENT) return manual(MismatchType.OURS_INCONSISTENT)
         // 취소 전 원승인액부터 같아야 취소액 비교가 의미 있다
         if (!approvedLedgerAgrees(group, payment, gateway)) return manual(MismatchType.AMOUNT_MISMATCH)
-        val cancellableAgrees = payment.cancellableAmount == gateway.paidAmount - gateway.cancelledAmount
+        // 취소 원장은 두 컬럼이다 — 남은 취소가능액과 누적 취소액이 모두 PG와 맞아야 반영이 끝난 것이다
+        val cancelAmountsAgree =
+            payment.cancellableAmount == gateway.paidAmount - gateway.cancelledAmount &&
+                payment.cancelledAmount == gateway.cancelledAmount
         // 이전 취소가 정합이어도 선점이 남아 있으면 끝나지 않은 요청이 있다 — 일치로 접으면 그 요청이 사라진다
-        if (cancellableAgrees && payment.status == PaymentStatus.CANCEL_REQUESTED) return manual(MismatchType.CANCEL_IN_FLIGHT)
+        if (cancelAmountsAgree && payment.status == PaymentStatus.CANCEL_REQUESTED) return manual(MismatchType.CANCEL_IN_FLIGHT)
+        // 전액취소는 그룹도 전액취소여야 한다. 부분취소 그룹에 PG 전액취소가 붙으면 남은 주문이 취소 없이 환불된 것이다
         val groupAgrees =
             when (gateway.status) {
                 PaymentGatewayStatus.CANCELLED -> group.status == OrderGroupStatus.CANCELLED
                 else -> group.status == OrderGroupStatus.PARTIALLY_CANCELLED
             }
-        return if (cancellableAgrees && groupAgrees) matched() else manual(MismatchType.PG_CANCELLED_OURS_UNSYNCED)
+        return if (cancelAmountsAgree && groupAgrees) matched() else manual(MismatchType.PG_CANCELLED_OURS_UNSYNCED)
     }
 
     /**
