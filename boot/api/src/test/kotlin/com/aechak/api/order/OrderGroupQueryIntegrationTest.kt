@@ -335,7 +335,7 @@ class OrderGroupQueryIntegrationTest : IntegrationTestBase() {
         mockMvc
             .perform(getOrderGroup("01JZZZZZZZZZZZZZZZZZZZZZZZ", mintAccessToken(buyerId)))
             .andExpect(status().isNotFound)
-            .andExpect(jsonPath("$.errorCode").value(50109))
+            .andExpect(jsonPath("$.errorCode").value(50110))
     }
 
     @Test
@@ -352,7 +352,7 @@ class OrderGroupQueryIntegrationTest : IntegrationTestBase() {
 
         assertEquals(404, response.status, "남의 주문그룹은 403으로 실재를 알리지 않고 404로 숨겨야 한다")
         assertEquals(
-            50109,
+            50110,
             JsonPath.read<Int>(response.getContentAsString(Charsets.UTF_8), "$.errorCode"),
             "없는 주문그룹과 같은 코드로 응답해 존재 여부가 갈리지 않아야 한다",
         )

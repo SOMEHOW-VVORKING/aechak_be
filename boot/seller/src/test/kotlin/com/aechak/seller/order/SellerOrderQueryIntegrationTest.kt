@@ -703,6 +703,10 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
         }
     }
 
+    /**
+     * 반품·교환은 요청 경로가 아직 열리지 않았고 취소도 발송 전 상태에서만 받는다 —
+     * 결제완료로 잠시 올려 취소 클레임을 만든 뒤 유형·상태를 쿼리로 옮긴다. 주문 상태는 원래 값으로 되돌린다.
+     */
     private fun seedClaim(
         orderId: Long,
         claimType: ClaimType,
@@ -711,25 +715,40 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
     ): String =
         tx.execute {
             val order = em.find(Order::class.java, orderId)
+            val originalStatus = order.status
+            forceOrderStatus(order, OrderStatus.PAID)
             val claim =
                 Claim.request(
                     order = order,
-                    claimType = claimType,
+                    claimType = ClaimType.CANCEL,
                     reasonCode = "CHANGE_OF_MIND",
                     reasonDetail = null,
                     items = listOf(ClaimItem.of(order.items.first(), 1, 25_000L)),
                     autoApproveDueAt = LocalDateTime.now().plusDays(2),
                 )
+            forceOrderStatus(order, originalStatus)
             em.persist(claim)
             em.flush()
             em
-                .createQuery("update Claim c set c.status = :status, c.resolvedAt = :resolvedAt where c.id = :id")
+                .createQuery(
+                    "update Claim c set c.claimType = :claimType, c.status = :status, c.resolvedAt = :resolvedAt where c.id = :id",
+                ).setParameter("claimType", claimType)
                 .setParameter("status", status)
                 .setParameter("resolvedAt", resolvedAt)
                 .setParameter("id", claim.id)
                 .executeUpdate()
             claim.publicId
         }!!
+
+    private fun forceOrderStatus(
+        order: Order,
+        status: OrderStatus,
+    ) {
+        Order::class.java
+            .getDeclaredField("status")
+            .apply { isAccessible = true }
+            .set(order, status)
+    }
 
     private data class SeedItem(
         val optionName: String,

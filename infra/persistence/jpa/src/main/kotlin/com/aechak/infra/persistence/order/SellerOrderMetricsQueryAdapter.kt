@@ -52,7 +52,7 @@ class SellerOrderMetricsQueryAdapter(
                 orderedBefore(condition.orderedToExclusive),
             ).fetchOne()!!
 
-    /** 집계 행이 없는 새 셀러에서도 null이 아니라 0이 나와야 한다 — 생성자 주입이 NPE로 터진다 */
+    /** 주문이 없는 셀러에서는 집계가 NULL이다 — 0은 쿼리에서 못박고 투영은 값이 있다고만 전제한다 */
     private fun countWhere(predicate: BooleanExpression): NumberExpression<Long> =
         Expressions.numberTemplate(
             Long::class.javaObjectType,

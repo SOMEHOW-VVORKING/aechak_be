@@ -448,28 +448,50 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
         status: ClaimStatus,
     ) = tx.execute { seedClaimRow(fixture, status) }
 
+    /**
+     * 반품은 요청 경로가 아직 열리지 않았고 취소도 발송 전 상태에서만 받는다 —
+     * 결제완료로 잠시 올려 취소 클레임을 만든 뒤 유형·상태를 쿼리로 옮긴다. 주문 상태는 원래 값으로 되돌린다.
+     */
     private fun seedClaimRow(
         fixture: Fixture,
         status: ClaimStatus = ClaimStatus.CLAIM_REQUESTED,
     ) {
         val order = em.find(Order::class.java, fixture.orderId)
+        val originalStatus = order.status
+        forceOrderStatus(order, OrderStatus.PAID)
         val claim =
             Claim.request(
                 order = order,
-                claimType = ClaimType.RETURN,
+                claimType = ClaimType.CANCEL,
                 reasonCode = "DEFECTIVE",
                 reasonDetail = null,
                 items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 10_000L)),
                 autoApproveDueAt = LocalDateTime.now().plusDays(2),
             )
+        forceOrderStatus(order, originalStatus)
         em.persist(claim)
         em.flush()
+        em
+            .createQuery("update Claim c set c.claimType = :claimType where c.id = :id")
+            .setParameter("claimType", ClaimType.RETURN)
+            .setParameter("id", claim.id)
+            .executeUpdate()
         // 요청 상태 외의 상태는 전이 API가 아직 없어 쿼리로 심는다 — 전이 규칙 자체는 이 테스트의 대상이 아니다
         em
             .createQuery("update Claim c set c.status = :status where c.id = :id")
             .setParameter("status", status)
             .setParameter("id", claim.id)
             .executeUpdate()
+    }
+
+    private fun forceOrderStatus(
+        order: Order,
+        status: OrderStatus,
+    ) {
+        Order::class.java
+            .getDeclaredField("status")
+            .apply { isAccessible = true }
+            .set(order, status)
     }
 
     private fun seedOrder(
