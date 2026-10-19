@@ -146,11 +146,48 @@ class Settlement protected constructor(
         /** 지급 예정일은 구매확정일 기준 역일로 더한다 — 공휴일 테이블이 없다. */
         const val PAYOUT_DELAY_DAYS = 5L
 
+        /** 주문품목 하나당 원장 1행. 확정이 다시 불려도 키가 같아 UNIQUE가 두 번째 행을 막는다. */
+        const val IDEMPOTENCY_KEY_PREFIX = "SETTLE:ORDER_ITEM:"
+
         private val MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM")
 
         fun settlementMonthOf(confirmedOn: LocalDate): String = MONTH_FORMATTER.format(confirmedOn)
 
         fun expectedPayoutDateOf(confirmedOn: LocalDate): LocalDate = confirmedOn.plusDays(PAYOUT_DELAY_DAYS)
+
+        fun idempotencyKeyOf(orderItemId: Long): String = "$IDEMPOTENCY_KEY_PREFIX$orderItemId"
+
+        /**
+         * 구매확정된 주문품목 하나의 원장을 요율 정책으로 계산해 만든다.
+         * 수수료 과세 기준금액은 상품금액(할인 안분 차감 후)이고 배송비는 기준에서 뺀다 —
+         * 배송비는 net_amount에 그대로 더해 셀러에게 실비로 넘기는 돈이라, 거기에 요율을 매기면 실비 전달이 깨진다.
+         */
+        fun createOnPurchaseConfirm(
+            feePolicy: SettlementFeePolicy,
+            sellerId: Long,
+            orderId: Long,
+            orderItemId: Long,
+            grossAmount: Long,
+            shippingFee: Long,
+            sellerCouponBurden: Long,
+            confirmedOn: LocalDate,
+        ): Settlement {
+            val feeBase = grossAmount
+            return create(
+                sellerId = sellerId,
+                orderId = orderId,
+                orderItemId = orderItemId,
+                grossAmount = grossAmount,
+                shippingFee = shippingFee,
+                commission = feePolicy.platformFeeOf(feeBase),
+                pgFee = feePolicy.pgFeeOf(feeBase),
+                sellerCouponBurden = sellerCouponBurden,
+                platformFeeRate = feePolicy.platformFeeRate,
+                pgFeeRate = feePolicy.pgFeeRate,
+                confirmedOn = confirmedOn,
+                idempotencyKey = idempotencyKeyOf(orderItemId),
+            )
+        }
 
         /**
          * 구매확정된 주문품목 하나의 정산 원장 1행을 만든다.
