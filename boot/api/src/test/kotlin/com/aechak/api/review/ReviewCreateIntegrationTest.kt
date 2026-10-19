@@ -37,6 +37,7 @@ import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
@@ -109,6 +110,32 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
         assertEquals(1L, outboxCount)
         assertEquals("PUBLIC", reviewStatus(reviewId))
         awaitRewardProcessed(reviewId)
+    }
+
+    @Test
+    fun `구매확정 EP로 확정한 주문품목에 바로 리뷰를 쓸 수 있다`() {
+        val buyerId = createActiveUser()
+        val fixture = persistReviewableOrderItem(buyerId, confirmed = false, status = OrderStatus.DELIVERED)
+
+        // 확정 전에는 리뷰 작성 자격이 없다
+        postReview(buyerId, reviewBody(fixture.orderItemId))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(110007))
+
+        mockMvc
+            .perform(
+                post("/api/v1/orders/${fixture.orderPublicId}/confirm")
+                    .header(HttpHeaders.AUTHORIZATION, bearer(buyerId)),
+            ).andExpect(status().isNoContent)
+
+        val responseBody =
+            postReview(buyerId, reviewBody(fixture.orderItemId))
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+
+        awaitRewardProcessed(JsonPath.read<Int>(responseBody, "$.data.reviewId").toLong())
     }
 
     @Test
@@ -491,6 +518,7 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
         buyerUserId: Long,
         confirmed: Boolean = true,
         confirmedAt: LocalDateTime = LocalDateTime.now(),
+        status: OrderStatus? = null,
     ): Fixture =
         tx.execute {
             val root = Category.create(null, 1, "강아지", null, 1)
@@ -567,11 +595,19 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                     .setParameter("id", order.id)
                     .executeUpdate()
             }
+            if (status != null) {
+                em
+                    .createQuery("update Order o set o.status = :st where o.id = :id")
+                    .setParameter("st", status)
+                    .setParameter("id", order.id)
+                    .executeUpdate()
+            }
             assertNotNull(item.id)
             Fixture(
                 orderItemId = item.id,
                 productId = product.id,
                 optionCombinationId = optionCombination.id,
+                orderPublicId = order.publicId,
             )
         }!!
 
@@ -589,5 +625,6 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
         val orderItemId: Long,
         val productId: Long,
         val optionCombinationId: Long,
+        val orderPublicId: String,
     )
 }
