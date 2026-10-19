@@ -10,6 +10,8 @@ import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
 import com.aechak.application.order.usecase.result.OrderItemForReviewResult
+import com.aechak.application.settlement.usecase.SettlementUseCase
+import com.aechak.application.settlement.usecase.command.CreateSettlementLedgerCommand
 import com.aechak.application.user.address.usecase.DeliveryAddressUseCase
 import com.aechak.application.user.point.usecase.PointUseCase
 import com.aechak.application.user.point.usecase.command.EarnPurchaseRewardCommand
@@ -24,7 +26,7 @@ import org.springframework.transaction.support.TransactionTemplate
 
 /**
  * OrderUseCase의 유일한 구현체. 트랜잭션 경계는 여기 고정.
- * 타 BC 협력(배송지·적립금)은 그쪽 UseCase를, 같은 BC의 장바구니는 CartService를 주입받는다.
+ * 타 BC 협력(배송지·적립금·정산)은 그쪽 UseCase를, 같은 BC의 장바구니는 CartService를 주입받는다.
  */
 @Service
 class OrderFacade(
@@ -34,6 +36,7 @@ class OrderFacade(
     private val deliveryAddressUseCase: DeliveryAddressUseCase,
     private val pointUseCase: PointUseCase,
     private val orderItemForReviewQueryPort: OrderItemForReviewQueryPort,
+    private val settlementUseCase: SettlementUseCase,
     transactionManager: PlatformTransactionManager,
 ) : OrderUseCase {
     private val tx =
@@ -70,7 +73,7 @@ class OrderFacade(
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = orderService.confirmGroupPaid(orderGroupId)
 
     /**
-     * 확정과 적립금을 한 트랜잭션에 묶는다 — 적립이 실패하면 확정도 함께 롤백된다.
+     * 확정·적립금·정산 원장을 한 트랜잭션에 묶는다 — 셋 중 하나가 실패하면 확정도 함께 롤백된다.
      * READ_COMMITTED: 선점 UPDATE 뒤의 클레임 조회가 REPEATABLE READ 스냅샷에 갇히면 그 사이 커밋된 클레임을 놓친다.
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -82,6 +85,18 @@ class OrderFacade(
                 orderId = confirmed.orderId,
                 orderPublicId = command.orderPublicId,
                 productAmount = confirmed.productAmount,
+            ),
+        )
+        settlementUseCase.createLedgerOnConfirm(
+            CreateSettlementLedgerCommand(
+                sellerId = confirmed.sellerId,
+                orderId = confirmed.orderId,
+                confirmedOn = confirmed.confirmedOn,
+                sellerShippingFee = confirmed.sellerShippingFee,
+                items =
+                    confirmed.items.map {
+                        CreateSettlementLedgerCommand.Item(orderItemId = it.orderItemId, grossAmount = it.grossAmount)
+                    },
             ),
         )
     }

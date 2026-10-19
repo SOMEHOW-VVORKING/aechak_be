@@ -26,6 +26,7 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.application.order", // 확정의 주문 전이(OrderUseCase) — 장바구니 파사드가 딸려와 file·s3가 필요하다
         "com.aechak.application.user.address", // OrderFacade의 배송지 의존
         "com.aechak.application.user.point", // OrderFacade의 적립금 의존
+        "com.aechak.application.settlement", // OrderFacade의 구매확정 정산 원장 의존
         "com.aechak.application.user.user", // 적립금·배송지 파사드의 UserUseCase 의존
         "com.aechak.application.user.term", // UserFacade의 약관 동의 의존
         "com.aechak.application.file", // CartFacade의 FileUseCase 의존

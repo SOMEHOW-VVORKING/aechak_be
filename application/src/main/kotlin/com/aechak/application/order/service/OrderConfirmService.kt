@@ -11,6 +11,7 @@ import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.order.repository.OrderStatusHistoryRepository
 import org.springframework.stereotype.Service
+import java.time.LocalDate
 
 /**
  * 구매확정 로직 보관함 — Facade에서만 호출된다.
@@ -53,12 +54,30 @@ class OrderConfirmService(
             ),
         )
 
-        return ConfirmedPurchase(orderId = order.id, productAmount = order.productAmountAfterDiscount())
+        return ConfirmedPurchase(
+            orderId = order.id,
+            sellerId = order.sellerId,
+            productAmount = order.productAmountAfterDiscount(),
+            sellerShippingFee = order.sellerShippingFee,
+            // 컨테이너 TZ가 Asia/Seoul이라 확정 시각의 날짜가 그대로 정산 달력의 기준일이다
+            confirmedOn = order.purchaseConfirmedAt!!.toLocalDate(),
+            items = order.items.map { ConfirmedItem(orderItemId = it.id, grossAmount = it.productAmountAfterDiscount()) },
+        )
     }
 
-    /** 적립 기준을 넘기기 위한 확정 결과 — UseCase 경계를 넘지 않는다. */
+    /** 적립·정산 기준을 넘기기 위한 확정 결과 — UseCase 경계를 넘지 않는다. */
     data class ConfirmedPurchase(
         val orderId: Long,
+        val sellerId: Long,
         val productAmount: Long,
+        val sellerShippingFee: Long,
+        val confirmedOn: LocalDate,
+        val items: List<ConfirmedItem>,
+    )
+
+    /** 정산 원장이 품목당 1행이라 품목 단위 상품금액까지 함께 넘긴다. */
+    data class ConfirmedItem(
+        val orderItemId: Long,
+        val grossAmount: Long,
     )
 }
