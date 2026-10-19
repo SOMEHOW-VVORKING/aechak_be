@@ -16,6 +16,8 @@ internal object PaymentMapper {
             realPaidAmount = payment.realPaidAmount,
             failureCode = payment.failureCode,
             cancellableAmount = payment.cancellableAmount,
+            cancelledAmount = payment.cancelledAmount,
+            cancelRequestedAt = payment.cancelRequestedAt,
             version = payment.version,
         )
 
@@ -31,6 +33,8 @@ internal object PaymentMapper {
             realPaidAmount = entity.realPaidAmount,
             failureCode = entity.failureCode,
             cancellableAmount = entity.cancellableAmount,
+            cancelledAmount = entity.cancelledAmount,
+            cancelRequestedAt = entity.cancelRequestedAt,
             version = entity.version,
         )
 }

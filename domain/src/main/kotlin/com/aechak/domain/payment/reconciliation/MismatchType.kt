@@ -25,4 +25,7 @@ enum class MismatchType {
 
     /** 우리 원장끼리 어긋남 — 결제 행이 가리키는 그룹이 없거나, 그룹은 결제완료인데 결제는 미승인인 조합 */
     OURS_INCONSISTENT,
+
+    /** 취소 선점만 남고 PG에 반영되지 않음 — 요청이 끝나지 않은 건. 선점이 남아 재취소도 막힌다 */
+    CANCEL_IN_FLIGHT,
 }
