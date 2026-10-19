@@ -23,7 +23,6 @@ import com.aechak.application.product.product.usecase.query.SellerProductSearchQ
 import com.aechak.application.product.product.usecase.result.OptionCombinationChangeResult
 import com.aechak.application.product.product.usecase.result.ProductCurationResult
 import com.aechak.application.product.product.usecase.result.ProductSaleStatusChangeResult
-import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.support.CursorPageSize
 import com.aechak.application.support.OffsetPageResult
@@ -93,7 +92,7 @@ class ProductService(
         return (listOfNotNull(product.representativeImageKey) + product.currentImages.map { it.storageKey }).toSet()
     }
 
-    fun updateProduct(command: UpdateProductCommand): ProductUpdateResult {
+    fun updateProduct(command: UpdateProductCommand): ProductUpdateOutcome {
         val product =
             productRepository.findByPublicIdAndSellerId(command.productPublicId, command.sellerId)
                 ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
@@ -119,11 +118,27 @@ class ProductService(
         val after = editableStateOf(product)
 
         productRepository.saveNow(product) // updatedAt을 갱신 하기 위함
-        if (before != after) {
-            appendVersion(product, nextVersionNo)
+        if (before == after) {
+            return ProductUpdateOutcome(product, versionNo = null)
         }
-        return ProductUpdateResult.of(product)
+        appendVersion(product, nextVersionNo)
+        return ProductUpdateOutcome(product, versionNo = nextVersionNo)
     }
+
+    /**
+     * 저장된 옵션 이름 — 그룹명 뒤에 그 그룹의 값 이름들을 붙여 늘어놓는다.
+     *
+     * 등록 때와 같은 순서여야 한다. 검수 내용 해시가 이 목록을 순서까지 포함해 계산되므로,
+     * 순서가 어긋나면 본문이 하나도 바뀌지 않은 상품도 다른 해시를 받아 모델을 다시 부른다.
+     * 등록이 입력 순서를 sortOrder로 적어 두기 때문에 그 순서로 읽으면 맞는다.
+     *
+     * 비활성 여부로 걸러내지 않는다. 등록 때도 걸러내지 않으므로 맞추는 것이고, 애초에
+     * 옵션 조합 변경은 재고와 활성 여부만 건드려 이름을 바꾸지 않는다.
+     */
+    fun optionNamesOf(productId: Long): List<String> =
+        optionGroupRepository
+            .findByProductId(productId)
+            .flatMap { group -> listOf(group.name) + group.values.sortedBy { it.sortOrder }.map { it.name } }
 
     /**
      * 상태 변경은 버전을 남기지 않음.
