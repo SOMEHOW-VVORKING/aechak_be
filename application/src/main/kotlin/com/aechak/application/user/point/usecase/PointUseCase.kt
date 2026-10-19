@@ -1,11 +1,12 @@
 package com.aechak.application.user.point.usecase
 
+import com.aechak.application.user.point.usecase.command.ReleasePointCommand
 import com.aechak.application.user.point.usecase.command.UsePointCommand
 import com.aechak.application.user.point.usecase.result.PointBalanceResult
 
 /**
  * 적립금 진입점 계약. 잔액과 원장의 변이는 user 도메인 소유라 타 도메인은 반드시 이 UseCase를 경유한다.
- * 복구(RELEASE)와 구매확정 적립은 필요해지는 도메인 PR에서 메서드를 추가한다. 내역 조회는 MVP 화면 없음 — 범위 밖.
+ * 구매확정 적립은 필요해지는 도메인 PR에서 메서드를 추가한다. 내역 조회는 MVP 화면 없음 — 범위 밖.
  */
 interface PointUseCase {
     fun getMyPointBalance(userId: Long): PointBalanceResult
@@ -22,4 +23,10 @@ interface PointUseCase {
      * 호출 트랜잭션에 참여한다(REQUIRED) — 주문 생성처럼 자산 확보가 한 트랜잭션이어야 하는 흐름 전제.
      */
     fun usePoint(command: UsePointCommand)
+
+    /**
+     * 복원 가산 — 잔액 가산 + RELEASE 원장 1행. 같은 멱등키의 재호출은 아무것도 하지 않는다.
+     * 호출 트랜잭션에 참여한다(REQUIRED) — 취소 전이가 롤백되면 복원도 함께 롤백돼야 하는 흐름 전제.
+     */
+    fun releasePoint(command: ReleasePointCommand)
 }

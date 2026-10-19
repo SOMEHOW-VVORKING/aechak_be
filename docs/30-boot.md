@@ -160,6 +160,7 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 ├── config/                      # JpaConfig(@EntityScan에 L3 엔티티 패키지 포함) · SchedulingConfig
 ├── outbox/                      # OutboxSweepSchedule — 아웃박스 재발행(5초 주기)
 ├── payment/                     # PaymentReconciliationSchedule — 결제 대사(매일 04:30 KST, 빠진 날 따라잡기)
+├── order/                       # OrderExpirySchedule — 주문서 TTL 만료와 재고·적립금 복원(매분, 기본 꺼짐)
 ├── job/{도메인}/                 # (예정) Spring Batch Job/Step — ItemProcessor 등에서 UseCase 호출
 └── support/
     └── BusinessSkipPolicy.kt    # (예정) BusinessException → errorCode 로깅 + 스킵 판단 (HTTP 개념 없음)
@@ -171,7 +172,13 @@ boot/batch/src/main/kotlin/com/aechak/batch/
   **전역 lazy-init은 쓰지 않는다** — `@Scheduled` 빈이 지연 생성되면 스케줄 자체가 등록되지 않는다. 조립은 `BatchApplicationSmokeTest`가 고정한다.
 - 예외 소비 방식: web-common의 핸들러가 아니라 스케줄/SkipPolicy에서 errorCode 기준 처리. 한 건의 실패가 회차를 멈추지 않게 건별로 격리한다.
 - 배치가 자체 발신하는 에러 코드의 status는 500 고정 (05 문서 ErrorCode 컨벤션).
-- dev 배포 라인(ECR·ECS·SSM)은 아직 없다(SCRUM-226) — 배치에 올린 기능은 그 전까지 dev에서 돌지 않는다.
+- 만료 배치가 쓰는 application 패키지는 `order` 외에 `product.option`(재고 변이 UseCase)이다 — 선별 스캔에 함께 등재돼 있다.
+- **만료 배치는 `order.expiry.enabled`로 꺼 둘 수 있고 기본값이 false다.** 결제 승인과 만료 취소가 경합하면 돈은 나갔는데 주문은
+  취소된 건이 남는데, 환불 집행 경로가 아직 없어 그때는 수동 환불이 필요하다. 켜기 전에 환불 배선이 있어야 한다.
+  경합 자체는 건마다 결제 결과를 먼저 확정한 뒤(외부 조회이므로 트랜잭션 밖) 그래도 결제대기로 남은 건만 취소하는 순서로 줄인다.
+- dev 배포 라인은 api·seller·admin과 같은 모양으로 깔려 있다(SCRUM-251) — 전용 ECR(`aechak-batch`)·로그그룹·taskdef·ECS 서비스와
+  SSM 경로 `/aechak/dev/batch/`, `deploy-dev-batch.yml`. **ALB 뒤에 두지 않는다**(수신 포트·헬스체크 엔드포인트가 없다).
+  **ECS 태스크는 1대 고정** — 여러 대면 같은 스케줄 회차가 동시에 돈다. 포트원 시크릿 2개는 수기 등재 대상이다.
 
 ## 7. admin — 어드민 실행 모듈 (SCRUM-170)
 

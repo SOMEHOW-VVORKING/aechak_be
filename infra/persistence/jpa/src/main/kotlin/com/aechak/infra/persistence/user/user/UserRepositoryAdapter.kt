@@ -51,10 +51,11 @@ interface UserJpaRepository : JpaRepository<User, Long> {
     ): Int
 
     @Modifying
-    @Query("update User u set u.pointBalance = u.pointBalance + :amount where u.id = :id")
+    @Query("update User u set u.pointBalance = u.pointBalance + :amount, u.updatedAt = :now where u.id = :id")
     fun addPointBalance(
         @Param("id") id: Long,
         @Param("amount") amount: Long,
+        @Param("now") now: LocalDateTime,
     ): Int
 }
 
@@ -70,10 +71,11 @@ class UserRepositoryAdapter(
 
     override fun save(user: User): User = jpaRepository.save(user)
 
+    // 벌크 JPQL은 @PreUpdate를 우회하므로 updated_at을 쿼리에서 함께 SET한다
     override fun addPointBalance(
         userId: Long,
         amount: Long,
-    ): Int = jpaRepository.addPointBalance(userId, amount)
+    ): Int = jpaRepository.addPointBalance(userId, amount, LocalDateTime.now())
 
     override fun isNicknameTaken(
         nickname: String,
