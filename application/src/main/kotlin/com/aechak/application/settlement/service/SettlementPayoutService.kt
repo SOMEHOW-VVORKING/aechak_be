@@ -83,7 +83,7 @@ class SettlementPayoutService(
         sellerId: Long,
     ): Payout? {
         val batch =
-            settlementExecutionBatchRepository.findBySettlementBaseDate(baseDate)
+            settlementExecutionBatchRepository.findBySettlementBaseDateForUpdate(baseDate)
                 ?: throw IllegalStateException("기준일 $baseDate 집행 배치가 없다")
         val transferKey = Payout.transferKeyOf(batch.id, sellerId)
         if (!batch.acceptsPayout() || payoutRepository.findByTransferKey(transferKey) != null) {
@@ -105,20 +105,26 @@ class SettlementPayoutService(
     }
 
     /**
-     * 회차를 닫는다. 편성 상태의 배치만 움직이므로 이어받는 회차가 다시 전이시키지 않는다.
+     * 회차를 닫는다. 배치 행을 잠그고 읽어 지급 건 생성과 직렬화한다 —
+     * 잠그지 않으면 종결 직전에 조건을 통과한 지급 건이 종결된 회차에 붙는다.
+     *
      * 종결은 더 처리할 것이 남지 않은 회차만 — 지급 건도, 실패도, 제외된 셀러도 없을 때다.
-     * 남은 것이 있는데 종결하면 같은 기준일을 다시 돌릴 때 종결된 회차에 송금 요청이 붙는다.
+     * 지급 건이 있는 회차는 입금 반영이 끝나야 닫히므로 여기서는 진행 중으로 남긴다.
+     * 비어 있던 회차의 대상이 다음 기준일 회차로 넘어가 할 일이 사라지면, 이어받는 회차가 그때 닫는다.
      */
     fun finish(
         baseDate: LocalDate,
         pendingWork: Boolean,
     ): SettlementBatchStatus? {
-        val batch = settlementExecutionBatchRepository.findBySettlementBaseDate(baseDate) ?: return null
+        val batch = settlementExecutionBatchRepository.findBySettlementBaseDateForUpdate(baseDate) ?: return null
+        if (batch.status == SettlementBatchStatus.COMPLETED) {
+            return batch.status
+        }
         if (batch.status == SettlementBatchStatus.GENERATED) {
             batch.startProcessing()
-            if (!pendingWork && payoutRepository.countByBatchId(batch.id) == 0L) {
-                batch.complete()
-            }
+        }
+        if (!pendingWork && payoutRepository.countByBatchId(batch.id) == 0L) {
+            batch.complete()
         }
         return batch.status
     }

@@ -151,6 +151,22 @@ class SettlementPayoutExecutionIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `대상이 다음 회차로 넘어가 할 일이 사라진 회차는 이어받을 때 종결된다`() {
+        seedAccount(SELLER_A, AccountVerificationStatus.VERIFYING)
+        seedSettlement(SELLER_A, orderItemId = 1L)
+        execute(BASE_DATE)
+        verifyAccount(SELLER_A)
+        // 계좌가 검증된 뒤 다음 기준일 회차가 그 정산을 지급 묶음으로 가져간다
+        assertThat(execute(BASE_DATE.plusDays(1)).createdPayoutCount).isEqualTo(1)
+
+        val resumed = execute(BASE_DATE)
+
+        assertThat(resumed.createdPayoutCount).isEqualTo(0)
+        assertThat(resumed.excludedSellers).isEmpty()
+        assertThat(batchOf(BASE_DATE)!!.status).isEqualTo(SettlementBatchStatus.COMPLETED)
+    }
+
+    @Test
     fun `종결된 회차에는 뒤늦게 대상이 생겨도 지급 건을 붙이지 않는다`() {
         val closed = execute(BASE_DATE)
         assertThat(closed.batchStatus).isEqualTo(SettlementBatchStatus.COMPLETED)
