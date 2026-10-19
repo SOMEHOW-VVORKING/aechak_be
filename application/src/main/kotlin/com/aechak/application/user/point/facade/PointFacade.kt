@@ -2,6 +2,7 @@ package com.aechak.application.user.point.facade
 
 import com.aechak.application.user.point.service.PointCommandService
 import com.aechak.application.user.point.usecase.PointUseCase
+import com.aechak.application.user.point.usecase.command.ReleasePointCommand
 import com.aechak.application.user.point.usecase.command.UsePointCommand
 import com.aechak.application.user.point.usecase.result.PointBalanceResult
 import com.aechak.application.user.user.service.UserService
@@ -33,5 +34,10 @@ class PointFacade(
     @Transactional
     override fun usePoint(command: UsePointCommand) {
         pointCommandService.usePoint(command)
+    }
+
+    @Transactional
+    override fun releasePoint(command: ReleasePointCommand) {
+        pointCommandService.releasePoint(command)
     }
 }

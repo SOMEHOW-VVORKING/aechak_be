@@ -14,6 +14,7 @@ enum class OrderErrorCode(
     ORDER_ACCESS_DENIED(50003, "셀러 주문을 처리할 권한이 없습니다.", 403),
     ORDER_NOT_ACCEPTABLE(50004, "결제완료 상태의 주문만 발주 확인할 수 있습니다.", 409),
     ORDER_NOT_DISPATCHABLE(50005, "발송 대기 상태의 주문만 발송 처리할 수 있습니다.", 409),
+    INVALID_ORDER_ITEM_STATUS_TRANSITION(50006, "허용되지 않은 주문품목 상태 전이입니다.", 409),
 
     // 주문그룹
     INVALID_ORDER_GROUP_STATUS_TRANSITION(50100, "허용되지 않은 주문그룹 상태 전이입니다.", 409),
@@ -25,6 +26,7 @@ enum class OrderErrorCode(
     ORDER_AMOUNT_CHANGED(50106, "주문 금액이 변경되었습니다. 주문서를 다시 확인해 주세요.", 409),
     INSUFFICIENT_STOCK(50107, "재고가 부족한 상품이 포함되어 있습니다.", 409),
     ORDER_AMOUNT_BELOW_MINIMUM(50108, "최소 결제 금액에 미치지 못합니다.", 422),
+    ORDER_GROUP_NOT_FOUND(50109, "주문 정보를 찾을 수 없습니다.", 404),
 
     // 장바구니
     INVALID_CART_ITEM_QUANTITY(50200, "장바구니 담을 수량은 1 이상이어야 합니다.", 400),

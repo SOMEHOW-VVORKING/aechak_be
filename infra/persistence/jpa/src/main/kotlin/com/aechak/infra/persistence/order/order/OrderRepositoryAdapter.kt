@@ -13,7 +13,7 @@ import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
 interface OrderJpaRepository : JpaRepository<Order, Long> {
-    fun findAllByOrderGroupId(orderGroupId: Long): List<Order>
+    fun findAllByOrderGroupIdOrderByIdAsc(orderGroupId: Long): List<Order>
 
     fun findByPublicIdAndSellerId(
         publicId: String,
@@ -65,7 +65,7 @@ class OrderRepositoryAdapter(
 ) : OrderRepository {
     override fun saveAll(orders: List<Order>): List<Order> = jpaRepository.saveAll(orders)
 
-    override fun findAllByOrderGroupId(orderGroupId: Long): List<Order> = jpaRepository.findAllByOrderGroupId(orderGroupId)
+    override fun findAllByOrderGroupId(orderGroupId: Long): List<Order> = jpaRepository.findAllByOrderGroupIdOrderByIdAsc(orderGroupId)
 
     override fun findByPublicIdAndBuyerId(
         publicId: String,

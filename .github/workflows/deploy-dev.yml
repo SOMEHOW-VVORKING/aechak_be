@@ -1,6 +1,6 @@
 # dev 자동 배포: develop 푸시 → 바뀐 것 감지 → 인프라(terraform apply) 먼저, 그 다음 바뀐 모듈 배포
 # 수동 재배포는 deploy-dev-<모듈>.yml. terraform 수동 apply는 급한 장애 대응 때만 (기본은 이 파이프라인)
-# 새 배포물(예: batch) 추가 = detect filters에 경로 추가 + deploy-dev-<모듈>.yml 생성 + deploy-<모듈> job 복사 (seller-api가 그 선례)
+# 새 배포물 추가 = detect filters·outputs에 경로 추가 + deploy-dev-<모듈>.yml 생성 + deploy-<모듈> job 복사 (seller-api·batch가 그 선례)
 
 name: deploy-dev
 
@@ -23,6 +23,7 @@ jobs:
       api: ${{ steps.filter.outputs.api }}
       seller-api: ${{ steps.filter.outputs.seller-api }}
       admin: ${{ steps.filter.outputs.admin }}
+      batch: ${{ steps.filter.outputs.batch }}
       infra: ${{ steps.filter.outputs.infra }}
     steps:
       - uses: actions/checkout@v4
@@ -78,6 +79,23 @@ jobs:
               - 'common/**'
               - 'web-common/**'
               - 'web-security/**'
+              - 'pii/**'
+              - 'infra/**'
+              - 'gradle/**'
+              - 'gradlew*'
+              - 'gradle.properties'
+              - 'settings.gradle.kts'
+              - 'build-logic/**'
+              - 'Dockerfile'
+              - '.dockerignore'
+              - '.github/workflows/deploy-module.yml'
+            # web-common·web-security가 없는 이유: batch는 두 모듈을 의존하지 않는다(웹 응답 규격·시큐리티 불요)
+            batch:
+              - 'boot/batch/**'
+              - 'domain/**'
+              - 'application/**'
+              - 'common/**'
+              - 'message/**'
               - 'pii/**'
               - 'infra/**'
               - 'gradle/**'
@@ -149,4 +167,13 @@ jobs:
       id-token: write
       contents: read
     uses: ./.github/workflows/deploy-dev-admin.yml
+    secrets: inherit
+
+  deploy-batch:
+    needs: [detect, deploy-infra]
+    if: ${{ !cancelled() && needs.deploy-infra.result != 'failure' && (needs.detect.outputs.batch == 'true' || needs.detect.outputs.infra == 'true') }}
+    permissions:
+      id-token: write
+      contents: read
+    uses: ./.github/workflows/deploy-dev-batch.yml
     secrets: inherit
