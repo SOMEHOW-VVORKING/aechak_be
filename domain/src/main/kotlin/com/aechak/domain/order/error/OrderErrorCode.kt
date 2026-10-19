@@ -54,4 +54,5 @@ enum class OrderErrorCode(
     CLAIM_QUANTITY_EXCEEDS_ORDERED(50406, "주문한 수량보다 많이 요청할 수 없습니다.", 422),
     CLAIM_REFUND_FAILED(50407, "환불 처리에 실패했습니다. 잠시 후 다시 확인해 주세요.", 502),
     CLAIM_ALREADY_RESOLVED(50408, "이미 처리된 클레임입니다.", 409),
+    CLAIM_PARTIAL_QUANTITY_NOT_SUPPORTED(50410, "주문한 수량 전부를 대상으로만 요청할 수 있습니다.", 422),
 }

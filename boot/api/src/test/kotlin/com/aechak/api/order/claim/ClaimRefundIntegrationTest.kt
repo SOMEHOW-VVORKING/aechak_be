@@ -8,7 +8,9 @@ import com.aechak.application.order.claim.usecase.result.ExecuteClaimRefundStatu
 import com.aechak.application.payment.port.PaymentCancelStatus
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.claim.Claim
+import com.aechak.domain.order.claim.ClaimItem
 import com.aechak.domain.order.claim.enums.ClaimStatus
+import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
 import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -258,10 +260,14 @@ class ClaimRefundIntegrationTest : IntegrationTestBase() {
         assertNull(claim.resolvedAt)
     }
 
+    /**
+     * 요청 경로가 수량 분할을 거절하므로 클레임을 직접 심어 집행만 태운다.
+     * 이 방어선이 없으면 남은 수량이 환불도 이행도 받지 못한 채 주문과 함께 취소된다.
+     */
     @Test
     fun `수량 일부만 취소한 품목은 상태가 바뀌지 않고 주문도 살아 있다`() {
         val seeded = seedPaidOrder(listOf(ItemSpec(10_000L, 2)))
-        val claimPublicId = approvedClaim(seeded, targets = mapOf(seeded.orderItemIds.single() to 1))
+        val claimPublicId = approvedPartialQuantityClaim(seeded, quantity = 1, refundAmount = 10_000L)
 
         val result = claimRefundUseCase.executeRefund(ExecuteClaimRefundCommand(claimPublicId))
 
@@ -444,6 +450,33 @@ class ClaimRefundIntegrationTest : IntegrationTestBase() {
         em.clear()
         return claimPublicId
     }
+
+    /** 수량 일부만 대상으로 하는 클레임을 직접 심는다 — 요청 엔드포인트가 받지 않는 형태라 도메인으로 만든다. */
+    private fun approvedPartialQuantityClaim(
+        seeded: SeededOrder,
+        quantity: Int,
+        refundAmount: Long,
+    ): String =
+        tx.execute {
+            val order =
+                em
+                    .createQuery("select o from Order o where o.id = :id", Order::class.java)
+                    .setParameter("id", seeded.orderId)
+                    .singleResult
+            val claim =
+                Claim.request(
+                    order = order,
+                    claimType = ClaimType.CANCEL,
+                    reasonCode = "CHANGE_OF_MIND",
+                    reasonDetail = null,
+                    items = listOf(ClaimItem.of(order.items.single(), quantity, refundAmount)),
+                    autoApproveDueAt = LocalDateTime.now().plusDays(2),
+                )
+            claim.approveBySeller(null)
+            em.persist(claim)
+            em.flush()
+            claim.publicId
+        }!!
 
     private fun orderItemOf(
         index: Int,
