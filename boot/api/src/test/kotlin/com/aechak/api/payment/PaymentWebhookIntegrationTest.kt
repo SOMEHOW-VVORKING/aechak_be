@@ -164,6 +164,7 @@ class PaymentWebhookIntegrationTest : IntegrationTestBase() {
                 status = PaymentGatewayStatus.FAILED,
                 totalAmount = PRODUCT_AMOUNT,
                 paidAmount = 0L,
+                cancelledAmount = 0L,
                 pgTxId = null,
                 paidAt = null,
                 failureCode = "CARD_LIMIT_EXCEEDED",
@@ -239,6 +240,8 @@ class PaymentWebhookIntegrationTest : IntegrationTestBase() {
                     sellerNameSnapshot = "멍멍상회",
                     allocatedCouponDiscount = 0L,
                     sellerShippingFee = 0L,
+                    baseShippingFeeSnapshot = null,
+                    freeShippingThresholdSnapshot = null,
                     items =
                         listOf(
                             OrderItem.of(

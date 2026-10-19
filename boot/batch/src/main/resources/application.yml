@@ -43,6 +43,10 @@ payment:
     base-url: https://api.portone.io
     api-secret: ${PORTONE_API_SECRET:}       # 대사 목록 조회·확정 본체의 재조회가 쓴다. 비면 대사 회차가 실패로 기록된다
     webhook-secret: ${PORTONE_WEBHOOK_SECRET:} # 배치는 웹훅을 받지 않지만 PaymentFacade 조립에 검증기가 딸려온다
+    store-id: ${PORTONE_STORE_ID:}             # 취소 요청에 실을 상점. 비면 API 시크릿의 상점이 쓰인다
+  # 취소 1건의 금액 상한. 기본 0 = 취소를 PG로 내보내지 않는다. api와 같은 기준으로 둔다
+  cancel:
+    max-amount: ${PAYMENT_CANCEL_MAX_AMOUNT:0}
   reconciliation:
     cron: "0 30 4 * * *"                       # KST 04:30 — 전날 승인·취소·웹훅 재전송(최대 5.7시간)이 가라앉은 뒤
     portone:

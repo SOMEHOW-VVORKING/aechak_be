@@ -1,0 +1,28 @@
+package com.aechak.application.order.seller.facade
+
+import com.aechak.application.order.seller.service.SellerOrderService
+import com.aechak.application.order.seller.usecase.SellerOrderUseCase
+import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
+import com.aechak.application.seller.usecase.SellerUseCase
+import com.aechak.common.error.BusinessException
+import com.aechak.domain.order.error.OrderErrorCode
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+
+@Service
+class SellerOrderFacade(
+    private val sellerOrderService: SellerOrderService,
+    private val sellerUseCase: SellerUseCase,
+) : SellerOrderUseCase {
+    @Transactional
+    override fun acceptOrder(command: AcceptOrderCommand) {
+        requireActiveSeller(command.sellerId)
+        sellerOrderService.acceptOrder(command)
+    }
+
+    private fun requireActiveSeller(sellerId: Long) {
+        if (!sellerUseCase.isActiveSeller(sellerId)) {
+            throw BusinessException(OrderErrorCode.ORDER_ACCESS_DENIED)
+        }
+    }
+}

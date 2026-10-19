@@ -827,6 +827,8 @@ class SellerProductUpdateIntegrationTest : IntegrationTestBase() {
                     sellerNameSnapshot = "애착상회$sellerUserId",
                     allocatedCouponDiscount = 0L,
                     sellerShippingFee = 0L,
+                    baseShippingFeeSnapshot = null,
+                    freeShippingThresholdSnapshot = null,
                     items = listOf(item),
                 ),
             )

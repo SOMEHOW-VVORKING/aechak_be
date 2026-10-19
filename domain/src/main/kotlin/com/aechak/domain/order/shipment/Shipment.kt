@@ -14,13 +14,21 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
 import java.time.LocalDateTime
 
 @Entity
-@Table(name = "shipments")
+@Table(
+    name = "shipments",
+    indexes = [
+        Index(name = "idx_shipments_order_id", columnList = "order_id"),
+        Index(name = "idx_shipments_claim_id", columnList = "claim_id"),
+        Index(name = "idx_shipments_dispatched_at", columnList = "dispatched_at, delivered_at"),
+    ],
+)
 class Shipment protected constructor(
     courier: CourierMaster,
     order: Order,
