@@ -4,6 +4,7 @@ import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
+import com.aechak.domain.order.claim.enums.ReturnCostBearer
 import com.aechak.domain.order.claim.enums.SellerApprovalStatus
 import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -164,6 +165,107 @@ class ClaimTransitionTest {
         assertTrue(ClaimStatus.REFUND_FAILED.holdsOrderItem(), "환불 실패 건도 품목을 붙잡아야 한다")
     }
 
+    @Test
+    fun `반품 승인은 회수 대기로 가고 회수 완료에서야 승인으로 끝난다`() {
+        val claim = collectionClaim(ClaimType.RETURN)
+
+        claim.approveBySeller(ReturnCostBearer.BUYER)
+        assertEquals(ClaimStatus.COLLECTING, claim.status, "회수 전에 승인으로 끝나면 물건 없이 환불이 나간다")
+        assertEquals(ReturnCostBearer.BUYER, claim.returnCostBearer)
+
+        // 회수 송장을 등록하기 전에는 집행 대상이 아니다
+        assertFalse(claim.isRefundExecutable())
+        claim.startCollection()
+        assertNotNull(claim.collectionStartedAt)
+        assertFalse(claim.isRefundExecutable())
+
+        claim.completeCollection()
+        assertEquals(ClaimStatus.APPROVED, claim.status)
+        assertTrue(claim.isRefundExecutable(), "회수가 끝난 반품은 환불 집행 대상이다")
+    }
+
+    @Test
+    fun `회수 송장 없이는 회수를 완료할 수 없다`() {
+        val claim = collectionClaim(ClaimType.RETURN).apply { approveBySeller(null) }
+
+        val exception = assertFailsWith<BusinessException> { claim.completeCollection() }
+
+        assertEquals(OrderErrorCode.CLAIM_COLLECTION_NOT_STARTABLE, exception.errorCode)
+        assertEquals(ClaimStatus.COLLECTING, claim.status)
+    }
+
+    @Test
+    fun `회수 송장은 두 번 등록되지 않는다`() {
+        val claim = collectionClaim(ClaimType.EXCHANGE).apply { approveBySeller(null) }
+        claim.startCollection()
+        val startedAt = claim.collectionStartedAt
+
+        val exception = assertFailsWith<BusinessException> { claim.startCollection() }
+
+        assertEquals(OrderErrorCode.CLAIM_COLLECTION_NOT_STARTABLE, exception.errorCode)
+        assertEquals(startedAt, claim.collectionStartedAt)
+    }
+
+    @Test
+    fun `셀러 승인 전에는 회수를 시작할 수 없다`() {
+        val claim = collectionClaim(ClaimType.RETURN)
+
+        val exception = assertFailsWith<BusinessException> { claim.startCollection() }
+
+        assertEquals(OrderErrorCode.CLAIM_COLLECTION_NOT_STARTABLE, exception.errorCode)
+    }
+
+    @Test
+    fun `교환은 회수가 끝난 뒤 재발송으로 종결된다`() {
+        val claim = collectionClaim(ClaimType.EXCHANGE).apply { approveBySeller(null) }
+        claim.startCollection()
+        assertFalse(claim.isReshippable(), "회수가 끝나기 전 재발송은 열리지 않는다")
+
+        claim.completeCollection()
+        assertTrue(claim.isReshippable())
+        claim.completeExchange()
+
+        assertEquals(ClaimStatus.APPROVED, claim.status)
+        assertEquals(RefundStatus.NONE, claim.refundStatus, "교환에는 환불이 없다")
+        assertNotNull(claim.resolvedAt)
+        // 재발송은 한 번뿐 — 두 번 열리면 셀러가 같은 교환에 두 번 물건을 보낸다
+        assertEquals(
+            OrderErrorCode.CLAIM_RESHIP_NOT_ALLOWED,
+            assertFailsWith<BusinessException> { claim.completeExchange() }.errorCode,
+        )
+    }
+
+    @Test
+    fun `취소 클레임은 재발송 대상이 아니다`() {
+        val claim = requestedClaim().apply { approveBySeller(null) }
+
+        assertFalse(claim.isReshippable())
+        assertEquals(
+            OrderErrorCode.CLAIM_RESHIP_NOT_ALLOWED,
+            assertFailsWith<BusinessException> { claim.completeExchange() }.errorCode,
+        )
+    }
+
+    @Test
+    fun `교환은 환불 집행 유형이 아니다`() {
+        assertEquals(setOf(ClaimType.CANCEL, ClaimType.RETURN), ClaimType.REFUNDABLE)
+        assertFalse(ClaimType.CANCEL.requiresCollection(), "취소는 회수가 없다")
+        assertTrue(ClaimType.RETURN.requiresCollection())
+        assertTrue(ClaimType.EXCHANGE.requiresCollection())
+    }
+
+    private fun collectionClaim(claimType: ClaimType): Claim {
+        val order = order(OrderStatus.DELIVERED)
+        return Claim.request(
+            order = order,
+            claimType = claimType,
+            reasonCode = "DEFECT",
+            reasonDetail = null,
+            items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 10_000L)),
+            autoApproveDueAt = LocalDateTime.of(2026, 10, 20, 14, 0, 0),
+        )
+    }
+
     private fun requestedClaim(): Claim {
         val order = order()
         return Claim.request(
@@ -176,7 +278,7 @@ class ClaimTransitionTest {
         )
     }
 
-    private fun order(): Order =
+    private fun order(status: OrderStatus = OrderStatus.PAID): Order =
         Order
             .create(
                 orderGroup = orderGroup(),
@@ -206,7 +308,7 @@ class ClaimTransitionTest {
                 Order::class.java
                     .getDeclaredField("status")
                     .apply { isAccessible = true }
-                    .set(this, OrderStatus.PAID)
+                    .set(this, status)
             }
 
     private fun orderGroup(): OrderGroup =
