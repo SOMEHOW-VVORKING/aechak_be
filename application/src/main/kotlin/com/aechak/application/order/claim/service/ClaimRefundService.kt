@@ -14,6 +14,7 @@ import com.aechak.application.user.point.usecase.command.ReleasePointCommand
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.enums.ClaimType
+import com.aechak.domain.order.claim.enums.ReturnCostBearer
 import com.aechak.domain.order.claim.repository.ClaimRepository
 import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.group.OrderGroup
@@ -27,6 +28,7 @@ import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.order.repository.OrderStatusHistoryRepository
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 
 /**
@@ -43,6 +45,7 @@ class ClaimRefundService(
     private val paymentUseCase: PaymentUseCase,
     private val optionStockUseCase: OptionStockUseCase,
     private val pointUseCase: PointUseCase,
+    @param:Value("\${order.claim.default-return-fee:5000}") private val defaultReturnFee: Long,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -55,8 +58,8 @@ class ClaimRefundService(
      */
     fun reserve(claimPublicId: String): RefundReservation? {
         val claim = loadClaim(claimPublicId)
-        if (claim.claimType != ClaimType.CANCEL) {
-            // 반품·교환은 회수를 거친 뒤 집행한다 — 이 경로로 들어오면 잘못 스캔된 것이다
+        if (!claim.claimType.isRefundable()) {
+            // 교환은 재발송으로 끝나 환불이 없다 — 이 경로로 들어오면 잘못 스캔된 것이다
             throw BusinessException(OrderErrorCode.INVALID_CLAIM_STATUS_TRANSITION)
         }
         if (!claim.isRefundExecutable()) return null
@@ -107,7 +110,7 @@ class ClaimRefundService(
                     ApplyPaymentCancelCommand(group.id, cancelledAmount),
                 ).cancellableAmount
         transitionGroup(group, fullyCancelled = remainingCancellable == 0L)
-        cancelClaimedItems(claim, order)
+        resolveClaimedItems(claim, order)
 
         // 재고를 먼저 되돌린다 — 주문 생성과 만료 복원이 모두 재고 다음 적립금 순서로 잠근다.
         // 순서를 뒤집으면 같은 구매자가 같은 옵션을 주문하는 동안의 환불이 교착상태에 걸린다
@@ -165,7 +168,27 @@ class ClaimRefundService(
                 )
             }
         }
-        if (order.items.any { it.itemStatus != OrderItemStatus.CANCELLED }) return
+        closeOrderIfAllItemsResolved(order)
+    }
+
+    /** 반품 품목은 회수 완료 때 이미 RETURNED로 바뀌어 있다 — 환불 집행은 주문 종결만 본다. */
+    private fun resolveClaimedItems(
+        claim: Claim,
+        order: Order,
+    ) {
+        when (claim.claimType) {
+            ClaimType.CANCEL -> cancelClaimedItems(claim, order)
+            ClaimType.RETURN -> closeOrderIfAllItemsResolved(order)
+            ClaimType.EXCHANGE -> throw BusinessException(OrderErrorCode.INVALID_CLAIM_STATUS_TRANSITION)
+        }
+    }
+
+    /**
+     * 이행 대상이 하나도 남지 않은 주문을 취소로 닫는다. 열어 두면 자동 구매확정이 되돌릴 수 없게 확정하고,
+     * 정산이 받지도 않은 물건의 대금을 지급 대상으로 잡는다.
+     */
+    private fun closeOrderIfAllItemsResolved(order: Order) {
+        if (order.items.any { it.itemStatus !in OrderItemStatus.RESOLVED }) return
         val from = order.status
         order.cancelByClaimApproval()
         orderStatusHistoryRepository.save(
@@ -239,11 +262,19 @@ class ClaimRefundService(
         val usedPoint = order.orderGroup.usedPoint
         val groupOrders = if (usedPoint > 0L) orderRepository.findAllByOrderGroupId(order.orderGroup.id) else listOf(order)
         val shippingFeeRefund = claimAmountCalculator.shippingFeeRefund(order, groupOrders, usedPoint, targets)
+        val gross = Math.addExact(claim.itemRefundTotal(), shippingFeeRefund)
         return RefundAmounts(
-            refundAmount = Math.addExact(claim.itemRefundTotal(), shippingFeeRefund),
+            refundAmount = maxOf(0L, gross - returnFeeOf(claim)),
             pointRefund = claimAmountCalculator.pointRefund(order, groupOrders, usedPoint, targets),
         )
     }
+
+    /**
+     * 구매자가 부담하는 반품 발송비는 환불액에서 뺀다. 셀러 배송 정책의 반품비가 들어오기 전까지는 설정 기본값을 쓴다 —
+     * 부담 주체를 정하지 않은 반품은 셀러 부담으로 보고 깎지 않는다.
+     */
+    private fun returnFeeOf(claim: Claim): Long =
+        if (claim.claimType == ClaimType.RETURN && claim.returnCostBearer == ReturnCostBearer.BUYER) defaultReturnFee else 0L
 
     private fun loadClaim(claimPublicId: String): Claim =
         claimRepository.findByPublicId(claimPublicId)
