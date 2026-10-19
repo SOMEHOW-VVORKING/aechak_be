@@ -24,6 +24,7 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.application.pii", // 암호문 Base64 왕복 부품(PiiStringCodec)
         "com.aechak.application.payment", // 결제 확정 본체·대사
         "com.aechak.application.order", // 확정의 주문 전이(OrderUseCase) — 장바구니 파사드가 딸려와 file·s3가 필요하다
+        "com.aechak.application.product.option", // 만료 복원이 경유하는 재고 변이(OptionStockUseCase)
         "com.aechak.application.user.address", // OrderFacade의 배송지 의존
         "com.aechak.application.user.point", // OrderFacade의 적립금 의존
         "com.aechak.application.user.user", // 적립금·배송지 파사드의 UserUseCase 의존
@@ -42,6 +43,8 @@ import org.springframework.context.annotation.FilterType
         // 셀러센터 전용 주문 유스케이스 제외. order BC를 스캔하지만 이 묶음은 셀러 자격(application.seller)을 요구해
         // 조립하면 배치가 쓰지도 않는 의존을 끌고 온다.
         ComponentScan.Filter(type = FilterType.REGEX, pattern = ["com\\.aechak\\.application\\.order\\.seller\\..*"]),
+        // 클레임 파사드도 같은 이유로 제외. 셀러 자격 검증(application.seller)을 요구한다.
+        ComponentScan.Filter(type = FilterType.REGEX, pattern = ["com\\.aechak\\.application\\.order\\.claim\\..*"]),
     ],
 )
 class BatchApplication
