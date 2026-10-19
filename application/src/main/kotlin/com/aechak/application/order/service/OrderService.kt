@@ -6,6 +6,9 @@ import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
 import com.aechak.application.pii.support.PiiStringCodec
+import com.aechak.application.product.option.usecase.OptionStockUseCase
+import com.aechak.application.product.option.usecase.command.DeductOptionStockCommand
+import com.aechak.application.product.option.usecase.result.DeductOptionStockResult
 import com.aechak.application.user.address.usecase.result.DeliveryAddressResult
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
@@ -18,7 +21,6 @@ import com.aechak.domain.order.group.repository.OrderGroupRepository
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.OrderItem
 import com.aechak.domain.order.order.repository.OrderRepository
-import com.aechak.domain.product.option.repository.OptionCombinationRepository
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
@@ -30,10 +32,12 @@ import java.time.LocalDateTime
 class OrderService(
     private val orderGroupRepository: OrderGroupRepository,
     private val orderRepository: OrderRepository,
-    private val optionCombinationRepository: OptionCombinationRepository,
+    private val optionStockUseCase: OptionStockUseCase,
     private val orderCatalogQueryPort: OrderCatalogQueryPort,
     private val piiStringCodec: PiiStringCodec,
 ) {
+    fun findOrders(orderGroupId: Long): List<Order> = orderRepository.findAllByOrderGroupId(orderGroupId)
+
     /** 멱등 재요청이면 최초 생성 결과. 남의 키면 응답 유출을 막으려 거부한다. */
     fun findByIdempotencyKey(
         idempotencyKey: String,
@@ -129,10 +133,11 @@ class OrderService(
             .groupBy({ it.optionCombinationId }, { it.quantity })
             .mapValues { (_, quantities) -> quantities.sum() }
 
-    /** 최종 재고 판정은 조건부 원자 UPDATE. id 오름차순으로 깎아 교차 주문 간 데드락을 예방한다 */
+    /** 재고는 product 도메인 소유라 UseCase를 경유한다. id 오름차순으로 깎아 교차 주문 간 데드락을 예방한다 */
     private fun deductStock(selected: List<CartItem>) {
         selected.sortedBy { it.optionCombinationId }.forEach { item ->
-            if (!optionCombinationRepository.deductStock(item.optionCombinationId, item.quantity)) {
+            val result = optionStockUseCase.deductStock(DeductOptionStockCommand(item.optionCombinationId, item.quantity))
+            if (result == DeductOptionStockResult.INSUFFICIENT_STOCK) {
                 throw BusinessException(OrderErrorCode.INSUFFICIENT_STOCK)
             }
         }

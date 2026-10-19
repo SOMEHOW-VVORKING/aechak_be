@@ -126,6 +126,7 @@ class PaymentCompleteIntegrationTest : IntegrationTestBase() {
         status = status,
         totalAmount = 13_000L,
         paidAmount = paidAmount,
+        cancelledAmount = 0L,
         pgTxId = if (status == PaymentGatewayStatus.PAID) "stub-tx" else null,
         paidAt = if (status == PaymentGatewayStatus.PAID) LocalDateTime.of(2026, 1, 1, 0, 0) else null,
         failureCode = failureCode,
@@ -399,12 +400,26 @@ class PaymentCompleteIntegrationTest : IntegrationTestBase() {
         val token = mintAccessToken(buyerId)
         val publicId = seedGroupWithOrders(buyerId)
         prepare201(publicId, token)
-        paymentGateway.stub(publicId, view(PaymentGatewayStatus.CANCELLED))
+        paymentGateway.stub(publicId, view(PaymentGatewayStatus.VIRTUAL_ACCOUNT_ISSUED))
 
         mockMvc
             .perform(complete(publicId, token))
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.errorCode").value(60011))
+    }
+
+    @Test
+    fun `PG가 이미 취소한 결제의 확정은 지원하지 않는 상태가 아니라 취소된 주문으로 끊는다`() {
+        val buyerId = createActiveUser()
+        val token = mintAccessToken(buyerId)
+        val publicId = seedGroupWithOrders(buyerId)
+        prepare201(publicId, token)
+        paymentGateway.stub(publicId, view(PaymentGatewayStatus.CANCELLED))
+
+        mockMvc
+            .perform(complete(publicId, token))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(60012))
     }
 
     @Test

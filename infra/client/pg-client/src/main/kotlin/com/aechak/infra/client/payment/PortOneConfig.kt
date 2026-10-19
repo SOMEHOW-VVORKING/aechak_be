@@ -8,7 +8,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.web.client.RestClient
 
 @Configuration(proxyBeanMethods = false) // 프록시로 사용할 곳이 없어서 off
-@EnableConfigurationProperties(PortOneProperties::class)
+@EnableConfigurationProperties(PortOneProperties::class, PaymentCancelProperties::class)
 class PortOneConfig {
     @Bean(name = [PORT_ONE_REST_CLIENT])
     fun portOneRestClient(properties: PortOneProperties): RestClient =

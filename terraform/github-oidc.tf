@@ -57,6 +57,7 @@ data "aws_iam_policy_document" "github_deploy" {
       aws_ecr_repository.app.arn,
       aws_ecr_repository.seller_api.arn,
       aws_ecr_repository.admin.arn,
+      aws_ecr_repository.batch.arn,
     ]
   }
 
@@ -75,6 +76,7 @@ data "aws_iam_policy_document" "github_deploy" {
       "arn:aws:ecs:${var.region}:${data.aws_caller_identity.me.account_id}:service/${var.project}-${var.env}/${var.project}-api-${var.env}",
       "arn:aws:ecs:${var.region}:${data.aws_caller_identity.me.account_id}:service/${var.project}-${var.env}/${var.project}-seller-api-${var.env}",
       "arn:aws:ecs:${var.region}:${data.aws_caller_identity.me.account_id}:service/${var.project}-${var.env}/${var.project}-admin-${var.env}",
+      "arn:aws:ecs:${var.region}:${data.aws_caller_identity.me.account_id}:service/${var.project}-${var.env}/${var.project}-batch-${var.env}",
     ]
   }
 

@@ -32,7 +32,7 @@ interface OrderUseCase {
 
     /**
      * 구매자 구매확정 — 배송완료 건만, 진행 중 클레임이 없을 때. 확정과 적립금 지급이 한 트랜잭션이다.
-     * 재호출은 50007로 거절되고 적립금은 다시 지급되지 않는다.
+     * 재호출은 50008로 거절되고 적립금은 다시 지급되지 않는다.
      */
     fun confirmPurchase(command: ConfirmPurchaseCommand)
 

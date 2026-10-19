@@ -307,16 +307,42 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
     }
 
     private fun persistClaim(orderId: Long): Long {
+        // 클레임 요청은 발송 전 상태만 받는다. 확정 유보만 보는 이 테스트는 주문을 잠시 결제완료로 내려 심고 되돌린다
+        val restored = swapOrderStatus(orderId, OrderStatus.PAID)
+        em.clear()
         val order = em.find(Order::class.java, orderId)
         val claim =
             Claim.request(
-                claimType = ClaimType.RETURN,
+                claimType = ClaimType.CANCEL,
                 order = order,
+                reasonCode = "CHANGE_OF_MIND",
+                reasonDetail = null,
                 items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 10_000L)),
+                autoApproveDueAt = kstNow().plusDays(2),
             )
         em.persist(claim)
         em.flush()
+        swapOrderStatus(orderId, restored)
         return claim.id
+    }
+
+    /** 주문 상태를 바꾸고 이전 상태를 돌려준다. 벌크 JPQL이라 상태 이력에는 남지 않는다. */
+    private fun swapOrderStatus(
+        orderId: Long,
+        next: OrderStatus,
+    ): OrderStatus {
+        em.flush()
+        val previous =
+            em
+                .createQuery("select o.status from Order o where o.id = :id", OrderStatus::class.java)
+                .setParameter("id", orderId)
+                .singleResult
+        em
+            .createQuery("update Order o set o.status = :status where o.id = :id")
+            .setParameter("status", next)
+            .setParameter("id", orderId)
+            .executeUpdate()
+        return previous
     }
 
     private fun seedOrder(

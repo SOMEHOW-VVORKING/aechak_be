@@ -1,6 +1,7 @@
 package com.aechak.batch.support
 
 import com.aechak.api.support.DatabaseCleaner
+import com.aechak.api.support.FakePaymentGateway
 import com.aechak.api.support.IntegrationTestConfig
 import jakarta.persistence.EntityManager
 import jakarta.persistence.PersistenceContext
@@ -30,10 +31,16 @@ abstract class BatchIntegrationTestBase {
     protected lateinit var tx: TransactionTemplate
 
     @Autowired
+    protected lateinit var paymentGateway: FakePaymentGateway
+
+    @Autowired
     private lateinit var cleaner: DatabaseCleaner
 
     @BeforeEach
-    fun cleanDatabase() = cleaner.truncateAll()
+    fun resetState() {
+        cleaner.truncateAll()
+        paymentGateway.clear()
+    }
 
     companion object {
         @JvmStatic

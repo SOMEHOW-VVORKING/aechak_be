@@ -14,8 +14,9 @@ enum class OrderErrorCode(
     ORDER_ACCESS_DENIED(50003, "셀러 주문을 처리할 권한이 없습니다.", 403),
     ORDER_NOT_ACCEPTABLE(50004, "결제완료 상태의 주문만 발주 확인할 수 있습니다.", 409),
     ORDER_NOT_DISPATCHABLE(50005, "발송 대기 상태의 주문만 발송 처리할 수 있습니다.", 409),
-    ORDER_NOT_CONFIRMABLE(50006, "배송완료 상태이고 진행 중 클레임이 없는 주문만 구매확정할 수 있습니다.", 409),
-    ORDER_ALREADY_CONFIRMED(50007, "이미 구매확정된 주문입니다.", 409),
+    INVALID_ORDER_ITEM_STATUS_TRANSITION(50006, "허용되지 않은 주문품목 상태 전이입니다.", 409),
+    ORDER_NOT_CONFIRMABLE(50007, "배송완료 상태이고 진행 중 클레임이 없는 주문만 구매확정할 수 있습니다.", 409),
+    ORDER_ALREADY_CONFIRMED(50008, "이미 구매확정된 주문입니다.", 409),
 
     // 주문그룹
     INVALID_ORDER_GROUP_STATUS_TRANSITION(50100, "허용되지 않은 주문그룹 상태 전이입니다.", 409),
@@ -27,6 +28,8 @@ enum class OrderErrorCode(
     ORDER_AMOUNT_CHANGED(50106, "주문 금액이 변경되었습니다. 주문서를 다시 확인해 주세요.", 409),
     INSUFFICIENT_STOCK(50107, "재고가 부족한 상품이 포함되어 있습니다.", 409),
     ORDER_AMOUNT_BELOW_MINIMUM(50108, "최소 결제 금액에 미치지 못합니다.", 422),
+    ORDER_GROUP_NOT_FOUND(50109, "주문 정보를 찾을 수 없습니다.", 404),
+    ORDER_GROUP_NOT_CANCELLABLE(50110, "취소할 수 없는 주문입니다.", 409),
 
     // 장바구니
     INVALID_CART_ITEM_QUANTITY(50200, "장바구니 담을 수량은 1 이상이어야 합니다.", 400),
@@ -46,4 +49,16 @@ enum class OrderErrorCode(
     SHIPMENT_ALREADY_REGISTERED(50302, "이미 송장이 등록된 주문입니다.", 409),
     COURIER_NOT_FOUND(50303, "택배사를 찾을 수 없습니다.", 404),
     INVALID_TRACKING_NUMBER(50304, "송장번호 형식이 올바르지 않습니다.", 400),
+
+    // 클레임
+    CLAIM_NOT_FOUND(50400, "클레임을 찾을 수 없습니다.", 404),
+    CLAIM_NOT_REQUESTABLE(50401, "현재 주문 상태에서는 요청할 수 없는 클레임입니다.", 409),
+    INVALID_CLAIM_STATUS_TRANSITION(50402, "허용되지 않은 클레임 상태 전이입니다.", 409),
+    CLAIM_ALREADY_IN_PROGRESS(50403, "이미 진행 중인 클레임이 있는 상품입니다.", 409),
+    CLAIM_ACCESS_DENIED(50404, "클레임을 처리할 권한이 없습니다.", 403),
+    CLAIM_REJECTION_REASON_REQUIRED(50405, "거부 사유를 입력해 주세요.", 400),
+    CLAIM_QUANTITY_EXCEEDS_ORDERED(50406, "주문한 수량보다 많이 요청할 수 없습니다.", 422),
+    CLAIM_REFUND_FAILED(50407, "환불 처리에 실패했습니다. 잠시 후 다시 확인해 주세요.", 502),
+    CLAIM_ALREADY_RESOLVED(50408, "이미 처리된 클레임입니다.", 409),
+    CLAIM_PARTIAL_QUANTITY_NOT_SUPPORTED(50410, "주문한 수량 전부를 대상으로만 요청할 수 있습니다.", 422),
 }

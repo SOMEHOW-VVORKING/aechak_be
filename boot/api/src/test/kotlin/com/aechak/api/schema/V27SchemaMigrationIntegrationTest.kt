@@ -27,6 +27,9 @@ import javax.sql.DataSource
  *  - legacy : dev 재현 — ddl-auto가 V10 전에 테이블을 만들고 FK까지 걸어 둔 DB
  *  - late   : V10 이후에 ddl-auto가 테이블을 만든 DB(그 뒤 새로 만든 환경이 이 모양이다)
  *
+ * 대조 대상 목록에는 이관 대상만이 아니라 이미 Flyway가 소유한 테이블(orders·payments·product_drafts)도 둔다 —
+ * 그 테이블에 컬럼을 더할 때 엔티티 선언과 어긋나는 것을 같은 자리에서 잡는다.
+ *
  * `ddl-auto=validate` 부팅으로는 이 정합을 볼 수 없다. 엔티티 테이블 47개 중 Flyway가 만드는 것은
  * 14개뿐이고 users·products 등이 아직 ddl-auto 전용이라, 빈 DB에서 validate가 그 테이블들에서
  * 먼저 깨진다. 그래서 이관 대상 테이블만 떼어 직접 대조한다.
@@ -525,10 +528,15 @@ class V27SchemaMigrationIntegrationTest {
                 "claims",
                 "claim_items",
                 "orders",
+                "payments",
+                "product_drafts",
             )
 
-        /** orders는 V21이 이미 만든다 — ddl-auto만으로 존재하던 테이블은 나머지 10개다. */
-        private val DDL_AUTO_TABLES = TARGET_TABLES - "orders"
+        /**
+         * orders는 V21이, payments는 V24가, product_drafts는 V31이 이미 만든다 —
+         * ddl-auto만으로 존재하던 테이블은 나머지 10개다.
+         */
+        private val DDL_AUTO_TABLES = TARGET_TABLES - "orders" - "payments" - "product_drafts"
 
         @JvmStatic
         @DynamicPropertySource

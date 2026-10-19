@@ -2,11 +2,15 @@ package com.aechak.api.payment
 
 import com.aechak.api.payment.config.PaymentStoreProperties
 import com.aechak.application.payment.usecase.PaymentUseCase
+import com.aechak.application.payment.usecase.command.ApplyPaymentCancelCommand
+import com.aechak.application.payment.usecase.command.CancelPaymentCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByGatewayCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentCommand
 import com.aechak.application.payment.usecase.command.PreparePaymentCommand
+import com.aechak.application.payment.usecase.result.CancelPaymentResult
 import com.aechak.application.payment.usecase.result.CompletePaymentResult
+import com.aechak.application.payment.usecase.result.GatewayCancelResult
 import com.aechak.application.payment.usecase.result.PreparePaymentResult
 import com.aechak.domain.payment.enums.PaymentMethod
 import com.aechak.domain.user.user.enums.UserRole
@@ -53,6 +57,14 @@ class PaymentControllerTest {
 
             override fun completePaymentByGateway(command: CompletePaymentByGatewayCommand): CompletePaymentResult =
                 error("이 테스트는 결제 준비 EP만 다룬다 — 식별자 확정 호출은 계약 밖")
+
+            override fun cancelPayment(command: CancelPaymentCommand): CancelPaymentResult = error("이 테스트는 결제 준비 EP만 다룬다 — 취소 호출은 계약 밖")
+
+            override fun requestCancelAtGateway(command: CancelPaymentCommand): GatewayCancelResult =
+                error("이 테스트는 결제 준비 EP만 다룬다 — 취소 호출은 계약 밖")
+
+            override fun applyCancelledAmount(command: ApplyPaymentCancelCommand): CancelPaymentResult =
+                error("이 테스트는 결제 준비 EP만 다룬다 — 취소 호출은 계약 밖")
         }
 
     private val principalResolver =

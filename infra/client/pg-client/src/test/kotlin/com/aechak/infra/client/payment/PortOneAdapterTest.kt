@@ -1,5 +1,7 @@
 package com.aechak.infra.client.payment
 
+import com.aechak.application.payment.port.PaymentCancelCommand
+import com.aechak.application.payment.port.PaymentCancelRequester
 import com.aechak.application.payment.port.PaymentCancelStatus
 import com.aechak.application.payment.port.PaymentGatewayStatus
 import com.aechak.common.error.BusinessException
@@ -31,7 +33,8 @@ class PortOneAdapterTest {
     private val builder = RestClient.builder().baseUrl(BASE_URL)
     private val server = MockRestServiceServer.bindTo(builder).build()
     private val restClient = builder.build() // bindTo로 목 requestFactory를 꽂은 뒤에 만들어야 목이 먹음
-    private val adapter = PortOneAdapter(restClient, PortOneProperties(apiSecret = "test-secret"))
+    private val adapter =
+        PortOneAdapter(restClient, PortOneProperties(apiSecret = "test-secret"), PaymentCancelProperties(maxAmount = 100_000L))
 
     @Test
     fun `조회 200 PAID는 상태와 두 금액과 pgTxId와 결제시각을 뷰로 옮긴다`() {
@@ -158,16 +161,143 @@ class PortOneAdapterTest {
     }
 
     @Test
-    fun `취소 200 cancellation status SUCCEEDED는 SUCCEEDED로 번역된다`() {
+    fun `전액 취소는 금액을 싣지 않고 취소가능액 대조값과 요청자를 보낸다`() {
         server
             .expect(requestTo("$BASE_URL/payments/pay-4/cancel"))
             .andExpect(method(HttpMethod.POST))
             .andExpect(jsonPath("$.reason").value("고객 변심"))
+            .andExpect(jsonPath("$.amount").doesNotExist())
+            .andExpect(jsonPath("$.currentCancellableAmount").value(10_000))
+            .andExpect(jsonPath("$.requester").value("CUSTOMER"))
+            .andExpect(jsonPath("$.storeId").doesNotExist())
             .andRespond(withSuccess(CANCEL_SUCCEEDED_JSON, MediaType.APPLICATION_JSON))
 
-        val status = adapter.cancel("pay-4", "고객 변심")
+        val result = adapter.cancel(cancelCommand("pay-4", amount = null))
 
-        assertEquals(PaymentCancelStatus.SUCCEEDED, status, "cancellation.status가 그대로 번역돼야 한다")
+        assertEquals(PaymentCancelStatus.SUCCEEDED, result.status, "cancellation.status가 그대로 번역돼야 한다")
+        assertEquals(10_000L, result.cancelledAmount, "PG가 확정한 금액을 실어야 원장이 그 금액만 깎는다")
+        assertEquals("pgcancel-1", result.pgCancellationId)
+        server.verify()
+    }
+
+    @Test
+    fun `부분 취소는 금액을 싣는다`() {
+        server
+            .expect(requestTo("$BASE_URL/payments/pay-10/cancel"))
+            .andExpect(method(HttpMethod.POST))
+            .andExpect(jsonPath("$.amount").value(4_000))
+            .andExpect(jsonPath("$.currentCancellableAmount").value(10_000))
+            .andRespond(withSuccess(CANCEL_PARTIAL_SUCCEEDED_JSON, MediaType.APPLICATION_JSON))
+
+        val result = adapter.cancel(cancelCommand("pay-10", amount = 4_000L))
+
+        assertEquals(4_000L, result.cancelledAmount, "부분 취소는 요청 금액이 아니라 PG 확정 금액을 읽어야 한다")
+        server.verify()
+    }
+
+    @Test
+    fun `상점 식별자를 설정하면 요청에 실린다`() {
+        val withStore =
+            PortOneAdapter(
+                restClient,
+                PortOneProperties(apiSecret = "test-secret", storeId = "store-9"),
+                PaymentCancelProperties(maxAmount = 100_000L),
+            )
+        server
+            .expect(requestTo("$BASE_URL/payments/pay-11/cancel"))
+            .andExpect(jsonPath("$.storeId").value("store-9"))
+            .andRespond(withSuccess(CANCEL_SUCCEEDED_JSON, MediaType.APPLICATION_JSON))
+
+        withStore.cancel(cancelCommand("pay-11", amount = null))
+
+        server.verify()
+    }
+
+    @Test
+    fun `비동기 승인은 REQUESTED로 그대로 번역된다`() {
+        server
+            .expect(requestTo("$BASE_URL/payments/pay-12/cancel"))
+            .andRespond(withSuccess(CANCEL_REQUESTED_JSON, MediaType.APPLICATION_JSON))
+
+        val result = adapter.cancel(cancelCommand("pay-12", amount = null))
+
+        assertEquals(PaymentCancelStatus.REQUESTED, result.status, "접수만 된 건을 성공으로 읽으면 원장을 미리 깎는다")
+        server.verify()
+    }
+
+    @Test
+    fun `확정 금액이 없는 성공 응답은 추정 없이 그대로 비운다`() {
+        server
+            .expect(requestTo("$BASE_URL/payments/pay-20/cancel"))
+            .andRespond(withSuccess(CANCEL_SUCCEEDED_WITHOUT_AMOUNT_JSON, MediaType.APPLICATION_JSON))
+
+        val result = adapter.cancel(cancelCommand("pay-20", amount = 4_000L))
+
+        assertNull(result.cancelledAmount, "요청액으로 채우면 호출자가 PG가 확정하지 않은 금액을 원장에서 깎는다")
+        server.verify()
+    }
+
+    @Test
+    fun `초과 취소 오류는 60015로 번역된다`() {
+        server
+            .expect(requestTo("$BASE_URL/payments/pay-13/cancel"))
+            .andRespond(
+                withStatus(HttpStatus.BAD_REQUEST)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(CANCEL_AMOUNT_EXCEEDS_JSON),
+            )
+
+        val e = assertFailsWith<BusinessException> { adapter.cancel(cancelCommand("pay-13", amount = 20_000L)) }
+
+        assertEquals(60015, e.errorCode.code, "초과 취소를 502로 접으면 재시도 가능한 장애로 읽혀 같은 취소가 반복된다")
+        server.verify()
+    }
+
+    @Test
+    fun `취소가능액 불일치는 60017로 번역된다`() {
+        server
+            .expect(requestTo("$BASE_URL/payments/pay-14/cancel"))
+            .andRespond(
+                withStatus(HttpStatus.CONFLICT)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(CANCELLABLE_AMOUNT_BROKEN_JSON),
+            )
+
+        val e = assertFailsWith<BusinessException> { adapter.cancel(cancelCommand("pay-14", amount = 4_000L)) }
+
+        assertEquals(60017, e.errorCode.code, "우리가 모르는 취소가 이미 있었다는 뜻이라 중복 취소 방어의 핵심 분기다")
+        server.verify()
+    }
+
+    @Test
+    fun `취소 대상 없음은 60000으로 번역된다`() {
+        server
+            .expect(requestTo("$BASE_URL/payments/pay-15/cancel"))
+            .andRespond(
+                withStatus(HttpStatus.NOT_FOUND)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(PAYMENT_NOT_FOUND_JSON),
+            )
+
+        val e = assertFailsWith<BusinessException> { adapter.cancel(cancelCommand("pay-15", amount = null)) }
+
+        assertEquals(60000, e.errorCode.code)
+        server.verify()
+    }
+
+    @Test
+    fun `취소 횟수 상한과 잘못된 요청은 60018로 번역된다`() {
+        server
+            .expect(requestTo("$BASE_URL/payments/pay-16/cancel"))
+            .andRespond(
+                withStatus(HttpStatus.BAD_REQUEST)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(MAX_CANCEL_COUNT_JSON),
+            )
+
+        val e = assertFailsWith<BusinessException> { adapter.cancel(cancelCommand("pay-16", amount = 1_000L)) }
+
+        assertEquals(60018, e.errorCode.code, "재시도해도 같은 결과라 게이트웨이 장애가 아니다")
         server.verify()
     }
 
@@ -182,15 +312,38 @@ class PortOneAdapterTest {
                     .body(PG_PROVIDER_ERROR_JSON),
             )
 
-        val e = assertFailsWith<BusinessException> { adapter.cancel("pay-5", "관리자 취소") }
+        val e = assertFailsWith<BusinessException> { adapter.cancel(cancelCommand("pay-5", amount = null)) }
 
         assertEquals(60005, e.errorCode.code, "PG사 오류는 60005여야 한다")
         server.verify()
     }
 
     @Test
+    fun `상한을 넘는 취소는 요청을 내보내지 않고 60019로 끊는다`() {
+        val guarded = PortOneAdapter(restClient, PortOneProperties(apiSecret = "test-secret"), PaymentCancelProperties(maxAmount = 5_000L))
+
+        val overAmount = assertFailsWith<BusinessException> { guarded.cancel(cancelCommand("pay-17", amount = 5_001L)) }
+        // 전액 취소는 amount 가 없으므로 취소가능액이 상한 대조 대상이다
+        val overFull = assertFailsWith<BusinessException> { guarded.cancel(cancelCommand("pay-18", amount = null)) }
+
+        assertEquals(60019, overAmount.errorCode.code, "상한 초과는 PG로 나가기 전에 끊어야 한다")
+        assertEquals(60019, overFull.errorCode.code, "전액 취소도 상한 대조를 받아야 한다")
+        server.verify() // 기대 요청을 하나도 안 걸었으므로, 한 건이라도 나갔으면 여기서 깨짐
+    }
+
+    @Test
+    fun `상한 기본값은 취소를 내보내지 않는다`() {
+        val closed = PortOneAdapter(restClient, PortOneProperties(apiSecret = "test-secret"), PaymentCancelProperties())
+
+        val e = assertFailsWith<BusinessException> { closed.cancel(cancelCommand("pay-19", amount = 1L)) }
+
+        assertEquals(60019, e.errorCode.code, "상점 확인 전 환경에서 설정 누락이 실호출로 이어지면 안 된다")
+        server.verify()
+    }
+
+    @Test
     fun `apiSecret이 비면 요청을 하나도 내보내지 않고 60005로 끊는다`() {
-        val guarded = PortOneAdapter(restClient, PortOneProperties(apiSecret = ""))
+        val guarded = PortOneAdapter(restClient, PortOneProperties(apiSecret = ""), PaymentCancelProperties(maxAmount = 100_000L))
 
         val e = assertFailsWith<BusinessException> { guarded.preRegister("pay-6", 10_000L) }
 
@@ -222,6 +375,17 @@ class PortOneAdapterTest {
         assertEquals(60005, e.errorCode.code, "역직렬화 실패는 500이 아니라 60005여야 한다")
         server.verify()
     }
+
+    private fun cancelCommand(
+        paymentId: String,
+        amount: Long?,
+    ) = PaymentCancelCommand(
+        paymentId = paymentId,
+        reason = "고객 변심",
+        amount = amount,
+        currentCancellableAmount = 10_000L,
+        requester = PaymentCancelRequester.CUSTOMER,
+    )
 
     companion object {
         private const val BASE_URL = "https://api.portone.io"
@@ -317,6 +481,59 @@ class PortOneAdapterTest {
                 "cancelledAt": "2026-08-20T11:00:00Z"
               }
             }
+            """.trimIndent()
+
+        /** 부분 취소 응답 — cancellation.totalAmount가 이번 취소로 확정된 금액이다 */
+        private val CANCEL_PARTIAL_SUCCEEDED_JSON =
+            """
+            {
+              "cancellation": {
+                "status": "SUCCEEDED",
+                "id": "cancel-2",
+                "pgCancellationId": "pgcancel-2",
+                "totalAmount": 4000,
+                "taxFreeAmount": 0,
+                "vatAmount": 363,
+                "reason": "일부 품목 취소",
+                "requestedAt": "2026-08-20T11:00:00Z",
+                "cancelledAt": "2026-08-20T11:00:00Z"
+              }
+            }
+            """.trimIndent()
+
+        /** 비동기 승인 — 접수만 된 상태. 금액이 실려도 확정은 아니다 */
+        private val CANCEL_REQUESTED_JSON =
+            """
+            {
+              "cancellation": {
+                "status": "REQUESTED",
+                "id": "cancel-3",
+                "totalAmount": 10000,
+                "reason": "고객 변심",
+                "requestedAt": "2026-08-20T11:00:00Z"
+              }
+            }
+            """.trimIndent()
+
+        /** 스키마상 SUCCEEDED에는 totalAmount가 필수지만, 빠진 응답을 요청액으로 메우지 않는지 본다 */
+        private val CANCEL_SUCCEEDED_WITHOUT_AMOUNT_JSON =
+            """
+            {"cancellation": {"status": "SUCCEEDED", "id": "cancel-4", "pgCancellationId": "pgcancel-4"}}
+            """.trimIndent()
+
+        private val CANCEL_AMOUNT_EXCEEDS_JSON =
+            """
+            {"type": "CANCEL_AMOUNT_EXCEEDS_CANCELLABLE_AMOUNT", "message": "취소 가능 금액을 초과했습니다."}
+            """.trimIndent()
+
+        private val CANCELLABLE_AMOUNT_BROKEN_JSON =
+            """
+            {"type": "CANCELLABLE_AMOUNT_CONSISTENCY_BROKEN", "message": "취소 가능 금액이 일치하지 않습니다."}
+            """.trimIndent()
+
+        private val MAX_CANCEL_COUNT_JSON =
+            """
+            {"type": "MAX_CANCEL_COUNT_REACHED", "message": "취소 횟수 상한에 도달했습니다."}
             """.trimIndent()
 
         private val PG_PROVIDER_ERROR_JSON =
