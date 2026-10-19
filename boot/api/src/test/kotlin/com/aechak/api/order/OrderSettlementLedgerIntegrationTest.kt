@@ -20,6 +20,7 @@ import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.settlement.feepolicy.SettlementFeePolicy
 import com.aechak.domain.settlement.settlement.Settlement
 import com.aechak.domain.settlement.settlement.enums.SettlementStatus
+import com.aechak.domain.settlement.settlement.policy.SettlementCalendar
 import com.aechak.domain.user.point.PointTransaction
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -37,6 +38,9 @@ import org.springframework.web.context.WebApplicationContext
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -117,7 +121,7 @@ class OrderSettlementLedgerIntegrationTest : IntegrationTestBase() {
 
         mockMvc.perform(confirmRequest(fixture.orderPublicId)).andExpect(status().isNoContent)
 
-        val confirmedOn = findOrder(fixture.orderId).purchaseConfirmedAt!!.toLocalDate()
+        val confirmedOn = SettlementCalendar.settlementDateOf(findOrder(fixture.orderId).purchaseConfirmedAt!!)
         val settlement = settlements(fixture.orderId).single()
         assertEquals(Settlement.settlementMonthOf(confirmedOn), settlement.settlementMonth)
         assertEquals(confirmedOn.plusDays(Settlement.PAYOUT_DELAY_DAYS), settlement.expectedPayoutDate)
@@ -202,6 +206,17 @@ class OrderSettlementLedgerIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `동시 확정에서도 정산 행은 품목당 하나다`() {
+        // 멱등키 선조회는 순차 재실행만 접는다 — 동시 호출을 막는 것은 주문 전이 선점이다
+        val fixture = seedOrder(lines = listOf(Line(10_000L, 2, 500L), Line(3_500L, 3)), shippingFee = 3_000L)
+
+        val results = raceTwoConfirms(fixture.orderPublicId)
+
+        assertEquals(listOf(204, 409), results.sorted(), "하나만 확정되고 나머지는 이미 확정으로 거절돼야 한다")
+        assertEquals(2, settlements(fixture.orderId).size)
+    }
+
+    @Test
     fun `요율 정책이 없으면 확정과 적립까지 함께 롤백된다`() {
         deleteFeePolicies()
         val fixture = seedOrder(lines = listOf(Line(10_000L, 2, 500L)))
@@ -221,6 +236,31 @@ class OrderSettlementLedgerIntegrationTest : IntegrationTestBase() {
     private fun confirmRequest(orderPublicId: String): MockHttpServletRequestBuilder =
         post("/api/v1/orders/$orderPublicId/confirm").header(HttpHeaders.AUTHORIZATION, "Bearer $token")
 
+    /** 같은 주문에 확정 요청 두 개를 함께 쏜다. 응답 상태만 돌려준다. */
+    private fun raceTwoConfirms(orderPublicId: String): List<Int> {
+        val pool = Executors.newFixedThreadPool(2)
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        try {
+            val futures =
+                (1..2).map {
+                    pool.submit<Int> {
+                        ready.countDown()
+                        start.await()
+                        mockMvc
+                            .perform(confirmRequest(orderPublicId))
+                            .andReturn()
+                            .response.status
+                    }
+                }
+            ready.await()
+            start.countDown()
+            return futures.map { it.get(30, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdown()
+        }
+    }
+
     /** 자동확정 배치가 할 일을 그대로 흉내 낸다 — 확정 유형만 AUTO이고 원장 생성 입력은 수동 확정과 같다. */
     private fun confirmAutomatically(fixture: Fixture) {
         val command =
@@ -233,7 +273,7 @@ class OrderSettlementLedgerIntegrationTest : IntegrationTestBase() {
                 CreateSettlementLedgerCommand(
                     sellerId = order.sellerId,
                     orderId = order.id,
-                    confirmedOn = order.purchaseConfirmedAt!!.toLocalDate(),
+                    confirmedAt = order.purchaseConfirmedAt!!,
                     sellerShippingFee = order.sellerShippingFee,
                     items =
                         order.items.map {

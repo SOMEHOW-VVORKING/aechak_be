@@ -11,7 +11,7 @@ import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.order.repository.OrderStatusHistoryRepository
 import org.springframework.stereotype.Service
-import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * 구매확정 로직 보관함 — Facade에서만 호출된다.
@@ -59,8 +59,7 @@ class OrderConfirmService(
             sellerId = order.sellerId,
             productAmount = order.productAmountAfterDiscount(),
             sellerShippingFee = order.sellerShippingFee,
-            // 컨테이너 TZ가 Asia/Seoul이라 확정 시각의 날짜가 그대로 정산 달력의 기준일이다
-            confirmedOn = order.purchaseConfirmedAt!!.toLocalDate(),
+            confirmedAt = order.purchaseConfirmedAt!!,
             items = order.items.map { ConfirmedItem(orderItemId = it.id, grossAmount = it.productAmountAfterDiscount()) },
         )
     }
@@ -71,7 +70,7 @@ class OrderConfirmService(
         val sellerId: Long,
         val productAmount: Long,
         val sellerShippingFee: Long,
-        val confirmedOn: LocalDate,
+        val confirmedAt: LocalDateTime,
         val items: List<ConfirmedItem>,
     )
 

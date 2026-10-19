@@ -5,6 +5,7 @@ import com.aechak.common.error.BusinessException
 import com.aechak.domain.settlement.error.SettlementErrorCode
 import com.aechak.domain.settlement.feepolicy.repository.SettlementFeePolicyRepository
 import com.aechak.domain.settlement.settlement.Settlement
+import com.aechak.domain.settlement.settlement.policy.SettlementCalendar
 import com.aechak.domain.settlement.settlement.policy.ShippingFeeAllocationPolicy
 import com.aechak.domain.settlement.settlement.repository.SettlementRepository
 import org.springframework.stereotype.Service
@@ -34,14 +35,15 @@ class SettlementLedgerService(
             return emptyList()
         }
 
+        val confirmedOn = SettlementCalendar.settlementDateOf(command.confirmedAt)
         val feePolicy =
-            settlementFeePolicyRepository.findEffective(command.sellerId, command.confirmedOn)
+            settlementFeePolicyRepository.findEffective(command.sellerId, confirmedOn)
                 ?: throw BusinessException(SettlementErrorCode.SETTLEMENT_FEE_POLICY_NOT_FOUND)
         val shippingFees =
             ShippingFeeAllocationPolicy.allocate(command.sellerShippingFee, command.items.map { it.orderItemId })
 
         return settlementRepository.saveAll(
-            missing.map { command.toEntity(it, shippingFees.getValue(it.orderItemId), feePolicy) },
+            missing.map { command.toEntity(it, shippingFees.getValue(it.orderItemId), feePolicy, confirmedOn) },
         )
     }
 }

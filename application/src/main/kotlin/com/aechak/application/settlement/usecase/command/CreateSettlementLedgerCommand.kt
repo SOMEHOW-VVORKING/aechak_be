@@ -3,16 +3,17 @@ package com.aechak.application.settlement.usecase.command
 import com.aechak.domain.settlement.feepolicy.SettlementFeePolicy
 import com.aechak.domain.settlement.settlement.Settlement
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * 구매확정된 주문 하나의 정산 원장 생성 명세. 금액은 주문 도메인이 계산해 넘기고,
  * 수수료와 지급 예정일은 정산 도메인이 요율 정책으로 계산한다.
- * confirmedOn은 구매확정일이다 — 정산월과 지급 예정일이 전부 여기서 파생되므로 재실행해도 같은 값이 나온다.
+ * confirmedAt은 주문에 기록된 구매확정 시각이다 — 정산월과 지급 예정일이 전부 여기서 파생되므로 재실행해도 같은 값이 나온다.
  */
 data class CreateSettlementLedgerCommand(
     val sellerId: Long,
     val orderId: Long,
-    val confirmedOn: LocalDate,
+    val confirmedAt: LocalDateTime,
     val sellerShippingFee: Long,
     val items: List<Item>,
 ) {
@@ -22,11 +23,12 @@ data class CreateSettlementLedgerCommand(
         val grossAmount: Long,
     )
 
-    /** 필드 옮겨 담기만. 요율 정책과 배송비 안분액은 서비스가 계산해 넘긴다. */
+    /** 필드 옮겨 담기만. 정산 기준일과 요율 정책, 배송비 안분액은 서비스가 계산해 넘긴다. */
     fun toEntity(
         item: Item,
         shippingFee: Long,
         feePolicy: SettlementFeePolicy,
+        confirmedOn: LocalDate,
     ): Settlement =
         Settlement.createOnPurchaseConfirm(
             feePolicy = feePolicy,

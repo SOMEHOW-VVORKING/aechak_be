@@ -91,7 +91,7 @@ class OrderFacade(
             CreateSettlementLedgerCommand(
                 sellerId = confirmed.sellerId,
                 orderId = confirmed.orderId,
-                confirmedOn = confirmed.confirmedOn,
+                confirmedAt = confirmed.confirmedAt,
                 sellerShippingFee = confirmed.sellerShippingFee,
                 items =
                     confirmed.items.map {
