@@ -58,15 +58,19 @@ resource "aws_ssm_parameter" "media_public_base_url" {
 }
 
 # ── 웹 연동 ─────────────────────────────────────────────
-# 배포된 프론트 + 로컬 개발 프론트. 로컬에서 dev 백엔드에 붙는 구성을 함께 허용한다.
+# 앱마다 배포된 프론트 + 로컬 개발 프론트. 로컬에서 dev 백엔드에 붙는 구성을 함께 허용한다.
+# api 모듈은 all_web_origins(세 웹 합집합)를, seller·admin 모듈은 자기 콘솔 목록을 쓴다.
 locals {
-  web_origins = concat(["https://${local.web_domain}"], var.frontend_origins)
+  buyer_origins   = concat(["https://${local.web_domain}"], var.frontend_origins)
+  seller_origins  = concat(["https://${local.seller_domain}"], var.seller_frontend_origins)
+  admin_origins   = concat(["https://${local.admin_domain}"], var.admin_frontend_origins)
+  all_web_origins = concat(local.buyer_origins, local.seller_origins, local.admin_origins)
 }
 
 resource "aws_ssm_parameter" "cors_origins" {
   name  = "/${var.project}/${var.env}/api/CORS_ALLOWED_ORIGINS"
   type  = "String"
-  value = join(",", local.web_origins)
+  value = join(",", local.all_web_origins)
 }
 
 # provider 콘솔에 등록한 주소와 정확히 같아야 한다 — 다르면 카카오가 리다이렉트를 거부한다
@@ -80,7 +84,7 @@ resource "aws_ssm_parameter" "auth_callback_base_url" {
 resource "aws_ssm_parameter" "auth_return_urls" {
   name  = "/${var.project}/${var.env}/api/AUTH_WEB_RETURN_URLS"
   type  = "String"
-  value = join(",", [for o in local.web_origins : "${o}/login/complete"])
+  value = join(",", [for o in local.all_web_origins : "${o}/login/complete"])
 }
 
 # ── 문의 통지(SES) ─────────────────────────────────────
@@ -209,11 +213,11 @@ resource "aws_ssm_parameter" "seller_media_public_base_url" {
   value = "https://${local.media_domain}"
 }
 
-# 셀러센터 웹 오리진 — 구매자 웹과 별개 목록. 배포된 셀러 웹 도메인이 생기면 여기 합류
+# 셀러센터 웹 오리진 — 구매자 웹과 별개 목록(배포 셀러 도메인 + 로컬 포트)
 resource "aws_ssm_parameter" "seller_cors_origins" {
   name  = "/${var.project}/${var.env}/seller/CORS_ALLOWED_ORIGINS"
   type  = "String"
-  value = join(",", var.seller_frontend_origins)
+  value = join(",", local.seller_origins)
 }
 
 # PII 키 — api와 같은 random_bytes를 재참조(같은 DB의 같은 암호문을 복호해야 하므로 값이 달라질 수 없는 구조로)
@@ -277,12 +281,11 @@ resource "aws_ssm_parameter" "admin_media_public_base_url" {
   value = "https://${local.media_domain}"
 }
 
-# 어드민 웹 오리진 — 미설정이면 파라미터를 만들지 않는다(SSM은 빈 값을 거절, 앱은 기본값 빈 목록으로 부팅)
+# 어드민 웹 오리진 — 구매자·셀러 웹과 별개 목록(배포 어드민 도메인 + 로컬 포트)
 resource "aws_ssm_parameter" "admin_cors_origins" {
-  count = length(var.admin_frontend_origins) > 0 ? 1 : 0
   name  = "/${var.project}/${var.env}/admin/CORS_ALLOWED_ORIGINS"
   type  = "String"
-  value = join(",", var.admin_frontend_origins)
+  value = join(",", local.admin_origins)
 }
 
 # PII 키 — api·seller와 같은 random_bytes 재참조(같은 DB의 같은 암호문을 복호)
