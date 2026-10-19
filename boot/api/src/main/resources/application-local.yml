@@ -44,3 +44,5 @@ auth:
 # AI 검수. 섀도 단계에서는 요청만 보내고 노출 상태는 바꾸지 않는다.
 inspection:
   enabled: true
+  # 노출 게이트. 로컬에서만 켠다 — dev는 판정을 먼저 쌓아 품질을 확인하는 단계다.
+  gate-enabled: true
