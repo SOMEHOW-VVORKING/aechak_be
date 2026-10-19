@@ -164,6 +164,7 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 ├── payment/                     # PaymentReconciliationSchedule — 결제 대사(매일 04:30 KST, 빠진 날 따라잡기)
 ├── order/                       # OrderExpirySchedule — 주문서 TTL 만료와 재고·적립금 복원(매분, 기본 꺼짐)
 │                               # OrderDeliverySchedule — 집화 지연 경고·배송완료 자동 전이(매일 03:00 KST, 기본 꺼짐)
+│                               # OrderAutoConfirmSchedule — 구매확정 자동화(매일 02:00 KST, 사전 안내 기록 포함, 기본 꺼짐)
 │                               # ClaimRefundSchedule — 승인된 취소 클레임의 환불 집행(매분, 기본 꺼짐)
 │                               # ClaimAutoApproveSchedule — 셀러 미응답 클레임의 자동승인과 환불(매시, 기본 꺼짐)
 │   └── config/                  # 배치별 정책값(@ConfigurationProperties) — 켜고 끄는 플래그 포함
@@ -173,6 +174,9 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 ```
 
 - 스케줄 클래스에는 **UseCase만 주입**한다(Facade·Service·Repository 금지 — api 컨트롤러와 같은 규칙). 시간 계산은 KST를 명시한다.
+  모듈 자체 설정값은 `@ConfigurationProperties` 로 받는다 — `@ComponentScan` 을 직접 선언한 탓에 자동 등록이 꺼지므로 `BatchApplication` 의 `@ConfigurationPropertiesScan` 이 등록을 맡는다.
+- 회차 안에서 여러 건을 처리하는 스케줄은 **id 커서 페이징**으로 끝까지 밀고, 건별로 예외를 격리한다 — offset 페이징은 앞자리 실패 건이 다음 회차의 같은 자리를 계속 막는다.
+  되돌릴 수 없는 처리(구매확정 등)는 `enabled` 설정값으로 환경별로 켠다.
 - **선별 스캔**: 루트(com.aechak) 스캔은 인증·SMS·Redis 등 api 전용 조립까지 요구해 부팅이 깨지므로, 쓰는 application 패키지와
   그 Facade가 요구하는 어댑터 모듈(`:pg-client`·`:pii`·`:s3-client`…)을 함께 등재한다. 어드민 전용 구현체(`Admin*`)는 §7의 제외 필터로 뺀다.
   **전역 lazy-init은 쓰지 않는다** — `@Scheduled` 빈이 지연 생성되면 스케줄 자체가 등록되지 않는다. 조립은 `BatchApplicationSmokeTest`가 고정한다.

@@ -59,6 +59,11 @@ payment:
 order:
   auto-confirm:
     days: 5    # 배송완료부터 구매확정 기한까지 — 셀러 수동 전이와 배치 자동 전이가 같은 값을 쓴다
+    # 자동확정은 되돌릴 수 없고 반품 기한·정산의 기산점이라 기본은 꺼 둔다. 환경변수로 환경별로 켠다
+    enabled: ${ORDER_AUTO_CONFIRM_ENABLED:false}
+    cron: "0 0 2 * * *"      # KST 02:00 — 배송완료 집계가 끝난 뒤, 대사(04:30)보다 앞
+    notify-lead-days: 1      # 기한 D-1 구간의 주문에 사전 안내 기록을 남긴다
+    scan-size: 200           # 한 회차 안에서 커서로 끊어 읽는 건수
   delivery:
     # 배치 모듈이 dev에 배포되기 전까지는 꺼 둔다 — 켜면 시간만 보고 주문을 배송완료로 넘긴다
     enabled: ${ORDER_DELIVERY_BATCH_ENABLED:false}
