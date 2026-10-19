@@ -29,12 +29,12 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "media" {
   }
 }
 
-# presigned PUT 직접 업로드용
+# presigned PUT 직접 업로드용. media에 올리는 쪽은 구매자 웹(리뷰 이미지)과 셀러 웹(상품 이미지)뿐이다.
 resource "aws_s3_bucket_cors_configuration" "media" {
   bucket = aws_s3_bucket.media.id
   cors_rule {
     allowed_methods = ["PUT", "GET"]
-    allowed_origins = var.frontend_origins
+    allowed_origins = concat(local.buyer_origins, local.seller_origins)
     allowed_headers = ["*"]
     max_age_seconds = 3000
   }
@@ -85,4 +85,16 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "docs" {
     }
   }
 }
-# docs는 CloudFront 없음 — 앱이 짧은 TTL presigned GET으로만 접근
+
+# 입점 서류 presigned PUT 직접 업로드용 — 올리는 쪽은 셀러 웹뿐이다.
+resource "aws_s3_bucket_cors_configuration" "docs" {
+  bucket = aws_s3_bucket.docs.id
+  cors_rule {
+    allowed_methods = ["PUT"]
+    allowed_origins = local.seller_origins
+    allowed_headers = ["*"]
+    max_age_seconds = 3000
+  }
+}
+
+# docs는 CloudFront 없음 — 셀러가 presigned PUT으로 올리고, 열람은 짧은 TTL presigned GET으로만 한다
