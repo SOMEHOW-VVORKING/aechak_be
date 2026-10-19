@@ -1,6 +1,5 @@
 package com.aechak.application.user.point.service
 
-import com.aechak.application.user.point.usecase.command.ReleasePointCommand
 import com.aechak.application.user.point.usecase.command.UsePointCommand
 import com.aechak.application.user.user.service.UserService
 import com.aechak.common.error.BusinessException
@@ -60,24 +59,6 @@ class PointCommandService(
                 buyer = userService.getById(command.userId),
                 amount = command.amount,
                 transactionType = PointTransactionType.USE,
-                idempotencyKey = command.idempotencyKey,
-                sourceType = command.sourceType,
-                sourceId = command.sourceId,
-            ),
-        )
-    }
-
-    fun releasePoint(command: ReleasePointCommand) {
-        val buyer = userService.getById(command.userId)
-        if (command.amount <= 0) {
-            throw BusinessException(UserErrorCode.INVALID_POINT_AMOUNT)
-        }
-        userRepository.addPointBalance(command.userId, command.amount)
-        pointTransactionRepository.save(
-            PointTransaction.record(
-                buyer = buyer,
-                amount = command.amount,
-                transactionType = PointTransactionType.RELEASE,
                 idempotencyKey = command.idempotencyKey,
                 sourceType = command.sourceType,
                 sourceId = command.sourceId,

@@ -26,10 +26,4 @@ interface OptionCombinationRepository {
         optionCombinationId: Long,
         quantity: Int,
     ): Boolean
-
-    /** 조합 행 자체가 없으면 false */
-    fun restoreStock(
-        optionCombinationId: Long,
-        quantity: Int,
-    ): Boolean
 }

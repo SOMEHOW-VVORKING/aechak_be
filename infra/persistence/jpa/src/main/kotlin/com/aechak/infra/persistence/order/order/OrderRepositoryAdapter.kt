@@ -13,14 +13,6 @@ import java.time.LocalDateTime
 interface OrderJpaRepository : JpaRepository<Order, Long> {
     fun findAllByOrderGroupIdOrderByIdAsc(orderGroupId: Long): List<Order>
 
-    @Query(
-        "select o from Order o left join fetch o._items i " +
-            "where o.orderGroup.id = :orderGroupId order by o.id, i.id",
-    )
-    fun findAllByOrderGroupIdWithItems(
-        @Param("orderGroupId") orderGroupId: Long,
-    ): List<Order>
-
     @Modifying
     @Query(
         "update Order o " +
@@ -42,9 +34,6 @@ class OrderRepositoryAdapter(
     override fun saveAll(orders: List<Order>): List<Order> = jpaRepository.saveAll(orders)
 
     override fun findAllByOrderGroupId(orderGroupId: Long): List<Order> = jpaRepository.findAllByOrderGroupIdOrderByIdAsc(orderGroupId)
-
-    override fun findAllByOrderGroupIdWithItems(orderGroupId: Long): List<Order> =
-        jpaRepository.findAllByOrderGroupIdWithItems(orderGroupId)
 
     // 벌크 JPQL은 @PreUpdate를 우회하므로 updated_at을 쿼리에서 함께 SET한다
     override fun markAllPaidByOrderGroupId(orderGroupId: Long): Int =

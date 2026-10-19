@@ -15,7 +15,6 @@ import com.aechak.application.payment.service.PaymentService
 import com.aechak.application.payment.usecase.command.PreparePaymentCommand
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
-import com.aechak.domain.order.group.repository.ExpiredPendingOrderGroup
 import com.aechak.domain.order.group.repository.OrderGroupRepository
 import com.aechak.domain.payment.Payment
 import com.aechak.domain.payment.enums.PaymentMethod
@@ -95,14 +94,6 @@ private class FakeOrderGroupRepository : OrderGroupRepository {
     override fun findByPublicId(publicId: String): OrderGroup? = byPublicId[publicId]
 
     override fun findById(id: Long): OrderGroup? = byPublicId.values.find { it.id == id }
-
-    override fun findExpiredPendingTargets(
-        now: LocalDateTime,
-        after: ExpiredPendingOrderGroup?,
-        limit: Int,
-    ): List<ExpiredPendingOrderGroup> = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
-
-    override fun cancelIfPending(id: Long): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
 
     override fun markPaidIfPending(id: Long): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
 }

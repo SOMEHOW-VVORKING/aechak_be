@@ -2,9 +2,7 @@ package com.aechak.infra.persistence.order.group
 
 import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.group.enums.OrderGroupStatus
-import com.aechak.domain.order.group.repository.ExpiredPendingOrderGroup
 import com.aechak.domain.order.group.repository.OrderGroupRepository
-import org.springframework.data.domain.Limit
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -17,33 +15,6 @@ interface OrderGroupJpaRepository : JpaRepository<OrderGroup, Long> {
     fun findByIdempotencyKey(idempotencyKey: String): OrderGroup?
 
     fun findByPublicId(publicId: String): OrderGroup?
-
-    @Query(
-        "select new com.aechak.domain.order.group.repository.ExpiredPendingOrderGroup(g.id, g.publicId, g.expiresAt) " +
-            "from OrderGroup g " +
-            "where g.status = :status and g.expiresAt < :now " +
-            "order by g.expiresAt asc, g.id asc",
-    )
-    fun findExpiredTargets(
-        @Param("status") status: OrderGroupStatus,
-        @Param("now") now: LocalDateTime,
-        limit: Limit,
-    ): List<ExpiredPendingOrderGroup>
-
-    @Query(
-        "select new com.aechak.domain.order.group.repository.ExpiredPendingOrderGroup(g.id, g.publicId, g.expiresAt) " +
-            "from OrderGroup g " +
-            "where g.status = :status and g.expiresAt < :now " +
-            "and (g.expiresAt > :afterExpiresAt or (g.expiresAt = :afterExpiresAt and g.id > :afterId)) " +
-            "order by g.expiresAt asc, g.id asc",
-    )
-    fun findExpiredTargetsAfter(
-        @Param("status") status: OrderGroupStatus,
-        @Param("now") now: LocalDateTime,
-        @Param("afterExpiresAt") afterExpiresAt: LocalDateTime,
-        @Param("afterId") afterId: Long,
-        limit: Limit,
-    ): List<ExpiredPendingOrderGroup>
 
     @Modifying
     @Query(
@@ -70,26 +41,6 @@ class OrderGroupRepositoryAdapter(
     override fun findByIdempotencyKey(idempotencyKey: String): OrderGroup? = jpaRepository.findByIdempotencyKey(idempotencyKey)
 
     override fun findByPublicId(publicId: String): OrderGroup? = jpaRepository.findByPublicId(publicId)
-
-    override fun findExpiredPendingTargets(
-        now: LocalDateTime,
-        after: ExpiredPendingOrderGroup?,
-        limit: Int,
-    ): List<ExpiredPendingOrderGroup> =
-        if (after == null) {
-            jpaRepository.findExpiredTargets(OrderGroupStatus.PENDING_PAYMENT, now, Limit.of(limit))
-        } else {
-            jpaRepository.findExpiredTargetsAfter(OrderGroupStatus.PENDING_PAYMENT, now, after.expiresAt, after.id, Limit.of(limit))
-        }
-
-    // 벌크 JPQL은 @PreUpdate를 우회하므로 updated_at을 쿼리에서 함께 SET함
-    override fun cancelIfPending(id: Long): Boolean =
-        jpaRepository.transitionStatus(
-            id = id,
-            expected = OrderGroupStatus.PENDING_PAYMENT,
-            next = OrderGroupStatus.CANCELLED,
-            now = LocalDateTime.now(),
-        ) == 1
 
     // 벌크 JPQL은 @PreUpdate를 우회하므로 updated_at을 쿼리에서 함께 SET한다
     override fun markPaidIfPending(id: Long): Boolean =

@@ -20,7 +20,6 @@ import com.aechak.application.payment.usecase.result.PreparePaymentResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
-import com.aechak.domain.order.group.repository.ExpiredPendingOrderGroup
 import com.aechak.domain.order.group.repository.OrderGroupRepository
 import com.aechak.domain.payment.Payment
 import com.aechak.domain.payment.enums.PaymentMethod
@@ -648,14 +647,6 @@ class PaymentReconciliationFacadeTest {
         override fun findByIdempotencyKey(idempotencyKey: String) = rows.values.find { it.idempotencyKey == idempotencyKey }
 
         override fun findByPublicId(publicId: String) = rows.values.find { it.publicId == publicId }
-
-        override fun findExpiredPendingTargets(
-            now: LocalDateTime,
-            after: ExpiredPendingOrderGroup?,
-            limit: Int,
-        ): List<ExpiredPendingOrderGroup> = throw UnsupportedOperationException()
-
-        override fun cancelIfPending(id: Long): Boolean = throw UnsupportedOperationException()
 
         override fun markPaidIfPending(id: Long): Boolean = throw UnsupportedOperationException()
     }
