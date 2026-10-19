@@ -161,6 +161,7 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 ├── outbox/                      # OutboxSweepSchedule — 아웃박스 재발행(5초 주기)
 ├── payment/                     # PaymentReconciliationSchedule — 결제 대사(매일 04:30 KST, 빠진 날 따라잡기)
 ├── order/                       # OrderExpirySchedule — 주문서 TTL 만료와 재고·적립금 복원(매분, 기본 꺼짐)
+│                               # ClaimRefundSchedule — 승인된 취소 클레임의 환불 집행(매분, 기본 꺼짐)
 ├── job/{도메인}/                 # (예정) Spring Batch Job/Step — ItemProcessor 등에서 UseCase 호출
 └── support/
     └── BusinessSkipPolicy.kt    # (예정) BusinessException → errorCode 로깅 + 스킵 판단 (HTTP 개념 없음)
@@ -173,6 +174,11 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 - 예외 소비 방식: web-common의 핸들러가 아니라 스케줄/SkipPolicy에서 errorCode 기준 처리. 한 건의 실패가 회차를 멈추지 않게 건별로 격리한다.
 - 배치가 자체 발신하는 에러 코드의 status는 500 고정 (05 문서 ErrorCode 컨벤션).
 - 만료 배치가 쓰는 application 패키지는 `order` 외에 `product.option`(재고 변이 UseCase)이다 — 선별 스캔에 함께 등재돼 있다.
+- **클레임 제외 필터는 패키지가 아니라 클래스 단위다.** 구매자·셀러 클레임 파사드는 셀러 자격 검증(`application.seller`)을 요구해
+  배치가 조립하면 쓰지도 않는 의존이 딸려오지만, 같은 패키지의 환불 집행 파사드는 자격 검증을 쓰지 않고 배치가 소비한다.
+  패키지 단위로 가리면 환불 집행 스케줄이 조립되지 않는다.
+- **환불 집행 배치는 `order.claim.refund.enabled`로 꺼 둘 수 있고 기본값이 false다.** 이 경로가 실제로 PG 환불을 보내므로,
+  상점이 테스트 상점인지 확인되기 전에는 닫아 둔다. 금액 상한(`payment.cancel.max-amount`)도 기본 0으로 닫혀 있어 이중 안전장치다.
 - **만료 배치는 `order.expiry.enabled`로 꺼 둘 수 있고 기본값이 false다.** 결제 승인과 만료 취소가 경합하면 돈은 나갔는데 주문은
   취소된 건이 남는데, 환불 집행 경로가 아직 없어 그때는 수동 환불이 필요하다. 켜기 전에 환불 배선이 있어야 한다.
   경합 자체는 건마다 결제 결과를 먼저 확정한 뒤(외부 조회이므로 트랜잭션 밖) 그래도 결제대기로 남은 건만 취소하는 순서로 줄인다.

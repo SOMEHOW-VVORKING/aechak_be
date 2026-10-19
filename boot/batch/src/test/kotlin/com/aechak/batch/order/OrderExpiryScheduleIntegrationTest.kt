@@ -370,6 +370,8 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
                     sellerNameSnapshot = "스토어",
                     allocatedCouponDiscount = 0,
                     sellerShippingFee = SHIPPING_FEE,
+                    baseShippingFeeSnapshot = SHIPPING_FEE,
+                    freeShippingThresholdSnapshot = null,
                     items =
                         listOf(
                             OrderItem.of(
@@ -410,6 +412,8 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
                     sellerNameSnapshot = "스토어-$sellerId",
                     allocatedCouponDiscount = 0,
                     sellerShippingFee = SHIPPING_FEE,
+                    baseShippingFeeSnapshot = SHIPPING_FEE,
+                    freeShippingThresholdSnapshot = null,
                     items =
                         listOf(
                             OrderItem.of(
@@ -492,6 +496,7 @@ class OrderExpiryScheduleIntegrationTest : BatchIntegrationTestBase() {
                 status = status,
                 totalAmount = fixture.finalPaymentAmount,
                 paidAmount = fixture.finalPaymentAmount,
+                cancelledAmount = 0L,
                 pgTxId = "tx-${fixture.orderGroupPublicId}",
                 paidAt = if (status == PaymentGatewayStatus.PAID) LocalDateTime.now() else null,
                 failureCode = if (status == PaymentGatewayStatus.FAILED) "CARD_DECLINED" else null,

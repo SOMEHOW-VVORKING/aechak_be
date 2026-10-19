@@ -107,6 +107,65 @@ class ClaimAmountCalculatorTest {
         assertEquals(3_000L, amounts.shippingFeeRefund)
     }
 
+    @Test
+    fun `전량 취소의 현금 환불액과 적립금 복원액 합은 결제 대상 금액과 같다`() {
+        val group = group(usedPoint = 10_000L, productAmount = 51_000L, shippingFee = 3_000L)
+        val order = order(group, id = 1L, shippingFee = 3_000L, lines = listOf(20_000L to 1, 15_500L to 2))
+
+        val amounts = calculator.calculate(order, listOf(order), group.usedPoint, fullTargets(order))
+
+        assertEquals(10_000L, amounts.pointRefund, "쓴 적립금 전액이 되돌아가야 한다")
+        assertEquals(54_000L, amounts.total + amounts.pointRefund, "현금 + 적립금이 상품금액 + 배송비와 같아야 한다")
+    }
+
+    @Test
+    fun `부분 취소는 취소 대상 줄에 안분된 적립금만 되돌린다`() {
+        val group = group(usedPoint = 10_000L, productAmount = 40_000L, shippingFee = 0L)
+        val order = order(group, id = 1L, shippingFee = 0L, lines = listOf(30_000L to 1, 10_000L to 1))
+        val second = order.items[1]
+
+        val amounts = calculator.calculate(order, listOf(order), group.usedPoint, mapOf(second.id to 1))
+
+        assertEquals(2_500L, amounts.pointRefund, "10,000/40,000 비율만큼만 되돌아가야 한다")
+        assertEquals(7_500L, amounts.total)
+    }
+
+    @Test
+    fun `적립금을 쓰지 않은 주문은 되돌릴 적립금이 없다`() {
+        val group = group(usedPoint = 0L, productAmount = 40_000L, shippingFee = 3_000L)
+        val order = order(group, id = 1L, shippingFee = 3_000L, lines = listOf(40_000L to 1))
+
+        val amounts = calculator.calculate(order, listOf(order), group.usedPoint, fullTargets(order))
+
+        assertEquals(0L, amounts.pointRefund)
+        assertEquals(43_000L, amounts.total)
+    }
+
+    @Test
+    fun `저장된 클레임의 적립금 복원액 재계산은 요청 시점 값과 같다`() {
+        val group = group(usedPoint = 7_777L, productAmount = 61_000L, shippingFee = 5_500L)
+        val first = order(group, id = 1L, shippingFee = 3_000L, lines = listOf(20_000L to 1, 15_500L to 2))
+        val second = order(group, id = 2L, shippingFee = 2_500L, lines = listOf(10_000L to 1))
+        val orders = listOf(first, second)
+
+        val requested = calculator.calculate(first, orders, group.usedPoint, fullTargets(first)).pointRefund
+        val recomputed = calculator.pointRefund(first, orders, group.usedPoint, fullTargets(first))
+
+        assertEquals(requested, recomputed)
+    }
+
+    @Test
+    fun `그룹 전체를 전량 취소하면 복원 적립금 합이 사용액과 같다`() {
+        val group = group(usedPoint = 7_777L, productAmount = 61_000L, shippingFee = 5_500L)
+        val first = order(group, id = 1L, shippingFee = 3_000L, lines = listOf(20_000L to 1, 15_500L to 2))
+        val second = order(group, id = 2L, shippingFee = 2_500L, lines = listOf(10_000L to 1))
+        val orders = listOf(first, second)
+
+        val released = orders.sumOf { calculator.calculate(it, orders, group.usedPoint, fullTargets(it)).pointRefund }
+
+        assertEquals(group.usedPoint, released)
+    }
+
     private fun fullTargets(order: Order): Map<Long, Int> = order.items.associate { it.id to it.quantity }
 
     private fun group(
