@@ -2,6 +2,8 @@ package com.aechak.batch.order
 
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.order.usecase.command.AutoConfirmPurchaseCommand
+import com.aechak.application.order.usecase.command.MarkConfirmNotifiedCommand
+import com.aechak.application.order.usecase.query.ConfirmNotifyScanQuery
 import com.aechak.batch.support.BatchIntegrationTestBase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.claim.Claim
@@ -24,8 +26,10 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import java.time.LocalDateTime
+import java.time.ZoneId
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -51,7 +55,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `기한이 지난 배송완료 주문은 자동확정되고 확정 유형과 이력 주체가 시스템으로 남는다`() {
-        val fixture = seedOrder(autoConfirmDueAt = LocalDateTime.now().minusMinutes(1))
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1))
 
         schedule.runDaily()
 
@@ -67,7 +71,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `자동확정은 수동 확정과 같은 멱등키로 적립금을 지급한다`() {
-        val fixture = seedOrder(autoConfirmDueAt = LocalDateTime.now().minusMinutes(1))
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1))
 
         schedule.runDaily()
 
@@ -78,7 +82,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `기한이 아직 안 된 주문은 자동확정되지 않는다`() {
-        val fixture = seedOrder(autoConfirmDueAt = LocalDateTime.now().plusDays(3))
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().plusDays(3))
 
         schedule.runDaily()
 
@@ -88,7 +92,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `진행 중 클레임이 있는 주문은 기한이 지나도 자동확정에서 빠진다`() {
-        val fixture = seedOrder(autoConfirmDueAt = LocalDateTime.now().minusDays(1))
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().minusDays(1))
         seedClaim(fixture.orderId, ClaimStatus.CLAIM_REQUESTED)
 
         schedule.runDaily()
@@ -99,7 +103,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `결론난 클레임만 있는 주문은 자동확정된다`() {
-        val fixture = seedOrder(autoConfirmDueAt = LocalDateTime.now().minusDays(1))
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().minusDays(1))
         seedClaim(fixture.orderId, ClaimStatus.REJECTED)
 
         schedule.runDaily()
@@ -109,7 +113,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `두 번 돌아도 적립 원장은 1행이고 이력도 1행이다`() {
-        val fixture = seedOrder(autoConfirmDueAt = LocalDateTime.now().minusMinutes(1))
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1))
 
         schedule.runDaily()
         schedule.runDaily()
@@ -121,7 +125,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `스캔 크기를 넘는 대상도 회차 안에서 전부 확정한다`() {
-        val fixtures = (1..5).map { seedOrder(autoConfirmDueAt = LocalDateTime.now().minusMinutes(1)) }
+        val fixtures = (1..5).map { seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1)) }
 
         schedule.runDaily()
 
@@ -136,8 +140,8 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
     fun `첫 페이지가 전부 유보로 남아도 커서가 전진해 다음 페이지를 처리한다`() {
         // 테스트 설정의 scan-size는 2. 앞 두 건은 적립이 실패해 DELIVERED로 남아 스캔 대상에서 빠지지 않는다 —
         // 커서가 전진하지 않으면 같은 두 건만 다시 읽으며 세 번째 건에 영원히 닿지 못한다
-        val blocked = (1..2).map { seedOrder(autoConfirmDueAt = LocalDateTime.now().minusMinutes(1), buyer = MISSING_USER_ID) }
-        val target = seedOrder(autoConfirmDueAt = LocalDateTime.now().minusMinutes(1))
+        val blocked = (1..2).map { seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1), buyer = MISSING_USER_ID) }
+        val target = seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1))
 
         schedule.runDaily()
 
@@ -148,8 +152,8 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
     @Test
     fun `적립이 실패한 앞자리 건은 확정까지 되돌리고 뒷건은 그대로 확정된다`() {
         // 적립 대상 구매자 행이 없어 적립 단계에서 실패하는 주문 — 앞자리에 둔다
-        val blocked = seedOrder(autoConfirmDueAt = LocalDateTime.now().minusMinutes(1), buyer = MISSING_USER_ID)
-        val target = seedOrder(autoConfirmDueAt = LocalDateTime.now().minusMinutes(1))
+        val blocked = seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1), buyer = MISSING_USER_ID)
+        val target = seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1))
 
         schedule.runDaily()
 
@@ -160,7 +164,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `기한이 하루 안으로 다가온 주문에 사전 안내 시각을 남기고 재실행해도 덮지 않는다`() {
-        val fixture = seedOrder(autoConfirmDueAt = LocalDateTime.now().plusHours(5))
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().plusHours(5))
 
         schedule.runDaily()
         val firstNotifiedAt = findOrder(fixture.orderId).purchaseConfirmNotifiedAt
@@ -173,7 +177,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
 
     @Test
     fun `안내 구간보다 먼 주문에는 사전 안내 시각을 남기지 않는다`() {
-        val fixture = seedOrder(autoConfirmDueAt = LocalDateTime.now().plusDays(3))
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().plusDays(3))
 
         schedule.runDaily()
 
@@ -181,27 +185,42 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
     }
 
     @Test
-    fun `이미 확정된 주문에는 사전 안내가 남지 않고 확정 컬럼도 그대로다`() {
-        // 안내 구간에 있던 주문이 구매자 손으로 먼저 확정된 자리 — 안내 갱신이 확정을 되돌리면 비가역 전이가 깨진다
-        val fixture = seedOrder(autoConfirmDueAt = LocalDateTime.now().plusHours(5))
+    fun `안내 대상으로 잡힌 뒤 확정된 주문은 안내 기록을 거절하고 확정 컬럼도 그대로다`() {
+        // 스캔과 기록 사이에 구매자가 확정한 자리를 그대로 만든다 — 스캔을 거치면 상태 조건에 걸려 이 경로에 닿지 못한다.
+        // 안내 갱신이 엔티티 전 컬럼을 덮던 구현으로 돌아가면 확정 상태·유형·시각이 여기서 지워진다
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().plusHours(5))
+        assertEquals(listOf(fixture.orderId), notifyTargetIds(), "확정 전에는 안내 대상이다")
         confirmManually(fixture.orderId)
 
-        schedule.runDaily()
+        val recorded = orderUseCase.markConfirmNotified(MarkConfirmNotifiedCommand(fixture.orderId, kstNow()))
 
+        assertFalse(recorded, "확정된 주문의 안내 기록은 거절돼야 한다")
         val order = findOrder(fixture.orderId)
         assertEquals(OrderStatus.PURCHASE_CONFIRMED, order.status, "안내가 확정 상태를 되돌리면 안 된다")
         assertEquals(ConfirmType.MANUAL, order.confirmType, "안내가 확정 유형을 지우면 안 된다")
         assertNotNull(order.purchaseConfirmedAt)
-        assertNull(order.purchaseConfirmNotifiedAt, "확정된 주문에는 안내 시각을 남기지 않는다")
+        assertNull(order.purchaseConfirmNotifiedAt)
+    }
+
+    @Test
+    fun `이미 안내한 주문의 재기록은 거절되고 최초 안내 시각이 남는다`() {
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().plusHours(5))
+        val first = kstNow()
+        orderUseCase.markConfirmNotified(MarkConfirmNotifiedCommand(fixture.orderId, first))
+
+        val again = orderUseCase.markConfirmNotified(MarkConfirmNotifiedCommand(fixture.orderId, first.plusHours(1)))
+
+        assertFalse(again)
+        assertEquals(first, findOrder(fixture.orderId).purchaseConfirmNotifiedAt)
     }
 
     @Test
     fun `기한이 아직 안 된 주문은 자동확정 유스케이스를 직접 불러도 거절된다`() {
-        val fixture = seedOrder(autoConfirmDueAt = LocalDateTime.now().plusDays(3))
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().plusDays(3))
 
         val exception =
             assertFailsWith<BusinessException> {
-                orderUseCase.autoConfirmPurchase(AutoConfirmPurchaseCommand(fixture.orderId, LocalDateTime.now()))
+                orderUseCase.autoConfirmPurchase(AutoConfirmPurchaseCommand(fixture.orderId, kstNow()))
             }
 
         assertEquals(OrderErrorCode.ORDER_NOT_CONFIRMABLE, exception.errorCode)
@@ -221,6 +240,13 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
             user.id
         }!!
 
+    private fun notifyTargetIds(): List<Long> {
+        val now = kstNow()
+        return orderUseCase.findConfirmNotifyTargetIds(
+            ConfirmNotifyScanQuery(dueAtAfter = now, dueAtOrBefore = now.plusDays(1), afterOrderId = 0L, limit = 10),
+        )
+    }
+
     /** 구매자 확정을 흉내낸다 — 확정 경로는 api 소관이라 전이·확정 컬럼만 맞춘다. */
     private fun confirmManually(orderId: Long) =
         tx.execute {
@@ -229,7 +255,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
                     "update Order o set o.status = :status, o.confirmType = :type, o.purchaseConfirmedAt = :at where o.id = :id",
                 ).setParameter("status", OrderStatus.PURCHASE_CONFIRMED)
                 .setParameter("type", ConfirmType.MANUAL)
-                .setParameter("at", LocalDateTime.now())
+                .setParameter("at", kstNow())
                 .setParameter("id", orderId)
                 .executeUpdate()
         }
@@ -311,7 +337,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
                     totalProductAmount = unitPrice * quantity,
                     totalShippingFee = 3_000L,
                     idempotencyKey = "idem-$tag-$buyer",
-                    expiresAt = LocalDateTime.now().plusMinutes(10),
+                    expiresAt = kstNow().plusMinutes(10),
                 )
             em.persist(group)
             val item =
@@ -362,7 +388,12 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
         val orderPublicId: String,
     )
 
+    /** 배치가 KST로 판정하므로 fixture 시각도 KST로 만든다 — JVM 기본 시간대가 UTC면 기한이 9시간 밀린다. */
+    private fun kstNow(): LocalDateTime = LocalDateTime.now(KST)
+
     private companion object {
+        private val KST = ZoneId.of("Asia/Seoul")
+
         private const val SELLER_USER_ID = 9_001L
 
         /** 적립 단계 실패를 주입하는 값 — 이 id의 사용자 행은 심지 않는다 */
