@@ -168,7 +168,9 @@ boot/batch/src/main/kotlin/com/aechak/batch/
   **전역 lazy-init은 쓰지 않는다** — `@Scheduled` 빈이 지연 생성되면 스케줄 자체가 등록되지 않는다. 조립은 `BatchApplicationSmokeTest`가 고정한다.
 - 예외 소비 방식: web-common의 핸들러가 아니라 스케줄/SkipPolicy에서 errorCode 기준 처리. 한 건의 실패가 회차를 멈추지 않게 건별로 격리한다.
 - 배치가 자체 발신하는 에러 코드의 status는 500 고정 (05 문서 ErrorCode 컨벤션).
-- dev 배포 라인(ECR·ECS·SSM)은 아직 없다(SCRUM-226) — 배치에 올린 기능은 그 전까지 dev에서 돌지 않는다.
+- dev 배포 라인은 api·seller·admin과 같은 모양으로 깔려 있다(SCRUM-251) — 전용 ECR(`aechak-batch`)·로그그룹·taskdef·ECS 서비스와
+  SSM 경로 `/aechak/dev/batch/`, `deploy-dev-batch.yml`. **ALB 뒤에 두지 않는다**(수신 포트·헬스체크 엔드포인트가 없다).
+  **ECS 태스크는 1대 고정** — 여러 대면 같은 스케줄 회차가 동시에 돈다. 포트원 시크릿 2개는 수기 등재 대상이다.
 
 ## 7. admin — 어드민 실행 모듈 (SCRUM-170)
 
