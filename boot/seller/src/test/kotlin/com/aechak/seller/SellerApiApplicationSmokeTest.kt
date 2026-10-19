@@ -1,6 +1,8 @@
 package com.aechak.seller
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.application.order.claim.usecase.ClaimAutoApproveUseCase
+import com.aechak.application.order.claim.usecase.ClaimRefundUseCase
 import com.aechak.application.seller.usecase.AdminSellerReviewUseCase
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -29,6 +31,31 @@ class SellerApiApplicationSmokeTest : IntegrationTestBase() {
             names.isEmpty(),
             "어드민 전용 빈이 셀러센터에 조립됐다 (${names.joinToString()}) — " +
                 "excludeFilters 또는 Admin 접두사 규약을 확인할 것",
+        )
+    }
+
+    /**
+     * 환불 집행 구현체는 클레임 패키지에 살지만 결제 취소와 PG 어댑터를 요구한다.
+     * 조립되면 셀러센터 부팅이 깨지므로 부재가 계약이다 — 집행은 배치가 맡는다.
+     */
+    @Test
+    fun `환불 집행 빈은 셀러센터 컨텍스트에 조립되지 않는다`() {
+        val names = context.getBeanNamesForType(ClaimRefundUseCase::class.java)
+
+        assertTrue(
+            names.isEmpty(),
+            "환불 집행 빈이 셀러센터에 조립됐다 (${names.joinToString()}) — ClaimRefund 접두사 제외 필터를 확인할 것",
+        )
+    }
+
+    /** 자동승인 구현체는 셀러 자격을 대조하지 않고 승인한다 — 셀러센터에 두면 자격 검증을 우회하는 경로가 생긴다. */
+    @Test
+    fun `자동승인 빈은 셀러센터 컨텍스트에 조립되지 않는다`() {
+        val names = context.getBeanNamesForType(ClaimAutoApproveUseCase::class.java)
+
+        assertTrue(
+            names.isEmpty(),
+            "자동승인 빈이 셀러센터에 조립됐다 (${names.joinToString()}) — ClaimAutoApprove 접두사 제외 필터를 확인할 것",
         )
     }
 }

@@ -171,6 +171,20 @@ class Claim protected constructor(
         resolvedAt = LocalDateTime.now()
     }
 
+    /** 자동승인 대상인지 — 셀러가 판단하지 않은 채 응답 기한이 지난 건만. */
+    fun isAutoApprovable(now: LocalDateTime): Boolean =
+        status == ClaimStatus.CLAIM_REQUESTED &&
+            sellerApprovalStatus == SellerApprovalStatus.REQUESTED &&
+            autoApproveDueAt?.isBefore(now) == true
+
+    /** 기한이 지난 셀러 미응답 건을 시스템이 승인한다 — 반품비 부담 주체는 정하지 않는다. */
+    fun approveByTimeout() {
+        approveBySeller(null)
+    }
+
+    /** 환불 집행 대상인지 — 셀러가 승인했고 아직 집행이 시작되지 않은 건만. */
+    fun isRefundExecutable(): Boolean = status == ClaimStatus.APPROVED && refundStatus == RefundStatus.NONE
+
     /** 환불 집행 선점 표시. 이 1행이 집행의 멱등 게이트다. */
     fun markRefundRequested() {
         if (status != ClaimStatus.APPROVED || refundStatus != RefundStatus.NONE) {

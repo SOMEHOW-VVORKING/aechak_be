@@ -20,7 +20,16 @@ interface ClaimRepository {
     /** 같은 주문품목에 아직 살아 있는 클레임이 있는지 — 중복 요청 차단. */
     fun existsActiveByOrderItemId(orderItemId: Long): Boolean
 
-    /** 자동승인 기한이 지난 셀러 미응답 건. 자동승인 배치가 쓴다. */
+    /**
+     * 승인됐지만 아직 환불이 집행되지 않은 건. 환불 집행 배치가 쓴다 —
+     * 환불 실패(REFUND_FAILED)는 대상이 아니다. 무한 재시도를 막고 재집행은 운영자 판단으로 돌린다.
+     */
+    fun findRefundPending(limit: Int): List<Claim>
+
+    /**
+     * 자동승인 기한이 지난 셀러 미응답 건. 자동승인 배치가 쓴다 —
+     * 승인 뒤 환불까지 집행하는 경로가 열려 있는 CANCEL만 대상이다.
+     */
     fun findAutoApprovable(
         dueBefore: LocalDateTime,
         limit: Int,
