@@ -89,9 +89,10 @@ class Shipment protected constructor(
             trackingNumber: String,
             shipmentType: ShipmentType,
             claim: Claim? = null,
+            at: LocalDateTime = LocalDateTime.now(),
         ): Shipment =
             Shipment(courier, order, trackingNumber, shipmentType, claim).apply {
-                dispatchedAt = LocalDateTime.now()
+                dispatchedAt = at
             }
     }
 }

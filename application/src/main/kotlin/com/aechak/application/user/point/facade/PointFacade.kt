@@ -2,6 +2,7 @@ package com.aechak.application.user.point.facade
 
 import com.aechak.application.user.point.service.PointCommandService
 import com.aechak.application.user.point.usecase.PointUseCase
+import com.aechak.application.user.point.usecase.command.EarnPurchaseRewardCommand
 import com.aechak.application.user.point.usecase.command.ReleasePointCommand
 import com.aechak.application.user.point.usecase.command.UsePointCommand
 import com.aechak.application.user.point.usecase.result.PointBalanceResult
@@ -29,6 +30,11 @@ class PointFacade(
         hasPhoto: Boolean,
     ) {
         pointCommandService.earnReviewReward(buyerUserId, reviewId, hasPhoto)
+    }
+
+    @Transactional
+    override fun earnPurchaseReward(command: EarnPurchaseRewardCommand) {
+        pointCommandService.earnPurchaseReward(command)
     }
 
     @Transactional

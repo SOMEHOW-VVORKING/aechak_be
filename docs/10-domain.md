@@ -112,6 +112,10 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
 중복 클레임 차단 질의가 이 집합을 그대로 쓰므로, 상태를 더할 때 어느 쪽인지 정하지 않으면 같은 품목에
 클레임이 두 번 걸린다.
 
+**자동승인은 셀러 승인과 같은 전이를 탄다** — `approveByTimeout()`이 `sellerApprovalStatus`를 APPROVED로 올린다.
+클레임에 "누가 승인했는가"를 담는 컬럼이 없어 셀러 승인과 자동승인이 클레임만 보고는 구별되지 않는다 —
+구별이 필요한 자리는 주문 상태 이력의 `triggered_by`(자동승인 건은 SYSTEM)다.
+
 **셀러 운영 메모는 상태 기계 밖이다** — `updateSellerMemo`는 전이 규칙을 거치지 않아 종결된 클레임에도 쓸 수 있다.
 구매자에게 그대로 노출되는 `rejectionReason`이나 운영자 개입 사유 `adminReason`과 달리 셀러 내부 기록이라
 상태로 봉인할 근거가 없다. 대신 상한(500자)만 도메인이 지킨다.

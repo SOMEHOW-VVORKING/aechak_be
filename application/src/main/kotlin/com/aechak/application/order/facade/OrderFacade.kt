@@ -2,11 +2,13 @@ package com.aechak.application.order.facade
 
 import com.aechak.application.order.cart.service.CartService
 import com.aechak.application.order.port.OrderItemForReviewQueryPort
+import com.aechak.application.order.service.OrderConfirmService
 import com.aechak.application.order.service.OrderExpiryService
 import com.aechak.application.order.service.OrderService
 import com.aechak.application.order.support.OrderPointLedger
 import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.command.ExpireOrderGroupCommand
 import com.aechak.application.order.usecase.query.ExpiredOrderGroupQuery
@@ -17,11 +19,13 @@ import com.aechak.application.order.usecase.result.ExpiredOrderGroupResult
 import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 import com.aechak.application.user.address.usecase.DeliveryAddressUseCase
 import com.aechak.application.user.point.usecase.PointUseCase
+import com.aechak.application.user.point.usecase.command.EarnPurchaseRewardCommand
 import com.aechak.application.user.point.usecase.command.UsePointCommand
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDateTime
@@ -34,6 +38,7 @@ import java.time.LocalDateTime
 @Service
 class OrderFacade(
     private val orderService: OrderService,
+    private val orderConfirmService: OrderConfirmService,
     private val orderExpiryService: OrderExpiryService,
     private val cartService: CartService,
     private val deliveryAddressUseCase: DeliveryAddressUseCase,
@@ -74,6 +79,23 @@ class OrderFacade(
     /** 결제 확정 트랜잭션에 참여해야 하므로 REQUIRED — 결제 기록이 롤백되면 주문 전이도 함께 롤백된다 */
     @Transactional
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = orderService.confirmGroupPaid(orderGroupId)
+
+    /**
+     * 확정과 적립금을 한 트랜잭션에 묶는다 — 적립이 실패하면 확정도 함께 롤백된다.
+     * READ_COMMITTED: 선점 UPDATE 뒤의 클레임 조회가 REPEATABLE READ 스냅샷에 갇히면 그 사이 커밋된 클레임을 놓친다.
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    override fun confirmPurchase(command: ConfirmPurchaseCommand) {
+        val confirmed = orderConfirmService.confirmPurchase(command)
+        pointUseCase.earnPurchaseReward(
+            EarnPurchaseRewardCommand(
+                buyerUserId = command.buyerId,
+                orderId = confirmed.orderId,
+                orderPublicId = command.orderPublicId,
+                productAmount = confirmed.productAmount,
+            ),
+        )
+    }
 
     @Transactional(readOnly = true)
     override fun findExpiredOrderGroups(query: ExpiredOrderGroupQuery): List<ExpiredOrderGroupResult> =

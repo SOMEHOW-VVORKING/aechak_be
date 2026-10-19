@@ -29,4 +29,8 @@ enum class ProductErrorCode(
     // 신고
     PRODUCT_REPORT_REASON_TEXT_REQUIRED(40300, "기타 사유 신고는 상세 사유가 필요합니다.", 400),
     INVALID_PRODUCT_REPORT_STATUS_TRANSITION(40301, "허용되지 않는 신고 처리 상태 전이입니다.", 400),
+
+    // 임시저장
+    PRODUCT_DRAFT_NOT_FOUND(40400, "임시저장한 상품을 찾을 수 없습니다.", 404),
+    PRODUCT_DRAFT_LIMIT_EXCEEDED(40401, "임시저장은 최대 10개까지 보관할 수 있습니다.", 422),
 }
