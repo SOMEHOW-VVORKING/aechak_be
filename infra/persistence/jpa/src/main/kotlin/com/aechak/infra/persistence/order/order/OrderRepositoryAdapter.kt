@@ -3,9 +3,12 @@ package com.aechak.infra.persistence.order.order
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.repository.OrderRepository
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
@@ -21,6 +24,13 @@ interface OrderJpaRepository : JpaRepository<Order, Long> {
     fun findByPublicIdAndOrderGroupBuyerId(
         publicId: String,
         buyerId: Long,
+    ): Order?
+
+    // 조인을 끼우면 MySQL이 조인한 주문그룹 행까지 잠근다 — 주문 행만 잠그도록 단일 테이블로 둔다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select o from Order o where o.publicId = :publicId")
+    fun findForUpdateByPublicId(
+        @Param("publicId") publicId: String,
     ): Order?
 
     @Modifying
@@ -56,12 +66,16 @@ class OrderRepositoryAdapter(
 ) : OrderRepository {
     override fun saveAll(orders: List<Order>): List<Order> = jpaRepository.saveAll(orders)
 
+    override fun findById(id: Long): Order? = jpaRepository.findByIdOrNull(id)
+
     override fun findAllByOrderGroupId(orderGroupId: Long): List<Order> = jpaRepository.findAllByOrderGroupIdOrderByIdAsc(orderGroupId)
 
     override fun findByPublicIdAndBuyerId(
         publicId: String,
         buyerId: Long,
     ): Order? = jpaRepository.findByPublicIdAndOrderGroupBuyerId(publicId, buyerId)
+
+    override fun findByPublicIdForUpdate(publicId: String): Order? = jpaRepository.findForUpdateByPublicId(publicId)
 
     override fun findByPublicIdAndSellerId(
         publicId: String,

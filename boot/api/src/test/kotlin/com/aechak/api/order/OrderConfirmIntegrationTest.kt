@@ -161,27 +161,27 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `두 번 확정하면 409와 50007이고 적립금은 한 번만 지급된다`() {
+    fun `두 번 확정하면 409와 50008이고 적립금은 한 번만 지급된다`() {
         val fixture = seedOrder()
 
         mockMvc.perform(confirmRequest(token, fixture.orderPublicId)).andExpect(status().isNoContent)
         mockMvc
             .perform(confirmRequest(token, fixture.orderPublicId))
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.errorCode").value(50007))
+            .andExpect(jsonPath("$.errorCode").value(50008))
 
         assertEquals(1, rewards(fixture.orderPublicId).size, "재호출로 적립이 두 번 되면 안 된다")
         assertEquals(97L, pointBalance(buyerId))
     }
 
     @Test
-    fun `배송완료가 아닌 주문은 409와 50006으로 거절한다`() {
+    fun `배송완료가 아닌 주문은 409와 50007으로 거절한다`() {
         val shipping = seedOrder(status = OrderStatus.SHIPPING)
 
         mockMvc
             .perform(confirmRequest(token, shipping.orderPublicId))
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.errorCode").value(50006))
+            .andExpect(jsonPath("$.errorCode").value(50007))
 
         assertEquals(OrderStatus.SHIPPING, findOrder(shipping.orderPublicId).status)
         assertEquals(emptyList<Reward>(), rewards(shipping.orderPublicId))
@@ -189,24 +189,24 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `결제완료 주문도 409와 50006으로 거절한다`() {
+    fun `결제완료 주문도 409와 50007으로 거절한다`() {
         val paid = seedOrder(status = OrderStatus.PAID)
 
         mockMvc
             .perform(confirmRequest(token, paid.orderPublicId))
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.errorCode").value(50006))
+            .andExpect(jsonPath("$.errorCode").value(50007))
     }
 
     @Test
-    fun `진행 중 클레임이 있으면 409와 50006으로 거절하고 상태를 그대로 둔다`() {
+    fun `진행 중 클레임이 있으면 409와 50007으로 거절하고 상태를 그대로 둔다`() {
         val fixture = seedOrder()
         seedClaim(fixture, ClaimStatus.CLAIM_REQUESTED)
 
         mockMvc
             .perform(confirmRequest(token, fixture.orderPublicId))
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.errorCode").value(50006))
+            .andExpect(jsonPath("$.errorCode").value(50007))
 
         // 확정은 비가역이라 클레임 결론 전에 확정되면 되돌릴 경로가 없다 — 선점 UPDATE까지 롤백돼야 한다
         assertEquals(OrderStatus.DELIVERED, findOrder(fixture.orderPublicId).status)
@@ -223,7 +223,7 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
         mockMvc
             .perform(confirmRequest(token, fixture.orderPublicId))
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.errorCode").value(50006))
+            .andExpect(jsonPath("$.errorCode").value(50007))
     }
 
     @Test
@@ -287,7 +287,7 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
         mockMvc
             .perform(confirmRequest(token, fixture.orderPublicId))
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.errorCode").value(50006))
+            .andExpect(jsonPath("$.errorCode").value(50007))
 
         assertEquals(OrderStatus.DELIVERED, findOrder(fixture.orderPublicId).status)
     }
@@ -301,7 +301,7 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
         mockMvc
             .perform(confirmRequest(token, fixture.orderPublicId))
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.errorCode").value(50006))
+            .andExpect(jsonPath("$.errorCode").value(50007))
 
         assertEquals(OrderStatus.DELIVERED, findOrder(fixture.orderPublicId).status)
         assertNull(findOrder(fixture.orderPublicId).purchaseConfirmedAt)
@@ -346,7 +346,7 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
 
         assertEquals(listOf(204, 409), results.map { it.first }.sorted(), "하나만 확정돼야 한다")
         assertEquals(
-            50007,
+            50008,
             JsonPath.read<Int>(results.first { it.first == 409 }.second, "$.errorCode"),
             "배송완료에서 나가는 전이는 구매확정뿐이라 경합의 패자는 이미 확정된 것이다",
         )
@@ -452,21 +452,47 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
         fixture: Fixture,
         status: ClaimStatus = ClaimStatus.CLAIM_REQUESTED,
     ) {
+        // 클레임 요청은 발송 전 상태만 받는다. 확정 차단만 보는 이 테스트는 주문을 잠시 결제완료로 내려 심고 되돌린다
+        val restored = swapOrderStatus(fixture.orderId, OrderStatus.PAID)
+        em.clear()
         val order = em.find(Order::class.java, fixture.orderId)
         val claim =
             Claim.request(
-                claimType = ClaimType.RETURN,
+                claimType = ClaimType.CANCEL,
                 order = order,
+                reasonCode = "CHANGE_OF_MIND",
+                reasonDetail = null,
                 items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 10_000L)),
+                autoApproveDueAt = LocalDateTime.now().plusDays(2),
             )
         em.persist(claim)
         em.flush()
+        swapOrderStatus(fixture.orderId, restored)
         // 요청 상태 외의 상태는 전이 API가 아직 없어 쿼리로 심는다 — 전이 규칙 자체는 이 테스트의 대상이 아니다
         em
             .createQuery("update Claim c set c.status = :status where c.id = :id")
             .setParameter("status", status)
             .setParameter("id", claim.id)
             .executeUpdate()
+    }
+
+    /** 주문 상태를 바꾸고 이전 상태를 돌려준다. 벌크 JPQL이라 상태 이력에는 남지 않는다. */
+    private fun swapOrderStatus(
+        orderId: Long,
+        next: OrderStatus,
+    ): OrderStatus {
+        em.flush()
+        val previous =
+            em
+                .createQuery("select o.status from Order o where o.id = :id", OrderStatus::class.java)
+                .setParameter("id", orderId)
+                .singleResult
+        em
+            .createQuery("update Order o set o.status = :status where o.id = :id")
+            .setParameter("status", next)
+            .setParameter("id", orderId)
+            .executeUpdate()
+        return previous
     }
 
     private fun seedOrder(

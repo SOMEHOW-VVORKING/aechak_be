@@ -1,5 +1,6 @@
 package com.aechak.application.order.seller.service
 
+import com.aechak.application.order.delivery.service.OrderDeliveryService
 import com.aechak.application.order.seller.port.SellerOrderListCondition
 import com.aechak.application.order.seller.port.SellerOrderQueryPort
 import com.aechak.application.order.seller.port.view.SellerOrderClaimView
@@ -7,6 +8,7 @@ import com.aechak.application.order.seller.port.view.SellerOrderLineView
 import com.aechak.application.order.seller.port.view.SellerOrderShipmentView
 import com.aechak.application.order.seller.port.view.SellerOrderSummaryView
 import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
+import com.aechak.application.order.seller.usecase.command.CompleteDeliveryCommand
 import com.aechak.application.order.seller.usecase.command.RegisterShipmentCommand
 import com.aechak.application.order.seller.usecase.query.SellerOrderSearchQuery
 import com.aechak.application.order.seller.usecase.result.RegisterShipmentResult
@@ -20,9 +22,12 @@ import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.order.repository.OrderStatusHistoryRepository
+import com.aechak.domain.order.shipment.CourierMaster
 import com.aechak.domain.order.shipment.enums.ShipmentType
+import com.aechak.domain.order.shipment.enums.TrackingNumberCheck
 import com.aechak.domain.order.shipment.repository.CourierMasterRepository
 import com.aechak.domain.order.shipment.repository.ShipmentRepository
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -33,9 +38,12 @@ class SellerOrderService(
     private val orderStatusHistoryRepository: OrderStatusHistoryRepository,
     private val courierMasterRepository: CourierMasterRepository,
     private val shipmentRepository: ShipmentRepository,
+    private val orderDeliveryService: OrderDeliveryService,
     private val sellerOrderQueryPort: SellerOrderQueryPort,
     private val piiStringCodec: PiiStringCodec,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     fun acceptOrder(command: AcceptOrderCommand) {
         val order = findSellerOrder(command.sellerId, command.orderPublicId)
 
@@ -61,7 +69,7 @@ class SellerOrderService(
         val courier =
             courierMasterRepository.findActiveByCourierCode(command.courierCode)
                 ?: throw BusinessException(OrderErrorCode.COURIER_NOT_FOUND)
-        courier.validateTrackingNumber(command.trackingNumber)
+        warnIfTrackingPatternBroken(courier, courier.validateTrackingNumber(command.trackingNumber))
 
         // 애그리거트가 dirty해지기 전에 두 전이를 모두 선점한다 — 더티체킹 플러시가 조건부 UPDATE를 앞지르면 0행이 된다
         val fromPreparing = order.status == OrderStatus.PREPARING
@@ -86,6 +94,33 @@ class SellerOrderService(
             orderStatus = order.status,
         )
     }
+
+    fun completeDelivery(command: CompleteDeliveryCommand) {
+        val order = findSellerOrder(command.sellerId, command.orderPublicId)
+        orderDeliveryService.complete(order, LocalDateTime.now(), TriggeredBy.SELLER)
+    }
+
+    /** 패턴이 깨져 검증을 건너뛴 사실은 조용히 지나가면 안 된다 — 마스터를 고칠 단서를 남긴다. */
+    private fun warnIfTrackingPatternBroken(
+        courier: CourierMaster,
+        check: TrackingNumberCheck,
+    ) {
+        if (check != TrackingNumberCheck.SKIPPED_BROKEN_PATTERN) {
+            return
+        }
+        log.warn(
+            "택배사 송장번호 패턴이 정규식으로 컴파일되지 않아 형식 검증을 건너뜁니다. courierCode={}, trackingFormatPattern={}",
+            courier.courierCode,
+            escapeLineBreaks(courier.trackingFormatPattern),
+        )
+    }
+
+    /** 깨진 패턴에 개행이 섞여 있으면 경고 한 줄이 여러 줄로 쪼개져 수집기가 뒷부분을 잃는다. */
+    private fun escapeLineBreaks(pattern: String?): String? =
+        pattern
+            ?.replace("\r\n", "\\n")
+            ?.replace("\n", "\\n")
+            ?.replace("\r", "\\r")
 
     private fun findSellerOrder(
         sellerId: Long,

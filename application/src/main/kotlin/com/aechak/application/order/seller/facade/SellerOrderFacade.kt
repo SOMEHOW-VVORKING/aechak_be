@@ -7,6 +7,7 @@ import com.aechak.application.order.seller.port.view.SellerOrderSummaryView
 import com.aechak.application.order.seller.service.SellerOrderService
 import com.aechak.application.order.seller.usecase.SellerOrderUseCase
 import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
+import com.aechak.application.order.seller.usecase.command.CompleteDeliveryCommand
 import com.aechak.application.order.seller.usecase.command.RegisterShipmentCommand
 import com.aechak.application.order.seller.usecase.query.SellerOrderSearchQuery
 import com.aechak.application.order.seller.usecase.result.RegisterShipmentResult
@@ -39,6 +40,12 @@ class SellerOrderFacade(
     override fun registerShipment(command: RegisterShipmentCommand): RegisterShipmentResult {
         requireActiveSeller(command.sellerId)
         return sellerOrderService.registerShipment(command)
+    }
+
+    @Transactional
+    override fun completeDelivery(command: CompleteDeliveryCommand) {
+        requireActiveSeller(command.sellerId)
+        sellerOrderService.completeDelivery(command)
     }
 
     @Transactional(readOnly = true)

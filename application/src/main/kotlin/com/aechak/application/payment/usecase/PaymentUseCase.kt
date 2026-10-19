@@ -1,5 +1,6 @@
 package com.aechak.application.payment.usecase
 
+import com.aechak.application.payment.usecase.command.ApplyPaymentCancelCommand
 import com.aechak.application.payment.usecase.command.CancelPaymentCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByGatewayCommand
 import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCommand
@@ -7,6 +8,7 @@ import com.aechak.application.payment.usecase.command.CompletePaymentCommand
 import com.aechak.application.payment.usecase.command.PreparePaymentCommand
 import com.aechak.application.payment.usecase.result.CancelPaymentResult
 import com.aechak.application.payment.usecase.result.CompletePaymentResult
+import com.aechak.application.payment.usecase.result.GatewayCancelResult
 import com.aechak.application.payment.usecase.result.PreparePaymentResult
 
 interface PaymentUseCase {
@@ -37,4 +39,18 @@ interface PaymentUseCase {
      * 원승인액은 줄지 않는다. PG가 비동기로 접수만 하면 원장을 건드리지 않고 요청 상태로 남긴다.
      */
     fun cancelPayment(command: CancelPaymentCommand): CancelPaymentResult
+
+    /**
+     * 취소의 앞 절반 — 취소 선점을 독립 커밋하고(호출자 트랜잭션에 합류하지 않는다) PG 취소를 트랜잭션 밖에서 호출한다.
+     * 원장은 건드리지 않으므로 확정 금액은 호출자가 applyCancelledAmount 로 반영해야 한다.
+     * 원장 차감을 호출자의 다른 쓰기와 한 트랜잭션에 묶어야 하는 흐름(클레임 환불 집행)이 쓴다.
+     * PG가 거절하거나 호출이 터지면 선점을 풀고 예외를 던진다.
+     */
+    fun requestCancelAtGateway(command: CancelPaymentCommand): GatewayCancelResult
+
+    /**
+     * 취소의 뒤 절반 — PG가 확정한 금액만 취소가능액에서 뺀다. 원승인액은 줄지 않는다.
+     * 호출 트랜잭션에 참여한다(REQUIRED) — 주문그룹 전이와 같은 트랜잭션이어야 대사가 둘을 미동기화로 보지 않는다.
+     */
+    fun applyCancelledAmount(command: ApplyPaymentCancelCommand): CancelPaymentResult
 }
