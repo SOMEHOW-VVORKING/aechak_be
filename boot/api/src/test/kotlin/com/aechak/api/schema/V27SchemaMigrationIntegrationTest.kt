@@ -533,7 +533,7 @@ class V27SchemaMigrationIntegrationTest {
             )
 
         /**
-         * orders는 V21이, payments는 V24가, product_drafts는 V29가 이미 만든다 —
+         * orders는 V21이, payments는 V24가, product_drafts는 V31이 이미 만든다 —
          * ddl-auto만으로 존재하던 테이블은 나머지 10개다.
          */
         private val DDL_AUTO_TABLES = TARGET_TABLES - "orders" - "payments" - "product_drafts"
