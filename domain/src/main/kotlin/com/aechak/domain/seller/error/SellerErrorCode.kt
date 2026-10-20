@@ -12,6 +12,7 @@ enum class SellerErrorCode(
     ALREADY_SELLER(10001, "이미 셀러로 등록된 계정입니다.", 409),
     SELLER_NOT_ACTIVE(10002, "활성 상태의 셀러만 이용할 수 있습니다.", 403),
     INVALID_SHIPPING_POLICY(10005, "배송 정책 값이 올바르지 않습니다.", 400),
+    INVALID_STORE_SETTINGS(10006, "스토어 설정 값이 올바르지 않습니다.", 400),
 
     // 입점 신청
     SELLER_APPLICATION_NOT_FOUND(10100, "입점 신청을 찾을 수 없습니다.", 404),

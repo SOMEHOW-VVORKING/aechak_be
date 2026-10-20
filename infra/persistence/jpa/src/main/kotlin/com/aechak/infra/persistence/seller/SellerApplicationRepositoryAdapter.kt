@@ -14,6 +14,9 @@ import org.springframework.stereotype.Repository
 interface SellerApplicationJpaRepository : JpaRepository<SellerApplication, Long> {
     fun findByUserId(userId: Long): SellerApplication?
 
+    @Query("select a.status from SellerApplication a where a.userId = :userId")
+    fun findStatusByUserId(userId: Long): ApplicationStatus?
+
     // 정렬은 JPQL 소유(MySQL은 DESC에서 NULL을 뒤로 보낸다 — 미제출 DRAFT가 목록 끝), id는 동시각 안정 정렬용
     @Query("select a from SellerApplication a where a.status = :status order by a.submittedAt desc, a.id desc")
     fun findPageByStatus(
@@ -38,6 +41,8 @@ class SellerApplicationRepositoryAdapter(
     override fun findById(id: Long): SellerApplication? = jpaRepository.findByIdOrNull(id)
 
     override fun findByUserId(userId: Long): SellerApplication? = jpaRepository.findByUserId(userId)
+
+    override fun findStatusByUserId(userId: Long): ApplicationStatus? = jpaRepository.findStatusByUserId(userId)
 
     override fun findPage(
         status: ApplicationStatus?,
