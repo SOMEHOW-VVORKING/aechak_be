@@ -113,6 +113,13 @@ class Settlement protected constructor(
         this.payout = payout
     }
 
+    /**
+     * 지급 집행 대상인지 — 정산대기이고, 아직 지급 묶음에 들어가지 않았고, 환불 차감이 없어야 한다.
+     * 차감이 생긴 원장은 금액이 더 움직일 수 있어 사람이 확인한 뒤 내보낸다.
+     * 지급 묶음 연결 자체는 동시 집행을 선점해야 해서 저장소의 조건부 원자 UPDATE가 맡는다.
+     */
+    fun isPayoutEligible(): Boolean = status == SettlementStatus.PENDING && payout == null && refundDeduction == 0L
+
     fun cancel() = transitionTo(SettlementStatus.CANCELLED)
 
     /** 진행 중 클레임이 있어 지급 대상에서 뺀다. */
