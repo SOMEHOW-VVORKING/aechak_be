@@ -46,6 +46,7 @@ enum class InspectionPerspectiveKind {
     DISPLAY_ADS,
     CONDUCT_TRADE,
     RULE,
+    TRIAGE,
 }
 
 /** 관점별 결과. 통과와 미검사를 반드시 구분한다 */
