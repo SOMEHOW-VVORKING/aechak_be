@@ -8,9 +8,16 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.api.user.term.response.TermResponse
 import com.aechak.api.user.user.response.UserMeResponse
 import com.aechak.domain.order.cart.enums.CartItemStatus
+import com.aechak.domain.order.claim.enums.ClaimStatus
+import com.aechak.domain.order.claim.enums.ClaimType
+import com.aechak.domain.order.claim.enums.RefundStatus
+import com.aechak.domain.order.group.enums.OrderGroupStatus
+import com.aechak.domain.order.order.enums.OrderItemStatus
+import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.user.term.enums.TermType
 import com.aechak.domain.user.user.enums.UserStatus
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.Test
@@ -54,6 +61,29 @@ class JacksonWireFormatTest : IntegrationTestBase() {
                 assertTrue(!json.contains("\"$stripped\":"), "접두가 떨어진 '$stripped' 로 나간다: $json")
             }
         }
+
+    /**
+     * 상태 필드를 String에서 enum으로 바꾼 전제 — enum은 name()과 같은 문자열로 직렬화된다.
+     * @JsonValue·toString 재정의나 매퍼 설정이 들어오면 이 단언이 먼저 깨진다.
+     */
+    @TestFactory
+    fun `상태 enum은 name과 같은 문자열로 직렬화된다`(): List<DynamicTest> =
+        listOf(
+            OrderStatus.entries,
+            OrderItemStatus.entries,
+            OrderGroupStatus.entries,
+            CartItemStatus.entries,
+            SaleStatus.entries,
+            ClaimType.entries,
+            ClaimStatus.entries,
+            RefundStatus.entries,
+            UserStatus.entries,
+        ).flatten()
+            .map { value ->
+                DynamicTest.dynamicTest("${value.javaClass.simpleName}.${value.name}") {
+                    assertEquals("\"${value.name}\"", objectMapper.writeValueAsString(value))
+                }
+            }
 
     private fun term() =
         TermResponse(

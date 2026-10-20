@@ -13,6 +13,7 @@ import com.aechak.domain.order.order.enums.OrderItemStatus
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.product.enums.SaleStatus
+import com.aechak.seller.settlement.request.SellerSettlementSearchRequest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -80,10 +81,9 @@ class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `요청 스키마에 내부 검증 프로퍼티가 노출되지 않는다`() {
-        assertTrue(
-            INTERNAL_VALIDATION_PROPERTIES.none { property -> spec.schemas.any { property in it.value } },
-            "요청 스키마에 내부 검증 프로퍼티가 남아 있다",
-        )
+        val exposed = OpenApiDocContract.documentedSelfValidationProperties(BASE_PACKAGE, spec.schemas, DTO_PACKAGES)
+
+        assertTrue(exposed.isEmpty(), "요청이 스스로를 검사하는 프로퍼티가 요청 필드로 올라와 있다: $exposed")
     }
 
     @Test
@@ -131,6 +131,21 @@ class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
         assertEquals(screenVocabulary, spec.allowedValues("SellerSettlementSearchRequest", "status"))
     }
 
+    /** 정산 필터는 enum 이름이 아니라 손으로 쓴 분기로 받으므로, 문서 값이 그 분기를 통과하는지까지 본다. */
+    @Test
+    fun `문서가 적은 정산 필터 값은 서버 파서가 전부 받는다`() {
+        val parsed =
+            spec.allowedValues("SellerSettlementSearchRequest", "status").associateWith { value ->
+                SellerSettlementSearchRequest(status = value).toQuery(sellerId = 1L).status
+            }
+
+        assertEquals(
+            SellerSettlementStatus.entries.toSet(),
+            parsed.values.toSet(),
+            "문서 값과 서버 파서가 해석하는 상태가 일대일로 맞지 않는다: $parsed",
+        )
+    }
+
     @Test
     fun `셀러 주문 상태 필터의 허용값이 서버가 받는 세그먼트 코드와 같다`() {
         assertEquals(
@@ -171,16 +186,6 @@ class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
 
         /** 택배사가 주는 자유 문구라서 고정할 허용값이 없다. */
         private val FREE_FORM_STATUS_PROPERTIES = setOf("lastTrackingStatus")
-        private val INTERNAL_VALIDATION_PROPERTIES =
-            setOf(
-                "imageKeysWellFormed",
-                "imageKeysDistinct",
-                "optionValuesWellFormed",
-                "valuesWellFormed",
-                "changeRequired",
-                "stockDeltaWellFormed",
-                "documentTypesUnique",
-            )
         private val DUMP_PATH: Path = Path.of("build", "openapi", "seller-api-docs.json")
     }
 }

@@ -31,9 +31,12 @@ object OpenApiDocContract {
             .mapValues { (_, classes) -> classes.map { it.name }.sorted() }
 
     /**
-     * is-접두 불리언이 문서에서 접두를 잃은 자리를 찾는다 — 문서가 접두를 뗀 이름으로 적어 둔 경우만 걸린다.
-     * 실제 응답은 접두를 유지한다(JacksonWireFormatTest가 그 직렬화를 고정한다).
-     * 문서에서 아예 숨긴 프로퍼티(내부 검증용)는 어긋날 자리가 없으므로 세지 않는다.
+     * is-접두 불리언의 문서 필드명이 와이어 필드명과 다른 자리를 찾는다.
+     * 실제 응답은 접두를 유지한다(JacksonWireFormatTest가 그 직렬화를 고정한다) — 그래서 문서에는
+     * 접두가 붙은 이름이 있어야 하고, 접두를 뗀 이름은 없어야 한다. 둘 다 있으면 중복 노출이다.
+     *
+     * 문서에서 숨긴 프로퍼티(@Schema(hidden = true))만 제외한다. 문서에 올라가지 않은 DTO는
+     * 이름이 어긋날 자리가 없어 건너뛴다.
      */
     fun isPrefixMismatches(
         basePackage: String,
@@ -43,11 +46,52 @@ object OpenApiDocContract {
         dtoClasses(basePackage, extraDtoPackages)
             .flatMap { type ->
                 val schemaName = schemaNameOf(type)
-                val documented = schemas[schemaName] ?: return@flatMap emptyList()
-                isPrefixedBooleanNames(type)
-                    .filter { it !in documented.keys && strippedName(it) in documented.keys }
-                    .map { "$schemaName.$it (문서에는 '${strippedName(it)}')" }
+                val documented = schemas[schemaName]?.keys ?: return@flatMap emptyList()
+                isPrefixedBooleanGetters(type)
+                    .filterNot(::hiddenFromDocs)
+                    .mapNotNull { getter ->
+                        val wireName = getter.name
+                        val stripped = strippedName(wireName)
+                        when {
+                            wireName in documented && stripped in documented -> {
+                                "$schemaName.$wireName — '$stripped'로도 중복 노출"
+                            }
+
+                            wireName !in documented && stripped in documented -> {
+                                "$schemaName.$wireName — 문서에는 '$stripped'로만 있다"
+                            }
+
+                            wireName !in documented -> {
+                                "$schemaName.$wireName — 문서에 없다(숨긴 것이면 @Schema(hidden = true)를 붙인다)"
+                            }
+
+                            else -> {
+                                null
+                            }
+                        }
+                    }
             }.sorted()
+
+    /**
+     * 요청이 스스로를 검사하는 계산 프로퍼티(@get:AssertTrue)가 문서에 요청 필드로 올라온 자리를 찾는다.
+     * 클라이언트가 채워 보낼 값이 아니므로 @Schema(hidden = true)로 숨겨야 한다.
+     */
+    fun documentedSelfValidationProperties(
+        basePackage: String,
+        schemas: DocumentedSchemas,
+        extraDtoPackages: Set<String> = emptySet(),
+    ): List<String> =
+        dtoClasses(basePackage, extraDtoPackages)
+            .flatMap { type ->
+                val schemaName = schemaNameOf(type)
+                val documented = schemas[schemaName]?.keys ?: return@flatMap emptyList()
+                type.declaredMethods
+                    .filter { method -> method.annotations.any { it.annotationClass.qualifiedName == ASSERT_TRUE_ANNOTATION } }
+                    .flatMap(::documentableNamesOf)
+                    .filter { it in documented }
+                    .map { "$schemaName.$it" }
+            }.distinct()
+            .sorted()
 
     /**
      * 문서가 적은 성공 코드가 핸들러가 선언한 코드와 다른 자리를 찾는다.
@@ -56,6 +100,9 @@ object OpenApiDocContract {
      *
      * 본문을 돌려주지 않는 핸들러는 코드를 반드시 명시해야 한다. 그쪽은 200이 기본값으로
      * 성립하지 않고(본문 없는 200은 뜻이 없다), 빠뜨리면 다시 조용히 어긋난다.
+     *
+     * 이 검사가 보는 것은 "선언과 문서가 같은지"다. 선언이 핸들러가 실제로 세우는 코드와 같은지는
+     * 핸들러 본문을 읽어야 알 수 있어, 그쪽은 MVC 통합 테스트의 상태코드 단언이 지킨다.
      */
     fun statusCodeMismatches(
         documentedResponseCodes: Map<String, Set<String>>,
@@ -66,6 +113,8 @@ object OpenApiDocContract {
         return declaredStatuses
             .mapNotNull { (operation, declared) ->
                 val documented = documentedResponseCodes[operation]
+                // 오류 응답을 문서에 더해도 오탐하지 않게 성공 코드만 본다.
+                val documentedSuccess = documented?.filter { it.firstOrNull() in SUCCESS_CODE_LEADS }?.toSet()
                 when {
                     documented == null -> {
                         "$operation — 문서에 없는 엔드포인트"
@@ -75,7 +124,7 @@ object OpenApiDocContract {
                         "$operation — 본문 없는 핸들러인데 @ResponseStatus가 없다(문서는 ${documented.joinToString()})"
                     }
 
-                    documented != setOf((declared ?: DEFAULT_SUCCESS_CODE).toString()) -> {
+                    documentedSuccess != setOf((declared ?: DEFAULT_SUCCESS_CODE).toString()) -> {
                         "$operation — 선언 ${declared ?: DEFAULT_SUCCESS_CODE}, 문서 ${documented.joinToString()}"
                     }
 
@@ -104,12 +153,34 @@ object OpenApiDocContract {
     private fun isStatusLike(name: String): Boolean = name == "status" || name.endsWith("Status") || name == "claimType"
 
     /** JVM 게터 이름이 그대로 와이어 필드명이 되는 is-접두 불리언 프로퍼티들. */
-    private fun isPrefixedBooleanNames(type: Class<*>): List<String> =
+    private fun isPrefixedBooleanGetters(type: Class<*>): List<java.lang.reflect.Method> =
         type.declaredMethods
             .filter { it.parameterCount == 0 && IS_PREFIX.matches(it.name) }
             .filter { it.returnType == Boolean::class.javaPrimitiveType || it.returnType == java.lang.Boolean::class.java }
-            .map { it.name }
-            .distinct()
+            .distinctBy { it.name }
+
+    /** 게터 이름에서 문서가 쓸 수 있는 프로퍼티 이름들. is-접두는 접두를 떼는 쪽도 후보다. */
+    private fun documentableNamesOf(getter: java.lang.reflect.Method): List<String> {
+        val name = getter.name
+        return when {
+            IS_PREFIX.matches(name) -> {
+                listOf(name, strippedName(name))
+            }
+
+            name.startsWith("get") && name.length > GETTER_PREFIX_LENGTH -> {
+                listOf(name.substring(GETTER_PREFIX_LENGTH).replaceFirstChar(Char::lowercase))
+            }
+
+            else -> {
+                listOf(name)
+            }
+        }
+    }
+
+    private fun hiddenFromDocs(getter: java.lang.reflect.Method): Boolean {
+        val schema = getter.annotations.firstOrNull { it.annotationClass.qualifiedName == SCHEMA_ANNOTATION } ?: return false
+        return schema.javaClass.getMethod("hidden").invoke(schema) as Boolean
+    }
 
     private fun schemaNameOf(type: Class<*>): String {
         val schema = type.annotations.firstOrNull { it.annotationClass.qualifiedName == SCHEMA_ANNOTATION } ?: return type.simpleName
@@ -141,6 +212,9 @@ object OpenApiDocContract {
     }
 
     private const val DEFAULT_SUCCESS_CODE = 200
+    private val SUCCESS_CODE_LEADS = setOf('2', '3')
+    private const val ASSERT_TRUE_ANNOTATION = "jakarta.validation.constraints.AssertTrue"
+    private const val GETTER_PREFIX_LENGTH = 3
     private const val SCHEMA_ANNOTATION = "io.swagger.v3.oas.annotations.media.Schema"
     private val IS_PREFIX = Regex("^is[A-Z].*")
 }

@@ -79,11 +79,10 @@ class OpenApiContractIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `요청 스키마에 내부 검증 프로퍼티가 노출되지 않는다`() {
+        val exposed = OpenApiDocContract.documentedSelfValidationProperties(BASE_PACKAGE, spec.schemas)
+
+        assertTrue(exposed.isEmpty(), "요청이 스스로를 검사하는 프로퍼티가 요청 필드로 올라와 있다: $exposed")
         assertEquals(setOf("items"), spec.propertyNames("SubmitConsentsRequest"))
-        assertTrue(
-            spec.propertyNames("ProductKeywordSearchRequest").none { it.contains("priceRangeValid", ignoreCase = true) },
-            "검색 요청에 내부 검증 프로퍼티가 남아 있다: ${spec.propertyNames("ProductKeywordSearchRequest")}",
-        )
     }
 
     @Test
