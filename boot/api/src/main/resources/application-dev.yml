@@ -42,3 +42,5 @@ server:
 # AI 검수. 섀도 단계에서는 요청만 보내고 노출 상태는 바꾸지 않는다.
 inspection:
   enabled: true
+  # 노출 게이트는 끈 채로 둔다. 쌓인 판정의 품질을 보고 켠다 — 켜는 순간 구매자 화면이 바뀐다.
+  gate-enabled: false
