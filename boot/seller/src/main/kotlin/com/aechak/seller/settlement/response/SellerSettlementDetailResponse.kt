@@ -32,7 +32,7 @@ data class SellerSettlementDetailResponse(
 ) {
     companion object {
         fun from(result: SellerSettlementDetailResult): SellerSettlementDetailResponse {
-            val summary = SellerSettlementSummaryResponse.from(result.summary)
+            val summary = SellerSettlementListItemResponse.from(result.summary)
             return SellerSettlementDetailResponse(
                 orderId = summary.orderId,
                 settlementMonth = summary.settlementMonth,

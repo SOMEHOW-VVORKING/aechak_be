@@ -2,8 +2,10 @@ package com.aechak.application.settlement.seller.service
 
 import com.aechak.application.settlement.port.SellerSettlementCondition
 import com.aechak.application.settlement.port.SellerSettlementQueryPort
+import com.aechak.application.settlement.seller.port.SellerSettlementSummaryQueryPort
 import com.aechak.application.settlement.seller.usecase.query.SellerSettlementSearchQuery
 import com.aechak.application.settlement.seller.usecase.result.SellerSettlementDetailResult
+import com.aechak.application.settlement.seller.usecase.result.SellerSettlementListItemResult
 import com.aechak.application.settlement.seller.usecase.result.SellerSettlementMonthsResult
 import com.aechak.application.settlement.seller.usecase.result.SellerSettlementSummaryResult
 import com.aechak.application.support.OffsetPageResult
@@ -15,8 +17,9 @@ import org.springframework.stereotype.Service
 @Service
 class SellerSettlementQueryService(
     private val sellerSettlementQueryPort: SellerSettlementQueryPort,
+    private val sellerSettlementSummaryQueryPort: SellerSettlementSummaryQueryPort,
 ) {
-    fun search(query: SellerSettlementSearchQuery): OffsetPageResult<SellerSettlementSummaryResult> {
+    fun search(query: SellerSettlementSearchQuery): OffsetPageResult<SellerSettlementListItemResult> {
         val condition =
             SellerSettlementCondition(
                 sellerId = query.sellerId,
@@ -26,7 +29,7 @@ class SellerSettlementQueryService(
                 limit = query.size,
             )
         return OffsetPageResult(
-            items = sellerSettlementQueryPort.findOrderPage(condition).map(SellerSettlementSummaryResult::from),
+            items = sellerSettlementQueryPort.findOrderPage(condition).map(SellerSettlementListItemResult::from),
             totalCount = sellerSettlementQueryPort.countOrders(condition),
             page = query.page,
             size = query.size,
@@ -49,6 +52,9 @@ class SellerSettlementQueryService(
 
     fun getSettlementMonths(sellerId: Long): SellerSettlementMonthsResult =
         SellerSettlementMonthsResult(sellerSettlementQueryPort.findSettlementMonths(sellerId, MONTHS_LIMIT))
+
+    fun getSummary(sellerId: Long): SellerSettlementSummaryResult =
+        SellerSettlementSummaryResult.from(sellerSettlementSummaryQueryPort.findSummary(sellerId))
 
     companion object {
         /** 월 필터가 보여 줄 범위 — 그 앞의 정산은 월을 직접 지정해도 목록 조회로 볼 수 있다 */

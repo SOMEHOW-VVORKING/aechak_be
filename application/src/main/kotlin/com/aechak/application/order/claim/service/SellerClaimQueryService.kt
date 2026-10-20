@@ -4,13 +4,16 @@ import com.aechak.application.order.claim.port.SellerClaimCondition
 import com.aechak.application.order.claim.port.SellerClaimQueryPort
 import com.aechak.application.order.claim.port.view.SellerClaimItemView
 import com.aechak.application.order.claim.port.view.SellerClaimView
+import com.aechak.application.order.claim.usecase.query.SellerClaimMetricsQuery
 import com.aechak.application.order.claim.usecase.query.SellerClaimSearchQuery
 import com.aechak.application.order.claim.usecase.result.SellerClaimDetailResult
+import com.aechak.application.order.claim.usecase.result.SellerClaimMetricsResult
 import com.aechak.application.order.claim.usecase.result.SellerClaimPageResult
 import com.aechak.application.order.claim.usecase.result.SellerClaimSummaryResult
 import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.application.support.OffsetPageResult
 import com.aechak.common.error.BusinessException
+import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.order.Order
@@ -91,6 +94,27 @@ class SellerClaimQueryService(
             )
         }
     }
+
+    /**
+     * 셀러 미응답 클레임의 유형별 건수. 목록 배지와 같은 집계 쿼리를 쓴다 —
+     * 대시보드와 클레임 탭의 숫자가 같은 규칙에서 나와야 두 화면이 어긋나지 않는다.
+     * 페이징 축은 건수 집계가 쓰지 않아 0으로 둔다.
+     */
+    fun countMetrics(query: SellerClaimMetricsQuery): SellerClaimMetricsResult =
+        SellerClaimMetricsResult.from(
+            sellerClaimQueryPort.countByClaimType(
+                SellerClaimCondition(
+                    sellerId = query.sellerId,
+                    claimTypes = emptyList(),
+                    statuses = listOf(ClaimStatus.CLAIM_REQUESTED),
+                    refundStatuses = emptyList(),
+                    requestedFrom = query.requestedFrom,
+                    requestedToExclusive = query.requestedToExclusive,
+                    offset = 0L,
+                    limit = 0,
+                ),
+            ),
+        )
 
     private fun countsOf(condition: SellerClaimCondition): Map<ClaimType, Long> =
         sellerClaimQueryPort.countByClaimType(condition).associate { it.claimType to it.count }

@@ -43,6 +43,9 @@ class SettlementExecutionBatch protected constructor(
     var status: SettlementBatchStatus = SettlementBatchStatus.GENERATED
         protected set
 
+    /** 종결된 회차에는 지급 건을 더 붙이지 않는다 — 입금 반영이 끝난 회차에 새 송금 요청이 섞이면 회차 집계가 거짓이 된다. */
+    fun acceptsPayout(): Boolean = status != SettlementBatchStatus.COMPLETED
+
     fun startProcessing() = transitionTo(SettlementBatchStatus.PROCESSING)
 
     fun complete() = transitionTo(SettlementBatchStatus.COMPLETED)

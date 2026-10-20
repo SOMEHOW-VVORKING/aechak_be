@@ -1,10 +1,10 @@
 package com.aechak.seller.settlement.response
 
-import com.aechak.application.settlement.seller.usecase.result.SellerSettlementSummaryResult
+import com.aechak.application.settlement.seller.usecase.result.SellerSettlementListItemResult
 import com.aechak.application.support.OffsetPageResult
 
 data class SellerSettlementListResponse(
-    val settlements: List<SellerSettlementSummaryResponse>,
+    val settlements: List<SellerSettlementListItemResponse>,
     val totalCount: Long,
     val page: Int,
     val size: Int,
@@ -12,9 +12,9 @@ data class SellerSettlementListResponse(
     val hasNext: Boolean,
 ) {
     companion object {
-        fun from(result: OffsetPageResult<SellerSettlementSummaryResult>): SellerSettlementListResponse =
+        fun from(result: OffsetPageResult<SellerSettlementListItemResult>): SellerSettlementListResponse =
             SellerSettlementListResponse(
-                settlements = result.items.map(SellerSettlementSummaryResponse::from),
+                settlements = result.items.map(SellerSettlementListItemResponse::from),
                 totalCount = result.totalCount,
                 page = result.page,
                 size = result.size,

@@ -5,6 +5,7 @@ import com.aechak.application.settlement.seller.service.SellerSettlementQuerySer
 import com.aechak.application.settlement.seller.usecase.SellerSettlementUseCase
 import com.aechak.application.settlement.seller.usecase.query.SellerSettlementSearchQuery
 import com.aechak.application.settlement.seller.usecase.result.SellerSettlementDetailResult
+import com.aechak.application.settlement.seller.usecase.result.SellerSettlementListItemResult
 import com.aechak.application.settlement.seller.usecase.result.SellerSettlementMonthsResult
 import com.aechak.application.settlement.seller.usecase.result.SellerSettlementSummaryResult
 import com.aechak.application.support.OffsetPageResult
@@ -24,7 +25,7 @@ class SellerSettlementFacade(
     private val sellerUseCase: SellerUseCase,
 ) : SellerSettlementUseCase {
     @Transactional(readOnly = true)
-    override fun searchSettlements(query: SellerSettlementSearchQuery): OffsetPageResult<SellerSettlementSummaryResult> {
+    override fun searchSettlements(query: SellerSettlementSearchQuery): OffsetPageResult<SellerSettlementListItemResult> {
         requireSettlementReadableSeller(query.sellerId)
         return sellerSettlementQueryService.search(query)
     }
@@ -43,6 +44,10 @@ class SellerSettlementFacade(
         requireSettlementReadableSeller(sellerId)
         return sellerSettlementQueryService.getSettlementMonths(sellerId)
     }
+
+    /** 자격 게이트를 다시 두지 않는다 — 대시보드가 자기 게이트를 지난 뒤 부르는 경로다. */
+    @Transactional(readOnly = true)
+    override fun getSummary(sellerId: Long): SellerSettlementSummaryResult = sellerSettlementQueryService.getSummary(sellerId)
 
     /**
      * 조회 자격 게이트 — 이미 발생한 정산은 셀러가 받을 돈의 기록이라 휴점·탈퇴신청 중에도 봐야 한다.

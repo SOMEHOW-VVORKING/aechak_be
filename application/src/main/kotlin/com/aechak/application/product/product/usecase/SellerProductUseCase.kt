@@ -11,6 +11,7 @@ import com.aechak.application.product.product.usecase.result.ProductSaleStatusCh
 import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.application.product.product.usecase.result.SellerProductDetailResult
 import com.aechak.application.product.product.usecase.result.SellerProductOptionsResult
+import com.aechak.application.product.product.usecase.result.SellerProductStatusCountsResult
 import com.aechak.application.product.product.usecase.result.SellerProductSummaryResult
 import com.aechak.application.support.OffsetPageResult
 
@@ -37,4 +38,13 @@ interface SellerProductUseCase {
         sellerId: Long,
         publicId: String,
     ): SellerProductOptionsResult
+
+    /**
+     * 대시보드용 상품 상태 요약 — 검수 대기·반려·판매 중지·품절을 쿼리 한 번으로 센다.
+     * 기간 필터가 없는 현재 스냅샷이고 네 건수는 서로 배타적이지 않다.
+     *
+     * 전제 — 셀러 자격 게이트는 호출자가 통과시킨다. 집계는 넘겨받은 sellerId 범위만 읽고
+     * 식별자를 돌려주지 않으므로 소유권 판정 대상이 아니다. 이 계약을 HTTP로 직접 노출하지 않는다.
+     */
+    fun getMyProductStatusCounts(sellerId: Long): SellerProductStatusCountsResult
 }

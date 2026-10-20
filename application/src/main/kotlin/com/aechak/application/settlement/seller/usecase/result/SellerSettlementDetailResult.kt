@@ -11,7 +11,7 @@ import java.math.BigDecimal
  * 정책이 바뀌어도 과거 정산의 수수료 근거는 이 값이다.
  */
 data class SellerSettlementDetailResult(
-    val summary: SellerSettlementSummaryResult,
+    val summary: SellerSettlementListItemResult,
     val shippingFee: Long,
     val couponBurden: Long,
     val platformFeeAmount: Long,
@@ -27,7 +27,7 @@ data class SellerSettlementDetailResult(
             items: List<SellerSettlementItemView>,
         ): SellerSettlementDetailResult =
             SellerSettlementDetailResult(
-                summary = SellerSettlementSummaryResult.from(view),
+                summary = SellerSettlementListItemResult.from(view),
                 shippingFee = view.shippingFee,
                 couponBurden = view.sellerCouponBurden,
                 platformFeeAmount = view.commission,
