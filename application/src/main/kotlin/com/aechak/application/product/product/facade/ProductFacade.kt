@@ -3,6 +3,7 @@ package com.aechak.application.product.product.facade
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
+import com.aechak.application.inspection.service.InspectionQueryService
 import com.aechak.application.inspection.service.InspectionRequestService
 import com.aechak.application.inspection.usecase.command.RequestProductInspectionCommand
 import com.aechak.application.product.like.service.ProductLikeStatusService
@@ -25,6 +26,7 @@ import com.aechak.application.product.product.usecase.result.ProductSaleStatusCh
 import com.aechak.application.product.product.usecase.result.ProductSummaryResult
 import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.application.product.product.usecase.result.SellerProductDetailResult
+import com.aechak.application.product.product.usecase.result.SellerProductInspectionResult
 import com.aechak.application.product.product.usecase.result.SellerProductOptionsResult
 import com.aechak.application.product.product.usecase.result.SellerProductSummaryResult
 import com.aechak.application.product.stats.service.ProductStatsService
@@ -49,6 +51,7 @@ class ProductFacade(
     private val sellerUseCase: SellerUseCase,
     private val fileUseCase: FileUseCase,
     private val inspectionRequestService: InspectionRequestService,
+    private val inspectionQueryService: InspectionQueryService,
     transactionManager: PlatformTransactionManager,
 ) : ProductUseCase,
     SellerProductUseCase {
@@ -190,6 +193,19 @@ class ProductFacade(
     ): SellerProductOptionsResult {
         requireProductReadableSeller(sellerId)
         return SellerProductOptionsResult.from(productService.getOwnedOptions(sellerId, publicId))
+    }
+
+    @Transactional(readOnly = true)
+    override fun getMyProductInspection(
+        sellerId: Long,
+        publicId: String,
+    ): SellerProductInspectionResult {
+        requireProductReadableSeller(sellerId)
+        val product = productService.getOwnedProduct(sellerId, publicId)
+        return SellerProductInspectionResult.of(
+            product = product,
+            snapshot = inspectionQueryService.findLatestProductInspection(product.id),
+        )
     }
 
     private fun requireActiveSeller(sellerId: Long) {
