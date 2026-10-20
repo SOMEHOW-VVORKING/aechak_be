@@ -1,6 +1,7 @@
 package com.aechak.application.user.point.service
 
 import com.aechak.application.user.point.usecase.command.EarnPurchaseRewardCommand
+import com.aechak.application.user.point.usecase.command.ReleasePointCommand
 import com.aechak.application.user.point.usecase.command.UsePointCommand
 import com.aechak.application.user.user.service.UserService
 import com.aechak.common.error.BusinessException
@@ -82,6 +83,30 @@ class PointCommandService(
                 sourceId = command.sourceId,
             ),
         )
+    }
+
+    /**
+     * 복원 가산 — 멱등키 선조회가 1차 게이트, 원장 멱등키 UNIQUE가 최후 방어선이다.
+     * 재고 복원과 달리 원장이 있어 키만 맞으면 두 번 돌려도 잔액이 두 번 늘지 않는다.
+     */
+    fun releasePoint(command: ReleasePointCommand) {
+        if (command.amount <= 0) {
+            throw BusinessException(UserErrorCode.INVALID_POINT_AMOUNT)
+        }
+        if (pointTransactionRepository.existsByIdempotencyKey(command.idempotencyKey)) {
+            return
+        }
+        pointTransactionRepository.save(
+            PointTransaction.record(
+                buyer = userService.getById(command.userId),
+                amount = command.amount,
+                transactionType = PointTransactionType.RELEASE,
+                idempotencyKey = command.idempotencyKey,
+                sourceType = command.sourceType,
+                sourceId = command.sourceId,
+            ),
+        )
+        userRepository.addPointBalance(command.userId, command.amount)
     }
 
     companion object {

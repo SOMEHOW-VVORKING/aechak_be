@@ -137,7 +137,7 @@ class OrderSettlementLedgerIntegrationTest : IntegrationTestBase() {
         mockMvc
             .perform(confirmRequest(fixture.orderPublicId))
             .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.errorCode").value(50007))
+            .andExpect(jsonPath("$.errorCode").value(50008))
 
         val second = settlements(fixture.orderId)
         assertEquals(2, second.size, "재확정 시도가 원장을 늘리면 안 된다")

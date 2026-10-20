@@ -103,6 +103,13 @@ inquiry:
     enabled: ${INQUIRY_NOTIFICATION_ENABLED:false}
     recipients: ${INQUIRY_OPS_RECIPIENTS:}
 
+# 클레임 정책값. 셀러가 이 기한까지 응답하지 않으면 자동승인 대상이 된다.
+order:
+  claim:
+    auto-approve-days: 2
+  auto-confirm:
+    days: 5    # 배송완료부터 구매확정 기한까지 — 셀러 수동 전이와 배치 자동 전이가 같은 값을 쓴다
+
 auth:
   token:
     access-ttl: 30m          # 팀에서 기간을 확정하기 전까지 사용할 기본값

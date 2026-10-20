@@ -37,26 +37,24 @@ class PaymentReconciliationClassifierTest {
                 expiresAt = LocalDateTime.now().plusMinutes(10),
             )
         when (status) {
-            OrderGroupStatus.PAID -> group.markPaid()
+            OrderGroupStatus.PAID -> {
+                group.markPaid()
+            }
 
-            OrderGroupStatus.CANCELLED -> group.cancelUnpaid()
+            OrderGroupStatus.CANCELLED -> {
+                group.cancelUnpaid()
+            }
 
-            OrderGroupStatus.PARTIALLY_CANCELLED -> forceStatus(group, status)
+            OrderGroupStatus.PARTIALLY_CANCELLED -> {
+                group.markPaid()
+                group.applyClaimCancellation(fullyCancelled = false)
+            }
 
-            // 전이 메서드가 아직 없는 상태(클레임 구현 전)
-            else -> Unit
+            OrderGroupStatus.PENDING_PAYMENT -> {
+                Unit
+            }
         }
         return group
-    }
-
-    private fun forceStatus(
-        group: OrderGroup,
-        status: OrderGroupStatus,
-    ) {
-        OrderGroup::class.java
-            .getDeclaredField("status")
-            .apply { isAccessible = true }
-            .set(group, status)
     }
 
     private fun payment(
@@ -231,7 +229,7 @@ class PaymentReconciliationClassifierTest {
         assertVerdict(
             MismatchType.MATCHED,
             ReconciliationResolution.NOT_REQUIRED,
-            payment(PaymentStatus.APPROVED, cancellable = 0L),
+            payment(PaymentStatus.APPROVED, cancellable = 0L, cancelledAmount = amount),
             group(OrderGroupStatus.CANCELLED),
             pg(PaymentGatewayStatus.CANCELLED, cancelled = amount),
         )
@@ -323,7 +321,7 @@ class PaymentReconciliationClassifierTest {
         assertVerdict(
             MismatchType.MATCHED,
             ReconciliationResolution.NOT_REQUIRED,
-            payment(PaymentStatus.APPROVED, cancellable = 10_000L),
+            payment(PaymentStatus.APPROVED, cancellable = 10_000L, cancelledAmount = 3_000L),
             group(OrderGroupStatus.PARTIALLY_CANCELLED),
             pg(PaymentGatewayStatus.PARTIAL_CANCELLED, cancelled = 3_000L),
         )
@@ -429,5 +427,47 @@ class PaymentReconciliationClassifierTest {
             payment(PaymentStatus.CANCELLED, cancellable = 0L, cancelledAmount = amount),
             group(OrderGroupStatus.PAID),
             pg(PaymentGatewayStatus.PAID),
+        )
+
+    @Test
+    fun `남은 취소가능액은 맞는데 누적 취소액이 PG와 다르면 사람 확인이다`() =
+        assertVerdict(
+            // 두 컬럼이 함께 움직이지 않으면 부분취소 이력이 어긋난 것이다 — 취소가능액만 봐서는 가려지지 않는다
+            MismatchType.PG_CANCELLED_OURS_UNSYNCED,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.PARTIAL_CANCELLED, cancellable = 10_000L, cancelledAmount = 1_000L),
+            group(OrderGroupStatus.PARTIALLY_CANCELLED),
+            pg(PaymentGatewayStatus.PARTIAL_CANCELLED, cancelled = 3_000L),
+        )
+
+    @Test
+    fun `PG 승인 건도 누적 취소액이 어긋나면 금액 불일치다`() =
+        assertVerdict(
+            MismatchType.AMOUNT_MISMATCH,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.APPROVED, cancellable = amount, cancelledAmount = 3_000L),
+            group(OrderGroupStatus.PAID),
+            pg(PaymentGatewayStatus.PAID),
+        )
+
+    @Test
+    fun `결제는 취소까지 갔는데 그룹이 결제대기면 우리 원장 불일치다`() =
+        assertVerdict(
+            // 환불 미반영(PG_CANCELLED_OURS_UNSYNCED)과 처방이 다르다 — 되돌릴 원장이 아니라 빠진 전이를 찾아야 한다
+            MismatchType.OURS_INCONSISTENT,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.CANCELLED, cancellable = 0L, cancelledAmount = amount),
+            group(OrderGroupStatus.PENDING_PAYMENT),
+            pg(PaymentGatewayStatus.CANCELLED, cancelled = amount),
+        )
+
+    @Test
+    fun `부분취소 그룹에 PG 전액취소가 붙으면 남은 주문이 취소 없이 환불된 것이라 사람 확인이다`() =
+        assertVerdict(
+            MismatchType.PG_CANCELLED_OURS_UNSYNCED,
+            ReconciliationResolution.MANUAL_REQUIRED,
+            payment(PaymentStatus.CANCELLED, cancellable = 0L, cancelledAmount = amount),
+            group(OrderGroupStatus.PARTIALLY_CANCELLED),
+            pg(PaymentGatewayStatus.CANCELLED, cancelled = amount),
         )
 }

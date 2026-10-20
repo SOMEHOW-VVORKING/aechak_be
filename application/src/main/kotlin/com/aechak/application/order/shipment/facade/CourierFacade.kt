@@ -12,4 +12,7 @@ class CourierFacade(
 ) : CourierUseCase {
     @Transactional(readOnly = true)
     override fun getCouriers(): List<CourierResult> = courierService.findActiveCouriers().map(CourierResult::from)
+
+    @Transactional(readOnly = true)
+    override fun verifyActiveCourier(courierCode: String) = courierService.verifyActiveCourier(courierCode)
 }

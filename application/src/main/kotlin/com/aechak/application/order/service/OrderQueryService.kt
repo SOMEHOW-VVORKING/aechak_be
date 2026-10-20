@@ -3,9 +3,11 @@ package com.aechak.application.order.service
 import com.aechak.application.order.port.OrderListCondition
 import com.aechak.application.order.port.OrderListQueryPort
 import com.aechak.application.order.port.OrderStatusFilter
+import com.aechak.application.order.port.view.OrderActiveClaimView
 import com.aechak.application.order.port.view.OrderDetailView
 import com.aechak.application.order.port.view.OrderGroupView
 import com.aechak.application.order.port.view.OrderLineView
+import com.aechak.application.order.port.view.OrderShipmentView
 import com.aechak.application.order.port.view.SellerOrderView
 import com.aechak.application.order.support.OrderCursorCodec
 import com.aechak.application.order.usecase.query.OrderListQuery
@@ -51,6 +53,10 @@ class OrderQueryService(
     ): OrderDetailView =
         orderListQueryPort.findOwnedDetail(orderPublicId, buyerId)
             ?: throw BusinessException(OrderErrorCode.ORDER_NOT_FOUND)
+
+    fun getLatestShipment(orderId: Long): OrderShipmentView? = orderListQueryPort.findLatestShipment(orderId)
+
+    fun getActiveClaim(orderId: Long): OrderActiveClaimView? = orderListQueryPort.findActiveClaim(orderId)
 
     private fun resolveCursor(
         raw: String,
