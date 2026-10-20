@@ -42,6 +42,10 @@ import com.aechak.application.product.product.usecase.result.SellerProductStatus
 import com.aechak.application.product.product.usecase.result.SellerProductSummaryResult
 import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.application.settlement.seller.usecase.SellerSettlementUseCase
+import com.aechak.application.settlement.seller.usecase.query.SellerSettlementSearchQuery
+import com.aechak.application.settlement.seller.usecase.result.SellerSettlementDetailResult
+import com.aechak.application.settlement.seller.usecase.result.SellerSettlementListItemResult
+import com.aechak.application.settlement.seller.usecase.result.SellerSettlementMonthsResult
 import com.aechak.application.settlement.seller.usecase.result.SellerSettlementSummaryResult
 import com.aechak.application.support.OffsetPageResult
 import com.aechak.common.error.BusinessException
@@ -208,6 +212,15 @@ class SellerDashboardFacadeTest {
             sellerIds += sellerId
             return SellerSettlementSummaryResult(totalAmount = 0L, pendingAmount = 0L, onHoldAmount = 0L)
         }
+
+        override fun searchSettlements(query: SellerSettlementSearchQuery): OffsetPageResult<SellerSettlementListItemResult> = unused()
+
+        override fun getSettlement(
+            orderPublicId: String,
+            sellerId: Long,
+        ): SellerSettlementDetailResult = unused()
+
+        override fun getSettlementMonths(sellerId: Long): SellerSettlementMonthsResult = unused()
     }
 
     private class RecordingProductUseCase : SellerProductUseCase {

@@ -7,6 +7,7 @@ import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.payment.port.PaymentReconciliationSourcePort
 import com.aechak.application.payment.reconciliation.usecase.PaymentReconciliationUseCase
+import com.aechak.application.settlement.seller.usecase.SellerSettlementUseCase
 import com.aechak.application.settlement.usecase.SettlementPayoutUseCase
 import com.aechak.application.settlement.usecase.SettlementUseCase
 import com.aechak.batch.order.ClaimAutoApproveSchedule
@@ -47,6 +48,15 @@ class BatchApplicationSmokeTest : BatchIntegrationTestBase() {
         // 스캔에서 application.settlement가 빠지면 자동확정 배치가 부팅에서 깨진다
         context.getBean(OrderUseCase::class.java)
         context.getBean(SettlementUseCase::class.java)
+    }
+
+    @Test
+    fun `셀러센터 전용 정산 조회는 배치에 조립되지 않는다`() {
+        // 구매확정 원장 생성 때문에 settlement BC를 스캔하는데, 셀러 조회 파사드는 셀러 자격(application.seller)을
+        // 요구한다 — 제외 필터가 지워지면 배치가 쓰지도 않는 의존 때문에 부팅에서 깨진다
+        val names = context.getBeanNamesForType(SellerSettlementUseCase::class.java)
+
+        assertTrue(names.isEmpty(), "셀러 전용 정산 조회가 배치에 조립됐다 (${names.joinToString()})")
     }
 
     @Test
