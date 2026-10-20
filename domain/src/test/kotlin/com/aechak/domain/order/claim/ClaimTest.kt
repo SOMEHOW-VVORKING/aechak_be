@@ -1,6 +1,7 @@
 package com.aechak.domain.order.claim
 
 import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.order.claim.enums.ClaimSettlementStatus
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
@@ -17,6 +18,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 /**
  * 계약 테스트. 깨지면 클레임의 셀러·주문 스냅샷이 실제 품목이 속한 주문과 갈린 것이다 —
@@ -119,6 +121,59 @@ class ClaimTest {
         val exception = assertFailsWith<BusinessException> { request(delivered, ClaimType.CANCEL) }
 
         assertEquals(OrderErrorCode.CLAIM_NOT_REQUESTABLE, exception.errorCode)
+    }
+
+    @Test
+    fun `환불 실패는 진행 상태와 환불 상태를 함께 움직이고 재집행이 둘을 함께 되돌린다`() {
+        // 셀러 클레임 목록의 상태 필터가 이 동행에 기댄다 — 한 축만 움직이면 "환불 실패" 판정이 어느 축으로 거느냐에 따라 갈린다.
+        val claim = request(order())
+        claim.approveBySeller(null)
+        claim.markRefundRequested()
+
+        claim.markRefundFailed()
+        assertEquals(ClaimStatus.REFUND_FAILED, claim.status)
+        assertEquals(RefundStatus.REFUND_FAILED, claim.refundStatus)
+
+        claim.retryRefund()
+        assertEquals(ClaimStatus.APPROVED, claim.status)
+        assertEquals(RefundStatus.NONE, claim.refundStatus)
+    }
+
+    @Test
+    fun `운영 메모는 앞뒤 공백을 떼고 저장되고 공백만 보내면 지워진다`() {
+        val claim = request(order())
+
+        claim.updateSellerMemo("  고객 요청으로 환불 처리  ")
+        assertEquals("고객 요청으로 환불 처리", claim.sellerMemo)
+
+        claim.updateSellerMemo("   ")
+        assertNull(claim.sellerMemo)
+
+        claim.updateSellerMemo("다시 남긴다")
+        claim.updateSellerMemo(null)
+        assertNull(claim.sellerMemo)
+    }
+
+    @Test
+    fun `운영 메모가 상한을 넘으면 저장하지 않고 터진다`() {
+        val claim = request(order())
+        claim.updateSellerMemo("남겨둘 메모")
+
+        val exception =
+            assertFailsWith<BusinessException> { claim.updateSellerMemo("가".repeat(Claim.SELLER_MEMO_MAX_LENGTH + 1)) }
+
+        assertEquals(CommonErrorCode.INVALID_REQUEST, exception.errorCode)
+        assertEquals("남겨둘 메모", claim.sellerMemo, "실패한 쓰기가 기존 메모를 지우면 안 된다")
+    }
+
+    @Test
+    fun `종결된 클레임에도 운영 메모를 남길 수 있다`() {
+        val claim = request(order())
+        claim.rejectBySeller("상품 하자가 확인되지 않습니다")
+
+        claim.updateSellerMemo("거부 사유 고객 안내 완료")
+
+        assertEquals("거부 사유 고객 안내 완료", claim.sellerMemo)
     }
 
     private fun request(

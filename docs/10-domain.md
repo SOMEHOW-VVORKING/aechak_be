@@ -129,6 +129,10 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
 `EXCHANGE_REQUESTED → ORDERED`가 열려 있는 이유다. 되돌리지 않으면 클레임 상태는 품목을 풀어줬는데(`RELEASED`)
 품목 상태가 그대로라 같은 품목에 다시 반품을 걸 수 없다.
 
+**셀러 운영 메모는 상태 기계 밖이다** — `updateSellerMemo`는 전이 규칙을 거치지 않아 종결된 클레임에도 쓸 수 있다.
+구매자에게 그대로 노출되는 `rejectionReason`이나 운영자 개입 사유 `adminReason`과 달리 셀러 내부 기록이라
+상태로 봉인할 근거가 없다. 대신 상한(500자)만 도메인이 지킨다.
+
 **주문그룹의 취소 전이 기준은 남은 취소가능액이다** — `applyClaimCancellation`은 환불 반영 후 취소가능액이 0이면
 전액취소로, 남으면 부분취소로 간다. PG가 전액취소·부분취소를 가르는 기준과 같아야 대사가 그 그룹을 불일치로 보지 않는다.
 주문 자체의 취소는 기준이 다르다 — 그 주문의 모든 품목이 더 이상 이행 대상이 아닐 때만(`OrderItemStatus.RESOLVED` —
