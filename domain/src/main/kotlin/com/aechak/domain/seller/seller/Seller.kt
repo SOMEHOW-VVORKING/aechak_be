@@ -1,5 +1,7 @@
 package com.aechak.domain.seller.seller
 
+import com.aechak.common.error.BusinessException
+import com.aechak.domain.seller.error.SellerErrorCode
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import com.aechak.domain.seller.seller.enums.TelesalesNoticeStatus
 import com.aechak.domain.support.AggregateRoot
@@ -79,6 +81,49 @@ class Seller protected constructor(
     var freeShippingThreshold: Long? = null
         protected set
 
+    /** 셀러가 기본으로 쓰는 택배사 코드(courier_masters). 미설정이면 null. */
+    @Column(length = 30)
+    var defaultCourierCode: String? = null
+        protected set
+
+    /** true면 반품지 3필드를 쓰지 않고 출고지(zipCode/roadAddress/detailAddress)를 반품지로 본다. */
+    @Column(nullable = false)
+    var returnSameAsOrigin: Boolean = true
+        protected set
+
+    @Column(length = 10)
+    var returnZipCode: String? = null
+        protected set
+
+    @Column(length = 255)
+    var returnRoadAddress: String? = null
+        protected set
+
+    @Column(length = 255)
+    var returnDetailAddress: String? = null
+        protected set
+
+    @Column(nullable = false)
+    var jejuExtraFee: Long = 0
+        protected set
+
+    @Column(nullable = false)
+    var remoteAreaExtraFee: Long = 0
+        protected set
+
+    @Column(nullable = false)
+    var returnFee: Long = 0
+        protected set
+
+    @Column(nullable = false)
+    var exchangeFee: Long = 0
+        protected set
+
+    /** 발송까지 걸리는 평균 영업일. 허용 범위는 MIN_DISPATCH_DAYS..MAX_DISPATCH_DAYS. */
+    @Column(nullable = false)
+    var avgDispatchDays: Int = DEFAULT_DISPATCH_DAYS
+        protected set
+
     /** 저장소 원자 UPDATE로만 증가 — 엔티티 증가 금지(동시성). */
     @Column(nullable = false)
     var confirmedOrderCount: Int = 0
@@ -96,9 +141,164 @@ class Seller protected constructor(
     var version: Long = 0
         protected set
 
+    /**
+     * 스토어 설정 전체 덮어쓰기. 주소 3필드는 배송 정책의 출고지와 같은 컬럼이라 두 화면이 같은 값을 본다.
+     * 이미지 키는 승격이 끝난 저장 키만 들어온다(승격은 트랜잭션 밖 호출부 책임).
+     * 상호는 앞뒤 공백을 떼고 저장하며, 떼고 나면 비는 값은 거절한다.
+     */
+    fun updateStore(
+        storeName: String,
+        brandIntro: String?,
+        profileImageKey: String?,
+        bannerImageKey: String?,
+        zipCode: String?,
+        roadAddress: String?,
+        detailAddress: String?,
+    ) {
+        val normalizedStoreName = storeName.trim()
+        validateStoreName(normalizedStoreName)
+
+        this.storeName = normalizedStoreName
+        this.brandIntro = brandIntro
+        this.profileImageKey = profileImageKey
+        this.bannerImageKey = bannerImageKey
+        this.zipCode = zipCode
+        this.roadAddress = roadAddress
+        this.detailAddress = detailAddress
+    }
+
+    /**
+     * 배송 정책 전체 덮어쓰기. 반품지가 출고지와 같으면 반품지 3필드는 저장하지 않는다.
+     * 기본 배송비·무료배송 임계는 구매자 금액 계산이 읽는 값이라 의미를 그대로 둔 채 값만 바꾼다.
+     */
+    fun updateShippingPolicy(
+        defaultCourierCode: String?,
+        baseShippingFee: Long,
+        freeShippingThreshold: Long?,
+        originZipCode: String?,
+        originRoadAddress: String?,
+        originDetailAddress: String?,
+        returnSameAsOrigin: Boolean,
+        returnZipCode: String?,
+        returnRoadAddress: String?,
+        returnDetailAddress: String?,
+        jejuExtraFee: Long,
+        remoteAreaExtraFee: Long,
+        returnFee: Long,
+        exchangeFee: Long,
+        avgDispatchDays: Int,
+        shippingPolicyText: String?,
+    ) {
+        validateShippingPolicy(
+            baseShippingFee = baseShippingFee,
+            freeShippingThreshold = freeShippingThreshold,
+            jejuExtraFee = jejuExtraFee,
+            remoteAreaExtraFee = remoteAreaExtraFee,
+            returnFee = returnFee,
+            exchangeFee = exchangeFee,
+            avgDispatchDays = avgDispatchDays,
+        )
+
+        this.defaultCourierCode = defaultCourierCode
+        this.baseShippingFee = baseShippingFee
+        this.freeShippingThreshold = freeShippingThreshold
+        this.zipCode = originZipCode
+        this.roadAddress = originRoadAddress
+        this.detailAddress = originDetailAddress
+        this.returnSameAsOrigin = returnSameAsOrigin
+        this.returnZipCode = if (returnSameAsOrigin) null else returnZipCode
+        this.returnRoadAddress = if (returnSameAsOrigin) null else returnRoadAddress
+        this.returnDetailAddress = if (returnSameAsOrigin) null else returnDetailAddress
+        this.jejuExtraFee = jejuExtraFee
+        this.remoteAreaExtraFee = remoteAreaExtraFee
+        this.returnFee = returnFee
+        this.exchangeFee = exchangeFee
+        this.avgDispatchDays = avgDispatchDays
+        this.shippingPolicyText = shippingPolicyText
+    }
+
+    /** 상호는 구매자에게 보이는 이름이라 빈 값·컬럼 초과를 엔티티가 막는다. */
+    private fun validateStoreName(storeName: String) {
+        if (storeName.isEmpty()) {
+            throw BusinessException(SellerErrorCode.INVALID_STORE_SETTINGS, detail = "상호(스토어명)는 필수입니다.")
+        }
+        if (storeName.length > MAX_STORE_NAME_LENGTH) {
+            throw BusinessException(
+                SellerErrorCode.INVALID_STORE_SETTINGS,
+                detail = "상호(스토어명)는 ${MAX_STORE_NAME_LENGTH}자 이하여야 합니다.",
+            )
+        }
+    }
+
+    private fun validateShippingPolicy(
+        baseShippingFee: Long,
+        freeShippingThreshold: Long?,
+        jejuExtraFee: Long,
+        remoteAreaExtraFee: Long,
+        returnFee: Long,
+        exchangeFee: Long,
+        avgDispatchDays: Int,
+    ) {
+        val fees = listOf(baseShippingFee, jejuExtraFee, remoteAreaExtraFee, returnFee, exchangeFee)
+        if (fees.any { it < 0 }) {
+            throw BusinessException(SellerErrorCode.INVALID_SHIPPING_POLICY, detail = "배송 관련 금액은 0원 이상이어야 합니다.")
+        }
+        // 상한이 없으면 셀러별 배송비를 합산하는 주문 금액 계산이 Long 범위를 넘겨 작은 금액으로 되돌아간다
+        if (fees.any { it > MAX_SHIPPING_FEE }) {
+            throw BusinessException(
+                SellerErrorCode.INVALID_SHIPPING_POLICY,
+                detail = "배송 관련 금액은 ${MAX_SHIPPING_FEE}원 이하여야 합니다.",
+            )
+        }
+        if (freeShippingThreshold != null && freeShippingThreshold < 0) {
+            throw BusinessException(SellerErrorCode.INVALID_SHIPPING_POLICY, detail = "무료배송 기준 금액은 0원 이상이어야 합니다.")
+        }
+        if (freeShippingThreshold != null && freeShippingThreshold > MAX_FREE_SHIPPING_THRESHOLD) {
+            throw BusinessException(
+                SellerErrorCode.INVALID_SHIPPING_POLICY,
+                detail = "무료배송 기준 금액은 ${MAX_FREE_SHIPPING_THRESHOLD}원 이하여야 합니다.",
+            )
+        }
+        // 임계가 기본 배송비보다 낮으면 "임계를 넘겨도 배송비가 더 비싼" 자기모순이 된다
+        if (freeShippingThreshold != null && freeShippingThreshold < baseShippingFee) {
+            throw BusinessException(
+                SellerErrorCode.INVALID_SHIPPING_POLICY,
+                detail = "무료배송 기준 금액은 기본 배송비보다 낮을 수 없습니다.",
+            )
+        }
+        if (avgDispatchDays !in MIN_DISPATCH_DAYS..MAX_DISPATCH_DAYS) {
+            throw BusinessException(
+                SellerErrorCode.INVALID_SHIPPING_POLICY,
+                detail = "평균 발송 소요일은 ${MIN_DISPATCH_DAYS}일 이상 ${MAX_DISPATCH_DAYS}일 이하여야 합니다.",
+            )
+        }
+    }
+
     companion object {
         /** MySQL 중복 키 메시지의 PK 식별자 — 같은 신청 동시 승인의 개점 INSERT 충돌 판별용. */
         const val PK_CONFLICT_MARKER = "sellers.PRIMARY"
+
+        /** store_name 컬럼 길이. 요청 DTO의 상한이 이 상수를 참조한다. */
+        const val MAX_STORE_NAME_LENGTH = 100
+
+        /** brand_intro 컬럼 길이. */
+        const val MAX_BRAND_INTRO_LENGTH = 1000
+
+        /** profile_image_key·banner_image_key 컬럼 길이. */
+        const val MAX_IMAGE_KEY_LENGTH = 1024
+
+        /** shipping_policy_text가 TEXT 컬럼이라 바이트 한도를 넘지 않게 글자 수로 먼저 막는다. */
+        const val MAX_SHIPPING_POLICY_TEXT_LENGTH = 2000
+
+        /** 기본 배송비·지역 추가비·반품비·교환비의 상한. */
+        const val MAX_SHIPPING_FEE = 1_000_000L
+
+        /** 무료배송 기준 금액의 상한. */
+        const val MAX_FREE_SHIPPING_THRESHOLD = 100_000_000L
+
+        const val MIN_DISPATCH_DAYS = 1
+        const val MAX_DISPATCH_DAYS = 7
+        const val DEFAULT_DISPATCH_DAYS = 2
 
         fun open(
             userId: Long,

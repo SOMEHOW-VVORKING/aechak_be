@@ -1,8 +1,12 @@
 package com.aechak.application.payment.facade
 
 import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.AutoConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
+import com.aechak.application.order.usecase.command.MarkConfirmNotifiedCommand
+import com.aechak.application.order.usecase.query.AutoConfirmScanQuery
+import com.aechak.application.order.usecase.query.ConfirmNotifyScanQuery
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
 import com.aechak.application.order.usecase.result.OrderItemForReviewResult
@@ -22,6 +26,7 @@ import com.aechak.application.payment.usecase.result.CancelPaymentStatus
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
+import com.aechak.domain.order.group.enums.OrderGroupStatus
 import com.aechak.domain.order.group.repository.OrderGroupRepository
 import com.aechak.domain.payment.Payment
 import com.aechak.domain.payment.enums.PaymentMethod
@@ -217,6 +222,21 @@ private class FakeOrderGroupRepository : OrderGroupRepository {
     override fun findById(id: Long): OrderGroup? = byPublicId.values.find { it.id == id }
 
     override fun markPaidIfPending(id: Long): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
+
+    override fun transitionStatusIf(
+        id: Long,
+        expected: OrderGroupStatus,
+        next: OrderGroupStatus,
+    ): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
+
+    override fun cancelIfPending(id: Long): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
+
+    override fun findExpiredPending(
+        now: LocalDateTime,
+        afterExpiresAt: LocalDateTime?,
+        afterId: Long?,
+        limit: Int,
+    ): List<OrderGroup> = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
 }
 
 /** 결제 준비 흐름은 주문 전이를 부르지 않는다 — 호출되면 테스트 전제가 깨진 것 */
@@ -231,6 +251,14 @@ private class UnusedOrderUseCase : OrderUseCase {
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = throw UnsupportedOperationException()
 
     override fun confirmPurchase(command: ConfirmPurchaseCommand) = throw UnsupportedOperationException()
+
+    override fun findAutoConfirmTargetIds(query: AutoConfirmScanQuery): List<Long> = throw UnsupportedOperationException()
+
+    override fun autoConfirmPurchase(command: AutoConfirmPurchaseCommand) = throw UnsupportedOperationException()
+
+    override fun findConfirmNotifyTargetIds(query: ConfirmNotifyScanQuery): List<Long> = throw UnsupportedOperationException()
+
+    override fun markConfirmNotified(command: MarkConfirmNotifiedCommand): Boolean = throw UnsupportedOperationException()
 
     override fun clearOrderedCartItems(
         buyerId: Long,

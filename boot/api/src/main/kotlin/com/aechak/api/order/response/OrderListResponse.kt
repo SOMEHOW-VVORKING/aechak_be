@@ -69,6 +69,8 @@ data class SellerOrderItemResponse(
 }
 
 data class OrderLineItemResponse(
+    val orderItemId: Long,
+    val productId: String,
     val productName: String,
     val thumbnailUrl: String?,
     val optionName: String,
@@ -79,6 +81,8 @@ data class OrderLineItemResponse(
     companion object {
         fun from(result: OrderLineItemResult): OrderLineItemResponse =
             OrderLineItemResponse(
+                orderItemId = result.orderItemId,
+                productId = result.productId,
                 productName = result.productName,
                 thumbnailUrl = result.thumbnailUrl,
                 optionName = result.optionName,

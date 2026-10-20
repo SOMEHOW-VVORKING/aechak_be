@@ -19,7 +19,7 @@ data class OffsetPageResult<T>(
     val totalPages: Int
         get() = (totalCount / size + if (totalCount % size == 0L) 0L else 1L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
 
-    // Int로 더하면 page가 Int 최댓값일 때 넘쳐 음수가 되고, 마지막 페이지에서 hasNext가 true로 뒤집힌다.
+    // Long 덧셈 — Int.MAX_VALUE page 요청에서 page + 1이 음수로 넘쳐 마지막 페이지가 hasNext=true로 뒤집힌다
     val hasNext: Boolean get() = page.toLong() + 1 < totalPages.toLong()
 
     fun <R> map(transform: (T) -> R): OffsetPageResult<R> =

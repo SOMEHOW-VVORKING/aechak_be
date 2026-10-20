@@ -41,6 +41,13 @@ class OffsetPageResultTest {
     }
 
     @Test
+    fun `마지막 페이지를 넘어선 요청은 hasNext가 false다`() {
+        assertFalse(page(totalCount = 41, current = 3).hasNext)
+        assertFalse(page(totalCount = 41, current = Int.MAX_VALUE).hasNext, "page + 1이 음수로 넘치면 hasNext가 뒤집힌다")
+        assertFalse(page(totalCount = 0, current = Int.MAX_VALUE).hasNext)
+    }
+
+    @Test
     fun `map은 페이지 정보를 유지한 채 항목만 변환한다`() {
         val mapped = OffsetPageResult(items = listOf(1, 2), totalCount = 41, page = 1, size = 20).map { it.toString() }
         assertEquals(listOf("1", "2"), mapped.items)

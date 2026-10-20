@@ -56,6 +56,39 @@ payment:
     enabled: ${TOSS_RECONCILIATION_ENABLED:false} # 토스 직접 연동(orderId == 우리 결제 식별자)을 확인한 환경만 켠다
     secret-key: ${TOSS_SECRET_KEY:}
 
+order:
+  auto-confirm:
+    days: 5    # 배송완료부터 구매확정 기한까지 — 셀러 수동 전이와 배치 자동 전이가 같은 값을 쓴다
+    # 자동확정은 되돌릴 수 없고 반품 기한·정산의 기산점이라 기본은 꺼 둔다. 환경변수로 환경별로 켠다
+    enabled: ${ORDER_AUTO_CONFIRM_ENABLED:false}
+    cron: "0 0 2 * * *"      # KST 02:00 — 배송완료 집계가 끝난 뒤, 대사(04:30)보다 앞
+    notify-lead-days: 1      # 기한 D-1 구간의 주문에 사전 안내 기록을 남긴다
+    scan-size: 200           # 한 회차 안에서 커서로 끊어 읽는 건수
+  delivery:
+    # 배치 모듈이 dev에 배포되기 전까지는 꺼 둔다 — 켜면 시간만 보고 주문을 배송완료로 넘긴다
+    enabled: ${ORDER_DELIVERY_BATCH_ENABLED:false}
+    cron: "0 0 3 * * *"       # KST 03:00 — 대사(04:30)와 겹치지 않게 앞에 둔다
+    dispatch-delay-days: 1    # 송장 등록 후 1일이 지나도 배송완료가 아니면 집화 지연으로 경고
+    auto-complete-days: 4     # 송장 등록 후 4일이 지나면 배송완료로 자동 전이
+    scan-limit: 200
+  claim:
+    refund:
+      # 기본값 false — 실제로 PG 환불이 나가는 경로다. dev 상점이 테스트 상점인지 확인한 뒤 켠다
+      enabled: ${ORDER_CLAIM_REFUND_ENABLED:false}
+      cron: "0 * * * * *"   # 매분 — 승인과 환불 사이의 "승인됐는데 돈은 안 나갔다" 구간을 짧게 둔다
+      page-size: 50         # 한 회차 처리 건수. 집행된 건은 스캔 조건에서 빠지므로 커서가 필요 없다
+    auto-approve:
+      # 기본값 false. 켜도 refund.enabled가 false면 스케줄이 조립되지 않는다 — 자동승인은 환불 집행까지 간다
+      enabled: ${ORDER_CLAIM_AUTO_APPROVE_ENABLED:false}
+      cron: "0 10 * * * *" # 매시 10분 — 응답 기한이 일 단위라 분 단위로 볼 이유가 없다
+      page-size: 50        # 한 회차 처리 건수. 승인된 건은 스캔 조건에서 빠지므로 커서가 필요 없다
+  expiry:
+    # 기본값 false — 환불 집행이 붙기 전까지는 승인과 경합에서 취소가 이긴 건을 되돌릴 경로가 없다
+    enabled: ${ORDER_EXPIRY_ENABLED:false}
+    cron: "0 * * * * *"   # 매분 — 주문서 TTL이 10분이라 분 단위로 충분하다
+    page-size: 100        # 스캔 한 페이지 건수
+    max-pages: 10         # 한 회차 페이지 상한. 남은 적체는 다음 회차가 이어 받는다
+
 # PII 암호화 키 — api와 동일 키(같은 데이터를 복호). dev·prod는 SSM, local·test는 프로파일 파일의 고정 키가 덮는다.
 aechak:
   pii:
