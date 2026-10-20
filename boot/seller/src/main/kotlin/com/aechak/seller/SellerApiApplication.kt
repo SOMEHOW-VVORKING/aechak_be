@@ -35,6 +35,9 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.application.order.claim", // 클레임 승인·거부 — 구매자 요청 계약과 파사드를 공유한다. 환불 집행은 아래 제외 필터로 뺀다
         "com.aechak.application.order.delivery", // 배송완료 전이 — 셀러 수동 처리와 배치 자동 전이가 공유하는 묶음
         "com.aechak.application.order.shipment", // 택배사 마스터 조회 — order BC 중 이 하위만 쓴다
+        // 정산은 셀러가 조회하는 하위만 — 원장 생성·계좌 등록(application.settlement 상위)은 구매확정·심사 승인 경로의 것이다
+        "com.aechak.application.settlement.seller",
+        "com.aechak.application.dashboard", // 셀러센터 첫 화면 집계 — 위 네 BC 진입점을 모아 조립한다
         "com.aechak.infra.persistence", // JPA 어댑터 (QuerydslConfig 포함)
         "com.aechak.infra.s3", // FileStorage 어댑터
         "com.aechak.infra.redis", // 인증 코드 저장소
