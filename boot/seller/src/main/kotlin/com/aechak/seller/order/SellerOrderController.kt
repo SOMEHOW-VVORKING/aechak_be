@@ -2,6 +2,7 @@ package com.aechak.seller.order
 
 import com.aechak.application.order.seller.usecase.SellerOrderUseCase
 import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
+import com.aechak.application.order.seller.usecase.command.CompleteDeliveryCommand
 import com.aechak.seller.order.request.SellerOrderSearchRequest
 import com.aechak.seller.order.request.ShipmentRegisterRequest
 import com.aechak.seller.order.response.SellerOrderDetailResponse
@@ -38,6 +39,29 @@ class SellerOrderController(
         return ResponseEntity.noContent().build()
     }
 
+    /** 배송완료 — 배송중 주문을 배송완료로 전이하고 구매확정 기한을 부여한다. */
+    @PostMapping("/{orderPublicId}/delivery-complete")
+    fun completeDelivery(
+        @PathVariable orderPublicId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<Void> {
+        sellerOrderUseCase.completeDelivery(
+            CompleteDeliveryCommand(sellerId = principal.userId, orderPublicId = orderPublicId),
+        )
+        return ResponseEntity.noContent().build()
+    }
+
+    /** 송장 등록 — 발송을 확정하고 주문을 배송중으로 전이한다. */
+    @PostMapping("/{orderPublicId}/shipment")
+    fun registerShipment(
+        @PathVariable orderPublicId: String,
+        @Valid @RequestBody request: ShipmentRegisterRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<ShipmentRegisterResponse>> {
+        val result = sellerOrderUseCase.registerShipment(request.toCommand(principal.userId, orderPublicId))
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.of(ShipmentRegisterResponse.from(result)))
+    }
+
     /** 내 주문 목록 — 상태 세그먼트·키워드·주문일 범위 필터와 오프셋 페이지네이션 */
     @GetMapping
     fun getMyOrders(
@@ -57,15 +81,4 @@ class SellerOrderController(
         ResponseEntity.ok(
             ApiResponse.of(SellerOrderDetailResponse.from(sellerOrderUseCase.getMyOrderDetail(principal.userId, orderPublicId))),
         )
-
-    /** 송장 등록 — 발송을 확정하고 주문을 배송중으로 전이한다. */
-    @PostMapping("/{orderPublicId}/shipment")
-    fun registerShipment(
-        @PathVariable orderPublicId: String,
-        @Valid @RequestBody request: ShipmentRegisterRequest,
-        @AuthenticationPrincipal principal: AuthPrincipal,
-    ): ResponseEntity<ApiResponse<ShipmentRegisterResponse>> {
-        val result = sellerOrderUseCase.registerShipment(request.toCommand(principal.userId, orderPublicId))
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.of(ShipmentRegisterResponse.from(result)))
-    }
 }

@@ -1,8 +1,12 @@
 package com.aechak.application.payment.facade
 
 import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.AutoConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
+import com.aechak.application.order.usecase.command.MarkConfirmNotifiedCommand
+import com.aechak.application.order.usecase.query.AutoConfirmScanQuery
+import com.aechak.application.order.usecase.query.ConfirmNotifyScanQuery
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
 import com.aechak.application.order.usecase.result.OrderItemForReviewResult
@@ -247,6 +251,14 @@ private class UnusedOrderUseCase : OrderUseCase {
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = throw UnsupportedOperationException()
 
     override fun confirmPurchase(command: ConfirmPurchaseCommand) = throw UnsupportedOperationException()
+
+    override fun findAutoConfirmTargetIds(query: AutoConfirmScanQuery): List<Long> = throw UnsupportedOperationException()
+
+    override fun autoConfirmPurchase(command: AutoConfirmPurchaseCommand) = throw UnsupportedOperationException()
+
+    override fun findConfirmNotifyTargetIds(query: ConfirmNotifyScanQuery): List<Long> = throw UnsupportedOperationException()
+
+    override fun markConfirmNotified(command: MarkConfirmNotifiedCommand): Boolean = throw UnsupportedOperationException()
 
     override fun clearOrderedCartItems(
         buyerId: Long,

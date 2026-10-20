@@ -14,7 +14,9 @@ import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.group.enums.OrderGroupStatus
 import com.aechak.domain.order.group.repository.OrderGroupRepository
 import com.aechak.domain.order.order.Order
+import com.aechak.domain.order.order.OrderItem
 import com.aechak.domain.order.order.OrderStatusHistory
+import com.aechak.domain.order.order.enums.OrderItemStatus
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
@@ -74,20 +76,26 @@ class OrderExpiryService(
         val cancelled = cancelOrders(orderGroupId)
         return ExpireOrderGroupResult(
             status = ExpireOrderGroupStatus.EXPIRED,
-            cancelledOrders = cancelled.size,
-            skippedStockItems = restoreStock(group, cancelled),
+            cancelledOrders = cancelled.orders.size,
+            skippedStockItems = restoreStock(group, cancelled.items),
             releasedPoint = releasePoint(group),
         )
     }
 
-    /** 하위 셀러 주문을 취소로 바꾸고 전이 이력을 같은 트랜잭션에 남긴다 */
-    private fun cancelOrders(orderGroupId: Long): List<Order> {
+    /** 하위 셀러 주문과 그 품목을 취소로 바꾸고 전이 이력을 같은 트랜잭션에 남긴다 */
+    private fun cancelOrders(orderGroupId: Long): CancelledOrders {
         val targets =
             orderRepository
                 .findAllByOrderGroupId(orderGroupId)
                 .filter { it.status == OrderStatus.PENDING_PAYMENT }
+        val items = mutableListOf<OrderItem>()
         targets.forEach { order ->
             order.cancelUnpaid()
+            // 주문됨 상태인 품목만 내린다
+            order.items.filter { it.itemStatus == OrderItemStatus.ORDERED }.forEach {
+                it.markCancelled()
+                items += it
+            }
             orderStatusHistoryRepository.save(
                 OrderStatusHistory.record(
                     order = order,
@@ -97,7 +105,7 @@ class OrderExpiryService(
                 ),
             )
         }
-        return targets
+        return CancelledOrders(targets, items)
     }
 
     /**
@@ -109,11 +117,10 @@ class OrderExpiryService(
      */
     private fun restoreStock(
         group: OrderGroup,
-        cancelled: List<Order>,
+        cancelledItems: List<OrderItem>,
     ): Int {
         val quantities =
-            cancelled
-                .flatMap { it.items }
+            cancelledItems
                 .groupBy { it.optionCombinationId }
                 .mapValues { (_, items) -> items.sumOf { it.quantity } }
         val retryable = mutableListOf<String>()
@@ -161,4 +168,9 @@ class OrderExpiryService(
         )
         return group.usedPoint
     }
+
+    private class CancelledOrders(
+        val orders: List<Order>,
+        val items: List<OrderItem>,
+    )
 }

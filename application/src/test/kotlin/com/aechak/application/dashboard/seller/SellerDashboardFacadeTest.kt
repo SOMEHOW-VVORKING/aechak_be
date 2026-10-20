@@ -5,15 +5,20 @@ import com.aechak.application.dashboard.seller.usecase.query.DashboardPeriod
 import com.aechak.application.dashboard.seller.usecase.query.SellerDashboardSummaryQuery
 import com.aechak.application.order.claim.usecase.SellerClaimUseCase
 import com.aechak.application.order.claim.usecase.command.ApproveClaimCommand
+import com.aechak.application.order.claim.usecase.command.CompleteClaimCollectionCommand
 import com.aechak.application.order.claim.usecase.command.RejectClaimCommand
+import com.aechak.application.order.claim.usecase.command.ReshipClaimCommand
+import com.aechak.application.order.claim.usecase.command.StartClaimCollectionCommand
 import com.aechak.application.order.claim.usecase.command.UpdateClaimMemoCommand
 import com.aechak.application.order.claim.usecase.query.SellerClaimMetricsQuery
 import com.aechak.application.order.claim.usecase.query.SellerClaimSearchQuery
+import com.aechak.application.order.claim.usecase.result.ReshipClaimResult
 import com.aechak.application.order.claim.usecase.result.SellerClaimDetailResult
 import com.aechak.application.order.claim.usecase.result.SellerClaimMetricsResult
 import com.aechak.application.order.claim.usecase.result.SellerClaimPageResult
 import com.aechak.application.order.seller.usecase.SellerOrderUseCase
 import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
+import com.aechak.application.order.seller.usecase.command.CompleteDeliveryCommand
 import com.aechak.application.order.seller.usecase.command.RegisterShipmentCommand
 import com.aechak.application.order.seller.usecase.query.SellerOrderMetricsQuery
 import com.aechak.application.order.seller.usecase.query.SellerOrderSearchQuery
@@ -164,6 +169,8 @@ class SellerDashboardFacadeTest {
         ): SellerOrderDetailResult = unused()
 
         override fun registerShipment(command: RegisterShipmentCommand): RegisterShipmentResult = unused()
+
+        override fun completeDelivery(command: CompleteDeliveryCommand) = unused()
     }
 
     private class RecordingClaimUseCase : SellerClaimUseCase {
@@ -186,6 +193,12 @@ class SellerDashboardFacadeTest {
         ): SellerClaimDetailResult = unused()
 
         override fun updateSellerMemo(command: UpdateClaimMemoCommand) = unused()
+
+        override fun startCollection(command: StartClaimCollectionCommand) = unused()
+
+        override fun completeCollection(command: CompleteClaimCollectionCommand) = unused()
+
+        override fun reship(command: ReshipClaimCommand): ReshipClaimResult = unused()
     }
 
     private class RecordingSettlementUseCase : SellerSettlementUseCase {

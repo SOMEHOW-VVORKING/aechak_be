@@ -108,6 +108,25 @@ class SellerClaimQueryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `구매자가 적어 보낸 사유 코드와 상세가 목록과 상세 양쪽에 내려온다`() {
+        // 셀러는 이 사유를 읽고 반품비를 누가 부담할지 정한다. 응답 조립이 위치 인자 프로젝션이라
+        // 필드 순서가 뒤틀리면 조용히 다른 값이 실리므로, 두 필드를 여기서 못박는다.
+        val seeded = seedClaim()
+
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.claims[0].reasonCode").value("CHANGE_OF_MIND"))
+            .andExpect(jsonPath("$.data.claims[0].reasonDetail").value("사이즈를 잘못 골랐어요"))
+
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims/${seeded.claimPublicId}").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.claim.reasonCode").value("CHANGE_OF_MIND"))
+            .andExpect(jsonPath("$.data.claim.reasonDetail").value("사이즈를 잘못 골랐어요"))
+    }
+
+    @Test
     fun `상태와 환불 상태 필터는 축별로 걸린다`() {
         seedClaim()
         val approved = seedClaim().also { approve(it) }

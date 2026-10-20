@@ -8,6 +8,7 @@ import com.aechak.application.order.seller.service.SellerOrderMetricsService
 import com.aechak.application.order.seller.service.SellerOrderService
 import com.aechak.application.order.seller.usecase.SellerOrderUseCase
 import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
+import com.aechak.application.order.seller.usecase.command.CompleteDeliveryCommand
 import com.aechak.application.order.seller.usecase.command.RegisterShipmentCommand
 import com.aechak.application.order.seller.usecase.query.SellerOrderMetricsQuery
 import com.aechak.application.order.seller.usecase.query.SellerOrderSearchQuery
@@ -37,6 +38,18 @@ class SellerOrderFacade(
     override fun acceptOrder(command: AcceptOrderCommand) {
         requireActiveSeller(command.sellerId)
         sellerOrderService.acceptOrder(command)
+    }
+
+    @Transactional
+    override fun registerShipment(command: RegisterShipmentCommand): RegisterShipmentResult {
+        requireActiveSeller(command.sellerId)
+        return sellerOrderService.registerShipment(command)
+    }
+
+    @Transactional
+    override fun completeDelivery(command: CompleteDeliveryCommand) {
+        requireActiveSeller(command.sellerId)
+        sellerOrderService.completeDelivery(command)
     }
 
     @Transactional(readOnly = true)
@@ -71,12 +84,6 @@ class SellerOrderFacade(
             nicknames = userUseCase.getAuthors(orders.map { it.buyerId }).mapValues { it.value.nickname },
             decryptPii = sellerOrderService::decryptPii,
         )
-
-    @Transactional
-    override fun registerShipment(command: RegisterShipmentCommand): RegisterShipmentResult {
-        requireActiveSeller(command.sellerId)
-        return sellerOrderService.registerShipment(command)
-    }
 
     /** 자격 게이트 없음 — 계약 KDoc대로 호출자(대시보드 조립)가 이미 통과시킨 sellerId만 들어온다. */
     @Transactional(readOnly = true)

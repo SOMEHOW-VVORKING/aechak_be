@@ -107,6 +107,8 @@ inquiry:
 order:
   claim:
     auto-approve-days: 2
+  auto-confirm:
+    days: 5    # 배송완료부터 구매확정 기한까지 — 셀러 수동 전이와 배치 자동 전이가 같은 값을 쓴다
 
 auth:
   token:

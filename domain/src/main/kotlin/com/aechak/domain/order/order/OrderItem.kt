@@ -57,7 +57,7 @@ class OrderItem protected constructor(
     /** 할인 안분액을 뺀 이 품목의 상품금액 — 구매확정 적립과 정산 원장이 같은 값을 기준으로 삼는다. */
     fun productAmountAfterDiscount(): Long = Math.multiplyExact(unitPriceSnapshot, quantity.toLong()) - discountAllocatedAmount
 
-    /** 클레임 환불 집행에 따른 품목 취소. */
+    /** 주문 취소 또는 클레임 환불 집행에 따른 품목 취소. */
     fun markCancelled() {
         transitionTo(OrderItemStatus.CANCELLED)
     }
@@ -75,6 +75,11 @@ class OrderItem protected constructor(
     /** 교환 요청 접수. */
     fun markExchangeRequested() {
         transitionTo(OrderItemStatus.EXCHANGE_REQUESTED)
+    }
+
+    /** 거부·철회된 반품·교환 요청의 되돌림. */
+    fun revertClaimRequest() {
+        transitionTo(OrderItemStatus.ORDERED)
     }
 
     private fun transitionTo(next: OrderItemStatus) {

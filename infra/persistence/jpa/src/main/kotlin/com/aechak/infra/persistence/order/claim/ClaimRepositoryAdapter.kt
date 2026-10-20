@@ -16,6 +16,12 @@ import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
 interface ClaimJpaRepository : JpaRepository<Claim, Long> {
+    @Query("select count(c) > 0 from Claim c where c.orderId = :orderId and c.status in :statuses")
+    fun existsByOrderIdAndStatusIn(
+        @Param("orderId") orderId: Long,
+        @Param("statuses") statuses: Collection<ClaimStatus>,
+    ): Boolean
+
     // 품목과 주문품목까지 함께 끌어온다 — 목록 응답이 품목마다 추가 질의를 내지 않게.
     @Query(
         "select distinct c from Claim c " +
@@ -61,34 +67,30 @@ interface ClaimJpaRepository : JpaRepository<Claim, Long> {
     // 상태 선두 인덱스(status, auto_approve_due_at)의 접두를 타고 승인 건만 훑는다
     @Query(
         "select c from Claim c " +
-            "where c.status = :status and c.refundStatus = :refundStatus and c.claimType = :claimType " +
+            "where c.status = :status and c.refundStatus = :refundStatus and c.claimType in :claimTypes " +
             "order by c.id asc",
     )
     fun findRefundPending(
         @Param("status") status: ClaimStatus,
         @Param("refundStatus") refundStatus: RefundStatus,
-        @Param("claimType") claimType: ClaimType,
+        @Param("claimTypes") claimTypes: Collection<ClaimType>,
         pageable: Pageable,
     ): List<Claim>
 
+    // 상태 선두 인덱스(status, auto_approve_due_at)를 상태 등가 + 기한 범위로 그대로 탄다
     @Query(
         "select c from Claim c " +
-            "where c.status = :status and c.sellerApprovalStatus = :approvalStatus " +
+            "where c.status = :status and c.sellerApprovalStatus = :approvalStatus and c.claimType = :claimType " +
             "and c.autoApproveDueAt is not null and c.autoApproveDueAt < :dueBefore " +
             "order by c.autoApproveDueAt asc",
     )
     fun findAutoApprovable(
         @Param("status") status: ClaimStatus,
         @Param("approvalStatus") approvalStatus: SellerApprovalStatus,
+        @Param("claimType") claimType: ClaimType,
         @Param("dueBefore") dueBefore: LocalDateTime,
         pageable: Pageable,
     ): List<Claim>
-
-    @Query("select count(c) > 0 from Claim c where c.orderId = :orderId and c.status in :statuses")
-    fun existsByOrderIdAndStatusIn(
-        @Param("orderId") orderId: Long,
-        @Param("statuses") statuses: Collection<ClaimStatus>,
-    ): Boolean
 }
 
 @Repository
@@ -113,7 +115,7 @@ class ClaimRepositoryAdapter(
         jpaRepository.findRefundPending(
             status = ClaimStatus.APPROVED,
             refundStatus = RefundStatus.NONE,
-            claimType = ClaimType.CANCEL,
+            claimTypes = ClaimType.REFUNDABLE,
             pageable = PageRequest.of(0, limit),
         )
 
@@ -124,6 +126,7 @@ class ClaimRepositoryAdapter(
         jpaRepository.findAutoApprovable(
             status = ClaimStatus.CLAIM_REQUESTED,
             approvalStatus = SellerApprovalStatus.REQUESTED,
+            claimType = ClaimType.CANCEL,
             dueBefore = dueBefore,
             pageable = PageRequest.of(0, limit),
         )

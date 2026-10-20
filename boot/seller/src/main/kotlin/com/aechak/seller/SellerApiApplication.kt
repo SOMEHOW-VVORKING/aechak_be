@@ -31,9 +31,10 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.application.user.verification", // 전화 인증
         "com.aechak.application.file", // 서류 승격
         "com.aechak.application.product", // 상품 등록·카테고리 조회
-        "com.aechak.application.order.shipment", // 택배사 마스터 조회 — order BC 중 이 하위만 쓴다
         "com.aechak.application.order.seller", // 셀러 주문 관리 — 구매자 주문서·장바구니 조립은 끌고 오지 않는다
         "com.aechak.application.order.claim", // 클레임 승인·거부 — 구매자 요청 계약과 파사드를 공유한다. 환불 집행은 아래 제외 필터로 뺀다
+        "com.aechak.application.order.delivery", // 배송완료 전이 — 셀러 수동 처리와 배치 자동 전이가 공유하는 묶음
+        "com.aechak.application.order.shipment", // 택배사 마스터 조회 — order BC 중 이 하위만 쓴다
         // 정산은 셀러가 조회하는 하위만 — 원장 생성·계좌 등록(application.settlement 상위)은 구매확정·심사 승인 경로의 것이다
         "com.aechak.application.settlement.seller",
         "com.aechak.application.dashboard", // 셀러센터 첫 화면 집계 — 위 네 BC 진입점을 모아 조립한다
@@ -54,6 +55,12 @@ import org.springframework.context.annotation.FilterType
         ComponentScan.Filter(
             type = FilterType.REGEX,
             pattern = ["com\\.aechak\\.application\\.order\\.claim\\..*\\.ClaimRefund.*"],
+        ),
+        // 자동승인 전용 구현체 제외. 셀러 자격을 대조하지 않고 승인하는 경로라 셀러센터에 두면
+        // 컨트롤러가 실수로 그 빈을 집는 순간 자격 검증이 비어 버린다. 승인 주체는 배치뿐이다.
+        ComponentScan.Filter(
+            type = FilterType.REGEX,
+            pattern = ["com\\.aechak\\.application\\.order\\.claim\\..*\\.ClaimAutoApprove.*"],
         ),
     ],
 )

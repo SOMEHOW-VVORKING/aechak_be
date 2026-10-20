@@ -1,6 +1,11 @@
 package com.aechak.seller.order
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.application.order.seller.service.SellerOrderService
 import com.aechak.application.order.seller.usecase.SellerOrderUseCase
 import com.aechak.application.order.seller.usecase.command.RegisterShipmentCommand
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -18,10 +23,12 @@ import com.aechak.domain.seller.seller.Seller
 import com.aechak.infra.persistence.order.order.OrderRepositoryAdapter
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
@@ -246,6 +253,62 @@ class SellerShipmentIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `컴파일되지 않는 패턴은 검증을 건너뛰고 경고 로그를 남긴다`() {
+        val orderPublicId = seedOrder(OrderStatus.PREPARING)
+        seedCourier("HANJIN", trackingFormatPattern = BROKEN_PATTERN)
+
+        val warnings =
+            captureServiceWarnings {
+                mockMvc
+                    .perform(shipmentRequest(token, orderPublicId, courierCode = "HANJIN", trackingNumber = "아무값1"))
+                    .andExpect(status().isCreated)
+            }
+
+        assertEquals("아무값1", shipmentsOf(orderPublicId).first().trackingNumber)
+        assertEquals(1, warnings.size, "경고 1건이어야 한다. 실제: $warnings")
+        val warning = warnings.first()
+        assertTrue(warning.contains("HANJIN"), "택배사 코드가 로그에 있어야 한다: $warning")
+        assertTrue(warning.contains(BROKEN_PATTERN), "문제의 패턴 문자열이 로그에 있어야 한다: $warning")
+    }
+
+    @Test
+    fun `깨진 패턴에 개행이 섞여 있어도 경고는 한 줄이다`() {
+        val orderPublicId = seedOrder(OrderStatus.PREPARING)
+        seedCourier("HANJIN", trackingFormatPattern = "$BROKEN_PATTERN\n줄바꿈")
+
+        val warnings =
+            captureServiceWarnings {
+                mockMvc
+                    .perform(shipmentRequest(token, orderPublicId, courierCode = "HANJIN", trackingNumber = "아무값1"))
+                    .andExpect(status().isCreated)
+            }
+
+        assertEquals(1, warnings.size, "경고 1건이어야 한다. 실제: $warnings")
+        val warning = warnings.first()
+        assertFalse(warning.contains("\n") || warning.contains("\r"), "경고에 실제 개행이 없어야 한다: $warning")
+        assertTrue(warning.contains("\\n줄바꿈"), "개행은 이스케이프해 싣는다: $warning")
+    }
+
+    @Test
+    fun `정상 패턴과 패턴 없는 택배사는 경고 로그를 남기지 않는다`() {
+        val patterned = seedOrder(OrderStatus.PREPARING)
+        val unpatterned = seedOrder(OrderStatus.PREPARING)
+        seedCourier("HANJIN", trackingFormatPattern = "\\d{12}")
+
+        val warnings =
+            captureServiceWarnings {
+                mockMvc
+                    .perform(shipmentRequest(token, patterned, courierCode = "HANJIN"))
+                    .andExpect(status().isCreated)
+                mockMvc
+                    .perform(shipmentRequest(token, unpatterned))
+                    .andExpect(status().isCreated)
+            }
+
+        assertEquals(emptyList<String>(), warnings)
+    }
+
+    @Test
     fun `배송중 주문의 송장 등록은 409와 50005다`() {
         val orderPublicId = seedOrder(OrderStatus.SHIPPING)
 
@@ -434,6 +497,21 @@ class SellerShipmentIntegrationTest : IntegrationTestBase() {
             .content(body(courierCode, trackingNumber))
 
     private fun errorCodeOf(body: String): String? = Regex("\"errorCode\"\\s*:\\s*(\\d+)").find(body)?.groupValues?.get(1)
+
+    /** 송장 등록 중 서비스가 남긴 WARN 메시지를 모은다 — 패턴이 깨졌을 때 침묵하지 않는지 본다. */
+    private fun captureServiceWarnings(block: () -> Unit): List<String> {
+        val logger = LoggerFactory.getLogger(SellerOrderService::class.java.packageName) as Logger
+        val appender = ListAppender<ILoggingEvent>()
+        appender.start()
+        logger.addAppender(appender)
+        try {
+            block()
+        } finally {
+            logger.detachAppender(appender)
+            appender.stop()
+        }
+        return appender.list.filter { it.level == Level.WARN }.map { it.formattedMessage }
+    }
 
     private fun seedCourier(
         courierCode: String,
@@ -645,5 +723,10 @@ class SellerShipmentIntegrationTest : IntegrationTestBase() {
         } finally {
             pool.shutdown()
         }
+    }
+
+    private companion object {
+        /** 닫히지 않은 중괄호 — 정규식으로 컴파일되지 않는다. */
+        private const val BROKEN_PATTERN = "\\d{12"
     }
 }

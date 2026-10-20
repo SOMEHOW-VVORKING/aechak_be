@@ -1,12 +1,16 @@
 package com.aechak.batch
 
+import com.aechak.application.order.claim.usecase.ClaimAutoApproveUseCase
 import com.aechak.application.order.claim.usecase.ClaimRefundUseCase
+import com.aechak.application.order.delivery.usecase.OrderDeliveryUseCase
 import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.payment.port.PaymentReconciliationSourcePort
 import com.aechak.application.payment.reconciliation.usecase.PaymentReconciliationUseCase
 import com.aechak.application.settlement.usecase.SettlementUseCase
+import com.aechak.batch.order.ClaimAutoApproveSchedule
 import com.aechak.batch.order.ClaimRefundSchedule
+import com.aechak.batch.order.OrderDeliverySchedule
 import com.aechak.batch.order.OrderExpirySchedule
 import com.aechak.batch.payment.PaymentReconciliationSchedule
 import com.aechak.batch.support.BatchIntegrationTestBase
@@ -36,6 +40,24 @@ class BatchApplicationSmokeTest : BatchIntegrationTestBase() {
     }
 
     @Test
+    fun `구매확정 주문 파사드와 그 정산 의존이 조립된다`() {
+        // 확정이 정산 원장을 만들게 되면서 OrderUseCase가 SettlementUseCase를 요구한다 —
+        // 스캔에서 application.settlement가 빠지면 자동확정 배치가 부팅에서 깨진다
+        context.getBean(OrderUseCase::class.java)
+        context.getBean(SettlementUseCase::class.java)
+    }
+
+    @Test
+    fun `배송 전이 유스케이스는 조립되고 배치 스케줄은 설정으로 꺼져 있다`() {
+        context.getBean(OrderDeliveryUseCase::class.java)
+
+        assertTrue(
+            context.getBeansOfType(OrderDeliverySchedule::class.java).isEmpty(),
+            "order.delivery.enabled 기본값이 켜지면 dev 배포 전에 주문이 자동 전이된다",
+        )
+    }
+
+    @Test
     fun `만료 스케줄과 그 의존이 조립된다`() {
         // 선별 스캔이라 order BC 파사드가 요구하는 어댑터가 빠지면 여기서 깨진다
         context.getBean(OrderExpirySchedule::class.java)
@@ -51,11 +73,10 @@ class BatchApplicationSmokeTest : BatchIntegrationTestBase() {
     }
 
     @Test
-    fun `구매확정 주문 파사드와 그 정산 의존이 조립된다`() {
-        // 확정이 정산 원장을 만들게 되면서 OrderUseCase가 SettlementUseCase를 요구한다 —
-        // 스캔에서 application.settlement가 빠지면 자동확정 배치가 부팅에서 깨진다
-        context.getBean(OrderUseCase::class.java)
-        context.getBean(SettlementUseCase::class.java)
+    fun `자동승인 스케줄과 그 의존이 조립된다`() {
+        // 자동승인은 환불 집행 계약까지 함께 부른다 — 둘 중 하나라도 빠지면 기한 넘긴 클레임이 멈춰 선다
+        context.getBean(ClaimAutoApproveSchedule::class.java)
+        context.getBean(ClaimAutoApproveUseCase::class.java)
     }
 
     @Test

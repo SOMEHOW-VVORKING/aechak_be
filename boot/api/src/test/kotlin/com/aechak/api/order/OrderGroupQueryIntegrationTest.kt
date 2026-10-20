@@ -19,6 +19,8 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -272,8 +274,11 @@ class OrderGroupQueryIntegrationTest : IntegrationTestBase() {
         assertEquals(8_000, JsonPath.read<Int>(body, "$item.unitPrice"), "단가는 주문 시점 스냅샷이어야 한다")
         assertEquals("ORDERED", JsonPath.read<String>(body, "$item.itemStatus"), "품목별 상태가 내려와야 부분 취소·반품을 구분한다")
 
+        val productId = JsonPath.read<String>(body, "$item.productId")
+        assertTrue(productId.isNotBlank(), "주문 품목에서 상품 상세로 이동하려면 공개 상품 식별자가 내려와야 한다")
+        assertNull(productId.toLongOrNull(), "공개 식별자를 내려야 하므로 내부 숫자 id가 그대로 실리면 안 된다")
+
         assertFalse(body.contains("productVersionId"), "내부 상품 버전 id는 응답에 실리면 안 된다")
-        assertFalse(body.contains("\"productId\""), "내부 상품 id는 응답에 실리면 안 된다")
         assertFalse(body.contains("optionCombinationId"), "품목을 상품명과 옵션명으로 식별하므로 내부 옵션조합 id는 응답에서 뺀다")
         assertFalse(body.contains("sellerId"), "셀러를 셀러명으로 표시하므로 내부 셀러 id는 응답에서 뺀다")
     }
@@ -335,7 +340,7 @@ class OrderGroupQueryIntegrationTest : IntegrationTestBase() {
         mockMvc
             .perform(getOrderGroup("01JZZZZZZZZZZZZZZZZZZZZZZZ", mintAccessToken(buyerId)))
             .andExpect(status().isNotFound)
-            .andExpect(jsonPath("$.errorCode").value(50110))
+            .andExpect(jsonPath("$.errorCode").value(50109))
     }
 
     @Test
@@ -352,7 +357,7 @@ class OrderGroupQueryIntegrationTest : IntegrationTestBase() {
 
         assertEquals(404, response.status, "남의 주문그룹은 403으로 실재를 알리지 않고 404로 숨겨야 한다")
         assertEquals(
-            50110,
+            50109,
             JsonPath.read<Int>(response.getContentAsString(Charsets.UTF_8), "$.errorCode"),
             "없는 주문그룹과 같은 코드로 응답해 존재 여부가 갈리지 않아야 한다",
         )

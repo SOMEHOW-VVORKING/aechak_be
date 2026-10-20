@@ -704,8 +704,8 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
     }
 
     /**
-     * 반품·교환은 요청 경로가 아직 열리지 않았고 취소도 발송 전 상태에서만 받는다 —
-     * 결제완료로 잠시 올려 취소 클레임을 만든 뒤 유형·상태를 쿼리로 옮긴다. 주문 상태는 원래 값으로 되돌린다.
+     * 조회 화면이 읽을 클레임 행을 심는다. 요청 규칙(주문 상태별 요청 가능 여부)은 이 테스트의 대상이 아니므로
+     * 팩토리는 통과만 하는 조합(결제완료 주문의 취소)으로 태우고, 실제 유형·상태는 심은 뒤 UPDATE로 덮는다.
      */
     private fun seedClaim(
         orderId: Long,
@@ -715,18 +715,22 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
     ): String =
         tx.execute {
             val order = em.find(Order::class.java, orderId)
-            val originalStatus = order.status
-            forceOrderStatus(order, OrderStatus.PAID)
+            val seededOrderStatus = order.status
             val claim =
-                Claim.request(
-                    order = order,
-                    claimType = ClaimType.CANCEL,
-                    reasonCode = "CHANGE_OF_MIND",
-                    reasonDetail = null,
-                    items = listOf(ClaimItem.of(order.items.first(), 1, 25_000L)),
-                    autoApproveDueAt = LocalDateTime.now().plusDays(2),
-                )
-            forceOrderStatus(order, originalStatus)
+                try {
+                    // 팩토리가 주문 상태를 읽으므로 잠시 요청 가능 상태로 둔다 — flush 전에 되돌려 주문 행은 건드리지 않는다
+                    forceOrderStatus(order, OrderStatus.PAID)
+                    Claim.request(
+                        order = order,
+                        claimType = ClaimType.CANCEL,
+                        reasonCode = "CHANGE_OF_MIND",
+                        reasonDetail = null,
+                        items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 25_000L)),
+                        autoApproveDueAt = LocalDateTime.now().plusDays(2),
+                    )
+                } finally {
+                    forceOrderStatus(order, seededOrderStatus)
+                }
             em.persist(claim)
             em.flush()
             em
@@ -740,6 +744,7 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
             claim.publicId
         }!!
 
+    /** 전이 API를 거치지 않고 상태를 심는다 — 주문 전이 규칙은 이 테스트의 대상이 아니다. */
     private fun forceOrderStatus(
         order: Order,
         status: OrderStatus,

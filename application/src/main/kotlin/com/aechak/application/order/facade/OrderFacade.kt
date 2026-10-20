@@ -8,9 +8,13 @@ import com.aechak.application.order.service.OrderService
 import com.aechak.application.order.support.OrderPointLedger
 import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.AutoConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
 import com.aechak.application.order.usecase.command.ExpireOrderGroupCommand
+import com.aechak.application.order.usecase.command.MarkConfirmNotifiedCommand
+import com.aechak.application.order.usecase.query.AutoConfirmScanQuery
+import com.aechak.application.order.usecase.query.ConfirmNotifyScanQuery
 import com.aechak.application.order.usecase.query.ExpiredOrderGroupQuery
 import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
@@ -40,8 +44,8 @@ import java.time.LocalDateTime
 @Service
 class OrderFacade(
     private val orderService: OrderService,
-    private val orderExpiryService: OrderExpiryService,
     private val orderConfirmService: OrderConfirmService,
+    private val orderExpiryService: OrderExpiryService,
     private val cartService: CartService,
     private val deliveryAddressUseCase: DeliveryAddressUseCase,
     private val pointUseCase: PointUseCase,
@@ -83,6 +87,33 @@ class OrderFacade(
     @Transactional
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = orderService.confirmGroupPaid(orderGroupId)
 
+    /**
+     * 확정·적립금·정산 원장을 한 트랜잭션에 묶는다 — 셋 중 하나가 실패하면 확정도 함께 롤백된다.
+     * READ_COMMITTED: 선점 UPDATE 뒤의 클레임 조회가 REPEATABLE READ 스냅샷에 갇히면 그 사이 커밋된 클레임을 놓친다.
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    override fun confirmPurchase(command: ConfirmPurchaseCommand) {
+        val confirmed = orderConfirmService.confirmPurchase(command)
+        earnPurchaseReward(confirmed)
+        createSettlementLedger(confirmed)
+    }
+
+    @Transactional(readOnly = true)
+    override fun findAutoConfirmTargetIds(query: AutoConfirmScanQuery): List<Long> = orderConfirmService.findAutoConfirmTargetIds(query)
+
+    /** 수동 확정과 같은 트랜잭션 구성·격리 수준을 쓴다 — 적립 실패는 확정까지 되돌린다. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    override fun autoConfirmPurchase(command: AutoConfirmPurchaseCommand) {
+        earnPurchaseReward(orderConfirmService.autoConfirmPurchase(command))
+    }
+
+    @Transactional(readOnly = true)
+    override fun findConfirmNotifyTargetIds(query: ConfirmNotifyScanQuery): List<Long> =
+        orderConfirmService.findConfirmNotifyTargetIds(query)
+
+    @Transactional
+    override fun markConfirmNotified(command: MarkConfirmNotifiedCommand): Boolean = orderConfirmService.markConfirmNotified(command)
+
     @Transactional(readOnly = true)
     override fun findExpiredOrderGroups(query: ExpiredOrderGroupQuery): List<ExpiredOrderGroupResult> =
         orderExpiryService.findExpired(LocalDateTime.now(), query)
@@ -92,21 +123,26 @@ class OrderFacade(
     override fun expireOrderGroup(command: ExpireOrderGroupCommand): ExpireOrderGroupResult =
         orderExpiryService.expire(command.orderGroupId, LocalDateTime.now())
 
-    /**
-     * 확정·적립금·정산 원장을 한 트랜잭션에 묶는다 — 셋 중 하나가 실패하면 확정도 함께 롤백된다.
-     * READ_COMMITTED: 선점 UPDATE 뒤의 클레임 조회가 REPEATABLE READ 스냅샷에 갇히면 그 사이 커밋된 클레임을 놓친다.
-     */
-    @Transactional(isolation = Isolation.READ_COMMITTED)
-    override fun confirmPurchase(command: ConfirmPurchaseCommand) {
-        val confirmed = orderConfirmService.confirmPurchase(command)
+    @Transactional
+    override fun clearOrderedCartItems(
+        buyerId: Long,
+        orderGroupId: Long,
+    ): Int = cartService.removeOrderedItems(buyerId, orderService.orderedQuantities(orderGroupId))
+
+    /** 수동·자동 확정이 함께 타는 적립 경로 — 멱등키의 재료인 주문 publicId가 같아 두 경로가 겹쳐도 원장은 1행이다 */
+    private fun earnPurchaseReward(confirmed: OrderConfirmService.ConfirmedPurchase) {
         pointUseCase.earnPurchaseReward(
             EarnPurchaseRewardCommand(
-                buyerUserId = command.buyerId,
+                buyerUserId = confirmed.buyerId,
                 orderId = confirmed.orderId,
-                orderPublicId = command.orderPublicId,
+                orderPublicId = confirmed.orderPublicId,
                 productAmount = confirmed.productAmount,
             ),
         )
+    }
+
+    /** 정산 원장은 품목당 1행 — 확정 트랜잭션 안에서 만들어 확정과 원장이 함께 살거나 함께 죽는다 */
+    private fun createSettlementLedger(confirmed: OrderConfirmService.ConfirmedPurchase) {
         settlementUseCase.createLedgerOnConfirm(
             CreateSettlementLedgerCommand(
                 sellerId = confirmed.sellerId,
@@ -120,12 +156,6 @@ class OrderFacade(
             ),
         )
     }
-
-    @Transactional
-    override fun clearOrderedCartItems(
-        buyerId: Long,
-        orderGroupId: Long,
-    ): Int = cartService.removeOrderedItems(buyerId, orderService.orderedQuantities(orderGroupId))
 
     /** 적립금 확보도 주문 트랜잭션 안 — 실패(잔액 부족)면 재고 차감·주문 저장이 함께 롤백된다 */
     private fun usePoint(
