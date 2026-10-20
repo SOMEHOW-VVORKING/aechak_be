@@ -7,6 +7,7 @@ import com.aechak.domain.order.shipment.repository.ShipmentRepository
 import org.springframework.data.domain.Limit
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
@@ -38,6 +39,21 @@ interface ShipmentJpaRepository : JpaRepository<Shipment, Long> {
         @Param("afterShipmentId") afterShipmentId: Long,
         limit: Limit,
     ): List<Shipment>
+
+    // 택배사와 주문을 함께 읽는다 — 호출부가 택배사 코드와 주문 공개 식별자를 보므로 지연 로딩이면 건당 추가 쿼리가 된다
+    @Query(
+        "select s from Shipment s join fetch s.courier join fetch s.order o " +
+            "where s.shipmentType = :shipmentType and s.deliveredAt is null " +
+            "and s.dispatchedAt is not null and o.status = :status " +
+            "and s.id > :afterShipmentId " +
+            "order by s.id asc",
+    )
+    fun findTrackingTargets(
+        @Param("shipmentType") shipmentType: ShipmentType,
+        @Param("status") status: OrderStatus,
+        @Param("afterShipmentId") afterShipmentId: Long,
+        limit: Limit,
+    ): List<Shipment>
 }
 
 @Repository
@@ -45,6 +61,8 @@ class ShipmentRepositoryAdapter(
     private val jpaRepository: ShipmentJpaRepository,
 ) : ShipmentRepository {
     override fun save(shipment: Shipment): Shipment = jpaRepository.save(shipment)
+
+    override fun findById(id: Long): Shipment? = jpaRepository.findByIdOrNull(id)
 
     override fun findByClaimIdAndShipmentType(
         claimId: Long,
@@ -64,6 +82,17 @@ class ShipmentRepositoryAdapter(
         jpaRepository.findPendingDispatchedBefore(
             shipmentType = ShipmentType.INITIAL,
             dispatchedBefore = dispatchedBefore,
+            status = OrderStatus.SHIPPING,
+            afterShipmentId = afterShipmentId,
+            limit = Limit.of(limit),
+        )
+
+    override fun findTrackingTargets(
+        afterShipmentId: Long,
+        limit: Int,
+    ): List<Shipment> =
+        jpaRepository.findTrackingTargets(
+            shipmentType = ShipmentType.INITIAL,
             status = OrderStatus.SHIPPING,
             afterShipmentId = afterShipmentId,
             limit = Limit.of(limit),

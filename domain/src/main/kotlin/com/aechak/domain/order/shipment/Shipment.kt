@@ -82,7 +82,22 @@ class Shipment protected constructor(
         deliveredAt = at
     }
 
+    /**
+     * 택배사 추적이 준 최근 상태와 조회 시각을 기록한다. 배송완료 전이는 일으키지 않는다 —
+     * 상태 문구는 택배사가 준 자유 문자열이라 컬럼 길이를 넘으면 잘라서 담는다.
+     */
+    fun syncTracking(
+        lastStatus: String,
+        at: LocalDateTime = LocalDateTime.now(),
+    ) {
+        lastTrackingStatus = lastStatus.trim().take(MAX_LAST_TRACKING_STATUS_LENGTH)
+        lastSyncedAt = at
+    }
+
     companion object {
+        /** last_tracking_status 컬럼 길이. 넘치는 문구를 그대로 담으면 저장에서 깨진다 */
+        const val MAX_LAST_TRACKING_STATUS_LENGTH = 50
+
         fun dispatch(
             courier: CourierMaster,
             order: Order,
