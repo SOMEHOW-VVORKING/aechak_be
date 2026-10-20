@@ -32,6 +32,16 @@ class OrderProductAmountTest {
         assertEquals(10_000L, order.productAmountAfterDiscount())
     }
 
+    @Test
+    fun `품목별 상품금액의 합이 주문 상품금액이다`() {
+        // 적립 기준(주문 합계)과 정산 원장의 품목별 기준이 갈리면 같은 주문에 두 가지 상품금액이 생긴다
+        val items = listOf(line(unitPrice = 10_000L, quantity = 2, discount = 500L), line(unitPrice = 3_500L, quantity = 3))
+        val order = order(items = items, shippingFee = 3_000L)
+
+        assertEquals(order.productAmountAfterDiscount(), order.items.sumOf { it.productAmountAfterDiscount() })
+        assertEquals(listOf(19_500L, 10_500L), order.items.map { it.productAmountAfterDiscount() })
+    }
+
     private fun line(
         unitPrice: Long,
         quantity: Int,

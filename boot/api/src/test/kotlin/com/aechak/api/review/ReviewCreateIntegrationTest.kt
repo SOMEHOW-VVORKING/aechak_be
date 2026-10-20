@@ -1,6 +1,7 @@
 package com.aechak.api.review
 
 import com.aechak.api.support.KafkaIntegrationTestBase
+import com.aechak.api.support.SettlementFeePolicyFixture
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -83,6 +84,8 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
                 .webAppContextSetup(context)
                 .addFilters<DefaultMockMvcBuilder>(securityFilterChain)
                 .build()
+        // 구매확정 EP가 정산 원장을 만들 때 요구하는 요율 정책 — 테이블 비우기가 마이그레이션 시드를 지운다
+        tx.executeWithoutResult { em.persist(SettlementFeePolicyFixture.global()) }
     }
 
     @Test

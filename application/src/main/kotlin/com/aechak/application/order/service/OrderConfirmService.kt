@@ -16,6 +16,7 @@ import com.aechak.domain.order.order.enums.TriggeredBy
 import com.aechak.domain.order.order.repository.OrderRepository
 import com.aechak.domain.order.order.repository.OrderStatusHistoryRepository
 import org.springframework.stereotype.Service
+import java.time.LocalDateTime
 
 /**
  * 구매확정 로직 보관함 — Facade에서만 호출된다.
@@ -92,17 +93,31 @@ class OrderConfirmService(
 
         return ConfirmedPurchase(
             orderId = order.id,
+            sellerId = order.sellerId,
             buyerId = order.orderGroup.buyerId,
             orderPublicId = order.publicId,
             productAmount = order.productAmountAfterDiscount(),
+            sellerShippingFee = order.sellerShippingFee,
+            confirmedAt = order.purchaseConfirmedAt!!,
+            items = order.items.map { ConfirmedItem(orderItemId = it.id, grossAmount = it.productAmountAfterDiscount()) },
         )
     }
 
-    /** 적립 기준을 넘기기 위한 확정 결과 — UseCase 경계를 넘지 않는다. */
+    /** 적립·정산 기준을 넘기기 위한 확정 결과 — UseCase 경계를 넘지 않는다. */
     data class ConfirmedPurchase(
         val orderId: Long,
+        val sellerId: Long,
         val buyerId: Long,
         val orderPublicId: String,
         val productAmount: Long,
+        val sellerShippingFee: Long,
+        val confirmedAt: LocalDateTime,
+        val items: List<ConfirmedItem>,
+    )
+
+    /** 정산 원장이 품목당 1행이라 품목 단위 상품금액까지 함께 넘긴다. */
+    data class ConfirmedItem(
+        val orderItemId: Long,
+        val grossAmount: Long,
     )
 }

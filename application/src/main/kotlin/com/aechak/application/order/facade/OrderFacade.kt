@@ -21,6 +21,8 @@ import com.aechak.application.order.usecase.result.CreateOrderGroupResult
 import com.aechak.application.order.usecase.result.ExpireOrderGroupResult
 import com.aechak.application.order.usecase.result.ExpiredOrderGroupResult
 import com.aechak.application.order.usecase.result.OrderItemForReviewResult
+import com.aechak.application.settlement.usecase.SettlementUseCase
+import com.aechak.application.settlement.usecase.command.CreateSettlementLedgerCommand
 import com.aechak.application.user.address.usecase.DeliveryAddressUseCase
 import com.aechak.application.user.point.usecase.PointUseCase
 import com.aechak.application.user.point.usecase.command.EarnPurchaseRewardCommand
@@ -36,7 +38,7 @@ import java.time.LocalDateTime
 
 /**
  * order 도메인 진입점의 유일한 구현체. 트랜잭션 경계는 여기 고정.
- * 타 BC 협력(배송지·적립금)은 그쪽 UseCase를, 같은 BC의 장바구니는 CartService를 주입받는다.
+ * 타 BC 협력(배송지·적립금·정산)은 그쪽 UseCase를, 같은 BC의 장바구니는 CartService를 주입받는다.
  * 만료 계약을 인터페이스로 가른 이유는 소비 모듈이 갈려서다 — 구매자 앱은 쓰지 않고 배치만 쓴다.
  */
 @Service
@@ -48,6 +50,7 @@ class OrderFacade(
     private val deliveryAddressUseCase: DeliveryAddressUseCase,
     private val pointUseCase: PointUseCase,
     private val orderItemForReviewQueryPort: OrderItemForReviewQueryPort,
+    private val settlementUseCase: SettlementUseCase,
     transactionManager: PlatformTransactionManager,
 ) : OrderUseCase,
     OrderExpiryUseCase {
@@ -85,12 +88,14 @@ class OrderFacade(
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = orderService.confirmGroupPaid(orderGroupId)
 
     /**
-     * 확정과 적립금을 한 트랜잭션에 묶는다 — 적립이 실패하면 확정도 함께 롤백된다.
+     * 확정·적립금·정산 원장을 한 트랜잭션에 묶는다 — 셋 중 하나가 실패하면 확정도 함께 롤백된다.
      * READ_COMMITTED: 선점 UPDATE 뒤의 클레임 조회가 REPEATABLE READ 스냅샷에 갇히면 그 사이 커밋된 클레임을 놓친다.
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun confirmPurchase(command: ConfirmPurchaseCommand) {
-        earnPurchaseReward(orderConfirmService.confirmPurchase(command))
+        val confirmed = orderConfirmService.confirmPurchase(command)
+        earnPurchaseReward(confirmed)
+        createSettlementLedger(confirmed)
     }
 
     @Transactional(readOnly = true)
@@ -132,6 +137,22 @@ class OrderFacade(
                 orderId = confirmed.orderId,
                 orderPublicId = confirmed.orderPublicId,
                 productAmount = confirmed.productAmount,
+            ),
+        )
+    }
+
+    /** 정산 원장은 품목당 1행 — 확정 트랜잭션 안에서 만들어 확정과 원장이 함께 살거나 함께 죽는다 */
+    private fun createSettlementLedger(confirmed: OrderConfirmService.ConfirmedPurchase) {
+        settlementUseCase.createLedgerOnConfirm(
+            CreateSettlementLedgerCommand(
+                sellerId = confirmed.sellerId,
+                orderId = confirmed.orderId,
+                confirmedAt = confirmed.confirmedAt,
+                sellerShippingFee = confirmed.sellerShippingFee,
+                items =
+                    confirmed.items.map {
+                        CreateSettlementLedgerCommand.Item(orderItemId = it.orderItemId, grossAmount = it.grossAmount)
+                    },
             ),
         )
     }

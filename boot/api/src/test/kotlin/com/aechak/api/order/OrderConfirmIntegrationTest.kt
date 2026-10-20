@@ -93,6 +93,7 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
                 .build()
         buyerId = createActiveUser()
         token = mintAccessToken(buyerId)
+        seedGlobalSettlementFeePolicy()
     }
 
     @AfterEach
