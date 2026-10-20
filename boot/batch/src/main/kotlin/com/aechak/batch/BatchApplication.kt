@@ -36,6 +36,7 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.infra.persistence", // JPA 어댑터 (QuerydslConfig 포함)
         "com.aechak.infra.client.payment", // 포트원 어댑터·대사 소스
         "com.aechak.infra.s3", // FileStorage 어댑터
+        "com.aechak.infra.client.tracking", // 택배사 추적 어댑터 — 목 구현이 기본 꺼짐이라 켜지 않으면 빈이 없다
     ],
     excludeFilters = [
         // @ComponentScan을 직접 선언하면 @SpringBootApplication의 메타 필터가 가려진다 — 기본 두 개를 복원한다.
