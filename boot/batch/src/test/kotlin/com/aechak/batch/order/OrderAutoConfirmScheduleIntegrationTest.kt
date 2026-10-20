@@ -1,5 +1,8 @@
 package com.aechak.batch.order
 
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
+import com.aechak.api.support.SettlementFeePolicyFixture
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.order.usecase.command.AutoConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.MarkConfirmNotifiedCommand
@@ -19,11 +22,17 @@ import com.aechak.domain.order.order.OrderStatusHistory
 import com.aechak.domain.order.order.enums.ConfirmType
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.order.enums.TriggeredBy
+import com.aechak.domain.settlement.error.SettlementErrorCode
+import com.aechak.domain.settlement.feepolicy.SettlementFeePolicy
+import com.aechak.domain.settlement.settlement.Settlement
+import com.aechak.domain.settlement.settlement.enums.SettlementStatus
+import com.aechak.domain.settlement.settlement.policy.SettlementCalendar
 import com.aechak.domain.user.point.PointTransaction
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserStatus
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -33,11 +42,14 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import ch.qos.logback.classic.Level as LogLevel
+import ch.qos.logback.classic.Logger as LogbackLogger
 
 /**
  * 구매확정 자동 배치 통합. 확정은 비가역이고 반품 기한·정산의 기산점이라
- * 유보 조건(기한 미도래·진행 중 클레임)과 적립 멱등, 커서 전진을 Testcontainers 실 MySQL로 고정한다.
- * 깨지면 자동확정이 앞질러 확정하거나 적립금을 두 번 지급한다는 뜻이다.
+ * 유보 조건(기한 미도래·진행 중 클레임)과 적립·정산 원장의 멱등, 커서 전진을 Testcontainers 실 MySQL로 고정한다.
+ * 깨지면 자동확정이 앞질러 확정하거나, 적립금을 두 번 지급하거나, 셀러에게 판매 대금이 지급되지 않는다는 뜻이다.
  */
 class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
     @Autowired
@@ -50,8 +62,9 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
     private var sig = 0
 
     @BeforeEach
-    fun seedBuyer() {
+    fun seedConfirmPrerequisites() {
         buyerId = createActiveUser()
+        seedGlobalSettlementFeePolicy()
     }
 
     @Test
@@ -82,6 +95,31 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
     }
 
     @Test
+    fun `자동확정한 주문에도 정산 원장이 생기고 금액이 요율 정책대로 박힌다`() {
+        // 원장이 없으면 정산 집행 배치가 그 주문을 읽지 못해 셀러에게 판매 대금이 지급되지 않는다
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1))
+
+        schedule.runDaily()
+
+        val settlement = settlements(fixture.orderId).single()
+        // 10,000 × 2 − 500 = 19,500. 수수료 8% = 1,560 / PG 2.8% = 546.
+        // 배송비 3,000은 요율 기준에서 빠지고 지급액에만 실비로 더해진다 → 19,500 + 3,000 − 1,560 − 546 = 20,394
+        assertEquals(19_500L, settlement.grossAmount)
+        assertEquals(3_000L, settlement.shippingFee)
+        assertEquals(1_560L, settlement.commission)
+        assertEquals(546L, settlement.pgFee)
+        assertEquals(20_394L, settlement.netAmount)
+        assertEquals(SELLER_USER_ID, settlement.sellerId)
+        assertEquals(SettlementStatus.PENDING, settlement.status)
+        assertEquals(Settlement.idempotencyKeyOf(settlement.orderItemId), settlement.idempotencyKey)
+
+        // 정산월과 지급 예정일은 배치가 기록한 확정 시각에서 파생된다
+        val confirmedOn = SettlementCalendar.settlementDateOf(findOrder(fixture.orderId).purchaseConfirmedAt!!)
+        assertEquals(Settlement.settlementMonthOf(confirmedOn), settlement.settlementMonth)
+        assertEquals(Settlement.expectedPayoutDateOf(confirmedOn), settlement.expectedPayoutDate)
+    }
+
+    @Test
     fun `기한이 아직 안 된 주문은 자동확정되지 않는다`() {
         val fixture = seedOrder(autoConfirmDueAt = kstNow().plusDays(3))
 
@@ -89,6 +127,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
 
         assertEquals(OrderStatus.DELIVERED, findOrder(fixture.orderId).status)
         assertEquals(emptyList(), rewardAmounts(fixture.orderPublicId), "확정되지 않은 주문에 적립이 생기면 안 된다")
+        assertEquals(emptyList(), settlements(fixture.orderId), "확정되지 않은 주문에 정산 원장이 생기면 안 된다")
     }
 
     @Test
@@ -113,7 +152,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
     }
 
     @Test
-    fun `두 번 돌아도 적립 원장은 1행이고 이력도 1행이다`() {
+    fun `두 번 돌아도 적립·정산 원장은 1행이고 이력도 1행이다`() {
         val fixture = seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1))
 
         schedule.runDaily()
@@ -122,6 +161,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
         assertEquals(listOf(97L), rewardAmounts(fixture.orderPublicId), "재실행이 적립을 두 번 지급하면 안 된다")
         assertEquals(97L, pointBalance(buyerId))
         assertEquals(1, histories(fixture.orderId).size)
+        assertEquals(1, settlements(fixture.orderId).size, "재실행이 정산 원장을 늘리면 셀러에게 두 번 지급된다")
     }
 
     @Test
@@ -138,7 +178,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
     }
 
     @Test
-    fun `첫 페이지가 전부 유보로 남아도 커서가 전진해 다음 페이지를 처리한다`() {
+    fun `첫 페이지가 전부 실패로 남아도 커서가 전진해 다음 페이지를 처리한다`() {
         // 테스트 설정의 scan-size는 2. 앞 두 건은 적립이 실패해 DELIVERED로 남아 스캔 대상에서 빠지지 않는다 —
         // 커서가 전진하지 않으면 같은 두 건만 다시 읽으며 세 번째 건에 영원히 닿지 못한다
         val blocked = (1..2).map { seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1), buyer = MISSING_USER_ID) }
@@ -161,6 +201,61 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
         assertEquals(OrderStatus.DELIVERED, findOrder(blocked.orderId).status, "적립이 실패하면 확정 전이도 함께 롤백돼야 한다")
         assertEquals(OrderStatus.PURCHASE_CONFIRMED, findOrder(target.orderId).status, "앞자리 실패가 뒷건을 막으면 안 된다")
         assertEquals(97L, pointBalance(buyerId))
+    }
+
+    @Test
+    fun `정산 원장 생성이 실패한 앞자리 건은 확정과 적립까지 되돌리고 뒷건은 그대로 확정된다`() {
+        // 전역 요율을 지우고 기본 셀러 전용 요율만 남긴다 — 요율이 없는 셀러의 주문은 원장 생성 단계에서 실패한다
+        leaveFeePolicyOnlyFor(SELLER_USER_ID)
+        val blocked = seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1), seller = SELLER_WITHOUT_FEE_POLICY)
+        val target = seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1))
+
+        schedule.runDaily()
+
+        val blockedOrder = findOrder(blocked.orderId)
+        assertEquals(OrderStatus.DELIVERED, blockedOrder.status, "원장을 못 만들면 확정 전이도 함께 롤백돼야 한다")
+        assertNull(blockedOrder.purchaseConfirmedAt, "확정 시각이 남으면 그 주문은 다음 회차 스캔에서 빠져 원장 없이 굳는다")
+        assertEquals(emptyList(), rewardAmounts(blocked.orderPublicId), "적립도 같은 트랜잭션이라 함께 롤백돼야 한다")
+        assertEquals(emptyList(), settlements(blocked.orderId))
+        assertEquals(OrderStatus.PURCHASE_CONFIRMED, findOrder(target.orderId).status, "앞자리 실패가 뒷건을 막으면 안 된다")
+        assertEquals(1, settlements(target.orderId).size, "뒷건의 원장은 그대로 만들어져야 한다")
+        assertEquals(97L, pointBalance(buyerId), "뒷건의 적립만 남아야 한다")
+    }
+
+    @Test
+    fun `원장 실패는 유보가 아니라 ERROR로 남는다`() {
+        // 요율 누락은 설정이 고쳐질 때까지 다음 회차에도 같은 자리에서 막힌다 —
+        // 상태 경합과 같은 INFO 유보로 묻히면 셀러 지급이 멈춘 것을 알아챌 길이 없다
+        leaveFeePolicyOnlyFor(SELLER_USER_ID)
+        val blocked = seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1), seller = SELLER_WITHOUT_FEE_POLICY)
+
+        val logs = runDailyCapturingLogs()
+
+        val event = logs.single { it.level == LogLevel.ERROR }
+        assertTrue(event.formattedMessage.contains("orderId=${blocked.orderId}"), "실패 로그에 주문 식별자가 없다: ${event.formattedMessage}")
+        assertTrue(
+            event.formattedMessage.contains("errorCode=${SettlementErrorCode.SETTLEMENT_FEE_POLICY_NOT_FOUND.code}"),
+            "실패 로그에 요율 누락 코드가 없다: ${event.formattedMessage}",
+        )
+        assertNotNull(event.throwableProxy, "스택이 빠지면 어느 단계에서 터졌는지 로그만으로 알 수 없다")
+    }
+
+    @Test
+    fun `요율 정책이 복구되면 다음 회차가 같은 주문을 다시 집어 확정·적립·원장을 한 번만 남긴다`() {
+        leaveFeePolicyOnlyFor(SELLER_USER_ID)
+        val fixture = seedOrder(autoConfirmDueAt = kstNow().minusMinutes(1), seller = SELLER_WITHOUT_FEE_POLICY)
+        schedule.runDaily()
+        assertEquals(OrderStatus.DELIVERED, findOrder(fixture.orderId).status, "첫 회차는 원장 실패로 확정이 되돌아가야 한다")
+
+        seedGlobalSettlementFeePolicy()
+        schedule.runDaily()
+
+        val order = findOrder(fixture.orderId)
+        assertEquals(OrderStatus.PURCHASE_CONFIRMED, order.status, "정책이 생기면 다음 회차가 같은 주문을 다시 집어야 한다")
+        assertEquals(ConfirmType.AUTO, order.confirmType)
+        assertEquals(1, histories(fixture.orderId).size, "되돌아간 회차의 이력이 남아 있으면 안 된다")
+        assertEquals(listOf(97L), rewardAmounts(fixture.orderPublicId))
+        assertEquals(1, settlements(fixture.orderId).size)
     }
 
     @Test
@@ -277,6 +372,45 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
                 .map { Triple(it.fromStatus!!, it.toStatus, it.triggeredBy) }
         }!!
 
+    /** 스케줄 로거에 임시 어펜더를 달고 한 회차를 돌린 뒤 그 회차가 남긴 로그 이벤트를 돌려준다. */
+    private fun runDailyCapturingLogs(): List<ILoggingEvent> {
+        val logger = LoggerFactory.getLogger(OrderAutoConfirmSchedule::class.java) as LogbackLogger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(appender)
+        try {
+            schedule.runDaily()
+        } finally {
+            logger.detachAppender(appender)
+            appender.stop()
+        }
+        return appender.list.toList()
+    }
+
+    private fun settlements(orderId: Long): List<Settlement> =
+        tx.execute {
+            em
+                .createQuery(
+                    "select s from Settlement s where s.orderId = :orderId order by s.orderItemId",
+                    Settlement::class.java,
+                ).setParameter("orderId", orderId)
+                .resultList
+        }!!
+
+    /** 전역 요율을 지우고 주어진 셀러 전용 요율만 남긴다 — 다른 셀러의 주문은 요율을 찾지 못한다. */
+    private fun leaveFeePolicyOnlyFor(sellerId: Long) =
+        tx.execute {
+            em.createQuery("delete from SettlementFeePolicy").executeUpdate()
+            em.persist(
+                SettlementFeePolicy.of(
+                    sellerId,
+                    SettlementFeePolicyFixture.EFFECTIVE_FROM,
+                    SettlementFeePolicyFixture.PLATFORM_FEE_RATE,
+                    SettlementFeePolicyFixture.PG_FEE_RATE,
+                ),
+            )
+            em.flush()
+        }
+
     private fun rewardAmounts(orderPublicId: String): List<Long> =
         tx.execute {
             em
@@ -348,6 +482,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
     private fun seedOrder(
         autoConfirmDueAt: LocalDateTime,
         buyer: Long = buyerId,
+        seller: Long = SELLER_USER_ID,
         status: OrderStatus = OrderStatus.DELIVERED,
         unitPrice: Long = 10_000L,
         quantity: Int = 2,
@@ -380,8 +515,8 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
             val order =
                 Order.create(
                     orderGroup = group,
-                    sellerId = SELLER_USER_ID,
-                    sellerNameSnapshot = "store-$SELLER_USER_ID",
+                    sellerId = seller,
+                    sellerNameSnapshot = "store-$seller",
                     allocatedCouponDiscount = 0L,
                     sellerShippingFee = 3_000L,
                     baseShippingFeeSnapshot = null,
@@ -426,6 +561,9 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
         private val KST = ZoneId.of("Asia/Seoul")
 
         private const val SELLER_USER_ID = 9_001L
+
+        /** 원장 단계 실패를 주입하는 값 — 이 셀러에게는 수수료율 정책을 심지 않는다 */
+        private const val SELLER_WITHOUT_FEE_POLICY = 9_002L
 
         /** 적립 단계 실패를 주입하는 값 — 이 id의 사용자 행은 심지 않는다 */
         private const val MISSING_USER_ID = 9_999_001L
