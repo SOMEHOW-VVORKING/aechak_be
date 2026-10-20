@@ -13,4 +13,7 @@ interface SellerRepository {
 
     /** 셀러 상태 — 셀러가 아니면 null. */
     fun findStatusByUserId(userId: Long): SellerStatus?
+
+    /** 셀러 1건 — 셀러가 아니면 null. 수정 유스케이스가 로딩 후 변경하는 경로. */
+    fun findByUserId(userId: Long): Seller?
 }

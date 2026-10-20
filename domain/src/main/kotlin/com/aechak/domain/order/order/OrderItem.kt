@@ -74,6 +74,11 @@ class OrderItem protected constructor(
         transitionTo(OrderItemStatus.EXCHANGE_REQUESTED)
     }
 
+    /** 거부·철회된 반품·교환 요청의 되돌림. */
+    fun revertClaimRequest() {
+        transitionTo(OrderItemStatus.ORDERED)
+    }
+
     private fun transitionTo(next: OrderItemStatus) {
         if (!itemStatus.canTransitionTo(next)) {
             throw BusinessException(OrderErrorCode.INVALID_ORDER_ITEM_STATUS_TRANSITION)

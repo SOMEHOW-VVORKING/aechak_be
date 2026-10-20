@@ -55,8 +55,8 @@ class ClaimRefundService(
      */
     fun reserve(claimPublicId: String): RefundReservation? {
         val claim = loadClaim(claimPublicId)
-        if (claim.claimType != ClaimType.CANCEL) {
-            // 반품·교환은 회수를 거친 뒤 집행한다 — 이 경로로 들어오면 잘못 스캔된 것이다
+        if (!claim.claimType.isRefundable()) {
+            // 교환은 재발송으로 끝나 환불이 없다 — 이 경로로 들어오면 잘못 스캔된 것이다
             throw BusinessException(OrderErrorCode.INVALID_CLAIM_STATUS_TRANSITION)
         }
         if (!claim.isRefundExecutable()) return null
@@ -107,7 +107,7 @@ class ClaimRefundService(
                     ApplyPaymentCancelCommand(group.id, cancelledAmount),
                 ).cancellableAmount
         transitionGroup(group, fullyCancelled = remainingCancellable == 0L)
-        cancelClaimedItems(claim, order)
+        resolveClaimedItems(claim, order)
 
         // 재고를 먼저 되돌린다 — 주문 생성과 만료 복원이 모두 재고 다음 적립금 순서로 잠근다.
         // 순서를 뒤집으면 같은 구매자가 같은 옵션을 주문하는 동안의 환불이 교착상태에 걸린다
@@ -165,7 +165,30 @@ class ClaimRefundService(
                 )
             }
         }
-        if (order.items.any { it.itemStatus != OrderItemStatus.CANCELLED }) return
+        closeOrderIfAllItemsResolved(order)
+    }
+
+    /** 반품 품목은 회수 완료 때 이미 RETURNED로 바뀌어 있다 — 환불 집행은 주문 종결만 본다. */
+    private fun resolveClaimedItems(
+        claim: Claim,
+        order: Order,
+    ) {
+        when (claim.claimType) {
+            ClaimType.CANCEL -> cancelClaimedItems(claim, order)
+            ClaimType.RETURN -> closeOrderIfAllItemsResolved(order)
+            ClaimType.EXCHANGE -> throw BusinessException(OrderErrorCode.INVALID_CLAIM_STATUS_TRANSITION)
+        }
+    }
+
+    /**
+     * 이행 대상이 하나도 남지 않은 주문을 취소로 닫는다. 열어 두면 자동 구매확정이 되돌릴 수 없게 확정하고,
+     * 정산이 받지도 않은 물건의 대금을 지급 대상으로 잡는다.
+     */
+    private fun closeOrderIfAllItemsResolved(order: Order) {
+        // 품목을 나눈 반품은 회수 완료만으로 모든 품목이 RESOLVED가 된다 — 첫 환불이 주문을 닫은 뒤
+        // 두 번째 환불이 같은 전이를 또 요구하면, PG 취소는 끝났는데 원장·자산 복원이 롤백된다
+        if (order.status == OrderStatus.CANCELLED) return
+        if (order.items.any { it.itemStatus !in OrderItemStatus.RESOLVED }) return
         val from = order.status
         order.cancelByClaimApproval()
         orderStatusHistoryRepository.save(
