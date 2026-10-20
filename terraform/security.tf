@@ -123,3 +123,40 @@ resource "aws_security_group" "redis" {
 #     security_groups = [aws_security_group.app.id]
 #   }
 # }
+
+# AI 검수 서버 전용 SG. app SG를 재사용하지 않는 이유는 그 SG가 ALB에서 8080을 받고
+# MySQL·Redis·Kafka 모두에 닿는 신뢰 수준이기 때문이다. 검수 서버는 DB를 모르는 것이
+# 설계 전제이고, 그 전제를 코드가 아니라 보안그룹으로 집행한다.
+resource "aws_security_group" "ai" {
+  name_prefix = "${var.project}-ai-"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = var.ai_app_port
+    to_port         = var.ai_app_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  # 외부 모델 API 호출 + ECR·CloudWatch. NAT를 지난다.
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  lifecycle { create_before_destroy = true }
+}
+
+# Kafka에 AI 서버를 들인다. 검수 요청과 판정이 오가는 유일한 통로다.
+# MySQL·Redis 쪽에는 같은 규칙을 넣지 않는다 — 넣으면 '판정기는 DB를 모른다'가 깨진다.
+resource "aws_security_group_rule" "kafka_from_ai" {
+  type                     = "ingress"
+  from_port                = 9092
+  to_port                  = 9092
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.kafka.id
+  source_security_group_id = aws_security_group.ai.id
+  description              = "ai inspection service" # AWS가 설명에 ASCII만 허용한다
+}

@@ -75,6 +75,14 @@ variable "github_repo" {
   default     = "SOMEHOW-VVORKING/aechak_be"
 }
 
+# AI 레포는 별 변수로 받는다. 위 변수에 값을 더하면 배포 역할과 terraform 역할이
+# 신뢰 문서를 공유해서 AI 레포가 관리자 역할까지 맡게 된다.
+variable "github_repo_ai" {
+  type        = string
+  description = "AI 검수 서버 레포. 전용 OIDC 신뢰 문서에만 쓰인다 (org/repo)"
+  default     = "SOMEHOW-VVORKING/aechak_ai"
+}
+
 variable "frontend_origins" {
   type        = list(string)
   description = "구매자 웹의 로컬 개발 오리진 (포트별 복수). 배포 도메인은 locals가 붙인다"
@@ -110,4 +118,20 @@ variable "admin_frontend_origins" {
   description = "어드민 웹의 로컬 개발 오리진 (포트별 복수). 배포 도메인은 locals가 붙인다"
   type        = list(string)
   default     = []
+}
+
+# AI 검수 서버는 uvicorn이라 자바 모듈(8080)과 포트가 다르다.
+variable "ai_app_port" {
+  description = "AI 검수 서버 컨테이너 포트"
+  type        = number
+  default     = 8000
+}
+
+# 처음 apply는 0으로 둔다. taskdef가 :bootstrap 태그를 가리키는데 그 태그가 ECR에 없어서,
+# 1로 두면 존재하지 않는 이미지를 pull하려는 태스크가 실패 루프에 빠진다.
+# aechak_ai 레포의 첫 배포가 실제 태그를 올린 뒤 이 값을 1로 올린다.
+variable "ai_desired_count" {
+  description = "AI 검수 서버 태스크 수. 첫 이미지가 올라간 뒤 1로 올린다"
+  type        = number
+  default     = 0
 }

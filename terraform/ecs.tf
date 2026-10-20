@@ -372,6 +372,58 @@ resource "aws_ecs_task_definition" "batch" {
   memory                   = 1024
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
+# ── AI 검수 서버 (별 레포 aechak_ai) ──────────────────
+# 롤을 자바 세 모듈과 나눈다. 공용 task 롤은 S3 쓰기·삭제와 BE SSM 트리 조회를 들고 있고,
+# 검수 서버는 그 어느 것도 필요하지 않다. 권한을 물려받으면 '판정기는 DB와 버킷을 모른다'가
+# 선언으로만 남는다.
+
+# 파이썬은 Spring Cloud AWS의 파라미터스토어 로딩을 쓸 수 없어 taskdef secrets로 받는다.
+# 그 값을 가져오는 주체는 task 롤이 아니라 execution 롤이고, 경로 조회가 아니라 단건 조회다.
+resource "aws_iam_role" "ecs_execution_ai" {
+  name               = "${var.project}-ecs-execution-ai-${var.env}"
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_execution_ai_managed" {
+  role       = aws_iam_role.ecs_execution_ai.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+data "aws_iam_policy_document" "ecs_execution_ai_secrets" {
+  statement {
+    actions = ["ssm:GetParameters"] # secrets는 리프 단건 조회를 쓴다 — GetParametersByPath로는 안 된다
+    resources = [
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/ai/*",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_execution_ai_secrets" {
+  name   = "ai-secrets"
+  role   = aws_iam_role.ecs_execution_ai.id
+  policy = data.aws_iam_policy_document.ecs_execution_ai_secrets.json
+}
+
+# 런타임 권한이 비어 있는 것이 의도다. 검수 서버는 AWS 리소스를 쓰지 않는다 —
+# 카프카로만 말하고 외부 모델 API만 부른다.
+resource "aws_iam_role" "ecs_task_ai" {
+  name               = "${var.project}-ecs-task-ai-${var.env}"
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
+}
+
+resource "aws_cloudwatch_log_group" "ai" {
+  name              = "/ecs/${var.project}-ai-${var.env}"
+  retention_in_days = 30
+}
+
+resource "aws_ecs_task_definition" "ai" {
+  family                   = "${var.project}-ai-${var.env}"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = 512 # 모델 응답을 기다리는 시간이 대부분이라 CPU는 최소로
+  memory                   = 1024
+  execution_role_arn       = aws_iam_role.ecs_execution_ai.arn
+  task_role_arn            = aws_iam_role.ecs_task_ai.arn
 
   runtime_platform {
     operating_system_family = "LINUX"
@@ -386,6 +438,26 @@ resource "aws_ecs_task_definition" "batch" {
     environment = [
       { name = "SPRING_PROFILES_ACTIVE", value = var.env },
       { name = "AWS_REGION", value = var.region },
+    name      = "ai"
+    image     = "${aws_ecr_repository.ai.repository_url}:bootstrap" # 첫 CI 배포가 실제 태그로 교체
+    essential = true
+
+    portMappings = [{ containerPort = var.ai_app_port, protocol = "tcp" }]
+
+    environment = [
+      { name = "AECHAK_AI_KAFKA_BOOTSTRAP_SERVERS", value = "${local.kafka_private_ip}:9092" },
+      # 추적이 켜지면 리뷰 본문과 상품 설명이 외부로 송신된다. 이미지 기본값도 false지만
+      # 상속으로 켜지는 경로를 막으려고 여기서 한 번 더 못박는다.
+      { name = "LANGSMITH_TRACING", value = "false" },
+      { name = "LANGCHAIN_TRACING_V2", value = "false" },
+    ]
+
+    # 값을 terraform이 알 수 없는 것만 secrets로 받는다. 수기 등재가 전제다.
+    secrets = [
+      {
+        name      = "AECHAK_AI_ANTHROPIC_API_KEY"
+        valueFrom = "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/ai/AECHAK_AI_ANTHROPIC_API_KEY"
+      },
     ]
 
     logConfiguration = {
@@ -394,6 +466,9 @@ resource "aws_ecs_task_definition" "batch" {
         awslogs-group         = aws_cloudwatch_log_group.batch.name
         awslogs-region        = var.region
         awslogs-stream-prefix = "batch"
+        awslogs-group         = aws_cloudwatch_log_group.ai.name
+        awslogs-region        = var.region
+        awslogs-stream-prefix = "ai"
       }
     }
   }])
@@ -404,6 +479,11 @@ resource "aws_ecs_service" "batch" {
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.batch.arn
   desired_count   = 1 # 고정 1대. 2대 이상이면 같은 스케줄 회차가 동시에 돈다
+resource "aws_ecs_service" "ai" {
+  name            = "${var.project}-ai-${var.env}"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.ai.arn
+  desired_count   = var.ai_desired_count # 기본 0 — :bootstrap 태그가 없어 1로 두면 실패 루프에 빠진다
   launch_type     = "FARGATE"
 
   deployment_circuit_breaker {
@@ -422,6 +502,20 @@ resource "aws_ecs_service" "batch" {
   }
 
   # 오토스케일링 없음 — desired_count는 TF가 1로 고정 관리
+  network_configuration {
+    subnets          = [aws_subnet.app_a.id]
+    security_groups  = [aws_security_group.ai.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.ai.arn
+    container_name   = "ai"
+    container_port   = var.ai_app_port
+  }
+
+  health_check_grace_period_seconds = 120 # 파이썬이라 자바 모듈(300초)보다 기동이 빠르다
+
   lifecycle {
     ignore_changes = [task_definition] # CI가 새 리비전 등록 — TF가 되돌리지 않게
   }
