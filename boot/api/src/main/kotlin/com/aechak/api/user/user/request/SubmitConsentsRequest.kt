@@ -1,6 +1,7 @@
 package com.aechak.api.user.user.request
 
 import com.aechak.application.user.term.usecase.command.SubmitConsentsCommand
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.NotEmpty
@@ -17,6 +18,7 @@ data class SubmitConsentsRequest(
 
     /** 같은 약관의 상반된 동의가 한 제출에 섞이지 않도록 termId 중복을 형식 오류로 거른다. */
     @get:AssertTrue(message = "같은 약관을 중복 제출할 수 없습니다.")
+    @get:Schema(hidden = true)
     val isTermIdUnique: Boolean
         get() = items.map { it.termId }.distinct().size == items.size
 

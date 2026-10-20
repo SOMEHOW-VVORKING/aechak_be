@@ -35,6 +35,7 @@ data class ProductRegisterRequest(
 ) {
     /** 통과시키면 컬럼 길이를 넘겨 저장 단계에서 500이 됨. */
     @get:AssertTrue(message = "이미지 키는 비울 수 없고 ${ProductImage.STORAGE_KEY_MAX}자 이하여야 합니다.")
+    @get:Schema(hidden = true)
     val imageKeysWellFormed: Boolean
         get() =
             (additionalImageKeys.orEmpty() + detailImageKeys.orEmpty())
@@ -50,6 +51,7 @@ data class ProductRegisterRequest(
         val values: List<String>,
     ) {
         @get:AssertTrue(message = "옵션값은 비울 수 없고 ${OptionValue.NAME_MAX}자 이하여야 합니다.")
+        @get:Schema(hidden = true)
         val valuesWellFormed: Boolean
             get() = values.all { it.isNotBlank() && it.length <= OptionValue.NAME_MAX }
     }
