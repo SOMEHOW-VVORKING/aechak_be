@@ -1,5 +1,7 @@
 package com.aechak.domain.order.order
 
+import com.aechak.common.error.BusinessException
+import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.order.enums.OrderItemStatus
 import com.aechak.domain.support.BaseEntity
 import jakarta.persistence.Column
@@ -51,6 +53,38 @@ class OrderItem protected constructor(
 
     @Column(nullable = false)
     val productVersionId: Long = productVersionId
+
+    /** 주문 취소 또는 클레임 환불 집행에 따른 품목 취소. */
+    fun markCancelled() {
+        transitionTo(OrderItemStatus.CANCELLED)
+    }
+
+    /** 반품 요청 접수. */
+    fun markReturnRequested() {
+        transitionTo(OrderItemStatus.RETURN_REQUESTED)
+    }
+
+    /** 회수 완료. */
+    fun markReturned() {
+        transitionTo(OrderItemStatus.RETURNED)
+    }
+
+    /** 교환 요청 접수. */
+    fun markExchangeRequested() {
+        transitionTo(OrderItemStatus.EXCHANGE_REQUESTED)
+    }
+
+    /** 거부·철회된 반품·교환 요청의 되돌림. */
+    fun revertClaimRequest() {
+        transitionTo(OrderItemStatus.ORDERED)
+    }
+
+    private fun transitionTo(next: OrderItemStatus) {
+        if (!itemStatus.canTransitionTo(next)) {
+            throw BusinessException(OrderErrorCode.INVALID_ORDER_ITEM_STATUS_TRANSITION)
+        }
+        itemStatus = next
+    }
 
     companion object {
         fun of(

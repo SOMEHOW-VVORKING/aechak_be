@@ -18,12 +18,14 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
             "com.aechak.pii", // PII 암호화 엔진·키 조립(PiiCryptoConfig) — 계좌번호 복호에 필요
             "com.aechak.application.pii", // 암호문 Base64 왕복 부품(PiiStringCodec) — 계좌번호 복호가 경유
             "com.aechak.application.seller", // 심사 유스케이스 (신청자측 파사드도 딸려온다 — 아래 user·file 스캔 이유)
-            "com.aechak.application.order.seller", // 셀러센터 배송 정책 파사드가 택배사 검증을 order BC UseCase로 경유 — 위 스캔에 딸려온다
             "com.aechak.application.settlement", // 승인 tx의 정산계좌 이관 진입점
             "com.aechak.application.file", // 서류 다운로드 URL 발급(FileUseCase)
             "com.aechak.application.user.user", // SellerApplicationFacade의 휴대폰 인증 검사 의존(UserUseCase) — user 전체 스캔은 전화
             // 인증(Redis·SMS 포트) 조립까지 요구해 하위로 좁힌다
             "com.aechak.application.user.term", // UserFacade의 약관 동의 의존(ConsentService)
+            // 배송 정책 파사드의 택배사 검증 의존(CourierUseCase) — 어드민이 쓰는 기능은 아니지만
+            // 그 파사드가 application.seller에 살아 패키지 단위 스캔으로는 가릴 수 없다. order BC 중 이 하위만 쓴다
+            "com.aechak.application.order.shipment",
             "com.aechak.infra.persistence", // 리포지토리·UserStatusReader 어댑터
             "com.aechak.infra.s3", // FileStorage 어댑터
         })

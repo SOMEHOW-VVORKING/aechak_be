@@ -30,6 +30,7 @@ class FakePaymentGateway : PaymentGatewayPort {
     private val cancelErrors = ConcurrentHashMap<String, PaymentErrorCode>()
     private val errorsAfterProcessing = ConcurrentHashMap<String, PaymentErrorCode>()
     private val amountlessSuccess = ConcurrentHashMap<String, Boolean>()
+    private val partialConfirm = ConcurrentHashMap<String, Long>()
 
     /** PG 쪽 확정 취소액 누적 — 실제로 처리된 취소만 더한다 */
     private val confirmedCancelled = ConcurrentHashMap<String, Long>()
@@ -93,6 +94,14 @@ class FakePaymentGateway : PaymentGatewayPort {
         amountlessSuccess[paymentId] = true
     }
 
+    /** PG가 요청액보다 적은 금액만 확정해 돌려주는 응답을 심음 — 잔액도 그 금액만큼만 줄어든다. */
+    fun stubCancelPartialConfirm(
+        paymentId: String,
+        confirmedAmount: Long,
+    ) {
+        partialConfirm[paymentId] = confirmedAmount
+    }
+
     /** PG 쪽 누적 확정 취소액 */
     fun cancelledAmountOf(paymentId: String): Long = confirmedCancelled[paymentId] ?: 0L
 
@@ -105,6 +114,7 @@ class FakePaymentGateway : PaymentGatewayPort {
         cancelErrors.clear()
         errorsAfterProcessing.clear()
         amountlessSuccess.clear()
+        partialConfirm.clear()
         confirmedCancelled.clear()
         onCancel = null
         failOnce.set(false)
@@ -146,8 +156,9 @@ class FakePaymentGateway : PaymentGatewayPort {
         onCancel?.invoke(command)
         assertCancellableAgrees(command)
         val status = cancelStatuses[command.paymentId] ?: PaymentCancelStatus.SUCCEEDED
-        // 전액 취소는 amount 를 싣지 않으므로 우리가 보낸 취소가능액이 그대로 확정액이다
-        val amount = command.amount ?: command.currentCancellableAmount
+        // 전액 취소는 amount 를 싣지 않으므로 우리가 보낸 취소가능액이 그대로 확정액이다.
+        // 부분 확정 주입이 있으면 PG가 요청액보다 적게 취소한 경우를 재현한다
+        val amount = partialConfirm[command.paymentId] ?: command.amount ?: command.currentCancellableAmount
         if (status == PaymentCancelStatus.SUCCEEDED) {
             confirmedCancelled.merge(command.paymentId, amount, Long::plus)
         }
