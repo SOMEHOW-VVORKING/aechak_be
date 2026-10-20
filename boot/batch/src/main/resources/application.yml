@@ -38,6 +38,12 @@ aws:
     docs-bucket: ${AWS_S3_DOCS_BUCKET:}
     media-public-base-url: ${AWS_S3_MEDIA_PUBLIC_BASE_URL:}
 
+settlement:
+  execution:
+    # 기본값 false — 셀러 지급 건을 만드는 경로다. 지급 건에 묶인 정산은 다음 회차가 다시 집지 않으므로 환경별로 확인한 뒤 켠다
+    enabled: ${SETTLEMENT_EXECUTION_ENABLED:false}
+    cron: "0 0 5 * * *"                        # KST 05:00 — 결제 대사(04:30)가 끝난 뒤. 기준일은 실행 당일(KST)
+
 payment:
   portone:
     base-url: https://api.portone.io
