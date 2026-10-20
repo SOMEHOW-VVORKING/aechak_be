@@ -5,6 +5,7 @@ import com.aechak.domain.product.option.OptionGroup
 import com.aechak.domain.product.option.OptionValue
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.ProductImage
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.NotBlank
@@ -39,6 +40,8 @@ data class ProductRegisterRequest(
             (additionalImageKeys.orEmpty() + detailImageKeys.orEmpty())
                 .all { it.isNotBlank() && it.length <= ProductImage.STORAGE_KEY_MAX }
 
+    // 임시저장 페이로드의 동명 항목(전 필드 널 허용)과 문서 스키마가 서로 덮어쓰므로 이름을 따로 못박는다.
+    @Schema(name = "ProductRegisterOptionGroupItem")
     data class OptionGroupItem(
         @field:NotBlank(message = "옵션 그룹명은 필수입니다.")
         @field:Size(max = OptionGroup.NAME_MAX, message = "옵션 그룹명은 {max}자 이하여야 합니다.")
@@ -51,6 +54,7 @@ data class ProductRegisterRequest(
             get() = values.all { it.isNotBlank() && it.length <= OptionValue.NAME_MAX }
     }
 
+    @Schema(name = "ProductRegisterOptionCombinationItem")
     data class OptionCombinationItem(
         val optionValues: List<String>,
         val additionalPrice: Long,

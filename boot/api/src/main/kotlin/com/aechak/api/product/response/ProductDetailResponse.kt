@@ -2,6 +2,7 @@ package com.aechak.api.product.response
 
 import com.aechak.application.product.product.usecase.result.ProductResult
 import com.fasterxml.jackson.annotation.JsonProperty
+import io.swagger.v3.oas.annotations.media.Schema
 import java.math.BigDecimal
 
 data class ProductDetailResponse(
@@ -44,6 +45,8 @@ data class ProductDetailResponse(
         val averageRating: BigDecimal?,
     )
 
+    // 카테고리 트리 노드(CategoryResponse)와 단순 이름이 같아 문서 스키마가 서로 덮어쓰므로 이름을 따로 못박는다.
+    @Schema(name = "ProductCategoryPathResponse")
     data class CategoryResponse(
         val categoryId: Long,
         val name: String,
