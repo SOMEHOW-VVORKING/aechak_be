@@ -1,6 +1,7 @@
 package com.aechak.api.review.response
 
 import com.aechak.application.review.usecase.result.ReviewItemResult
+import com.fasterxml.jackson.annotation.JsonProperty
 import java.time.LocalDateTime
 
 data class ReviewItemResponse(
@@ -12,6 +13,7 @@ data class ReviewItemResponse(
     val authorProfileImageUrl: String?,
     val createdAt: LocalDateTime,
     val images: List<ReviewImageResponse>,
+    @get:JsonProperty("isMine")
     val isMine: Boolean,
 ) {
     companion object {

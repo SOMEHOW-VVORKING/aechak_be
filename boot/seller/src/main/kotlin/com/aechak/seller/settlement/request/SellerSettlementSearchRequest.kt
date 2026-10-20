@@ -4,6 +4,7 @@ import com.aechak.application.settlement.port.SellerSettlementStatus
 import com.aechak.application.settlement.seller.usecase.query.SellerSettlementSearchQuery
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.PositiveOrZero
 import org.hibernate.validator.constraints.Range
@@ -19,6 +20,7 @@ data class SellerSettlementSearchRequest(
         message = "month는 YYYY-MM 형식이어야 합니다.",
     )
     val month: String? = null,
+    @field:Schema(allowableValues = ["pending", "scheduled", "completed", "held"])
     val status: String? = null,
     @field:PositiveOrZero(message = "page는 0 이상이어야 합니다.")
     val page: Int = 0,

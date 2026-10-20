@@ -5,11 +5,13 @@ import com.aechak.application.payment.usecase.command.CompletePaymentByWebhookCo
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.payment.error.PaymentErrorCode
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 /**
@@ -25,6 +27,7 @@ class PaymentWebhookController(
 
     /** 본문은 파싱하지 않고 문자열로 받는다 — 서명이 받은 원문 기준이라 재직렬화하면 깨진다 */
     @PostMapping
+    @ResponseStatus(HttpStatus.OK)
     fun receive(
         @RequestBody rawBody: String,
         @RequestHeader(WEBHOOK_ID, required = false) webhookId: String?,

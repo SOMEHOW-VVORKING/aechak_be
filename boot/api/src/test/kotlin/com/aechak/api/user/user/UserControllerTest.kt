@@ -281,6 +281,21 @@ class UserControllerTest {
             .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
     }
 
+    /** isTermIdUnique는 요청이 스스로를 검사하는 프로퍼티라 문서에서 숨겼다 — 실어 보내도 검증을 뒤집지 못해야 한다. */
+    @Test
+    fun `내부 검증 프로퍼티를 본문에 실어도 중복 제출은 그대로 거절된다`() {
+        mockMvc
+            .perform(
+                post("/users/me/consents")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """{"isTermIdUnique":true,"termIdUnique":true,
+                        "items":[{"termId":1,"isAgreed":true},{"termId":1,"isAgreed":false}]}""",
+                    ),
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
+    }
+
     @Test
     fun `isAgreed가 누락되면 400과 INVALID_REQUEST 코드로 응답한다`() {
         mockMvc

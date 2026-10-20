@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -45,6 +46,7 @@ class SellerProductDraftController(
     }
 
     @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
     fun create(
         @Valid @RequestBody request: ProductDraftSaveRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
@@ -66,6 +68,7 @@ class SellerProductDraftController(
     }
 
     @DeleteMapping("/{draftId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun delete(
         @PathVariable draftId: String,
         @AuthenticationPrincipal principal: AuthPrincipal,
