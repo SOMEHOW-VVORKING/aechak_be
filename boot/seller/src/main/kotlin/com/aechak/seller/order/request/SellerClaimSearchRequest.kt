@@ -6,6 +6,8 @@ import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
+import io.swagger.v3.oas.annotations.media.ArraySchema
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.PositiveOrZero
 import org.hibernate.validator.constraints.Range
 import java.time.LocalDate
@@ -16,8 +18,19 @@ import java.time.format.DateTimeParseException
  * 화면 표시 상태로 접는 판정은 프론트에 있으므로 서버는 축 어휘만 안다.
  */
 data class SellerClaimSearchRequest(
+    @field:ArraySchema(schema = Schema(allowableValues = ["CANCEL", "RETURN", "EXCHANGE"]))
     val claimType: List<String> = emptyList(),
+    @field:ArraySchema(
+        schema =
+            Schema(
+                allowableValues = [
+                    "CLAIM_REQUESTED", "COLLECTING", "APPROVED", "REJECTED",
+                    "ADMIN_OVERRIDDEN", "REFUND_FAILED", "WITHDRAWN",
+                ],
+            ),
+    )
     val status: List<String> = emptyList(),
+    @field:ArraySchema(schema = Schema(allowableValues = ["NONE", "REQUESTED", "DONE", "REFUND_FAILED"]))
     val refundStatus: List<String> = emptyList(),
     val requestedFrom: String? = null,
     val requestedTo: String? = null,

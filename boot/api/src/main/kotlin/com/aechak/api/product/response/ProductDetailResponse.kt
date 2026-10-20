@@ -1,6 +1,7 @@
 package com.aechak.api.product.response
 
 import com.aechak.application.product.product.usecase.result.ProductResult
+import com.aechak.domain.product.product.enums.SaleStatus
 import com.fasterxml.jackson.annotation.JsonProperty
 import io.swagger.v3.oas.annotations.media.Schema
 import java.math.BigDecimal
@@ -14,7 +15,7 @@ data class ProductDetailResponse(
     val regularPrice: Long,
     val discountPrice: Long?,
     val discountRate: Int?,
-    val saleStatus: String,
+    val saleStatus: SaleStatus,
     val shipping: ShippingResponse,
     val seller: SellerSummaryResponse,
     val review: ReviewSummaryResponse,
@@ -64,7 +65,7 @@ data class ProductDetailResponse(
                 regularPrice = result.regularPrice,
                 discountPrice = result.discountPrice,
                 discountRate = result.discountRate,
-                saleStatus = result.saleStatus.name,
+                saleStatus = result.saleStatus,
                 shipping = ShippingResponse(result.shipping.baseShippingFee, result.shipping.freeShippingThreshold),
                 seller = SellerSummaryResponse(result.seller.storeName, result.seller.profileImageKey),
                 review = ReviewSummaryResponse(result.review.reviewCount, result.review.averageRating),

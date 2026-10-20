@@ -1,6 +1,7 @@
 package com.aechak.api.auth.response
 
 import com.aechak.application.auth.usecase.result.SocialLoginResult
+import com.aechak.domain.user.user.enums.UserStatus
 import com.fasterxml.jackson.annotation.JsonProperty
 
 /** 로그인 응답 — 토큰 쌍 + 유저 온보딩 상태(FE 라우팅용). */
@@ -13,7 +14,7 @@ data class LoginResponse(
 ) {
     data class User(
         /** PENDING_ONBOARDING이면 FE가 온보딩(약관·닉네임)으로 라우팅한다. */
-        val status: String,
+        val status: UserStatus,
         @get:JsonProperty("isNew")
         val isNew: Boolean,
     )
@@ -26,7 +27,7 @@ data class LoginResponse(
                 refreshToken = tokens.refreshToken,
                 tokenType = tokens.tokenType,
                 expiresIn = tokens.expiresIn,
-                user = User(result.userStatus.name, result.isNew),
+                user = User(result.userStatus, result.isNew),
             )
         }
     }

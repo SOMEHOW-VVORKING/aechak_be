@@ -1,6 +1,7 @@
 package com.aechak.seller.settlement.response
 
 import com.aechak.application.settlement.seller.usecase.result.SellerSettlementListItemResult
+import io.swagger.v3.oas.annotations.media.Schema
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -16,6 +17,7 @@ data class SellerSettlementListItemResponse(
     val productAmount: Long,
     val feeAmount: Long,
     val finalAmount: Long,
+    @field:Schema(allowableValues = ["pending", "scheduled", "completed", "held"])
     val status: String,
 ) {
     companion object {
