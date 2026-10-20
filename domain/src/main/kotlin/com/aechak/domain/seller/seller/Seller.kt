@@ -142,6 +142,32 @@ class Seller protected constructor(
         protected set
 
     /**
+     * 스토어 설정 전체 덮어쓰기. 주소 3필드는 배송 정책의 출고지와 같은 컬럼이라 두 화면이 같은 값을 본다.
+     * 이미지 키는 승격이 끝난 저장 키만 들어온다(승격은 트랜잭션 밖 호출부 책임).
+     * 상호는 앞뒤 공백을 떼고 저장하며, 떼고 나면 비는 값은 거절한다.
+     */
+    fun updateStore(
+        storeName: String,
+        brandIntro: String?,
+        profileImageKey: String?,
+        bannerImageKey: String?,
+        zipCode: String?,
+        roadAddress: String?,
+        detailAddress: String?,
+    ) {
+        val normalizedStoreName = storeName.trim()
+        validateStoreName(normalizedStoreName)
+
+        this.storeName = normalizedStoreName
+        this.brandIntro = brandIntro
+        this.profileImageKey = profileImageKey
+        this.bannerImageKey = bannerImageKey
+        this.zipCode = zipCode
+        this.roadAddress = roadAddress
+        this.detailAddress = detailAddress
+    }
+
+    /**
      * 배송 정책 전체 덮어쓰기. 반품지가 출고지와 같으면 반품지 3필드는 저장하지 않는다.
      * 기본 배송비·무료배송 임계는 구매자 금액 계산이 읽는 값이라 의미를 그대로 둔 채 값만 바꾼다.
      */
@@ -191,6 +217,19 @@ class Seller protected constructor(
         this.shippingPolicyText = shippingPolicyText
     }
 
+    /** 상호는 구매자에게 보이는 이름이라 빈 값·컬럼 초과를 엔티티가 막는다. */
+    private fun validateStoreName(storeName: String) {
+        if (storeName.isEmpty()) {
+            throw BusinessException(SellerErrorCode.INVALID_STORE_SETTINGS, detail = "상호(스토어명)는 필수입니다.")
+        }
+        if (storeName.length > MAX_STORE_NAME_LENGTH) {
+            throw BusinessException(
+                SellerErrorCode.INVALID_STORE_SETTINGS,
+                detail = "상호(스토어명)는 ${MAX_STORE_NAME_LENGTH}자 이하여야 합니다.",
+            )
+        }
+    }
+
     private fun validateShippingPolicy(
         baseShippingFee: Long,
         freeShippingThreshold: Long?,
@@ -238,6 +277,15 @@ class Seller protected constructor(
     companion object {
         /** MySQL 중복 키 메시지의 PK 식별자 — 같은 신청 동시 승인의 개점 INSERT 충돌 판별용. */
         const val PK_CONFLICT_MARKER = "sellers.PRIMARY"
+
+        /** store_name 컬럼 길이. 요청 DTO의 상한이 이 상수를 참조한다. */
+        const val MAX_STORE_NAME_LENGTH = 100
+
+        /** brand_intro 컬럼 길이. */
+        const val MAX_BRAND_INTRO_LENGTH = 1000
+
+        /** profile_image_key·banner_image_key 컬럼 길이. */
+        const val MAX_IMAGE_KEY_LENGTH = 1024
 
         /** shipping_policy_text가 TEXT 컬럼이라 바이트 한도를 넘지 않게 글자 수로 먼저 막는다. */
         const val MAX_SHIPPING_POLICY_TEXT_LENGTH = 2000
