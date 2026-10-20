@@ -1,6 +1,7 @@
 package com.aechak.api.user.user.request
 
 import com.aechak.application.user.term.usecase.command.SubmitConsentsCommand
+import com.fasterxml.jackson.annotation.JsonProperty
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
@@ -13,6 +14,7 @@ data class SubmitConsentsRequest(
 ) {
     data class Item(
         val termId: Long,
+        @get:JsonProperty("isAgreed")
         val isAgreed: Boolean,
     )
 
