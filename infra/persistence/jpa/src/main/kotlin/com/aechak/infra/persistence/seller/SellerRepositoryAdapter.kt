@@ -26,4 +26,6 @@ class SellerRepositoryAdapter(
     override fun existsActiveByUserId(userId: Long): Boolean = jpaRepository.existsByUserIdAndStatus(userId, SellerStatus.ACTIVE)
 
     override fun findStatusByUserId(userId: Long): SellerStatus? = jpaRepository.findById(userId).map { it.status }.orElse(null)
+
+    override fun findByUserId(userId: Long): Seller? = jpaRepository.findById(userId).orElse(null)
 }

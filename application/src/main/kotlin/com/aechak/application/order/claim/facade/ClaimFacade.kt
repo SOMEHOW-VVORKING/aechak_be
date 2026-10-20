@@ -1,14 +1,19 @@
 package com.aechak.application.order.claim.facade
 
+import com.aechak.application.order.claim.service.ClaimCollectionService
 import com.aechak.application.order.claim.service.ClaimService
 import com.aechak.application.order.claim.usecase.ClaimUseCase
 import com.aechak.application.order.claim.usecase.SellerClaimUseCase
 import com.aechak.application.order.claim.usecase.command.ApproveClaimCommand
+import com.aechak.application.order.claim.usecase.command.CompleteClaimCollectionCommand
 import com.aechak.application.order.claim.usecase.command.RejectClaimCommand
 import com.aechak.application.order.claim.usecase.command.RequestClaimCommand
+import com.aechak.application.order.claim.usecase.command.ReshipClaimCommand
+import com.aechak.application.order.claim.usecase.command.StartClaimCollectionCommand
 import com.aechak.application.order.claim.usecase.command.WithdrawClaimCommand
 import com.aechak.application.order.claim.usecase.result.ClaimListResult
 import com.aechak.application.order.claim.usecase.result.RequestClaimResult
+import com.aechak.application.order.claim.usecase.result.ReshipClaimResult
 import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.error.OrderErrorCode
@@ -23,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class ClaimFacade(
     private val claimService: ClaimService,
+    private val claimCollectionService: ClaimCollectionService,
     private val sellerUseCase: SellerUseCase,
 ) : ClaimUseCase,
     SellerClaimUseCase {
@@ -52,6 +58,24 @@ class ClaimFacade(
     override fun rejectClaim(command: RejectClaimCommand) {
         requireActiveSeller(command.sellerId)
         claimService.rejectClaim(command)
+    }
+
+    @Transactional
+    override fun startCollection(command: StartClaimCollectionCommand) {
+        requireActiveSeller(command.sellerId)
+        claimCollectionService.startCollection(command)
+    }
+
+    @Transactional
+    override fun completeCollection(command: CompleteClaimCollectionCommand) {
+        requireActiveSeller(command.sellerId)
+        claimCollectionService.completeCollection(command)
+    }
+
+    @Transactional
+    override fun reship(command: ReshipClaimCommand): ReshipClaimResult {
+        requireActiveSeller(command.sellerId)
+        return claimCollectionService.reship(command)
     }
 
     private fun requireActiveSeller(sellerId: Long) {

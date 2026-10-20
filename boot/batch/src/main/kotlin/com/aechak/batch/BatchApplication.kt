@@ -3,6 +3,7 @@ package com.aechak.batch
 import org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.context.TypeExcludeFilter
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan
 import org.springframework.boot.runApplication
 import org.springframework.context.annotation.ComponentScan
 import org.springframework.context.annotation.FilterType
@@ -16,6 +17,7 @@ import org.springframework.context.annotation.FilterType
  * 전역 lazy-init은 쓰지 않는다 — @Scheduled 빈이 지연 생성되면 스케줄 자체가 등록되지 않는다.
  */
 @SpringBootApplication
+@ConfigurationPropertiesScan // 이 모듈의 @ConfigurationProperties 등록 — @ComponentScan을 직접 선언하면 자동 등록되지 않는다
 @ComponentScan(
     basePackages = [
         "com.aechak.batch", // 이 모듈 — 스케줄과 조립
