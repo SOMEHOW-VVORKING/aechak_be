@@ -118,6 +118,18 @@ class GuestSnsAccessIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `토큰 없이 차단 목록과 뮤트 목록을 부르면 401 20004다`() {
+        mockMvc
+            .perform(get("/api/v1/sns/me/blocks"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        mockMvc
+            .perform(get("/api/v1/sns/me/mutes"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
     fun `온보딩 전 사용자는 토큰을 붙이면 403 20006이고 토큰 없이는 200이다`() {
         val publicId = onboardedUserPublicId()
         val pendingId = tx.execute { User.preRegister().also { em.persist(it) }.id }!!

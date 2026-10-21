@@ -1,13 +1,18 @@
 package com.aechak.application.sns.facade
 
+import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.sns.service.BlockService
 import com.aechak.application.sns.service.MuteService
 import com.aechak.application.sns.service.SnsProfileService
+import com.aechak.application.sns.service.SnsUserListService
 import com.aechak.application.sns.service.SnsVisibilityService
 import com.aechak.application.sns.usecase.SnsUseCase
 import com.aechak.application.sns.usecase.command.BlockUserCommand
 import com.aechak.application.sns.usecase.command.MuteUserCommand
+import com.aechak.application.sns.usecase.query.SnsRelationListQuery
 import com.aechak.application.sns.usecase.result.SnsProfileResult
+import com.aechak.application.sns.usecase.result.SnsRelationItemResult
+import com.aechak.application.support.CursorPageResult
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.application.user.user.usecase.result.UserPublicProfileResult
@@ -21,8 +26,10 @@ class SnsFacade(
     private val blockService: BlockService,
     private val muteService: MuteService,
     private val snsVisibilityService: SnsVisibilityService,
+    private val snsUserListService: SnsUserListService,
     private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
+    private val fileUseCase: FileUseCase,
 ) : SnsUseCase {
     @Transactional(readOnly = true)
     override fun getProfile(
@@ -57,6 +64,14 @@ class SnsFacade(
     override fun unmute(command: MuteUserCommand) {
         val target = snsProfileService.requireExists(userUseCase.findPublicProfile(command.targetPublicId))
         muteService.unmute(command.userId, target.userId)
+    }
+
+    @Transactional(readOnly = true)
+    override fun getMyRelations(query: SnsRelationListQuery): CursorPageResult<SnsRelationItemResult> {
+        val owner = snsProfileService.requireExists(userUseCase.findPublicProfileById(query.userId))
+        return snsUserListService.getRelationPage(query, owner.publicId).map {
+            SnsRelationItemResult.from(it, fileUseCase.resolveMediaUrl(it.profileImageKey))
+        }
     }
 
     private fun loadProfile(
