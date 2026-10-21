@@ -11,6 +11,7 @@ import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -137,6 +138,32 @@ class BlockMuteIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `서로 차단하면 두 사람 모두 상대 프로필이 404 130000이다`() {
+        val me = onboardedUser("bothme")
+        val other = onboardedUser("bothother")
+        block(me, other.publicId).andExpect(status().isCreated)
+        block(other, me.publicId).andExpect(status().isCreated)
+
+        expectUnavailable(profile(me, other.publicId))
+        expectUnavailable(profile(other, me.publicId))
+    }
+
+    @Test
+    fun `서로 차단한 뒤 한쪽만 해제해도 해제한 사람에게 404가 이어진다`() {
+        val me = onboardedUser("halfme")
+        val other = onboardedUser("halfother")
+        block(me, other.publicId).andExpect(status().isCreated)
+        block(other, me.publicId).andExpect(status().isCreated)
+
+        unblock(me, other.publicId).andExpect(status().isNoContent)
+
+        expectUnavailable(profile(me, other.publicId))
+        profile(other, me.publicId)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.blockedByMe").value(true))
+    }
+
+    @Test
     fun `뮤트는 201이고 반복해도 201이며 행은 하나다`() {
         val me = onboardedUser("muter")
         val target = onboardedUser("muted")
@@ -237,6 +264,15 @@ class BlockMuteIntegrationTest : IntegrationTestBase() {
         mockMvc.perform(
             delete("/api/v1/sns/users/$targetPublicId/block")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(actor.id)}"),
+        )
+
+    private fun profile(
+        viewer: Seeded,
+        targetPublicId: String,
+    ): ResultActions =
+        mockMvc.perform(
+            get("/api/v1/sns/users/$targetPublicId")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewer.id)}"),
         )
 
     private fun blockCount(

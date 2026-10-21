@@ -50,6 +50,29 @@ class GuestSnsAccessIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `같은 프로필 경로에 토큰을 붙이면 관계 필드가 보는 사람 기준으로 채워진다`() {
+        val publicId = onboardedUserPublicId()
+        val viewerId = createActiveUser()
+        mockMvc
+            .perform(
+                post("/api/v1/sns/users/$publicId/mute")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}"),
+            ).andExpect(status().isCreated)
+
+        mockMvc
+            .perform(
+                get("/api/v1/sns/users/$publicId")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}"),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.mutedByMe").value(true))
+
+        mockMvc
+            .perform(get("/api/v1/sns/users/$publicId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.mutedByMe").value(false))
+    }
+
+    @Test
     fun `토큰 없이 내 프로필을 부르면 401 20004다`() {
         mockMvc
             .perform(get("/api/v1/sns/me"))

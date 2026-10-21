@@ -3,6 +3,7 @@ package com.aechak.application.sns.facade
 import com.aechak.application.sns.service.BlockService
 import com.aechak.application.sns.service.MuteService
 import com.aechak.application.sns.service.SnsProfileService
+import com.aechak.application.sns.service.SnsVisibilityService
 import com.aechak.application.sns.usecase.SnsUseCase
 import com.aechak.application.sns.usecase.command.BlockUserCommand
 import com.aechak.application.sns.usecase.command.MuteUserCommand
@@ -19,6 +20,7 @@ class SnsFacade(
     private val snsProfileService: SnsProfileService,
     private val blockService: BlockService,
     private val muteService: MuteService,
+    private val snsVisibilityService: SnsVisibilityService,
     private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
 ) : SnsUseCase {
@@ -62,6 +64,9 @@ class SnsFacade(
         viewerId: Long?,
     ): SnsProfileResult {
         val target = snsProfileService.requireVisible(found)
-        return snsProfileService.toResult(target, viewerId, petProfileUseCase.getPets(target.userId).pets)
+        val pair = snsVisibilityService.findPairState(viewerId, target.userId)
+        snsProfileService.requireNotBlockedByTarget(pair)
+        if (pair.blockedByMe) return snsProfileService.toBlockedResult(target, pair)
+        return snsProfileService.toResult(target, viewerId, pair, petProfileUseCase.getPets(target.userId).pets)
     }
 }

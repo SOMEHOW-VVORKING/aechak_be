@@ -1,6 +1,8 @@
 package com.aechak.api.sns
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.domain.sns.block.repository.BlockRepository
+import com.aechak.domain.sns.mute.repository.MuteRepository
 import com.aechak.domain.sns.stats.repository.SnsUserStatsRepository
 import com.aechak.domain.user.pet.Breed
 import com.aechak.domain.user.pet.PetProfile
@@ -35,6 +37,12 @@ class SnsProfileIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var statsRepository: SnsUserStatsRepository
+
+    @Autowired
+    private lateinit var blockRepository: BlockRepository
+
+    @Autowired
+    private lateinit var muteRepository: MuteRepository
 
     private lateinit var mockMvc: MockMvc
 
@@ -217,6 +225,77 @@ class SnsProfileIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.pets[0].profileImageKey").doesNotExist())
             .andExpect(jsonPath("$.data.pets[0].version").doesNotExist())
     }
+
+    @Test
+    fun `나를 차단한 사용자의 프로필은 404 130000이다`() {
+        val target = onboardedUser("blocksme")
+        val viewer = onboardedUser("blockedview")
+        tx.execute { blockRepository.insertIfAbsent(target.id, viewer.id) }
+
+        expectUnavailable(viewProfile(viewer, target))
+    }
+
+    @Test
+    fun `내가 차단한 사용자는 blockedByMe와 publicId, 닉네임, 이미지만 받고 나머지는 null이다`() {
+        val target = onboardedUser("iblocked", bio = "hello", imageKey = "users/profile/abc.webp")
+        val viewer = onboardedUser("blockerview")
+        tx.execute {
+            val user = em.find(User::class.java, target.id)
+            val breed = Breed.of(Species.DOG, "Shiba").also { em.persist(it) }
+            em.persist(PetProfile.register(user, breed, "shiba", birthYearMonth = "2022-01", isDefault = true))
+            statsRepository.increaseFollowerCount(target.id)
+            blockRepository.insertIfAbsent(viewer.id, target.id)
+        }
+
+        viewProfile(viewer, target)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.publicId").value(target.publicId))
+            .andExpect(jsonPath("$.data.nickname").value("iblocked"))
+            .andExpect(jsonPath("$.data.profileImageUrl").value("https://fake-cdn.local/users/profile/abc.webp"))
+            .andExpect(jsonPath("$.data.bio").value(nullValue()))
+            .andExpect(jsonPath("$.data.pets").value(nullValue()))
+            .andExpect(jsonPath("$.data.postCount").value(nullValue()))
+            .andExpect(jsonPath("$.data.followerCount").value(nullValue()))
+            .andExpect(jsonPath("$.data.followingCount").value(nullValue()))
+            .andExpect(jsonPath("$.data.isMe").value(false))
+            .andExpect(jsonPath("$.data.following").value(false))
+            .andExpect(jsonPath("$.data.blockedByMe").value(true))
+            .andExpect(jsonPath("$.data.mutedByMe").value(false))
+    }
+
+    @Test
+    fun `뮤트한 사용자의 프로필은 평소처럼 보이고 mutedByMe가 true다`() {
+        val target = onboardedUser("imuted", bio = "hello")
+        val viewer = onboardedUser("muterview")
+        tx.execute {
+            val user = em.find(User::class.java, target.id)
+            val breed = Breed.of(Species.DOG, "Jindo").also { em.persist(it) }
+            em.persist(PetProfile.register(user, breed, "jindo", birthYearMonth = "2023-05", isDefault = true))
+            statsRepository.increaseFollowerCount(target.id)
+            statsRepository.increaseFollowerCount(target.id)
+            statsRepository.increaseFollowingCount(target.id)
+            muteRepository.insertIfAbsent(viewer.id, target.id)
+        }
+
+        viewProfile(viewer, target)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.bio").value("hello"))
+            .andExpect(jsonPath("$.data.pets.length()").value(1))
+            .andExpect(jsonPath("$.data.pets[0].breedLabel").value("Jindo"))
+            .andExpect(jsonPath("$.data.followerCount").value(2))
+            .andExpect(jsonPath("$.data.followingCount").value(1))
+            .andExpect(jsonPath("$.data.blockedByMe").value(false))
+            .andExpect(jsonPath("$.data.mutedByMe").value(true))
+    }
+
+    private fun viewProfile(
+        viewer: Seeded,
+        target: Seeded,
+    ): ResultActions =
+        mockMvc.perform(
+            get("/api/v1/sns/users/${target.publicId}")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewer.id)}"),
+        )
 
     private fun expectUnavailable(actions: ResultActions) {
         actions
