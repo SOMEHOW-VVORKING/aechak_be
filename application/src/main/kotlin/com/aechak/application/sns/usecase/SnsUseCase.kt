@@ -1,5 +1,6 @@
 package com.aechak.application.sns.usecase
 
+import com.aechak.application.sns.usecase.command.BlockUserCommand
 import com.aechak.application.sns.usecase.result.SnsProfileResult
 
 interface SnsUseCase {
@@ -11,4 +12,10 @@ interface SnsUseCase {
 
     /** 내 SNS 프로필 */
     fun getMyProfile(userId: Long): SnsProfileResult
+
+    /** 차단(멱등 켜기) */
+    fun block(command: BlockUserCommand)
+
+    /** 차단 해제(멱등 끄기). 내가 건 차단만 지운다. */
+    fun unblock(command: BlockUserCommand)
 }

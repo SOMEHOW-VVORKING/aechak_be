@@ -18,6 +18,10 @@ class SnsProfileService(
         return target
     }
 
+    /** 끄기 요청 대상. 없는 사용자만 130000이고 탈퇴, 온보딩 전 사용자도 통과한다. */
+    fun requireExists(target: UserPublicProfileResult?): UserPublicProfileResult =
+        target ?: throw BusinessException(SnsErrorCode.SNS_USER_UNAVAILABLE)
+
     /** 통계 행이 없으면 세 수는 0이다. 관계 필드는 차단, 뮤트, 팔로우가 생기기 전까지 false다. */
     fun toResult(
         target: UserPublicProfileResult,
