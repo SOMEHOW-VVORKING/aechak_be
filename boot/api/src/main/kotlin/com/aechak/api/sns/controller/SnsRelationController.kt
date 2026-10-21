@@ -2,6 +2,7 @@ package com.aechak.api.sns.controller
 
 import com.aechak.application.sns.usecase.SnsUseCase
 import com.aechak.application.sns.usecase.command.BlockUserCommand
+import com.aechak.application.sns.usecase.command.MuteUserCommand
 import com.aechak.websecurity.authentication.AuthPrincipal
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -35,6 +36,26 @@ class SnsRelationController(
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<Void> {
         snsUseCase.unblock(BlockUserCommand(principal.userId, publicId))
+        return ResponseEntity.noContent().build()
+    }
+
+    @PostMapping("/users/{publicId}/mute")
+    @ResponseStatus(HttpStatus.CREATED)
+    fun mute(
+        @PathVariable publicId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<Void> {
+        snsUseCase.mute(MuteUserCommand(principal.userId, publicId))
+        return ResponseEntity.status(HttpStatus.CREATED).build()
+    }
+
+    @DeleteMapping("/users/{publicId}/mute")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun unmute(
+        @PathVariable publicId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<Void> {
+        snsUseCase.unmute(MuteUserCommand(principal.userId, publicId))
         return ResponseEntity.noContent().build()
     }
 }

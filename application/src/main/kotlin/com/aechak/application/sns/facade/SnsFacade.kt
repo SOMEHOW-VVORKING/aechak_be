@@ -1,9 +1,11 @@
 package com.aechak.application.sns.facade
 
 import com.aechak.application.sns.service.BlockService
+import com.aechak.application.sns.service.MuteService
 import com.aechak.application.sns.service.SnsProfileService
 import com.aechak.application.sns.usecase.SnsUseCase
 import com.aechak.application.sns.usecase.command.BlockUserCommand
+import com.aechak.application.sns.usecase.command.MuteUserCommand
 import com.aechak.application.sns.usecase.result.SnsProfileResult
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.application.user.user.usecase.UserUseCase
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional
 class SnsFacade(
     private val snsProfileService: SnsProfileService,
     private val blockService: BlockService,
+    private val muteService: MuteService,
     private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
 ) : SnsUseCase {
@@ -39,6 +42,19 @@ class SnsFacade(
     override fun unblock(command: BlockUserCommand) {
         val target = snsProfileService.requireExists(userUseCase.findPublicProfile(command.targetPublicId))
         blockService.unblock(command.userId, target.userId)
+    }
+
+    // 뮤트는 통계 행을 잠그지 않는다. 갭 잠금을 줄이려고 차단과 같이 READ_COMMITTED
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    override fun mute(command: MuteUserCommand) {
+        val target = snsProfileService.requireVisible(userUseCase.findPublicProfile(command.targetPublicId))
+        muteService.mute(command.userId, target.userId)
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    override fun unmute(command: MuteUserCommand) {
+        val target = snsProfileService.requireExists(userUseCase.findPublicProfile(command.targetPublicId))
+        muteService.unmute(command.userId, target.userId)
     }
 
     private fun loadProfile(

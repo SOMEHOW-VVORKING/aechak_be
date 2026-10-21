@@ -13,4 +13,7 @@ enum class SnsErrorCode(
 
     // Block 130100번대
     CANNOT_BLOCK_SELF(130100, "자기 자신을 차단할 수 없습니다.", 400),
+
+    // Mute 130200번대
+    CANNOT_MUTE_SELF(130200, "자기 자신을 뮤트할 수 없습니다.", 400),
 }

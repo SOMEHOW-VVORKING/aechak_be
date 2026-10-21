@@ -19,8 +19,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 
 /**
- * 통합: 차단 켜기와 끄기가 실 보안 필터체인과 MySQL을 지나 계약대로 멱등하게 동작하는지.
- * 깨지면 반복 요청이 오류를 내거나 상대가 건 차단이 지워지거나 대상 판정이 계약과 달라진다.
+ * 통합: 차단과 뮤트의 켜기와 끄기가 실 보안 필터체인과 MySQL을 지나 계약대로 멱등하게 동작하는지.
+ * 깨지면 반복 요청이 오류를 내거나 상대가 건 차단이 지워지거나 차단이 뮤트를 지우거나 대상 판정이 계약과 달라진다.
  */
 class BlockMuteIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -136,6 +136,91 @@ class BlockMuteIntegrationTest : IntegrationTestBase() {
         expectUnavailable(unblock(me, "01JZZZZZZZZZZZZZZZZZZZZZZZ"))
     }
 
+    @Test
+    fun `뮤트는 201이고 반복해도 201이며 행은 하나다`() {
+        val me = onboardedUser("muter")
+        val target = onboardedUser("muted")
+
+        mute(me, target.publicId).andExpect(status().isCreated)
+        mute(me, target.publicId).andExpect(status().isCreated)
+
+        assertEquals(1L, muteCount(me.id, target.id), "내 뮤트 행이 하나만 남아 있어야 한다")
+    }
+
+    @Test
+    fun `뮤트 해제는 204이고 뮤트한 적 없어도 204다`() {
+        val me = onboardedUser("unmuter")
+        val target = onboardedUser("unmuted")
+        mute(me, target.publicId).andExpect(status().isCreated)
+
+        unmute(me, target.publicId).andExpect(status().isNoContent)
+        assertEquals(0L, muteCount(me.id, target.id), "내가 건 뮤트 행이 남아 있으면 안 된다")
+
+        unmute(me, target.publicId).andExpect(status().isNoContent)
+    }
+
+    @Test
+    fun `본인 뮤트는 400 130200이다`() {
+        val me = onboardedUser("selfmute")
+
+        mute(me, me.publicId)
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(130200))
+        assertEquals(0L, muteCount(me.id, me.id), "본인 뮤트 행이 생기면 안 된다")
+    }
+
+    @Test
+    fun `나를 차단한 사용자도 뮤트할 수 있다`() {
+        val me = onboardedUser("mbblockedme")
+        val other = onboardedUser("mbblocker")
+        block(other, me.publicId).andExpect(status().isCreated)
+
+        mute(me, other.publicId).andExpect(status().isCreated)
+
+        assertEquals(1L, muteCount(me.id, other.id), "나를 차단한 상대에게도 내 뮤트 행이 하나 생겨야 한다")
+    }
+
+    @Test
+    fun `탈퇴 사용자 뮤트는 404 130000이다`() {
+        val me = onboardedUser("mutetowd")
+        val target = onboardedUser("mutewd")
+        tx.execute { em.find(User::class.java, target.id).withdraw() }
+
+        expectUnavailable(mute(me, target.publicId))
+        assertEquals(0L, muteCount(me.id, target.id), "탈퇴 사용자에게 뮤트 행이 생기면 안 된다")
+    }
+
+    @Test
+    fun `뮤트한 뒤 차단하고 차단을 해제해도 뮤트가 남는다`() {
+        val me = onboardedUser("mutekeep")
+        val target = onboardedUser("mutekept")
+        mute(me, target.publicId).andExpect(status().isCreated)
+
+        block(me, target.publicId).andExpect(status().isCreated)
+        unblock(me, target.publicId).andExpect(status().isNoContent)
+
+        assertEquals(1L, muteCount(me.id, target.id), "내 뮤트 행이 하나만 남아 있어야 한다")
+    }
+
+    @Test
+    fun `탈퇴 사용자 뮤트 해제는 204이고 내 행을 지운다`() {
+        val me = onboardedUser("muteleftme")
+        val target = onboardedUser("muteleft")
+        mute(me, target.publicId).andExpect(status().isCreated)
+        tx.execute { em.find(User::class.java, target.id).withdraw() }
+
+        unmute(me, target.publicId).andExpect(status().isNoContent)
+
+        assertEquals(0L, muteCount(me.id, target.id), "내가 건 뮤트 행이 남아 있으면 안 된다")
+    }
+
+    @Test
+    fun `없는 publicId 뮤트 해제는 404 130000이다`() {
+        val me = onboardedUser("muteghost")
+
+        expectUnavailable(unmute(me, "01JZZZZZZZZZZZZZZZZZZZZZZZ"))
+    }
+
     private fun block(
         actor: Seeded,
         targetPublicId: String,
@@ -164,6 +249,38 @@ class BlockMuteIntegrationTest : IntegrationTestBase() {
                     .createNativeQuery("SELECT COUNT(*) FROM sns_blocks WHERE blocker_id = ?1 AND blocked_id = ?2")
                     .setParameter(1, blockerId)
                     .setParameter(2, blockedId)
+                    .singleResult as Number
+            ).toLong()
+        }!!
+
+    private fun mute(
+        actor: Seeded,
+        targetPublicId: String,
+    ): ResultActions =
+        mockMvc.perform(
+            post("/api/v1/sns/users/$targetPublicId/mute")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(actor.id)}"),
+        )
+
+    private fun unmute(
+        actor: Seeded,
+        targetPublicId: String,
+    ): ResultActions =
+        mockMvc.perform(
+            delete("/api/v1/sns/users/$targetPublicId/mute")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(actor.id)}"),
+        )
+
+    private fun muteCount(
+        muterId: Long,
+        mutedId: Long,
+    ): Long =
+        tx.execute {
+            (
+                em
+                    .createNativeQuery("SELECT COUNT(*) FROM sns_mutes WHERE muter_id = ?1 AND muted_id = ?2")
+                    .setParameter(1, muterId)
+                    .setParameter(2, mutedId)
                     .singleResult as Number
             ).toLong()
         }!!
