@@ -99,6 +99,10 @@ class User protected constructor() : AggregateRoot() {
     val nickname: String?
         get() = _profile?.nickname
 
+    /** 소개글 — 프로필이 없으면 null. */
+    val bio: String?
+        get() = _profile?.bio
+
     /** 사용자를 탈퇴 상태로 바꾸고 닉네임과 전화번호 값을 삭제해 UNIQUE 제약에서 해제 */
     fun withdraw() {
         if (status == UserStatus.WITHDRAWN) {

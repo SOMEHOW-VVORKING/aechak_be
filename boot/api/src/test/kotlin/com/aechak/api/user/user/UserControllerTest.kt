@@ -11,6 +11,7 @@ import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
 import com.aechak.application.user.user.usecase.query.UserSearchQuery
 import com.aechak.application.user.user.usecase.result.UserAuthorResult
 import com.aechak.application.user.user.usecase.result.UserMeResult
+import com.aechak.application.user.user.usecase.result.UserPublicProfileResult
 import com.aechak.application.user.user.usecase.result.UserSummaryResult
 import com.aechak.application.user.withdrawal.usecase.WithdrawalUseCase
 import com.aechak.application.user.withdrawal.usecase.result.WithdrawalCheckResult
@@ -97,6 +98,10 @@ class UserControllerTest {
             override fun searchUsers(query: UserSearchQuery): List<UserSummaryResult> = error("not used")
 
             override fun getAuthors(userIds: Collection<Long>): Map<Long, UserAuthorResult> = error("not used")
+
+            override fun findPublicProfile(publicId: String): UserPublicProfileResult? = error("not used")
+
+            override fun findPublicProfileById(userId: Long): UserPublicProfileResult? = error("not used")
 
             override fun registerFromSocial(): Long = error("not used")
         }
