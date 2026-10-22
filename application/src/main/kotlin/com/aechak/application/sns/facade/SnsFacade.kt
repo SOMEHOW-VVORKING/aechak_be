@@ -11,9 +11,11 @@ import com.aechak.application.sns.usecase.SnsUseCase
 import com.aechak.application.sns.usecase.command.BlockUserCommand
 import com.aechak.application.sns.usecase.command.FollowUserCommand
 import com.aechak.application.sns.usecase.command.MuteUserCommand
+import com.aechak.application.sns.usecase.query.SnsFollowListQuery
 import com.aechak.application.sns.usecase.query.SnsRelationListQuery
 import com.aechak.application.sns.usecase.result.SnsProfileResult
 import com.aechak.application.sns.usecase.result.SnsRelationItemResult
+import com.aechak.application.sns.usecase.result.SnsUserItemResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.application.user.user.usecase.UserUseCase
@@ -56,6 +58,29 @@ class SnsFacade(
     override fun unfollow(command: FollowUserCommand) {
         val target = snsProfileService.requireExists(userUseCase.findPublicProfile(command.targetPublicId))
         followService.unfollow(command.userId, target.userId)
+    }
+
+    @Transactional(readOnly = true)
+    override fun getFollows(query: SnsFollowListQuery): CursorPageResult<SnsUserItemResult> {
+        val owner = snsProfileService.requireVisible(userUseCase.findPublicProfile(query.ownerPublicId))
+        val pair = snsVisibilityService.findPairState(query.viewerId, owner.userId)
+        snsProfileService.requireNotBlockedByTarget(pair)
+        snsProfileService.requireNotBlockedByViewer(pair)
+        val hidden = snsVisibilityService.findViewerFilter(query.viewerId)
+        val page = snsUserListService.getFollowPage(query, owner.userId, owner.publicId, hidden)
+        val userIds = page.items.map { it.userId }
+        val followingIds = followService.findFollowingAmong(query.viewerId, userIds)
+        val pets = petProfileUseCase.getDefaultPetSummaries(userIds).associateBy { it.userId }
+        return page.map {
+            val isMe = it.userId == query.viewerId
+            SnsUserItemResult.from(
+                view = it,
+                profileImageUrl = fileUseCase.resolveMediaUrl(it.profileImageKey),
+                petSummary = pets[it.userId],
+                isMe = isMe,
+                following = !isMe && it.userId in followingIds,
+            )
+        }
     }
 
     // 지울 팔로우 행이 없는 DELETE가 갭 잠금으로 다른 쌍의 팔로우를 막지 않도록 READ_COMMITTED

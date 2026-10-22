@@ -40,4 +40,10 @@ class FollowService(
             snsUserStatsRepository.decreaseFollowingCount(userId)
         }
     }
+
+    /** userIds 중 userId가 팔로우하는 사용자 id */
+    fun findFollowingAmong(
+        userId: Long,
+        userIds: Collection<Long>,
+    ): Set<Long> = if (userIds.isEmpty()) emptySet() else followRepository.findFolloweeIdsAmong(userId, userIds)
 }

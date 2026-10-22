@@ -13,4 +13,10 @@ interface FollowRepository {
         followerId: Long,
         followeeId: Long,
     ): Int
+
+    /** followeeIds 중 follower가 팔로우하는 사용자 id */
+    fun findFolloweeIdsAmong(
+        followerId: Long,
+        followeeIds: Collection<Long>,
+    ): Set<Long>
 }

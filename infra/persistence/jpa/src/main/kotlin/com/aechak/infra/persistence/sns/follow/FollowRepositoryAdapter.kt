@@ -28,6 +28,12 @@ interface FollowJpaRepository : JpaRepository<Follow, Long> {
         @Param("followerId") followerId: Long,
         @Param("followeeId") followeeId: Long,
     ): Int
+
+    @Query("select f.followeeId from Follow f where f.followerId = :followerId and f.followeeId in :followeeIds")
+    fun findFolloweeIds(
+        @Param("followerId") followerId: Long,
+        @Param("followeeIds") followeeIds: Collection<Long>,
+    ): List<Long>
 }
 
 @Repository
@@ -43,4 +49,9 @@ class FollowRepositoryAdapter(
         followerId: Long,
         followeeId: Long,
     ): Int = jpaRepository.deleteByPair(followerId, followeeId)
+
+    override fun findFolloweeIdsAmong(
+        followerId: Long,
+        followeeIds: Collection<Long>,
+    ): Set<Long> = jpaRepository.findFolloweeIds(followerId, followeeIds).toSet()
 }
