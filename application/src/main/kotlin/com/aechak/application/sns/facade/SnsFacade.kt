@@ -58,6 +58,7 @@ class SnsFacade(
         followService.unfollow(command.userId, target.userId)
     }
 
+    // 지울 팔로우 행이 없는 DELETE가 갭 잠금으로 다른 쌍의 팔로우를 막지 않도록 READ_COMMITTED
     @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun block(command: BlockUserCommand) {
         val target = snsProfileService.requireVisible(userUseCase.findPublicProfile(command.targetPublicId))

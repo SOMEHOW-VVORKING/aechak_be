@@ -3,8 +3,11 @@ package com.aechak.api.sns
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.sns.facade.SnsFacade
 import com.aechak.application.sns.usecase.SnsUseCase
+import com.aechak.application.sns.usecase.command.BlockUserCommand
 import com.aechak.application.sns.usecase.command.FollowUserCommand
+import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.block.repository.BlockRepository
+import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.user.user.User
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -299,6 +302,39 @@ class FollowIntegrationTest : IntegrationTestBase() {
         }
 
         @Test
+        fun `같은 쌍에 팔로우와 차단이 동시에 와도 차단 뒤 팔로우 행이 남지 않고 수가 행 수와 같다`() {
+            repeat(5) { round ->
+                val a = onboardedUser("fbracea$round")
+                val b = onboardedUser("fbraceb$round")
+                val tasks =
+                    List(8) { i ->
+                        when (i % 4) {
+                            0 -> { -> snsUseCase.block(BlockUserCommand(b.id, a.publicId)) }
+                            1 -> { -> snsUseCase.follow(FollowUserCommand(b.id, a.publicId)) }
+                            else -> { -> snsUseCase.follow(FollowUserCommand(a.id, b.publicId)) }
+                        }
+                    }
+
+                val errors = runConcurrently(tasks)
+
+                // 차단이 먼저 끝난 뒤의 팔로우는 130000이나 130001로 거부되는 것이 맞다
+                val unexpected =
+                    errors.filterNot {
+                        it is BusinessException &&
+                            it.errorCode in setOf(SnsErrorCode.SNS_USER_UNAVAILABLE, SnsErrorCode.SNS_USER_BLOCKED_BY_VIEWER)
+                    }
+                assertTrue(unexpected.isEmpty(), "팔로우와 차단의 동시 요청에서 교착이나 예상 밖 오류가 나면 안 된다: $unexpected")
+                assertEquals(1L, blockCount(b.id, a.id), "차단 행이 하나 있어야 한다")
+                assertEquals(0L, followCount(a.id, b.id), "차단 뒤 a가 건 팔로우 행이 남으면 안 된다")
+                assertEquals(0L, followCount(b.id, a.id), "차단 뒤 b가 건 팔로우 행이 남으면 안 된다")
+                for (user in listOf(a, b)) {
+                    assertEquals(followerRowCount(user.id), followerCountOf(user.id), "팔로워 수가 실제 팔로우 행 수와 같아야 한다")
+                    assertEquals(followingRowCount(user.id), followingCountOf(user.id), "팔로잉 수가 실제 팔로우 행 수와 같아야 한다")
+                }
+            }
+        }
+
+        @Test
         fun `팔로우하지 않은 쌍의 언팔로우가 진행 중이어도 다른 쌍의 팔로우가 갭 잠금에 막히지 않는다`() {
             val a = onboardedUser("gapa")
             val b = onboardedUser("gapb")
@@ -418,6 +454,13 @@ class FollowIntegrationTest : IntegrationTestBase() {
     ): Long = count("SELECT COUNT(*) FROM sns_follows WHERE follower_id = ?1 AND followee_id = ?2", followerId, followeeId)
 
     private fun followerRowCount(followeeId: Long): Long = count("SELECT COUNT(*) FROM sns_follows WHERE followee_id = ?1", followeeId)
+
+    private fun followingRowCount(followerId: Long): Long = count("SELECT COUNT(*) FROM sns_follows WHERE follower_id = ?1", followerId)
+
+    private fun blockCount(
+        blockerId: Long,
+        blockedId: Long,
+    ): Long = count("SELECT COUNT(*) FROM sns_blocks WHERE blocker_id = ?1 AND blocked_id = ?2", blockerId, blockedId)
 
     private fun followerCountOf(userId: Long): Long =
         count("SELECT COALESCE(SUM(follower_count), 0) FROM sns_user_stats WHERE user_id = ?1", userId)
