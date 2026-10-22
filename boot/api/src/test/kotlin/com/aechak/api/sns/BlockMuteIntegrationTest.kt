@@ -21,7 +21,8 @@ import org.springframework.web.context.WebApplicationContext
 
 /**
  * 통합: 차단과 뮤트의 켜기와 끄기가 실 보안 필터체인과 MySQL을 지나 계약대로 멱등하게 동작하는지.
- * 깨지면 반복 요청이 오류를 내거나 상대가 건 차단이 지워지거나 차단이 뮤트를 지우거나 대상 판정이 계약과 달라진다.
+ * 깨지면 반복 요청이 오류를 내거나 상대가 건 차단이 지워지거나 차단이 뮤트를 지우거나 대상 판정이 계약과 달라지거나
+ * 차단 뒤 팔로우가 남아 수가 관계 행 수와 어긋난다.
  */
 class BlockMuteIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -164,6 +165,72 @@ class BlockMuteIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `서로 팔로우하던 사이를 차단하면 두 팔로우 행과 네 수가 정리된다`() {
+        val me = onboardedUser("cutme")
+        val other = onboardedUser("cutother")
+        follow(me, other.publicId).andExpect(status().isCreated)
+        follow(other, me.publicId).andExpect(status().isCreated)
+
+        block(me, other.publicId).andExpect(status().isCreated)
+
+        assertEquals(0L, followCount(me.id, other.id), "내가 건 팔로우 행이 지워져야 한다")
+        assertEquals(0L, followCount(other.id, me.id), "상대가 건 팔로우 행이 지워져야 한다")
+        assertEquals(listOf(0L, 0L), listOf(followerCountOf(me.id), followingCountOf(me.id)), "내 두 수가 0으로 줄어야 한다")
+        assertEquals(listOf(0L, 0L), listOf(followerCountOf(other.id), followingCountOf(other.id)), "상대의 두 수가 0으로 줄어야 한다")
+    }
+
+    @Test
+    fun `나를 팔로우하는 사람을 차단하면 내 팔로워 수만 1 준다`() {
+        val me = onboardedUser("cutidol")
+        val fan = onboardedUser("cutfan")
+        val third = onboardedUser("cutthird")
+        follow(fan, me.publicId).andExpect(status().isCreated)
+        follow(me, third.publicId).andExpect(status().isCreated)
+
+        block(me, fan.publicId).andExpect(status().isCreated)
+
+        assertEquals(0L, followCount(fan.id, me.id), "차단한 사람이 건 팔로우 행이 지워져야 한다")
+        assertEquals(0L, followerCountOf(me.id), "내 팔로워 수가 1 줄어야 한다")
+        assertEquals(1L, followingCountOf(me.id), "다른 사람을 향한 내 팔로잉 수는 그대로여야 한다")
+        assertEquals(0L, followingCountOf(fan.id), "차단당한 사람의 팔로잉 수가 1 줄어야 한다")
+        assertEquals(1L, followCount(me.id, third.id), "차단과 무관한 내 팔로우 행은 남아야 한다")
+        assertEquals(1L, followerCountOf(third.id), "차단과 무관한 사람의 팔로워 수는 그대로여야 한다")
+    }
+
+    @Test
+    fun `차단 해제는 지운 팔로우를 되살리지 않는다`() {
+        val me = onboardedUser("revme")
+        val other = onboardedUser("revother")
+        follow(me, other.publicId).andExpect(status().isCreated)
+        follow(other, me.publicId).andExpect(status().isCreated)
+        block(me, other.publicId).andExpect(status().isCreated)
+
+        unblock(me, other.publicId).andExpect(status().isNoContent)
+
+        assertEquals(0L, followCount(me.id, other.id), "차단 해제 뒤 내 팔로우 행이 다시 생기면 안 된다")
+        assertEquals(0L, followCount(other.id, me.id), "차단 해제 뒤 상대 팔로우 행이 다시 생기면 안 된다")
+        assertEquals(listOf(0L, 0L), listOf(followerCountOf(me.id), followingCountOf(me.id)), "차단 해제가 내 수를 되돌리면 안 된다")
+        profile(me, other.publicId)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.following").value(false))
+    }
+
+    @Test
+    fun `뮤트는 팔로우 행과 수를 바꾸지 않는다`() {
+        val me = onboardedUser("mfme")
+        val other = onboardedUser("mfother")
+        follow(me, other.publicId).andExpect(status().isCreated)
+        follow(other, me.publicId).andExpect(status().isCreated)
+
+        mute(me, other.publicId).andExpect(status().isCreated)
+
+        assertEquals(1L, followCount(me.id, other.id), "뮤트가 내 팔로우 행을 지우면 안 된다")
+        assertEquals(1L, followCount(other.id, me.id), "뮤트가 상대 팔로우 행을 지우면 안 된다")
+        assertEquals(listOf(1L, 1L), listOf(followerCountOf(me.id), followingCountOf(me.id)), "뮤트가 내 수를 바꾸면 안 된다")
+        assertEquals(listOf(1L, 1L), listOf(followerCountOf(other.id), followingCountOf(other.id)), "뮤트가 상대 수를 바꾸면 안 된다")
+    }
+
+    @Test
     fun `뮤트는 201이고 반복해도 201이며 행은 하나다`() {
         val me = onboardedUser("muter")
         val target = onboardedUser("muted")
@@ -274,6 +341,36 @@ class BlockMuteIntegrationTest : IntegrationTestBase() {
             get("/api/v1/sns/users/$targetPublicId")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewer.id)}"),
         )
+
+    private fun follow(
+        actor: Seeded,
+        targetPublicId: String,
+    ): ResultActions =
+        mockMvc.perform(
+            post("/api/v1/sns/users/$targetPublicId/follow")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(actor.id)}"),
+        )
+
+    private fun followCount(
+        followerId: Long,
+        followeeId: Long,
+    ): Long = count("SELECT COUNT(*) FROM sns_follows WHERE follower_id = ?1 AND followee_id = ?2", followerId, followeeId)
+
+    private fun followerCountOf(userId: Long): Long =
+        count("SELECT COALESCE(SUM(follower_count), 0) FROM sns_user_stats WHERE user_id = ?1", userId)
+
+    private fun followingCountOf(userId: Long): Long =
+        count("SELECT COALESCE(SUM(following_count), 0) FROM sns_user_stats WHERE user_id = ?1", userId)
+
+    private fun count(
+        sql: String,
+        vararg params: Long,
+    ): Long =
+        tx.execute {
+            val query = em.createNativeQuery(sql)
+            params.forEachIndexed { i, p -> query.setParameter(i + 1, p) }
+            (query.singleResult as Number).toLong()
+        }!!
 
     private fun blockCount(
         blockerId: Long,

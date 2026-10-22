@@ -163,7 +163,7 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
    - `ProductStats.productId` — PK=FK 식별자 공유(assigned PK). 연관보다 강한 결합이 이미 있어 그대로 둔다.
    - **review는 별도 BC로 취급** — ERD가 리뷰→상품을 "작성 시점 복사(값참조)"로 명시, 리뷰는 order도 참조.
      대외 참조(product·order·user행 4건)만 값참조이고, review BC 내부(ReviewReport→Review)는 규칙 2대로 연관.
-   - **SNS 조회 어댑터의 user 테이블 읽기 조인** — `SnsUserListQueryPort` 구현이 `sns_blocks`, `sns_mutes`를
+   - **SNS 조회 어댑터의 user 테이블 읽기 조인** — `SnsUserListQueryPort` 구현이 `sns_follows`, `sns_blocks`, `sns_mutes`를
      `users`, `user_profiles`와 id 값 동등 조건으로 조인해 publicId, 닉네임, 프로필 이미지 key를 읽는다.
      두 단계 조회(`UserUseCase`로 표시 정보를 따로 붙이기)로는 닉네임 검색 결과를 페이지 크기만큼 채울 수 없어서
      keyset 페이지, 탈퇴 사용자 제외(프로필 행이 없으면 INNER JOIN에서 빠진다), 검색을 한 쿼리로 끝낸다.

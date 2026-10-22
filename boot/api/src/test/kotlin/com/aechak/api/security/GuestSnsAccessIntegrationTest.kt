@@ -81,12 +81,31 @@ class GuestSnsAccessIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `프로필 아래 경로는 토큰 없이 열리지 않는다`() {
+    fun `프로필 아래 경로인 팔로워와 팔로잉 목록은 토큰 없이 부르면 401 20004다`() {
         val publicId = onboardedUserPublicId()
 
         mockMvc
             .perform(get("/api/v1/sns/users/$publicId/followers"))
             .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        mockMvc
+            .perform(get("/api/v1/sns/users/$publicId/followings"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
+    fun `토큰 없이 팔로우하거나 언팔로우하면 401 20004다`() {
+        val publicId = onboardedUserPublicId()
+
+        mockMvc
+            .perform(post("/api/v1/sns/users/$publicId/follow"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        mockMvc
+            .perform(delete("/api/v1/sns/users/$publicId/follow"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
     }
 
     @Test

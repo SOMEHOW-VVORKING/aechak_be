@@ -28,6 +28,11 @@ class SnsProfileService(
         if (pair.blockedByTarget) throw BusinessException(SnsErrorCode.SNS_USER_UNAVAILABLE)
     }
 
+    /** 내가 차단한 사용자의 팔로우 목록은 130001이다. */
+    fun requireNotBlockedByViewer(pair: SnsPairStateView) {
+        if (pair.blockedByMe) throw BusinessException(SnsErrorCode.SNS_USER_BLOCKED_BY_VIEWER)
+    }
+
     /** 내가 차단한 사용자는 publicId, 닉네임, 이미지만 채우고 소개글, 펫, 세 수는 null이다. */
     fun toBlockedResult(
         target: UserPublicProfileResult,
