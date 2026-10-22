@@ -1,6 +1,7 @@
 package com.aechak.application.sns.usecase
 
 import com.aechak.application.sns.usecase.command.BlockUserCommand
+import com.aechak.application.sns.usecase.command.FollowUserCommand
 import com.aechak.application.sns.usecase.command.MuteUserCommand
 import com.aechak.application.sns.usecase.query.SnsRelationListQuery
 import com.aechak.application.sns.usecase.result.SnsProfileResult
@@ -16,6 +17,12 @@ interface SnsUseCase {
 
     /** 내 SNS 프로필 */
     fun getMyProfile(userId: Long): SnsProfileResult
+
+    /** 팔로우(멱등 켜기). 새로 들어갔을 때만 두 사람의 수를 올린다. */
+    fun follow(command: FollowUserCommand)
+
+    /** 언팔로우(멱등 끄기). 지웠을 때만 두 사람의 수를 내린다. */
+    fun unfollow(command: FollowUserCommand)
 
     /** 차단(멱등 켜기) */
     fun block(command: BlockUserCommand)

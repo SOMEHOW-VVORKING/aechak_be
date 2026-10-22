@@ -13,4 +13,10 @@ interface BlockRepository {
         blockerId: Long,
         blockedId: Long,
     ): Int
+
+    /** 두 사람 사이의 두 방향 차단을 잠금 읽기(FOR SHARE)로 찾아 차단을 건 사용자 id를 돌려준다 */
+    fun findDirectionsForShare(
+        viewerId: Long,
+        targetId: Long,
+    ): Set<Long>
 }

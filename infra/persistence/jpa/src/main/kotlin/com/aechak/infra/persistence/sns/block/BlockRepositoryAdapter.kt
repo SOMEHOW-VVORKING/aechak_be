@@ -22,6 +22,18 @@ interface BlockJpaRepository : JpaRepository<Block, Long> {
         @Param("blockedId") blockedId: Long,
     ): Int
 
+    // 두 방향 쌍을 쌍 UNIQUE 인덱스로 찾아 있는 행에 공유 잠금을 잡는다
+    @Query(
+        value =
+            "SELECT blocker_id FROM sns_blocks " +
+                "WHERE (blocker_id, blocked_id) IN ((:viewerId, :targetId), (:targetId, :viewerId)) FOR SHARE",
+        nativeQuery = true,
+    )
+    fun findBlockerIdsForShare(
+        @Param("viewerId") viewerId: Long,
+        @Param("targetId") targetId: Long,
+    ): List<Long>
+
     @Modifying
     @Query("delete from Block b where b.blockerId = :blockerId and b.blockedId = :blockedId")
     fun deleteByPair(
@@ -43,4 +55,9 @@ class BlockRepositoryAdapter(
         blockerId: Long,
         blockedId: Long,
     ): Int = jpaRepository.deleteByPair(blockerId, blockedId)
+
+    override fun findDirectionsForShare(
+        viewerId: Long,
+        targetId: Long,
+    ): Set<Long> = jpaRepository.findBlockerIdsForShare(viewerId, targetId).toSet()
 }
