@@ -98,6 +98,15 @@ class ClaimReasonCatalogIntegrationTest : IntegrationTestBase() {
         )
     }
 
+    /** 선택지는 주문을 가진 로그인 사용자만 쓰는 경로다 — 공개 경로로 새면 어휘가 비회원에게 열린다. */
+    @Test
+    fun `토큰 없이 선택지를 부르면 401이다`() {
+        mockMvc
+            .perform(get("/api/v1/claims/reasons"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
     private fun MockHttpServletRequestBuilder.bearer(token: String): MockHttpServletRequestBuilder =
         this.header(HttpHeaders.AUTHORIZATION, "Bearer $token")
 }
