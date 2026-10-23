@@ -178,8 +178,9 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
    - 채번은 필드 초기화식(생성 시점 신원 확보 — DDD identity-at-creation). 엔티티를 도메인 밖에서
      new로 재구성해 detached merge하면 재채번되므로 **재구성 merge 금지, 항상 load 후 수정**.
    - 어노테이션은 필드에 직접 = **field access 전제** — property access로 바꾸면 `val` 주입이 깨진다.
-   - MySQL 전환(DDL 확정) 시 publicId 컬럼은 `CHARACTER SET ascii` 지정 — utf8mb4 CHAR(26)은
-     UNIQUE 인덱스 키 폭이 4배(104바이트)가 된다. 적재 후 ALTER는 인덱스 리빌드라 그때 하면 비싸다.
+   - publicId 컬럼은 문자셋을 따로 지정하지 않고 테이블 기본값(utf8mb4, utf8mb4_0900_ai_ci)을 따른다.
+     VARCHAR(26) UNIQUE 키는 최대 104바이트라 InnoDB 키 한도 3072바이트보다 훨씬 작다.
+     ULID는 대문자로만 채번하고 조회는 동등 비교뿐이라 ascii로 바꿀 이유가 없다.
    - publicId는 추측 불가를 담보할 뿐 **인가를 대체하지 않는다** — 조회 API마다 소유권 검증(BOLA/IDOR 방지) 필수.
 
 ## 3. 이벤트 수집 패턴 (도메인은 발행 메커니즘을 모른다)
