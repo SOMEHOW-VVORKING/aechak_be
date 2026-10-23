@@ -15,14 +15,9 @@ interface ShipmentTrackingPort {
     ): ShipmentTrackingSnapshot?
 }
 
-/**
- * 추적 조회 결과. 지금 쓰는 값은 최근 상태 문구 하나다 — 응답(`lastTrackingStatus`)이 그것만 싣는다.
- * 실제 추적 서비스는 단계 목록과 단계별 시각까지 주므로, 그 목록은 기본값을 가진 필드
- * (`steps: List<...> = emptyList()`)로 이 타입에 더한다 — 포트 시그니처와 호출부를 건드리지 않고 자란다.
- * 그래서 문자열 하나를 바로 돌려주지 않고 이 타입으로 감쌌다.
- */
+/** 추적 조회 결과. 지금 쓰는 값은 최근 상태 문구 하나다. 단계 목록은 기본값을 가진 필드로 여기에 더한다. */
 data class ShipmentTrackingSnapshot(
-    /** 택배사가 준 최근 상태 문구. 허용값이 없는 자유 문자열이라 enum으로 접지 않는다 */
+    /** 택배사가 준 최근 상태 문구. 허용값이 없는 자유 문자열이다 */
     val lastStatus: String,
 ) {
     init {

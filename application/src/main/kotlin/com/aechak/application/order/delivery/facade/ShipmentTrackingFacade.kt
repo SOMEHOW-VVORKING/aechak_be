@@ -14,14 +14,9 @@ import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 
 /**
- * 추적 갱신 유스케이스 구현. 배송완료 전이 파사드(OrderDeliveryFacade)와 입구를 나눈 이유는
- * 이쪽만 외부 포트를 요구하기 때문이다.
- *
- * 택배사 호출은 트랜잭션 밖이다 — 외부 응답을 기다리는 동안 커넥션을 쥐면 풀이 마른다.
- * 그래서 갱신 메서드에는 선언형 트랜잭션을 걸지 않고 반영 구간만 프로그램형으로 연다.
- *
- * 포트를 선택 주입으로 받는다 — 추적 어댑터는 배치 모듈에만 조립되지만 이 패키지는
- * 구매자·셀러 실행 모듈도 스캔하므로, 필수 주입이면 어댑터가 없는 쪽의 부팅이 깨진다.
+ * 추적 갱신 유스케이스 구현. 택배사 호출은 트랜잭션 밖이고 반영 구간만 프로그램형으로 연다.
+ * 포트는 선택 주입이다 — 추적 어댑터가 조립되지 않은 실행 모듈에서도 이 파사드가 떠야 하고,
+ * 그때는 갱신하지 않고 어댑터 부재를 결과로 알린다.
  */
 @Service
 class ShipmentTrackingFacade(
