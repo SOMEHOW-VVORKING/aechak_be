@@ -10,7 +10,6 @@ import com.aechak.application.order.claim.port.view.SellerClaimTypeCountView
 import com.aechak.application.order.claim.port.view.SellerClaimView
 import com.aechak.domain.order.claim.QClaim
 import com.aechak.domain.order.claim.QClaimItem
-import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.order.QOrder
 import com.aechak.domain.order.order.QOrderItem
@@ -41,8 +40,8 @@ private val shipment = QShipment.shipment
  * claim_items → order_items → orders 2홉 조인을 타지 않는다(인덱스: seller_id, status, id).
  * 주문 조인은 공개 식별자와 주문그룹 식별자를 얻기 위한 것이고 범위 판정에는 쓰지 않는다.
  *
- * 셀러 처리 대기 단계 판정(pendingStage)이 이 어댑터에만 있다 — 대시보드 집계와 목록 필터가
- * 같은 식을 쓰게 하려면 번역이 한 벌이어야 한다.
+ * 셀러 처리 대기 단계를 쿼리 조건으로 옮기는 번역(pendingStage)이 이 어댑터에만 있다 — 대시보드 집계와
+ * 목록 필터가 같은 식을 쓰게 하려면 번역이 한 벌이어야 한다. 상태 축은 단계 enum이 들고 있어 여기서 다시 적지 않는다.
  */
 @Repository
 class SellerClaimQueryAdapter(
@@ -106,6 +105,7 @@ class SellerClaimQueryAdapter(
             ).from(claim)
             .where(
                 claim.sellerId.eq(condition.sellerId),
+                claim.status.`in`(SellerClaimPendingStage.PENDING_STATUSES),
                 requestedFrom(condition.requestedFrom),
                 requestedBefore(condition.requestedToExclusive),
             ).fetchOne()!!
@@ -210,31 +210,33 @@ class SellerClaimQueryAdapter(
 
     /**
      * 셀러가 할 일이 남은 단계의 유일한 판정 — 대시보드 조건부 합계와 목록의 단계 필터가 이 함수를 함께 쓴다.
+     * 상태 축은 단계가 직접 들고 있고(SellerClaimPendingStage.statuses) 여기서는 상태로 갈리지 않는 축만 더한다 —
      * 회수 중 상태 하나에 송장 등록과 완료 처리가 들어 있어 회수 시작 시각으로 가르고,
      * 재발송 대기는 승인된 교환 중 아직 종결되지 않은 건이다(Claim.isReshippable과 같은 조건).
      */
-    private fun pendingStage(stage: SellerClaimPendingStage): BooleanExpression =
-        when (stage) {
+    private fun pendingStage(stage: SellerClaimPendingStage): BooleanExpression {
+        val inStatus = claim.status.`in`(stage.statuses)
+        return when (stage) {
             SellerClaimPendingStage.DECISION_PENDING -> {
-                claim.status.eq(ClaimStatus.CLAIM_REQUESTED)
+                inStatus
             }
 
             SellerClaimPendingStage.COLLECTION_INVOICE_PENDING -> {
-                claim.status.eq(ClaimStatus.COLLECTING).and(claim.collectionStartedAt.isNull)
+                inStatus.and(claim.collectionStartedAt.isNull)
             }
 
             SellerClaimPendingStage.COLLECTION_COMPLETION_PENDING -> {
-                claim.status.eq(ClaimStatus.COLLECTING).and(claim.collectionStartedAt.isNotNull)
+                inStatus.and(claim.collectionStartedAt.isNotNull)
             }
 
             SellerClaimPendingStage.RESHIP_PENDING -> {
-                claim.claimType
-                    .eq(ClaimType.EXCHANGE)
-                    .and(claim.status.eq(ClaimStatus.APPROVED))
+                inStatus
+                    .and(claim.claimType.eq(ClaimType.EXCHANGE))
                     .and(claim.collectionStartedAt.isNotNull)
                     .and(claim.resolvedAt.isNull)
             }
         }
+    }
 
     private fun decisionPendingOf(claimType: ClaimType): BooleanExpression =
         pendingStage(SellerClaimPendingStage.DECISION_PENDING).and(claim.claimType.eq(claimType))
