@@ -19,7 +19,7 @@ import java.sql.ResultSet
 import javax.sql.DataSource
 
 /**
- * V39(클레임 사유 코드 고정 어휘 이관)이 자유 문자열 시절 데이터를 어떻게 옮기는지 본다.
+ * V40(클레임 사유 코드 고정 어휘 이관)이 자유 문자열 시절 데이터를 어떻게 옮기는지 본다.
  * 깨지면 dev에 남은 값이 어휘 밖으로 새고, 그 행을 읽는 순간 enum 변환에서 조회가 터진다.
  *
  * 컬럼 모양 대조는 V27 테스트가 이미 claims를 보고 있어 여기서는 데이터만 본다.
@@ -32,7 +32,7 @@ import javax.sql.DataSource
 )
 @Import(IntegrationTestConfig::class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class V39ClaimReasonMigrationIntegrationTest {
+class V40ClaimReasonMigrationIntegrationTest {
     @Autowired
     private lateinit var dataSource: DataSource
 
@@ -40,7 +40,7 @@ class V39ClaimReasonMigrationIntegrationTest {
 
     @BeforeAll
     fun migrateLegacyRows() {
-        migratedUrl = recreateDatabase("v39_legacy")
+        migratedUrl = recreateDatabase("v40_legacy")
         migrateUpTo(migratedUrl, "34")
         execute(migratedUrl, legacyClaimRows() + canonicalClaimRows())
         flyway(migratedUrl).migrate()
@@ -162,7 +162,7 @@ class V39ClaimReasonMigrationIntegrationTest {
         """
         INSERT INTO claims (id, public_id, seller_id, order_id, claim_type, reason_code, reason_detail,
                             status, version, requested_at, created_at, updated_at)
-        VALUES ($id, 'V39CLAIM${id.toString().padStart(17, '0')}', 7001, 8001, '$claimType', $reasonCode, $reasonDetail,
+        VALUES ($id, 'V40CLAIM${id.toString().padStart(17, '0')}', 7001, 8001, '$claimType', $reasonCode, $reasonDetail,
                 'CLAIM_REQUESTED', 0, NOW(6), NOW(6), NOW(6))
         """.trimIndent()
 
