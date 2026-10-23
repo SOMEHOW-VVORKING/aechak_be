@@ -13,8 +13,8 @@ import org.springframework.stereotype.Component
  * 닫을 때 통과로 적지 않고 미판정으로 적는다 — 통과로 적으면 지표에서 "검수를 통과한 상품"과
  * "아무도 보지 않은 상품"이 섞여 구분할 수 없게 된다.
  *
- * 여러 인스턴스가 동시에 돌 수 있다. 같은 행을 두 번 닫아도 두 번째가 조회에서 이미 빠지고,
- * 엔티티의 낙관적 락이 동시 수정을 심판한다.
+ * 여러 인스턴스가 동시에 돌 수 있다. 같은 행은 한쪽만 집는다 — 스윕이 후보를 행 단위로 잠그고
+ * 남이 들고 있는 행은 건너뛴다. 건너뛴 행은 다음 주기에 집힌다.
  */
 @ConditionalOnProperty("spring.kafka.bootstrap-servers")
 @EnableScheduling
