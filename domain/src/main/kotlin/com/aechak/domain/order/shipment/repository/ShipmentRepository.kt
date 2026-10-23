@@ -8,10 +8,15 @@ interface ShipmentRepository {
     fun save(shipment: Shipment): Shipment
 
     /**
-     * 발송 한 건을 행 잠금과 함께 읽는다. 추적 갱신은 더티체킹으로 행 전체를 다시 쓰므로,
-     * 잠그지 않으면 그 사이 커밋된 배송완료 시각을 스냅샷의 null로 덮는다.
+     * 추적 상태와 조회 시각만 원자 UPDATE로 기록한다. 반영한 행 수를 돌려준다(없는 발송이면 0).
+     * 애그리거트를 읽어 더티체킹으로 쓰면 행 전체가 다시 써지는데, 같은 행에 배송완료 시각을 쓰는
+     * 전이와 겹치면 서로 읽은 시점의 옛 값으로 상대의 컬럼을 덮는다 — 그래서 쓰는 컬럼만 짚어 쓴다.
      */
-    fun findForUpdateById(id: Long): Shipment?
+    fun updateTracking(
+        shipmentId: Long,
+        lastTrackingStatus: String,
+        syncedAt: LocalDateTime,
+    ): Int
 
     /** 클레임에 걸린 송장은 유형당 한 건이다 — 회수와 재발송을 유형으로 가른다. */
     fun findByClaimIdAndShipmentType(
