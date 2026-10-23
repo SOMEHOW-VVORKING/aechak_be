@@ -4,6 +4,7 @@ import com.aechak.application.order.delivery.usecase.ShipmentTrackingUseCase
 import com.aechak.application.order.delivery.usecase.query.ShipmentTrackingScanQuery
 import com.aechak.application.order.delivery.usecase.result.ShipmentTrackingSyncOutcome
 import com.aechak.application.order.delivery.usecase.result.ShipmentTrackingTargetResult
+import com.aechak.common.error.BusinessException
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
@@ -69,8 +70,13 @@ class ShipmentTrackingSchedule(
     private fun sync(target: ShipmentTrackingTargetResult): ShipmentTrackingSyncOutcome? =
         try {
             useCase.syncTracking(target.toCommand()).outcome
+        } catch (e: BusinessException) {
+            // 스캔과 반영 사이에 발송이 사라진 것 같은 업무상 거절 — 코드만 남기고 스택은 남기지 않는다
+            log.warn("추적 갱신 건너뜀. orderPublicId={}, errorCode={}", target.orderPublicId, e.errorCode.code)
+            null
         } catch (e: Exception) {
-            log.warn("추적 갱신 실패 — 다음 건으로 넘어감. orderPublicId={}", target.orderPublicId, e)
+            // 택배사 장애·DB 장애·구현 오류는 사람이 봐야 한다 — 거절과 같은 수준으로 묻지 않는다
+            log.error("추적 갱신 실패 — 다음 건으로 넘어감. orderPublicId={}", target.orderPublicId, e)
             null
         }
 }
