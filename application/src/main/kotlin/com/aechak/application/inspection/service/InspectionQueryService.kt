@@ -2,6 +2,7 @@ package com.aechak.application.inspection.service
 
 import com.aechak.domain.inspection.enums.InspectionTargetType
 import com.aechak.domain.inspection.repository.ContentInspectionRepository
+import com.aechak.domain.inspection.repository.ProductReviewQueueRepository
 import org.springframework.stereotype.Service
 
 /**
@@ -14,10 +15,16 @@ import org.springframework.stereotype.Service
 @Service
 class InspectionQueryService(
     private val inspections: ContentInspectionRepository,
+    private val reviewQueue: ProductReviewQueueRepository,
 ) {
     /** 상품의 가장 최근 검수. 한 번도 검수를 타지 않았으면 null */
     fun findLatestProductInspection(productId: Long): InspectionSnapshot? =
         inspections
             .findLatestByTarget(InspectionTargetType.PRODUCT, productId)
             ?.let(InspectionSnapshot::from)
+
+    fun isAwaitingAdminReview(productId: Long): Boolean = reviewQueue.findPendingByProductId(productId) != null
+
+    /** 반려된 적이 없으면 null */
+    fun findLatestRejectReason(productId: Long): String? = reviewQueue.findRejectedByProductId(productId).firstOrNull()?.rejectReason
 }

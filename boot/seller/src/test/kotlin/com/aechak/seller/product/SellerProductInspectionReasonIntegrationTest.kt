@@ -2,11 +2,14 @@ package com.aechak.seller.product
 
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.domain.inspection.ContentInspection
+import com.aechak.domain.inspection.ProductReviewQueueItem
 import com.aechak.domain.inspection.enums.InspectionJudgment
 import com.aechak.domain.inspection.enums.InspectionTargetType
 import com.aechak.domain.inspection.repository.ContentInspectionRepository
+import com.aechak.domain.inspection.repository.ProductReviewQueueRepository
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
+import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.seller.seller.Seller
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -20,6 +23,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.time.Duration
 import java.time.LocalDateTime
 
 /**
@@ -40,6 +44,9 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var inspections: ContentInspectionRepository
+
+    @Autowired
+    private lateinit var reviewQueue: ProductReviewQueueRepository
 
     private lateinit var mockMvc: MockMvc
     private var sellerUserId = 0L
@@ -101,6 +108,7 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
             .perform(inspectionRequest(publicId))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.inspectionStatus").value("APPROVED"))
+            .andExpect(jsonPath("$.data.progressStep").value("APPROVED"))
             .andExpect(jsonPath("$.data.judgment").doesNotExist())
             .andExpect(jsonPath("$.data.sellerNotice").doesNotExist())
     }
@@ -127,6 +135,78 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.judgment").value("PASS"))
             .andExpect(jsonPath("$.data.sellerNotice").doesNotExist())
+    }
+
+    @Test
+    fun `AI가 보는 중이면 진행 단계가 AI 검수다`() {
+        tx.execute {
+            val inspection = inspections.save(queuedInspection("d".repeat(64)))
+            inspection.lease("test", LocalDateTime.now(), Duration.ofMinutes(1), Duration.ofMinutes(1))
+            inspections.save(inspection)
+        }
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.progressStep").value("AI_REVIEWING"))
+    }
+
+    @Test
+    fun `AI가 문제를 찾아 관리자 확인을 기다리면 진행 단계와 걸린 문구를 함께 돌려준다`() {
+        changeStatus(InspectionStatus.PENDING)
+        settledInspection(
+            hash = "e".repeat(64),
+            judgment = InspectionJudgment.FLAG,
+            reasonCode = "MEDICAL_CLAIM",
+            reasonSummary = "관절염 치료에 효과",
+            sellerNotice = "치료 효능 표현을 고쳐 주세요.",
+        )
+        openReview()
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.progressStep").value("ADMIN_REVIEWING"))
+            .andExpect(jsonPath("$.data.reasonSummary").value("관절염 치료에 효과"))
+            .andExpect(jsonPath("$.data.rejectReason").doesNotExist())
+    }
+
+    @Test
+    fun `관리자가 반려하면 진행 단계가 반려이고 관리자가 적은 사유를 돌려준다`() {
+        changeStatus(InspectionStatus.REJECTED)
+        settledInspection(
+            hash = "f".repeat(64),
+            judgment = InspectionJudgment.FLAG,
+            reasonCode = "MEDICAL_CLAIM",
+            reasonSummary = "관절염 치료에 효과",
+            sellerNotice = "치료 효능 표현을 고쳐 주세요.",
+        )
+        tx.execute {
+            val review = openReview()
+            review.reject("효능 표현을 빼고 다시 등록해 주세요.")
+            reviewQueue.save(review)
+        }
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.progressStep").value("REJECTED"))
+            .andExpect(jsonPath("$.data.rejectReason").value("효능 표현을 빼고 다시 등록해 주세요."))
+    }
+
+    @Test
+    fun `반려된 적이 있어도 지금 반려 상태가 아니면 반려 사유를 싣지 않는다`() {
+        tx.execute {
+            val review = openReview()
+            review.reject("효능 표현을 빼고 다시 등록해 주세요.")
+            reviewQueue.save(review)
+        }
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.progressStep").value("APPROVED"))
+            .andExpect(jsonPath("$.data.rejectReason").doesNotExist())
     }
 
     @Test
@@ -167,6 +247,32 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
             discountEndAt = null,
             additionalImageKeys = emptyList(),
             detailImageKeys = emptyList(),
+        )
+
+    private fun changeStatus(status: InspectionStatus) {
+        tx.execute {
+            em
+                .createQuery("update Product p set p.inspectionStatus = :status where p.id = :id")
+                .setParameter("status", status)
+                .setParameter("id", productId)
+                .executeUpdate()
+        }
+    }
+
+    private fun openReview(): ProductReviewQueueItem =
+        tx.execute {
+            reviewQueue.save(
+                ProductReviewQueueItem.openForProduct(productId, sellerUserId, "연어 건사료 2kg", LocalDateTime.now()),
+            )
+        }!!
+
+    private fun queuedInspection(hash: String): ContentInspection =
+        ContentInspection.queue(
+            targetType = InspectionTargetType.PRODUCT,
+            targetRef = productId,
+            contentHash = hash,
+            policyVersion = "policy-v1",
+            targetVersionNo = 1,
         )
 
     private fun settledInspection(

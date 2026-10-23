@@ -210,6 +210,8 @@ class ProductFacade(
         return SellerProductInspectionResult.of(
             product = product,
             snapshot = inspectionQueryService.findLatestProductInspection(product.id),
+            awaitingAdminReview = inspectionQueryService.isAwaitingAdminReview(product.id),
+            latestRejectReason = inspectionQueryService.findLatestRejectReason(product.id),
         )
     }
 
