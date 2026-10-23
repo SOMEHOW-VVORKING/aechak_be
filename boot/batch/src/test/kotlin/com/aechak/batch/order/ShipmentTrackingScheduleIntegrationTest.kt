@@ -2,15 +2,12 @@ package com.aechak.batch.order
 
 import com.aechak.application.order.delivery.port.ShipmentTrackingPort
 import com.aechak.application.order.delivery.port.ShipmentTrackingSnapshot
+import com.aechak.application.order.delivery.usecase.ShipmentTrackingUseCase
+import com.aechak.application.order.delivery.usecase.query.ShipmentTrackingScanQuery
+import com.aechak.application.order.delivery.usecase.result.ShipmentTrackingSyncOutcome
 import com.aechak.batch.support.BatchIntegrationTestBase
-import com.aechak.domain.order.group.DeliveryAddressSnapshot
-import com.aechak.domain.order.group.OrderGroup
-import com.aechak.domain.order.order.Order
-import com.aechak.domain.order.order.OrderItem
 import com.aechak.domain.order.order.enums.OrderStatus
-import com.aechak.domain.order.shipment.CourierMaster
 import com.aechak.domain.order.shipment.Shipment
-import com.aechak.domain.order.shipment.enums.ShipmentType
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -20,7 +17,6 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.TestPropertySource
 import java.time.LocalDateTime
-import java.time.temporal.ChronoUnit
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -45,9 +41,12 @@ class ShipmentTrackingScheduleIntegrationTest : BatchIntegrationTestBase() {
     @Autowired
     private lateinit var tracking: FakeShipmentTracking
 
+    @Autowired
+    private lateinit var useCase: ShipmentTrackingUseCase
+
     @BeforeEach
     fun seedCourier() {
-        tx.execute { em.persist(CourierMaster.register(courierCode = "CJ", courierName = "씨제이대한통운")) }
+        ShipmentTrackingFixture.seedCourier(em, tx)
     }
 
     @AfterEach
@@ -129,73 +128,27 @@ class ShipmentTrackingScheduleIntegrationTest : BatchIntegrationTestBase() {
         }
     }
 
+    @Test
+    fun `유스케이스가 돌려주는 상태 문구는 실제로 저장된 값과 같다`() {
+        val orderPublicId = seedShippingOrder(trackingNumber = "100000000007")
+        tracking.respond("100000000007", "  배송출발  ") // 택배사 문구는 공백도 길이도 보장되지 않는다
+        val target = useCase.findTrackingTargets(ShipmentTrackingScanQuery(0L, 10)).single()
+
+        val result = useCase.syncTracking(target.toCommand())
+
+        assertEquals(ShipmentTrackingSyncOutcome.UPDATED, result.outcome)
+        assertEquals(
+            shipmentOf(orderPublicId).lastTrackingStatus,
+            result.lastStatus,
+            "결과가 원본 문구를 그대로 들면 호출부가 저장값과 다른 값을 로그·보고에 남긴다",
+        )
+    }
+
     // ---------- 헬퍼 ----------
 
-    /** DATETIME(6)은 마이크로초까지만 담으므로 심기 전에 잘라 둔다 — 나노초 시계에서 심은 값과 읽은 값이 어긋난다. */
-    private fun now(): LocalDateTime = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)
+    private fun now(): LocalDateTime = ShipmentTrackingFixture.now()
 
-    private fun seedShippingOrder(trackingNumber: String): String =
-        tx.execute {
-            val group =
-                OrderGroup.create(
-                    buyerId = 9_999L,
-                    deliveryAddressId = 0L,
-                    deliveryAddress =
-                        DeliveryAddressSnapshot(
-                            receiverNameEnc = "enc-receiver",
-                            contactNumberEnc = "enc-contact",
-                            zipCode = "12345",
-                            baseAddress = "서울시 애착구 멍냥로 1",
-                            detailAddress = null,
-                            deliveryMemo = null,
-                        ),
-                    usedPoint = 0L,
-                    totalProductAmount = 25_000L,
-                    totalShippingFee = 0L,
-                    idempotencyKey = "tracking-batch-${System.nanoTime()}",
-                    expiresAt = now().plusMinutes(10),
-                )
-            em.persist(group)
-            val order =
-                Order.create(
-                    orderGroup = group,
-                    sellerId = 7_777L,
-                    sellerNameSnapshot = "애착상회",
-                    allocatedCouponDiscount = 0L,
-                    sellerShippingFee = 0L,
-                    baseShippingFeeSnapshot = null,
-                    freeShippingThresholdSnapshot = null,
-                    items =
-                        listOf(
-                            OrderItem.of(
-                                productId = 1L,
-                                optionCombinationId = 2L,
-                                optionNameSnapshot = "기본 / 1개",
-                                quantity = 1,
-                                unitPriceSnapshot = 25_000L,
-                                discountAllocatedAmount = 0L,
-                                productVersionId = 3L,
-                            ),
-                        ),
-                )
-            em.persist(order)
-            em.persist(
-                Shipment.dispatch(
-                    courier = em.find(CourierMaster::class.java, "CJ"),
-                    order = order,
-                    trackingNumber = trackingNumber,
-                    shipmentType = ShipmentType.INITIAL,
-                    at = now().minusDays(1),
-                ),
-            )
-            em.flush()
-            em
-                .createQuery("update Order o set o.status = :status where o.id = :id")
-                .setParameter("status", OrderStatus.SHIPPING)
-                .setParameter("id", order.id)
-                .executeUpdate()
-            order.publicId
-        }!!
+    private fun seedShippingOrder(trackingNumber: String): String = ShipmentTrackingFixture.seedShippingOrder(em, tx, trackingNumber)
 
     private fun markDeliveredByHand(orderPublicId: String) {
         tx.execute {
@@ -212,13 +165,7 @@ class ShipmentTrackingScheduleIntegrationTest : BatchIntegrationTestBase() {
         }
     }
 
-    private fun shipmentOf(orderPublicId: String): Shipment =
-        tx.execute {
-            em
-                .createQuery("select s from Shipment s where s.order.publicId = :publicId", Shipment::class.java)
-                .setParameter("publicId", orderPublicId)
-                .singleResult
-        }!!
+    private fun shipmentOf(orderPublicId: String): Shipment = ShipmentTrackingFixture.shipmentOf(em, tx, orderPublicId)
 
     private fun statusOf(orderPublicId: String): OrderStatus =
         tx.execute {
