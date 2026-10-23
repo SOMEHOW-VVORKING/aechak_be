@@ -8,6 +8,9 @@ import com.aechak.application.settlement.seller.usecase.result.SellerSettlementS
 /**
  * 셀러센터 첫 화면 집계. 지표는 기간 필터를 받고, 정산·상품 상태는 기간과 무관한 현재 스냅샷이다.
  * 증감률은 서버가 만들지 않는다 — value와 previousValue를 그대로 내리고 화면이 계산한다.
+ *
+ * 클레임 처리 대기는 요청 대기 세 지표(유형별)와 승인 이후 세 지표(단계별)로 갈려 있다 —
+ * 셀러가 숫자만 보고 무엇을 해야 하는지 알 수 있어야 해서 할 일이 다른 단계를 한 칸에 합치지 않는다.
  */
 data class SellerDashboardSummaryResult(
     val metrics: Metrics,
@@ -21,6 +24,9 @@ data class SellerDashboardSummaryResult(
         val cancelRequests: Metric,
         val returnRequests: Metric,
         val exchangeRequests: Metric,
+        val collectionInvoicePending: Metric,
+        val collectionCompletionPending: Metric,
+        val reshipPending: Metric,
         val unansweredInquiries: Metric,
     )
 
@@ -56,6 +62,11 @@ data class SellerDashboardSummaryResult(
                         cancelRequests = Metric(claims.cancelRequests, previousClaims?.cancelRequests),
                         returnRequests = Metric(claims.returnRequests, previousClaims?.returnRequests),
                         exchangeRequests = Metric(claims.exchangeRequests, previousClaims?.exchangeRequests),
+                        collectionInvoicePending =
+                            Metric(claims.collectionInvoicePending, previousClaims?.collectionInvoicePending),
+                        collectionCompletionPending =
+                            Metric(claims.collectionCompletionPending, previousClaims?.collectionCompletionPending),
+                        reshipPending = Metric(claims.reshipPending, previousClaims?.reshipPending),
                         unansweredInquiries = Metric.UNSUPPORTED,
                     ),
                 settlement = settlement,
