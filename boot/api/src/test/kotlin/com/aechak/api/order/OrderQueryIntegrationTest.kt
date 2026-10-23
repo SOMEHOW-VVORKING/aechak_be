@@ -4,6 +4,7 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
@@ -266,7 +267,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
                 Claim.request(
                     order = order,
                     claimType = ClaimType.CANCEL,
-                    reasonCode = "CHANGE_MIND",
+                    reasonCode = ClaimReasonCode.CHANGE_OF_MIND,
                     reasonDetail = "단순 변심",
                     items = targets.map { ClaimItem.of(it, it.quantity, it.unitPriceSnapshot * it.quantity) },
                     autoApproveDueAt = LocalDateTime.now().plusDays(2),

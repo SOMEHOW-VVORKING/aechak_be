@@ -8,6 +8,7 @@ import com.aechak.application.dashboard.seller.usecase.result.SellerDashboardSum
 import com.aechak.application.order.claim.port.SellerClaimPendingStage
 import com.aechak.application.order.seller.port.SellerOrderStatusFilter
 import com.aechak.application.settlement.port.SellerSettlementStatus
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
@@ -104,6 +105,16 @@ class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
         assertEquals(names<OrderItemStatus>(), spec.allowedValues("SellerOrderLineResponse", "itemStatus"))
         assertEquals(names<ClaimType>(), spec.allowedValues("SellerOrderClaimResponse", "claimType"))
         assertEquals(names<ClaimStatus>(), spec.allowedValues("SellerOrderClaimResponse", "status"))
+    }
+
+    /** 셀러는 사유 코드를 읽고 반품비 부담을 가른다 — 문서가 어휘를 적어야 코드가 무엇일 수 있는지 알 수 있다. */
+    @Test
+    fun `셀러 클레임 응답의 사유 허용값이 서버 어휘와 같다`() {
+        assertEquals(names<ClaimReasonCode>(), spec.allowedValues("SellerClaimSummaryResponse", "reasonCode"))
+        assertTrue(
+            "reasonLabel" in spec.propertyNames("SellerClaimSummaryResponse"),
+            "화면 문구를 서버가 내리는데 문서에 없으면 셀러센터가 코드-문구 표를 다시 들게 된다",
+        )
     }
 
     @Test
