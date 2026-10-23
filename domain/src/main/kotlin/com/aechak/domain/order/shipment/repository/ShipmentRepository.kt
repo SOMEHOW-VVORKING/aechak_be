@@ -7,7 +7,11 @@ import java.time.LocalDateTime
 interface ShipmentRepository {
     fun save(shipment: Shipment): Shipment
 
-    fun findById(id: Long): Shipment?
+    /**
+     * 발송 한 건을 행 잠금과 함께 읽는다. 추적 갱신은 더티체킹으로 행 전체를 다시 쓰므로,
+     * 잠그지 않으면 그 사이 커밋된 배송완료 시각을 스냅샷의 null로 덮는다.
+     */
+    fun findForUpdateById(id: Long): Shipment?
 
     /** 클레임에 걸린 송장은 유형당 한 건이다 — 회수와 재발송을 유형으로 가른다. */
     fun findByClaimIdAndShipmentType(

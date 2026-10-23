@@ -34,17 +34,18 @@ class OrderDeliveryService(
     ): List<Shipment> = shipmentRepository.findTrackingTargets(afterShipmentId, limit)
 
     /**
-     * 택배사가 준 최근 상태를 발송에 기록한다. 상태 전이는 일으키지 않는다 —
-     * 배송완료 전이의 주인은 complete()뿐이어서, 추적 문구가 구매확정 기한을 열지 못한다.
+     * 택배사가 준 최근 상태를 발송에 기록하고, 실제로 담긴 문구를 돌려준다. 상태 전이는 일으키지 않는다.
+     * 행을 잠그고 읽는다 — 더티체킹이 행 전체를 다시 쓰므로 잠그지 않으면 그 사이 커밋된 배송완료 시각이 지워진다.
      */
     fun applyTracking(
         shipmentId: Long,
         lastStatus: String,
-    ) {
+    ): String {
         val shipment =
-            shipmentRepository.findById(shipmentId)
+            shipmentRepository.findForUpdateById(shipmentId)
                 ?: throw BusinessException(OrderErrorCode.SHIPMENT_NOT_FOUND)
         shipment.syncTracking(lastStatus)
+        return requireNotNull(shipment.lastTrackingStatus)
     }
 
     fun completeBySystem(

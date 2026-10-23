@@ -50,8 +50,9 @@ class ShipmentTrackingFacade(
             port.fetchTracking(command.courierCode, command.trackingNumber)
                 ?: return ShipmentTrackingSyncResult.notFound(command.shipmentId)
         return tx.execute {
-            orderDeliveryService.applyTracking(command.shipmentId, snapshot.lastStatus)
-            ShipmentTrackingSyncResult.updated(command.shipmentId, snapshot.lastStatus)
+            // 담긴 문구를 결과로 돌려준다 — 도메인이 공백·길이를 정리하므로 원본과 다를 수 있다
+            val applied = orderDeliveryService.applyTracking(command.shipmentId, snapshot.lastStatus)
+            ShipmentTrackingSyncResult.updated(command.shipmentId, applied)
         }!!
     }
 }

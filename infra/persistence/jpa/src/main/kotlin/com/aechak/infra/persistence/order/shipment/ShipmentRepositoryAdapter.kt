@@ -4,15 +4,23 @@ import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.shipment.Shipment
 import com.aechak.domain.order.shipment.enums.ShipmentType
 import com.aechak.domain.order.shipment.repository.ShipmentRepository
+import jakarta.persistence.LockModeType
 import org.springframework.data.domain.Limit
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
-import org.springframework.data.repository.findByIdOrNull
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
 interface ShipmentJpaRepository : JpaRepository<Shipment, Long> {
+    // 조인을 끼우면 MySQL이 조인한 택배사·주문 행까지 잠근다 — 발송 행만 잠그도록 단일 테이블로 둔다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from Shipment s where s.id = :id")
+    fun findForUpdateById(
+        @Param("id") id: Long,
+    ): Shipment?
+
     fun findByClaimIdAndShipmentType(
         claimId: Long,
         shipmentType: ShipmentType,
@@ -62,7 +70,7 @@ class ShipmentRepositoryAdapter(
 ) : ShipmentRepository {
     override fun save(shipment: Shipment): Shipment = jpaRepository.save(shipment)
 
-    override fun findById(id: Long): Shipment? = jpaRepository.findByIdOrNull(id)
+    override fun findForUpdateById(id: Long): Shipment? = jpaRepository.findForUpdateById(id)
 
     override fun findByClaimIdAndShipmentType(
         claimId: Long,
