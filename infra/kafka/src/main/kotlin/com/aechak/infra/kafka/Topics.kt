@@ -14,6 +14,17 @@ object Topics {
     const val REVIEW = "$PREFIX.review.$SUFFIX"
     const val REVIEW_DLT = "$REVIEW$DLT_SUFFIX"
 
+    /**
+     * 검수 요청(백엔드 → AI 서버). 상품·리뷰가 같은 토픽을 쓴다.
+     * 상품 도메인 토픽과 섞지 않는 이유는 판정 한 건이 막힐 때 그 도메인 이벤트까지 멈추기 때문이다.
+     */
+    const val INSPECTION = "$PREFIX.inspection.$SUFFIX"
+    const val INSPECTION_DLT = "$INSPECTION$DLT_SUFFIX"
+
+    /** 판정 결과(AI 서버 → 백엔드). 보내는 쪽이 파이썬이라 아웃박스를 타지 않는다. */
+    const val VERDICT = "$PREFIX.verdict.$SUFFIX"
+    const val VERDICT_DLT = "$VERDICT$DLT_SUFFIX"
+
     /** 릴레이가 아웃박스 행의 aggregate_type으로 목적지 토픽 이름을 만든다. */
     fun of(aggregateType: String) = "$PREFIX.$aggregateType.$SUFFIX"
 
