@@ -2,6 +2,7 @@ package com.aechak.api.schema
 
 import com.aechak.api.support.IntegrationTestConfig
 import com.aechak.domain.order.claim.enums.ClaimReasonCode
+import com.aechak.domain.order.claim.enums.ClaimType
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.MigrationVersion
@@ -41,7 +42,7 @@ class V39ClaimReasonMigrationIntegrationTest {
     fun migrateLegacyRows() {
         migratedUrl = recreateDatabase("v39_legacy")
         migrateUpTo(migratedUrl, "34")
-        execute(migratedUrl, legacyClaimRows())
+        execute(migratedUrl, legacyClaimRows() + canonicalClaimRows())
         flyway(migratedUrl).migrate()
     }
 
@@ -83,6 +84,23 @@ class V39ClaimReasonMigrationIntegrationTest {
         assertThat(codes).isNotEmpty().allSatisfy { assertThat(it).isIn(names) }
     }
 
+    /**
+     * 유형이 받을 수 있는 조합은 한 칸도 접히지 않아야 한다. SQL이 유형별 허용 목록을 손으로 베껴 적은 탓에
+     * 어느 한 칸이 빠지면 그 조합으로 들어온 실제 사유가 OTHER로 접혀 구매자가 고른 뜻이 사라진다.
+     * 접힌 흔적은 남은 코드가 어휘 안에 있는지만 보는 아래 두 단언에 걸리지 않으므로 조합마다 직접 못박는다.
+     */
+    @Test
+    fun `유형이 받을 수 있는 모든 조합은 코드와 상세가 그대로 남는다`() {
+        val rows = canonicalRows()
+
+        assertThat(rows).isNotEmpty()
+        rows.forEach { (id, claimType, reasonCode) ->
+            assertThat(reasonOf(id))
+                .describedAs("%s + %s 가 접혔다 — SQL의 유형별 허용 목록이 selectableFor와 어긋난다", claimType, reasonCode)
+                .isEqualTo(reasonCode.name to DETAIL_KEPT)
+        }
+    }
+
     /** 사유 코드만 보고 반품비 부담을 가르려면 유형이 받을 수 있는 코드만 남아 있어야 한다. */
     @Test
     fun `남은 사유는 모두 그 유형이 받을 수 있는 코드다`() {
@@ -119,6 +137,21 @@ class V39ClaimReasonMigrationIntegrationTest {
             row(9, "EXCHANGE", "'CHANGE_OF_MIND'", "NULL"),
             row(10, "CANCEL", "NULL", "NULL"),
         )
+
+    /**
+     * 유형 × 어휘의 모든 허용 조합을 이미 어휘에 맞는 모양으로 심는다. 조합을 enum에서 뽑아야
+     * SQL이 베껴 적은 유형별 목록이 selectableFor에 묶이고, 한쪽만 바뀌면 테스트가 깨진다.
+     * 상세를 비우지 않고 채우는 이유 — 이관이 멀쩡한 행의 상세까지 건드리지 않는지도 함께 본다.
+     */
+    private fun canonicalClaimRows(): List<String> =
+        canonicalRows().map { (id, claimType, reasonCode) ->
+            row(id, claimType.name, "'${reasonCode.name}'", "'$DETAIL_KEPT'")
+        }
+
+    private fun canonicalRows(): List<Triple<Long, ClaimType, ClaimReasonCode>> =
+        ClaimType.entries
+            .flatMap { claimType -> ClaimReasonCode.selectableFor(claimType).map { claimType to it } }
+            .mapIndexed { index, (claimType, reasonCode) -> Triple(CANONICAL_ID_BASE + index, claimType, reasonCode) }
 
     private fun row(
         id: Long,
@@ -189,6 +222,11 @@ class V39ClaimReasonMigrationIntegrationTest {
         // MySQLContainer의 기본 root 계정. 테스트 전용 계정은 DB를 만들 권한이 없다.
         private const val ROOT_USER = "root"
         private const val ROOT_PASSWORD = "test"
+
+        // 옛 모양 행(1~10)과 섞이지 않게 띄운 자리
+        private const val CANONICAL_ID_BASE = 100L
+
+        private const val DETAIL_KEPT = "구매자가 적어 둔 상세"
 
         @JvmStatic
         @DynamicPropertySource
