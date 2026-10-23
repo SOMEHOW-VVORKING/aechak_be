@@ -20,7 +20,10 @@ import com.aechak.message.inspection.InspectionVerdict
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import java.time.Duration
 import java.time.LocalDateTime
 import com.aechak.message.inspection.InspectionTargetType as ContractTargetType
@@ -42,10 +45,20 @@ class InspectionFacade(
     private val callLedger: AiCallLedgerRepository,
     private val violationSerializer: ViolationSerializer,
     private val reviewQueueService: ProductReviewQueueService,
+    transactionManager: PlatformTransactionManager,
     @Value("\${inspection.wait-limit-minutes:10}") private val waitLimitMinutes: Long,
     @Value("\${inspection.expire-batch-size:200}") private val expireBatchSize: Int,
 ) : InspectionUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    /** 후보 조회. 호출부에 트랜잭션이 있으면 합류한다 — 그 스냅샷으로 후보를 고른다 */
+    private val scanTx = TransactionTemplate(transactionManager)
+
+    /** 후보 한 건의 처리 경계. 바깥 트랜잭션에 합류하지 않는다 */
+    private val rowTx =
+        TransactionTemplate(transactionManager).apply {
+            propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
+        }
 
     /**
      * 판정을 적는다.
@@ -125,30 +138,65 @@ class InspectionFacade(
      *
      * 대상은 판정을 받지 못한 건만이다. 조회 자체가 `judgment is null`로 거르므로
      * 모델이 보류시킨 상품은 기한이 지나도 풀리지 않는다.
+     *
+     * **후보를 먼저 읽고 잠금은 행 단위로 잡는다.** 잠금 순서는 검수 행 → 상품 행으로 판정
+     * 적용과 같다. 범위는 자기가 처리할 행까지다. 조건 조회를 잠금 조회로 두면 걸 인덱스가
+     * 없어 검수 테이블 전체와 그 뒤 간극까지 잠기고, 그 간극이 다음 INSERT 자리라서 스윕 한
+     * 번이 그 사이의 상품 등록·수정을 전부 세운다. 다른 상품을 만지는 셀러 쓰기와 교착하는
+     * 것도 거기서 나온다.
+     *
+     * **후보 하나마다 트랜잭션을 따로 연다.** 순서를 맞추고 범위를 좁혀도 배치 전체를 한
+     * 트랜잭션에 두면 둘이 남는다. 첫째, 처리를 끝낸 상품의 잠금을 배치가 끝날 때까지 쥔다.
+     * 한 상품에 과기한 행이 둘 있을 수 있고 두 인스턴스의 스윕은 서로 다른 행을 집으므로,
+     * 한쪽이 상품 Y를 들고 X를 기다리는 동안 다른 쪽이 X를 들고 Y를 기다리는 모양이 생긴다.
+     * 둘째, 후보 한 건의 실패가 그 주기에 처리한 전부를 되돌린다. 둘 다 결과가 같다. 배치가
+     * 롤백되며 사람이 볼 기회인 미판정 큐 등재까지 사라진다.
+     *
+     * 후보 조회는 스냅샷이라 잠근 뒤 기한 조건을 다시 본다. 후보를 고른 뒤 판정이 도착한
+     * 행을 그대로 닫으면 멀쩡히 판정된 건이 미판정으로 덮인다.
      */
-    @Transactional
     override fun expireOverdue(): Int {
         val now = LocalDateTime.now()
-        val cutoff = now.minus(Duration.ofMinutes(waitLimitMinutes))
-        val overdue = inspections.findExpired(cutoff, expireBatchSize)
-        if (overdue.isEmpty()) return 0
+        val waitLimit = Duration.ofMinutes(waitLimitMinutes)
+        val cutoff = now.minus(waitLimit)
+        val candidateIds = scanTx.execute { inspections.findExpiredCandidateIds(cutoff, expireBatchSize) }.orEmpty()
+        if (candidateIds.isEmpty()) return 0
 
-        overdue.forEach { inspection ->
-            inspection.expire(now)
-            inspections.save(inspection)
-            findings.upsert(
-                InspectionFinding.of(
-                    inspectionId = inspection.id,
-                    perspective = InspectionPerspectiveKind.ALL,
-                    outcome = PerspectiveOutcome.UNCHECKED,
-                    skipReason = "WAIT_LIMIT_EXCEEDED",
-                ),
-            )
-            // 미판정도 관리자 검토 큐로 보냄. 안 보내면 등록 직후 상품이 PENDING에 남음
-            applyGate(inspection, modelVerified = false)
+        var expired = 0
+        candidateIds.forEach { candidateId ->
+            val closed =
+                runCatching { rowTx.execute { expireOne(candidateId, now, waitLimit) } == true }
+                    .onFailure { log.warn("기한 정리 한 건이 실패했다. 다음 주기에 다시 집는다. inspectionId={}", candidateId, it) }
+                    .getOrDefault(false)
+            if (closed) expired += 1
         }
-        log.warn("기한이 지난 검수를 미판정으로 닫았다. count={} cutoff={}", overdue.size, cutoff)
-        return overdue.size
+        if (expired > 0) log.warn("기한이 지난 검수를 미판정으로 닫았다. count={} cutoff={}", expired, cutoff)
+        return expired
+    }
+
+    /** 후보 한 건을 닫는다. 닫았으면 참. 남이 들고 있거나 그 사이 판정이 도착했으면 거짓 */
+    private fun expireOne(
+        candidateId: Long,
+        now: LocalDateTime,
+        waitLimit: Duration,
+    ): Boolean {
+        // 남이 들고 있는 행은 비어 온다. 기다리면 두 스윕이 같은 묶음에서 서로를 세운다.
+        val inspection = inspections.findByIdForUpdateSkipLocked(candidateId) ?: return false
+        if (!inspection.isExpired(now, waitLimit)) return false
+
+        inspection.expire(now)
+        inspections.save(inspection)
+        findings.upsert(
+            InspectionFinding.of(
+                inspectionId = inspection.id,
+                perspective = InspectionPerspectiveKind.ALL,
+                outcome = PerspectiveOutcome.UNCHECKED,
+                skipReason = "WAIT_LIMIT_EXCEEDED",
+            ),
+        )
+        // 미판정도 관리자 검토 큐로 보냄. 안 보내면 등록 직후 상품이 PENDING에 남음
+        applyGate(inspection, modelVerified = false)
+        return true
     }
 
     /**

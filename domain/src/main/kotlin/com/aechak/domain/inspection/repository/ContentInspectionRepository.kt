@@ -30,9 +30,23 @@ interface ContentInspectionRepository {
         targetRef: Long,
     ): ContentInspection?
 
-    /** 기한이 지나 판정 없이 닫을 건들 */
-    fun findExpired(
+    /**
+     * 판정을 적기 전에 행을 잠그되, 남이 들고 있으면 기다리지 않고 비운다.
+     *
+     * 기한 정리가 쓴다. 두 스윕이 같은 묶음을 집어 한쪽이 배치 전체를 롤백하는 것을 막는다.
+     */
+    fun findByIdForUpdateSkipLocked(id: Long): ContentInspection?
+
+    /**
+     * 기한이 지나 판정 없이 닫을 건들의 id.
+     *
+     * 행이 아니라 id이고 잠그지 않는다. 이 조건에 걸 인덱스가 없어 잠금 조회로 훑으면 간극까지
+     * 잠겨 그 사이의 상품 등록·수정 전부가 선다. 잠금은 후보마다 기본키로 따로 잡는다.
+     *
+     * 스냅샷 읽기다. 잠근 뒤에 기한 조건을 다시 확인해야 한다.
+     */
+    fun findExpiredCandidateIds(
         before: LocalDateTime,
         limit: Int,
-    ): List<ContentInspection>
+    ): List<Long>
 }
