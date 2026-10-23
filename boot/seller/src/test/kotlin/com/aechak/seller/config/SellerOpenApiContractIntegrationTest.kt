@@ -4,6 +4,8 @@ import com.aechak.api.support.HandlerStatuses
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.api.support.OpenApiDocContract
 import com.aechak.api.support.OpenApiSpec
+import com.aechak.application.dashboard.seller.usecase.result.SellerDashboardSummaryResult
+import com.aechak.application.order.claim.port.SellerClaimPendingStage
 import com.aechak.application.order.seller.port.SellerOrderStatusFilter
 import com.aechak.application.settlement.port.SellerSettlementStatus
 import com.aechak.domain.order.claim.enums.ClaimStatus
@@ -120,6 +122,18 @@ class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
         assertEquals(names<ClaimType>(), spec.allowedValues("SellerClaimSearchRequest", "claimType"))
         assertEquals(names<ClaimStatus>(), spec.allowedValues("SellerClaimSearchRequest", "status"))
         assertEquals(names<RefundStatus>(), spec.allowedValues("SellerClaimSearchRequest", "refundStatus"))
+        assertEquals(names<SellerClaimPendingStage>(), spec.allowedValues("SellerClaimSearchRequest", "pendingStage"))
+    }
+
+    /** 집계 결과에 지표를 더하고 응답 DTO에 옮기는 것을 잊으면 화면이 그 숫자를 영원히 못 받는다. */
+    @Test
+    fun `대시보드 지표 문서가 집계 결과의 지표를 하나도 빠뜨리지 않는다`() {
+        val computed =
+            SellerDashboardSummaryResult.Metrics::class.java.declaredFields
+                .map { it.name }
+                .toSet()
+
+        assertEquals(computed, spec.schemas.getValue("MetricsResponse").keys, "서버가 세는 지표와 문서에 오른 지표가 다르다")
     }
 
     @Test
