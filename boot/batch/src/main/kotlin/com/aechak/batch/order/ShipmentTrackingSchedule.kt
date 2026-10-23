@@ -1,6 +1,7 @@
 package com.aechak.batch.order
 
 import com.aechak.application.order.delivery.usecase.ShipmentTrackingUseCase
+import com.aechak.application.order.delivery.usecase.query.ShipmentTrackingScanQuery
 import com.aechak.application.order.delivery.usecase.result.ShipmentTrackingSyncOutcome
 import com.aechak.application.order.delivery.usecase.result.ShipmentTrackingTargetResult
 import org.slf4j.LoggerFactory
@@ -30,7 +31,7 @@ class ShipmentTrackingSchedule(
         var notFound = 0
         var failed = 0
         while (true) {
-            val page = useCase.findTrackingTargets(afterShipmentId, properties.scanLimit)
+            val page = useCase.findTrackingTargets(ShipmentTrackingScanQuery(afterShipmentId, properties.scanLimit))
             if (page.isEmpty()) {
                 break
             }

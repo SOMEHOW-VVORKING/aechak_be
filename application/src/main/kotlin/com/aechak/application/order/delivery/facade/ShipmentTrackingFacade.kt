@@ -4,6 +4,7 @@ import com.aechak.application.order.delivery.port.ShipmentTrackingPort
 import com.aechak.application.order.delivery.service.OrderDeliveryService
 import com.aechak.application.order.delivery.usecase.ShipmentTrackingUseCase
 import com.aechak.application.order.delivery.usecase.command.SyncShipmentTrackingCommand
+import com.aechak.application.order.delivery.usecase.query.ShipmentTrackingScanQuery
 import com.aechak.application.order.delivery.usecase.result.ShipmentTrackingSyncResult
 import com.aechak.application.order.delivery.usecase.result.ShipmentTrackingTargetResult
 import org.slf4j.LoggerFactory
@@ -32,12 +33,9 @@ class ShipmentTrackingFacade(
     private val tx = TransactionTemplate(transactionManager)
 
     @Transactional(readOnly = true)
-    override fun findTrackingTargets(
-        afterShipmentId: Long,
-        limit: Int,
-    ): List<ShipmentTrackingTargetResult> =
+    override fun findTrackingTargets(query: ShipmentTrackingScanQuery): List<ShipmentTrackingTargetResult> =
         orderDeliveryService
-            .findTrackingTargets(afterShipmentId, limit)
+            .findTrackingTargets(query.afterShipmentId, query.limit)
             .map(ShipmentTrackingTargetResult::from)
 
     override fun syncTracking(command: SyncShipmentTrackingCommand): ShipmentTrackingSyncResult {

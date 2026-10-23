@@ -2,6 +2,7 @@ package com.aechak.batch.order
 
 import com.aechak.application.order.delivery.usecase.ShipmentTrackingUseCase
 import com.aechak.application.order.delivery.usecase.command.SyncShipmentTrackingCommand
+import com.aechak.application.order.delivery.usecase.query.ShipmentTrackingScanQuery
 import com.aechak.application.order.delivery.usecase.result.ShipmentTrackingSyncResult
 import com.aechak.application.order.delivery.usecase.result.ShipmentTrackingTargetResult
 import org.springframework.boot.autoconfigure.AutoConfigurations
@@ -46,10 +47,7 @@ class ShipmentTrackingScheduleConditionTest {
     private fun scheduleCount(context: ApplicationContext): Int = context.getBeanNamesForType(ShipmentTrackingSchedule::class.java).size
 
     private class NoopTracking : ShipmentTrackingUseCase {
-        override fun findTrackingTargets(
-            afterShipmentId: Long,
-            limit: Int,
-        ): List<ShipmentTrackingTargetResult> = emptyList()
+        override fun findTrackingTargets(query: ShipmentTrackingScanQuery): List<ShipmentTrackingTargetResult> = emptyList()
 
         override fun syncTracking(command: SyncShipmentTrackingCommand): ShipmentTrackingSyncResult =
             ShipmentTrackingSyncResult.notFound(command.shipmentId)
