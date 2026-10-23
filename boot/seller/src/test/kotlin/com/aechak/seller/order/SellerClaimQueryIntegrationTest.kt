@@ -4,6 +4,7 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
@@ -110,19 +111,22 @@ class SellerClaimQueryIntegrationTest : IntegrationTestBase() {
     @Test
     fun `구매자가 적어 보낸 사유 코드와 상세가 목록과 상세 양쪽에 내려온다`() {
         // 셀러는 이 사유를 읽고 반품비를 누가 부담할지 정한다. 응답 조립이 위치 인자 프로젝션이라
-        // 필드 순서가 뒤틀리면 조용히 다른 값이 실리므로, 두 필드를 여기서 못박는다.
+        // 필드 순서가 뒤틀리면 조용히 다른 값이 실리므로, 세 필드를 여기서 못박는다.
+        // 화면 문구(reasonLabel)는 서버 enum이 정본이라 셀러센터가 코드-문구 표를 들고 있지 않아도 된다.
         val seeded = seedClaim()
 
         mockMvc
             .perform(get("/api/v1/sellers/me/claims").bearer(token))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.claims[0].reasonCode").value("CHANGE_OF_MIND"))
+            .andExpect(jsonPath("$.data.claims[0].reasonLabel").value("단순 변심"))
             .andExpect(jsonPath("$.data.claims[0].reasonDetail").value("사이즈를 잘못 골랐어요"))
 
         mockMvc
             .perform(get("/api/v1/sellers/me/claims/${seeded.claimPublicId}").bearer(token))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.claim.reasonCode").value("CHANGE_OF_MIND"))
+            .andExpect(jsonPath("$.data.claim.reasonLabel").value("단순 변심"))
             .andExpect(jsonPath("$.data.claim.reasonDetail").value("사이즈를 잘못 골랐어요"))
     }
 
@@ -617,7 +621,7 @@ class SellerClaimQueryIntegrationTest : IntegrationTestBase() {
                     Claim.request(
                         order = order,
                         claimType = ClaimType.CANCEL,
-                        reasonCode = "CHANGE_OF_MIND",
+                        reasonCode = ClaimReasonCode.CHANGE_OF_MIND,
                         reasonDetail = "사이즈를 잘못 골랐어요",
                         items = targets.map { ClaimItem.of(it, quantity = it.quantity, refundAmount = itemRefundAmount) },
                         autoApproveDueAt = LocalDateTime.now().plusDays(2),

@@ -11,6 +11,7 @@ import com.aechak.batch.support.BatchIntegrationTestBase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.error.OrderErrorCode
@@ -449,7 +450,7 @@ class OrderAutoConfirmScheduleIntegrationTest : BatchIntegrationTestBase() {
             Claim.request(
                 claimType = ClaimType.CANCEL,
                 order = order,
-                reasonCode = "CHANGE_OF_MIND",
+                reasonCode = ClaimReasonCode.CHANGE_OF_MIND,
                 reasonDetail = null,
                 items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 10_000L)),
                 autoApproveDueAt = kstNow().plusDays(2),
