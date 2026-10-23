@@ -38,13 +38,18 @@ class ProductInspectionGateService(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * PENDING, PASS -> APPROVED
+     * PENDING, 증거 있는 PASS -> APPROVED
      * APPROVED, FLAG -> PENDING. 관리자가 볼 때까지 숨김
      * 그 밖의 조합 -> 상태 유지. 미판정, 실패는 이미 보이는 상품을 숨기지 않고 REJECTED는 관리자만 풂
+     *
+     * 증거 없는 통과는 승인으로 올리지 않는다. 미판정·판정 실패와 같은 사실이기 때문이다.
+     * 같은 이유로 이미 보이는 상품을 내리지도 않고 큐에만 올린다 — 모델이 보지 못한 것으로
+     * 노출을 끊으면 모델 장애가 곧 매출 장애가 된다.
      */
     override fun applyJudgment(
         productId: Long,
         judgment: InspectionJudgment,
+        modelVerified: Boolean,
     ): ProductGateOutcome? {
         if (!gateEnabled) return null
 
@@ -55,9 +60,10 @@ class ProductInspectionGateService(
             return null
         }
 
+        val approved = judgment == InspectionJudgment.PASS && modelVerified
         val before = product.inspectionStatus
         when {
-            before == InspectionStatus.PENDING && judgment == InspectionJudgment.PASS -> product.approveInspection()
+            before == InspectionStatus.PENDING && approved -> product.approveInspection()
             before == InspectionStatus.APPROVED && judgment == InspectionJudgment.FLAG -> product.holdInspection()
         }
         saveIfChanged(product, before)
@@ -65,7 +71,7 @@ class ProductInspectionGateService(
         return ProductGateOutcome(
             productName = product.name,
             sellerId = product.sellerId,
-            needsAdminReview = judgment != InspectionJudgment.PASS || before == InspectionStatus.REJECTED,
+            needsAdminReview = !approved || before == InspectionStatus.REJECTED,
         )
     }
 

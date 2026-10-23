@@ -177,6 +177,76 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `증거 없는 통과는 노출되지 않고 관리자 검토 큐에 오른다`() {
+        changeStatus(InspectionStatus.PENDING)
+
+        applyVerdict(
+            givenQueued(),
+            InspectionVerdict.PASS,
+            perspectives =
+                listOf(
+                    PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.UNCHECKED, "CALL_FAILED"),
+                    PerspectiveResult(InspectionPerspective.CONDUCT_TRADE, ContractOutcome.UNCHECKED, "CALL_FAILED"),
+                ),
+        )
+
+        assertEquals(
+            InspectionStatus.PENDING,
+            storedStatus(),
+            "통과라고 말해 놓고 그 통과를 뒷받침하는 관점이 하나도 없다. 아무도 보지 않은 상품을 노출하면 안 된다",
+        )
+        assertFalse(listedByBuyer())
+        assertEquals(listOf(ReviewQueueStatus.PENDING_REVIEW), queueStatuses(), "사람이 봐야 한다")
+    }
+
+    @Test
+    fun `관점 행이 아예 없는 통과도 관리자 검토 큐에 오른다`() {
+        changeStatus(InspectionStatus.PENDING)
+
+        applyVerdict(givenQueued(), InspectionVerdict.PASS, perspectives = emptyList())
+
+        assertEquals(InspectionStatus.PENDING, storedStatus(), "관점 행이 비면 모델이 무엇을 봤는지 알 길이 없다")
+        assertEquals(listOf(ReviewQueueStatus.PENDING_REVIEW), queueStatuses())
+    }
+
+    @Test
+    fun `증거 없는 통과가 이미 노출된 상품을 숨기지는 않는다`() {
+        applyVerdict(
+            givenQueued(),
+            InspectionVerdict.PASS,
+            perspectives = listOf(PerspectiveResult(InspectionPerspective.ALL, ContractOutcome.UNCHECKED, "BUDGET_EXHAUSTED")),
+        )
+
+        assertEquals(InspectionStatus.APPROVED, storedStatus())
+        assertTrue(listedByBuyer(), "모델이 보지 못한 것으로 이미 팔던 상품을 내리면 모델 장애가 곧 매출 장애가 된다")
+        assertEquals(listOf(ReviewQueueStatus.PENDING_REVIEW), queueStatuses())
+    }
+
+    @Test
+    fun `선별이 건너뛴 통과는 관리자 확인 없이 노출된다`() {
+        changeStatus(InspectionStatus.PENDING)
+
+        applyVerdict(
+            givenQueued(),
+            InspectionVerdict.PASS,
+            perspectives =
+                listOf(
+                    PerspectiveResult(InspectionPerspective.TRIAGE, ContractOutcome.CLEAR),
+                    PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.UNCHECKED, TRIAGE_CLEAR),
+                    PerspectiveResult(InspectionPerspective.CONDUCT_TRADE, ContractOutcome.UNCHECKED, TRIAGE_CLEAR),
+                ),
+        )
+
+        assertEquals(
+            InspectionStatus.APPROVED,
+            storedStatus(),
+            "선별이 일부러 건너뛴 통과까지 막으면 선별 계층의 비용 절감이 사라진다",
+        )
+        assertTrue(listedByBuyer())
+        assertEquals(emptyList<ReviewQueueStatus>(), queueStatuses())
+    }
+
+    @Test
     fun `옛 내용의 판정이 늦게 오면 상품과 큐에 반영하지 않는다`() {
         val older = givenQueued(hash = "a".repeat(64))
         val newer = givenQueued(hash = "b".repeat(64))
@@ -201,7 +271,29 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
     private fun applyVerdict(
         inspection: ContentInspection,
         verdict: InspectionVerdict,
-    ) = inspectionUseCase.applyVerdict(ApplyVerdictCommand(verdictFor(inspection, verdict)))
+        perspectives: List<PerspectiveResult> = defaultPerspectives(verdict),
+    ) = inspectionUseCase.applyVerdict(ApplyVerdictCommand(verdictFor(inspection, verdict, perspectives)))
+
+    /**
+     * 판정과 어긋나지 않는 관점 행을 만든다.
+     *
+     * 통과 판정에 위반 관점을 실으면 메시지 자체가 부정합해져서, 증거를 보는 분기가
+     * 우연히 통과한다. 그래서 판정마다 그 판정을 뒷받침하는 결과를 기본값으로 둔다.
+     */
+    private fun defaultPerspectives(verdict: InspectionVerdict): List<PerspectiveResult> =
+        when (verdict) {
+            InspectionVerdict.FLAG -> {
+                listOf(PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.VIOLATION))
+            }
+
+            InspectionVerdict.PASS -> {
+                listOf(PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.CLEAR))
+            }
+
+            InspectionVerdict.FAILED -> {
+                listOf(PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.UNCHECKED, "CALL_FAILED"))
+            }
+        }
 
     private fun queueStatuses(): List<ReviewQueueStatus> =
         tx.execute {
@@ -254,6 +346,7 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
     private fun verdictFor(
         inspection: ContentInspection,
         verdict: InspectionVerdict,
+        perspectives: List<PerspectiveResult>,
     ): ContentVerdictMessage =
         ContentVerdictMessage(
             inspectionId = inspection.id,
@@ -261,8 +354,7 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
             targetRef = inspection.targetRef,
             contentHash = inspection.contentHash,
             verdict = verdict,
-            perspectives =
-                listOf(PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.VIOLATION)),
+            perspectives = perspectives,
             violations =
                 if (verdict == InspectionVerdict.FLAG) {
                     listOf(
@@ -288,5 +380,8 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
 
     companion object {
         private const val POLICY_VERSION = "policy-v1"
+
+        // 선별이 모델 호출을 일부러 건너뛸 때 쓰는 사유. AI 서버와 맞춰 둔 값이다
+        private const val TRIAGE_CLEAR = "TRIAGE_CLEAR"
     }
 }

@@ -33,13 +33,17 @@ class ProductReviewQueueService(
      * 관리자가 봐야 함, 열린 행 없음 -> 새 행을 엶
      * 관리자가 봐야 함, 열린 행 있음 -> 그 행의 시각과 상품명만 갱신함
      * 관리자가 안 봐도 됨, 열린 행 있음 -> SUPERSEDED로 닫음
+     *
+     * [modelVerified]가 false인 통과는 관리자가 봐야 하는 쪽으로 간다. 증거 없는 통과로 열린
+     * 행을 닫으면 사람이 봐야 할 상품이 조용히 큐에서 사라진다.
      */
     fun applyJudgment(
         productId: Long,
         judgment: InspectionJudgment,
+        modelVerified: Boolean,
         judgedAt: LocalDateTime,
     ) {
-        val outcome = productGate.applyJudgment(productId, judgment) ?: return
+        val outcome = productGate.applyJudgment(productId, judgment, modelVerified) ?: return
         val pending = reviewQueue.findPendingByProductId(productId)
 
         when {
