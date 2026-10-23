@@ -8,6 +8,7 @@ import com.aechak.application.inspection.service.InspectionRequestService
 import com.aechak.application.inspection.usecase.command.RequestProductInspectionCommand
 import com.aechak.application.product.like.service.ProductLikeStatusService
 import com.aechak.application.product.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.service.ProductInspectionGateService
 import com.aechak.application.product.product.service.ProductService
 import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.product.product.usecase.SellerProductUseCase
@@ -52,6 +53,7 @@ class ProductFacade(
     private val fileUseCase: FileUseCase,
     private val inspectionRequestService: InspectionRequestService,
     private val inspectionQueryService: InspectionQueryService,
+    private val productInspectionGateService: ProductInspectionGateService,
     transactionManager: PlatformTransactionManager,
 ) : ProductUseCase,
     SellerProductUseCase {
@@ -109,15 +111,18 @@ class ProductFacade(
         val version =
             tx.execute {
                 val saved = productService.register(stored, options)
-                requestInspection(
-                    productId = saved.product.id,
-                    versionNo = saved.versionNo,
-                    categoryId = stored.categoryId,
-                    productName = stored.productName,
-                    description = stored.description,
-                    optionNames = optionNamesOf(options),
-                    representativeImageKey = saved.product.representativeImageKey,
-                )
+                val requested =
+                    requestInspection(
+                        productId = saved.product.id,
+                        versionNo = saved.versionNo,
+                        categoryId = stored.categoryId,
+                        productName = stored.productName,
+                        description = stored.description,
+                        optionNames = optionNamesOf(options),
+                        representativeImageKey = saved.product.representativeImageKey,
+                    )
+                // 요청이 나가지 않았으면 판정도 오지 않으므로 숨기지 않음. 숨기면 영영 PENDING에 남음
+                if (requested) productInspectionGateService.holdUntilInspected(saved.product)
                 saved
             }!!
         return ProductRegisterResult.of(version.product, version.versionNo)
@@ -226,6 +231,8 @@ class ProductFacade(
      *
      * 판정에 필요한 본문을 여기서 다 모아 보낸다. AI 서버가 우리를 되묻지 않게 하려는 것이고,
      * 그래야 역방향 호출 인증과 보안그룹 인바운드가 필요 없어진다.
+     *
+     * @return 요청 발행 스위치가 꺼져 있으면 false
      */
     private fun requestInspection(
         productId: Long,
@@ -235,7 +242,7 @@ class ProductFacade(
         description: String?,
         optionNames: List<String>,
         representativeImageKey: String?,
-    ) {
+    ): Boolean =
         inspectionRequestService.requestProduct(
             RequestProductInspectionCommand(
                 productId = productId,
@@ -246,8 +253,7 @@ class ProductFacade(
                 categoryPath = productService.categoryPathOf(categoryId),
                 imageUrls = listOfNotNull(fileUseCase.resolveMediaUrl(representativeImageKey)),
             ),
-        )
-    }
+        ) != null
 
     /** 그룹명과 값 이름을 함께 넘긴다. 옵션 이름에도 금칙 표현이 들어온다 */
     private fun optionNamesOf(options: ProductOptions): List<String> =

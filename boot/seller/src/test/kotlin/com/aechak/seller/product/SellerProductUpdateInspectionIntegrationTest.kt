@@ -9,6 +9,7 @@ import com.aechak.application.product.product.usecase.command.RegisterProductCom
 import com.aechak.application.product.product.usecase.command.UpdateProductCommand
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
+import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.message.IntegrationMessage
 import com.aechak.message.inspection.ProductInspectionRequestedMessage
@@ -33,8 +34,10 @@ import kotlin.test.assertTrue
  *
  * 발행 포트를 기록용으로 바꿔 끼운다. 실제 발행은 아웃박스 테이블에 적는데 그 테이블은
  * 마이그레이션으로만 생겨서, 스키마를 코드로 만드는 이 컨텍스트에는 없다.
+ *
+ * 노출 게이트도 켠다. 등록 직후 숨기는 것은 요청이 실제로 나갈 때만이라 두 스위치가 함께 켜진 컨텍스트에서만 보인다.
  */
-@TestPropertySource(properties = ["inspection.enabled=true"])
+@TestPropertySource(properties = ["inspection.enabled=true", "inspection.gate-enabled=true"])
 class SellerProductUpdateInspectionIntegrationTest : IntegrationTestBase() {
     @TestConfiguration
     class RecordingPublisherConfig {
@@ -129,6 +132,17 @@ class SellerProductUpdateInspectionIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `게이트가 켜져 있으면 등록한 상품을 첫 판정까지 숨긴다`() {
+        val publicId = register()
+
+        assertEquals(
+            InspectionStatus.PENDING,
+            storedInspectionStatus(publicId),
+            "판정 전에 노출하면 위반 문구가 AI 판정이 올 때까지 구매자에게 보인다",
+        )
+    }
+
+    @Test
     fun `아무것도 달라지지 않은 수정은 검수를 요청하지 않는다`() {
         val publicId = register()
 
@@ -200,6 +214,14 @@ class SellerProductUpdateInspectionIntegrationTest : IntegrationTestBase() {
                 .setParameter("pid", publicId)
                 .singleResult
                 .representativeImageKey!!
+        }!!
+
+    private fun storedInspectionStatus(publicId: String): InspectionStatus =
+        tx.execute {
+            em
+                .createQuery("select p.inspectionStatus from Product p where p.publicId = :pid", InspectionStatus::class.java)
+                .setParameter("pid", publicId)
+                .singleResult
         }!!
 
     private fun inspectionCount(): Int =

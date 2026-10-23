@@ -1,7 +1,7 @@
 package com.aechak.application.inspection.facade
 
-import com.aechak.application.inspection.port.ProductInspectionGate
 import com.aechak.application.inspection.port.ViolationSerializer
+import com.aechak.application.inspection.service.ProductReviewQueueService
 import com.aechak.application.inspection.usecase.InspectionUseCase
 import com.aechak.application.inspection.usecase.command.ApplyVerdictCommand
 import com.aechak.domain.inspection.AiCallLedgerEntry
@@ -41,7 +41,7 @@ class InspectionFacade(
     private val findings: InspectionFindingRepository,
     private val callLedger: AiCallLedgerRepository,
     private val violationSerializer: ViolationSerializer,
-    private val productGate: ProductInspectionGate,
+    private val reviewQueueService: ProductReviewQueueService,
     @Value("\${inspection.wait-limit-minutes:10}") private val waitLimitMinutes: Long,
     @Value("\${inspection.expire-batch-size:200}") private val expireBatchSize: Int,
 ) : InspectionUseCase {
@@ -144,16 +144,17 @@ class InspectionFacade(
                     skipReason = "WAIT_LIMIT_EXCEEDED",
                 ),
             )
+            applyGate(inspection) // 미판정도 관리자 검토 큐로 보냄. 안 보내면 등록 직후 상품이 PENDING에 남음
         }
         log.warn("기한이 지난 검수를 미판정으로 닫았다. count={} cutoff={}", overdue.size, cutoff)
         return overdue.size
     }
 
     /**
-     * 판정을 노출 상태로 옮긴다.
+     * 판정을 노출 상태와 관리자 검토 큐로 옮긴다.
      *
-     * 판정을 받지 못한 건과 판정 과정이 실패한 건은 건드리지 않는다. 모델이 보지 못한 것을
-     * 위반으로 다루면 멀쩡한 상품이 사라지고, 모델 장애가 그대로 매출 장애가 된다.
+     * 판정을 받지 못한 건과 판정 과정이 실패한 건은 이미 보이는 상품을 숨기지 않고 관리자 검토 큐에만 올린다.
+     * 모델이 보지 못한 것을 위반으로 다루면 멀쩡한 상품이 사라지고, 모델 장애가 그대로 매출 장애가 된다.
      *
      * 통과 판정에 노출을 되돌리는 경로를 둔 이유는 복구 수단이 필요하기 때문이다. 셀러가
      * 문구를 고쳐 다시 통과했을 때 되살아나지 않으면 한 번 걸린 상품을 영구히 되살릴 수 없다.
@@ -162,11 +163,14 @@ class InspectionFacade(
         // 리뷰는 규칙 기반 마스킹이 이미 돌고 있어 이번 범위가 아니다.
         if (inspection.targetType != InspectionTargetType.PRODUCT) return
 
-        when (inspection.judgment) {
-            InspectionJudgment.FLAG -> productGate.rejectByInspection(inspection.targetRef)
-            InspectionJudgment.PASS -> productGate.approveByInspection(inspection.targetRef)
-            else -> Unit
+        val latest = inspections.findLatestByTarget(InspectionTargetType.PRODUCT, inspection.targetRef)
+        if (latest?.id != inspection.id) {
+            // 옛 내용의 판정이 늦게 와서 새 내용의 상태를 덮으면 고치기 전 문구의 통과로 큐가 닫힘
+            log.info("최신 검수가 아니라 노출에 반영하지 않는다. inspectionId={} latestId={}", inspection.id, latest?.id)
+            return
         }
+        val judgment = checkNotNull(inspection.judgment) { "판정이 적히지 않은 검수를 반영하려 했다. id=${inspection.id}" }
+        reviewQueueService.applyJudgment(inspection.targetRef, judgment, checkNotNull(inspection.settledAt))
     }
 
     /**
