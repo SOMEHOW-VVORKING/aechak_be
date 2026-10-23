@@ -12,10 +12,16 @@ import com.aechak.domain.inspection.enums.InspectionJudgment
  * 세 메서드 모두 상품 행을 잠금. 호출부는 같은 트랜잭션에서 검토 큐를 고쳐야 상품마다 열린 행이 하나로 유지됨.
  */
 interface ProductInspectionGate {
-    /** 노출 게이트 스위치가 꺼졌거나 상품이 없으면 null */
+    /**
+     * 노출 게이트 스위치가 꺼졌거나 상품이 없으면 null
+     *
+     * [modelVerified]는 통과 판정을 뒷받침하는 증거가 있는지다. 통과라고 말해 놓고 그 통과를
+     * 뒷받침하는 관점이 하나도 없는 판정은 받아들이면 아무도 보지 않은 상품이 노출된다.
+     */
     fun applyJudgment(
         productId: Long,
         judgment: InspectionJudgment,
+        modelVerified: Boolean,
     ): ProductGateOutcome?
 
     fun approveByAdmin(productId: Long)
