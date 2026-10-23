@@ -276,6 +276,24 @@ class SellerClaimQueryIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.counts.EXCHANGE").value(1))
     }
 
+    /** 단계 축은 다른 축과 AND로 묶인다 — OR로 바뀌면 한 축만 맞아도 걸려 카드에서 넘어온 목록이 부풀어 오른다. */
+    @Test
+    fun `단계 필터는 상태 필터와 AND로 묶인다`() {
+        seedClaim(claimType = ClaimType.RETURN).also { approveToCollecting(it) }
+
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims?pendingStage=COLLECTION_INVOICE_PENDING&status=COLLECTING").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.totalCount").value(1))
+            .andExpect(jsonPath("$.data.counts.RETURN").value(1))
+
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims?pendingStage=COLLECTION_INVOICE_PENDING&status=APPROVED").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.totalCount").value(0))
+            .andExpect(jsonPath("$.data.counts.RETURN").value(0))
+    }
+
     @Test
     fun `단계는 여러 개를 함께 걸 수 있고 모르는 값은 400이다`() {
         seedClaim(claimType = ClaimType.RETURN).also { approveToCollecting(it) }

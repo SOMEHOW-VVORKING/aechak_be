@@ -286,6 +286,27 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.metrics.reshipPending.value").value(0))
     }
 
+    /**
+     * 셀러가 할 일이 없는 상태는 하나도 세지 않는다 — 집계가 WHERE로 읽을 상태를 좁히므로 그 좁힘이 틀리면
+     * 여기가 깨진다. 승인된 교환에 회수 시작 시각이 없는 조합은 정상 전이로 닿지 않는 자리이고,
+     * 재발송 대기에서 회수 시작 조건을 지우는 변경을 잡기 위해 조회식의 방어 범위로 함께 넣는다.
+     */
+    @Test
+    fun `종결·개입·환불 실패 클레임은 어느 처리 대기 단계에도 섞이지 않는다`() {
+        listOf(ClaimStatus.REJECTED, ClaimStatus.WITHDRAWN, ClaimStatus.ADMIN_OVERRIDDEN, ClaimStatus.REFUND_FAILED)
+            .forEach { seedClaim(seedOrder(status = OrderStatus.PAID), ClaimType.RETURN, status = it) }
+        seedClaim(seedOrder(status = OrderStatus.PAID), ClaimType.RETURN, status = ClaimStatus.APPROVED)
+        seedClaim(seedOrder(status = OrderStatus.PAID), ClaimType.EXCHANGE, status = ClaimStatus.APPROVED)
+
+        summary()
+            .andExpect(jsonPath("$.data.metrics.cancelRequests.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.returnRequests.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.exchangeRequests.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionInvoicePending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionCompletionPending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.reshipPending.value").value(0))
+    }
+
     @Test
     fun `정산 요약은 대기와 보류만 담고 예정 금액은 둘의 합이다`() {
         seedSettlement(netAmount = 300_000L, status = SettlementStatus.PENDING)
