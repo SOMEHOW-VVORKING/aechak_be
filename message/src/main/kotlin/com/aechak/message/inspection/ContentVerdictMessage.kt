@@ -22,6 +22,8 @@ data class ContentVerdictMessage(
     val sellerNotice: String?,
     /** 실제 모델 호출 단위 기록. 재시도와 단계 승격마다 한 건씩 늘어난다 */
     val calls: List<CallUsage>,
+    /** 비평이 모델 위반을 뒤집어 통과로 바꿨는지. 어드민 검수 라우팅이 보는 신호다 */
+    val criticOverturned: Boolean = false,
     val promptVersion: String,
     val schemaVersion: Int,
     val decidedAt: Instant,

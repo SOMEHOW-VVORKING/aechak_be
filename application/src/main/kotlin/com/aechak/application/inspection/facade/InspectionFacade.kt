@@ -278,6 +278,7 @@ class InspectionFacade(
             InspectionPerspective.DISPLAY_ADS -> InspectionPerspectiveKind.DISPLAY_ADS
             InspectionPerspective.CONDUCT_TRADE -> InspectionPerspectiveKind.CONDUCT_TRADE
             InspectionPerspective.RULE -> InspectionPerspectiveKind.RULE
+            InspectionPerspective.TRIAGE -> InspectionPerspectiveKind.TRIAGE
         }
 
     companion object {
