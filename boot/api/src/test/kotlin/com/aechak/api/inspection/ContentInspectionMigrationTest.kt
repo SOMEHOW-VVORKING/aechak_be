@@ -13,8 +13,8 @@ import kotlin.test.assertTrue
  */
 class ContentInspectionMigrationTest : KafkaIntegrationTestBase() {
     @Test
-    fun `검수 테이블 셋이 생성된다`() {
-        listOf("content_inspections", "inspection_findings", "ai_call_ledger").forEach { table ->
+    fun `검수 테이블 넷이 생성된다`() {
+        listOf("content_inspections", "inspection_findings", "ai_call_ledger", "product_review_queue_items").forEach { table ->
             val count =
                 db
                     .sql(
