@@ -18,9 +18,8 @@ import org.springframework.stereotype.Component
  * 호출부의 트랜잭션 안에서 돌아야 한다. 판정 적용과 노출 변경이 갈라지면 판정은 적혔는데
  * 상품은 그대로인 상태가 남는다.
  *
- * 쓰기이므로 잠금 조회로 읽는다. 판정 적용이 검수 행을 먼저 잠그고 여기서 상품 행을 잠근다.
- * 기한 정리는 검수 행을 잠그지 않고 커밋 때 갱신하므로, 같은 검수에 판정이 동시에 오면 교착이 날 수 있음.
- * MySQL이 한쪽을 되돌리고, 판정은 재전달로 정리는 다음 주기로 다시 돎.
+ * 쓰기이므로 잠금 조회로 읽는다. 판정 적용이 검수 행을 먼저 잠그고 여기서 상품 행을 잠그는데,
+ * 반대 순서로 두 자원을 잡는 경로가 없어 교착이 생기지 않는다.
  */
 @Component
 class ProductInspectionGateService(
@@ -38,13 +37,14 @@ class ProductInspectionGateService(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * PENDING, PASS -> APPROVED
-     * APPROVED, FLAG -> PENDING. 관리자가 볼 때까지 숨김
-     * 그 밖의 조합 -> 상태 유지. 미판정, 실패는 이미 보이는 상품을 숨기지 않고 REJECTED는 관리자만 풂
+     * FLAG -> REJECTED
+     * PASS, 관리자가 반려한 REJECTED -> 상태 유지. 사람이 내린 반려를 판정이 풀지 않음
+     * PASS, 그 밖 -> APPROVED
      */
     override fun applyJudgment(
         productId: Long,
         judgment: InspectionJudgment,
+        isAdminRejected: () -> Boolean,
     ): ProductGateOutcome? {
         if (!gateEnabled) return null
 
@@ -56,38 +56,33 @@ class ProductInspectionGateService(
         }
 
         val before = product.inspectionStatus
+        val keepsAdminRejection =
+            judgment == InspectionJudgment.PASS && before == InspectionStatus.REJECTED && isAdminRejected()
         when {
-            before == InspectionStatus.PENDING && judgment == InspectionJudgment.PASS -> product.approveInspection()
-            before == InspectionStatus.APPROVED && judgment == InspectionJudgment.FLAG -> product.holdInspection()
+            judgment == InspectionJudgment.FLAG -> product.rejectByInspection()
+            judgment == InspectionJudgment.PASS && !keepsAdminRejection -> product.approveByInspection()
         }
         saveIfChanged(product, before)
 
         return ProductGateOutcome(
             productName = product.name,
             sellerId = product.sellerId,
-            needsAdminReview = judgment != InspectionJudgment.PASS || before == InspectionStatus.REJECTED,
+            needsAdminReview = judgment == InspectionJudgment.FLAG || keepsAdminRejection,
         )
     }
 
     override fun approveByAdmin(productId: Long) {
         val product = getForUpdate(productId)
         val before = product.inspectionStatus
-        product.approveInspection()
+        product.approveByInspection()
         saveIfChanged(product, before)
     }
 
     override fun rejectByAdmin(productId: Long) {
         val product = getForUpdate(productId)
         val before = product.inspectionStatus
-        product.rejectInspection()
+        product.rejectByInspection()
         saveIfChanged(product, before)
-    }
-
-    /** 갓 등록한 상품을 첫 판정이 올 때까지 구매자에게 보이지 않게 둠 */
-    fun holdUntilInspected(product: Product) {
-        if (!gateEnabled) return
-        product.holdInspection()
-        productRepository.save(product)
     }
 
     private fun getForUpdate(productId: Long): Product =

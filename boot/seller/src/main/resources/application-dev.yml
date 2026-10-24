@@ -52,5 +52,3 @@ server:
 # AI 검수. 섀도 단계에서는 요청만 보내고 노출 상태는 바꾸지 않는다.
 inspection:
   enabled: true
-  # 노출 게이트. api와 같은 값으로 맞춤. 켜져 있으면 등록 직후 상품을 첫 판정까지 숨김
-  gate-enabled: false

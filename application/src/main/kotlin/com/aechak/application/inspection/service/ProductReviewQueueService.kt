@@ -39,7 +39,7 @@ class ProductReviewQueueService(
         judgment: InspectionJudgment,
         judgedAt: LocalDateTime,
     ) {
-        val outcome = productGate.applyJudgment(productId, judgment) ?: return
+        val outcome = productGate.applyJudgment(productId, judgment) { isAdminRejected(productId) } ?: return
         val pending = reviewQueue.findPendingByProductId(productId)
 
         when {
@@ -92,6 +92,9 @@ class ProductReviewQueueService(
     fun getReviewTarget(productPublicId: String): ReviewTargetProductView =
         reviewQueueQuery.findReviewTarget(productPublicId)
             ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+
+    private fun isAdminRejected(productId: Long): Boolean =
+        reviewQueue.findLatestAdminDecisionByProductId(productId)?.status == ReviewQueueStatus.REJECTED
 
     // 상품 전이를 먼저 했어도 여기서 던지면 트랜잭션이 함께 롤백됨
     private fun getPending(productId: Long): ProductReviewQueueItem =

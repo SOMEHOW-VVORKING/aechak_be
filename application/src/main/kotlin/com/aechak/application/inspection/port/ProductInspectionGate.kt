@@ -12,10 +12,14 @@ import com.aechak.domain.inspection.enums.InspectionJudgment
  * 세 메서드 모두 상품 행을 잠금. 호출부는 같은 트랜잭션에서 검토 큐를 고쳐야 상품마다 열린 행이 하나로 유지됨.
  */
 interface ProductInspectionGate {
-    /** 노출 게이트 스위치가 꺼졌거나 상품이 없으면 null */
+    /**
+     * 노출 게이트 스위치가 꺼졌거나 상품이 없으면 null.
+     * [isAdminRejected]는 상품 행을 잠근 뒤에 부름. 잠그기 전에 읽으면 그 사이 끝난 관리자 결정을 못 봄
+     */
     fun applyJudgment(
         productId: Long,
         judgment: InspectionJudgment,
+        isAdminRejected: () -> Boolean,
     ): ProductGateOutcome?
 
     fun approveByAdmin(productId: Long)

@@ -78,7 +78,7 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
                     null,
                     List.of(),
                     List.of());
-            product.holdInspection();
+            product.rejectByInspection();
             em.persist(product);
             em.flush();
             productId = product.getId();
@@ -127,12 +127,12 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    void 승인하면_상품이_노출되고_검토_행이_승인으로_닫힌다() throws Exception {
+    void 승인하면_AI_반려가_풀려_상품이_노출되고_검토_행이_승인으로_닫힌다() throws Exception {
         openReview();
 
         mockMvc.perform(bearer(post(BASE + "/" + publicId + "/approve"))).andExpect(status().isNoContent());
 
-        assertEquals(InspectionStatus.APPROVED, storedStatus(), "승인했는데 숨겨져 있으면 관리자 결정이 장식이다");
+        assertEquals(InspectionStatus.APPROVED, storedStatus(), "오탐을 승인했는데 숨겨져 있으면 관리자 결정이 장식이다");
         assertEquals(List.of(ReviewQueueStatus.APPROVED), queueStatuses(), "닫히지 않으면 같은 상품이 큐에 계속 남는다");
     }
 
@@ -158,7 +158,7 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value(40500));
 
-        assertEquals(InspectionStatus.PENDING, storedStatus(), "상품을 먼저 바꾸고 행을 찾으므로 409에서 롤백되지 않으면 결정 없이 상품이 풀린다");
+        assertEquals(InspectionStatus.REJECTED, storedStatus(), "상품을 먼저 바꾸고 행을 찾으므로 409에서 롤백되지 않으면 결정 없이 상품이 풀린다");
     }
 
     @Test
