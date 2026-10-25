@@ -20,7 +20,7 @@ application/src/main/kotlin/com/aechak/application/
     │   ├── command/             # 쓰기 입력 (계약의 일부)
     │   ├── query/               # 복잡 조회 입력
     │   └── result/              # 출력 (Result — 유스케이스 최종 출력 DTO)
-    ├── port/                    # (복잡 조회를 위임할 때만) 조회 포트 계약
+    ├── port/                    # 조회 포트 계약(복잡 조회 위임) · 외부 시스템 포트(PG·택배사 추적 등)
     │   ├── {대상}QueryPort.kt   # 읽기 전용 포트 인터페이스 — 구현은 infra/persistence
     │   └── view/                # 포트가 돌려주는 읽기 모델 (View, §4-1)
     ├── facade/                  # UseCase 구현 — 외부에서 import 금지
@@ -134,6 +134,17 @@ override fun confirmPayment(command: ConfirmPaymentCommand): PaymentResult {
 
 - 후속 작업이 비동기여도 되면(알림 등) 트랜잭션 분리 대신 §3의 AFTER_COMMIT 리스너를 쓴다.
 - 이 규칙의 대상 아님: `@TransactionalEventListener`(리스너 위치가 정상), Spring Batch Step/chunk 트랜잭션(framework 관리).
+
+### 2-2. 어댑터가 일부 실행 모듈에만 있는 외부 포트
+
+- 외부 시스템 포트의 구현이 특정 실행 모듈에만 조립되는 경우가 있다 — 택배사 추적 어댑터는 배치에만 등재돼 있고,
+  구현이 목뿐인 동안 설정으로 꺼져 있어 **어느 모듈에도 빈이 없을 수 있다.**
+- 그 포트를 쓰는 Facade는 **nullable 생성자 파라미터로 선택 주입**한다(Kotlin의 nullable 파라미터 = Spring의 선택 의존).
+  필수 주입이면 그 Facade가 사는 패키지를 스캔하는 **모든** 실행 모듈이 어댑터를 들고 있어야 하고, 루트 패키지를 스캔하는
+  api가 먼저 부팅에서 깨진다. 이 때문에 포트를 요구하는 유스케이스는 같은 BC의 다른 Facade와 입구를 나눠 둔다 —
+  배송완료 전이(OrderDeliveryFacade)와 추적 갱신(ShipmentTrackingFacade)이 그렇게 갈려 있다.
+- 포트가 없을 때의 동작은 **유스케이스 결과로 드러낸다** — 조용히 성공으로 접지 않는다(추적 갱신은 어댑터 부재를
+  결과 enum으로 돌려주고, 호출한 배치가 경고를 남기고 회차를 끊는다).
 
 ## 3. 이벤트 리스너 — 수신자 위치
 

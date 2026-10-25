@@ -65,7 +65,7 @@ class SnsProfileService(
             publicId = target.publicId,
             nickname = checkNotNull(target.nickname),
             profileImageUrl = target.profileImageUrl,
-            bio = target.bio,
+            bio = target.bio?.ifBlank { null },
             pets = pets,
             postCount = stats?.postCount?.toLong() ?: 0L,
             followerCount = stats?.followerCount?.toLong() ?: 0L,

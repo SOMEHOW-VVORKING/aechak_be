@@ -8,7 +8,8 @@
 >   - `application/dashboard/seller/facade/SellerDashboardFacade` — 트랜잭션 경계·자격 게이트·네 BC 조립
 >   - `application/dashboard/seller/usecase/query/DashboardPeriod` — 기간 코드 → 현재·직전 구간
 >   - `application/order/seller/port/SellerOrderMetricsQueryPort` — 주문 3지표
->   - `application/order/claim/port/SellerClaimQueryPort.countByClaimType` — 클레임 3지표(목록 배지와 공유)
+>   - `application/order/claim/port/SellerClaimQueryPort.countPendingMetrics` — 클레임 처리 대기 6지표
+>   - `application/order/claim/port/SellerClaimPendingStage` — 셀러가 할 일이 남은 단계 축(목록 필터와 공유)
 >   - `application/settlement/seller/port/SellerSettlementSummaryQueryPort` — 미지급 정산 2금액
 >   - `application/product/product/port/SellerProductQueryPort.countStatuses` — 상품 상태 4건수
 
@@ -16,7 +17,7 @@
 
 ## 1. 개요
 
-- **무엇**: 셀러센터 첫 화면이 한 번에 묻는 네 묶음. 처리 대기 건수 7종, 정산 요약 3금액,
+- **무엇**: 셀러센터 첫 화면이 한 번에 묻는 네 묶음. 처리 대기 건수 10종, 정산 요약 3금액,
   상품 상태 요약 4종, 그리고 기간 필터(`all`/`7d`/`30d`/`90d`).
 - **흐름**: `GET /sellers/me/dashboard/summary` → `SellerDashboardController` → `SellerDashboardUseCase`
   (구현 `SellerDashboardFacade`) → 주문·클레임·정산·상품 네 BC의 진입점.
@@ -58,7 +59,7 @@ UseCase만 주입받는다.
 | --- | --- |
 | 1 | 셀러 상태(자격 게이트) |
 | 2 | 주문 3지표 — 신규 주문·발송 대기·발송 지연 |
-| 3 | 클레임 3지표 — 취소·반품·교환 요청(유형별 group by) |
+| 3 | 클레임 6지표 — 요청 대기 3종(유형별)·회수 송장 등록 대기·회수 완료 처리 대기·재발송 대기 |
 | 4 | 정산 2금액 — 대기·보류 |
 | 5 | 상품 4건수 — 검수 대기·반려·판매 중지·품절 |
 | 6, 7 | 직전 기간의 주문·클레임 재질의 (`period=all`이면 돌지 않는다) |
@@ -101,6 +102,9 @@ UseCase만 주입받는다.
 | `shippingDelayed` | 위 상태이고 **주문일 < now − 발송 기한** |
 | `cancelRequests` | `claims.claim_type = CANCEL AND status = CLAIM_REQUESTED` |
 | `returnRequests` / `exchangeRequests` | 위와 같고 유형만 다름 |
+| `collectionInvoicePending` | `status = COLLECTING AND collection_started_at IS NULL` |
+| `collectionCompletionPending` | `status = COLLECTING AND collection_started_at IS NOT NULL` |
+| `reshipPending` | `claim_type = EXCHANGE AND status = APPROVED AND collection_started_at IS NOT NULL AND resolved_at IS NULL` |
 | `unansweredInquiries` | **계산 불가** — `supported: false` |
 
 - 기간 축은 주문 지표가 **주문일**(`order_groups.created_at`), 클레임 지표가 **요청일**
@@ -112,8 +116,37 @@ UseCase만 주입받는다.
 - `shippingDelayed ⊆ awaitingShipment`다. 화면이 두 카드를 따로 세우므로 겹쳐도 된다.
 - `PENDING_PAYMENT`는 어느 지표에도 들어가지 않는다 — 결제 전 주문도 테이블에 남는 모델이라
   넣으면 셀러에게 미결제 건이 처리 대기로 보인다. 셀러 주문 목록과 같은 규약.
-- 클레임 지표는 목록 탭 배지가 쓰는 집계 쿼리(`countByClaimType`)를 그대로 재사용한다. 두 화면이 같은
-  라벨에 다른 숫자를 띄우지 않으려면 판정 규칙이 한 곳이어야 한다.
+- **클레임 처리 대기는 요청 상태만 세지 않는다.** 반품·교환은 셀러가 승인하면 회수 중(`COLLECTING`)으로
+  넘어가고, 그 뒤로도 회수 송장 등록 → 회수 완료 처리 → (교환이면) 재발송이 셀러 몫으로 남는다.
+  요청 상태만 세던 집계는 승인한 순간 그 건이 처리 대기에서 사라져, 셀러가 할 일이 남았는데 숫자가 0이 됐다.
+  병합 전에는 반품·교환의 요청 가능 주문 상태가 빈 집합이어서 드러나지 않던 전제다.
+- **단계를 합치지 않고 나눠 센다.** 회수 중 한 상태에 송장 등록과 완료 처리라는 서로 다른 할 일이 들어 있어,
+  합쳐 세면 셀러가 숫자를 보고도 무엇을 해야 할지 모른다. 상태만으로 갈리지 않는 두 자리는 이렇게 가른다 —
+  회수 중은 **회수 시작 시각**(`collection_started_at`, 회수 송장 등록과 같은 트랜잭션에서 찍힌다)으로,
+  승인됨은 **유형과 종결 시각**으로(반품의 환불 대기는 셀러가 할 일이 없고, 교환의 재발송 대기만 남는다).
+  `reshipPending`의 조건은 도메인의 재발송 가능 판정(`Claim.isReshippable`)과 같다 — 대기로 센 건은
+  셀러가 실제로 재발송할 수 있는 건이어야 한다.
+- 처리 대기 판정은 **클레임 목록의 `pendingStage` 필터와 같은 식 하나**에서 나온다
+  (`SellerClaimQueryAdapter.pendingStage`). 대시보드 카드에서 목록으로 넘어온 셀러가 같은 라벨에 다른 숫자를
+  보지 않으려면 판정이 한 곳이어야 한다. 목록의 유형 탭 배지(`countByClaimType`)도 이 축을 반영하므로,
+  카드 숫자의 반품·교환 내역이 목록에서 그대로 쪼개진다. 상태 축만으로는 회수 중 한 상태에 들어 있는
+  두 단계를 가를 수 없어, 목록에 단계 축을 따로 열었다.
+- 집계 쿼리는 WHERE에서 `status IN (CLAIM_REQUESTED, COLLECTING, APPROVED)`로 읽을 행을 먼저 좁힌다. 네 단계의
+  상태 축 합집합이라 결과는 바뀌지 않는다. 상태 조건을 조건부 합계(CASE) 안에만 두면 거부·철회·개입·환불 실패처럼
+  셀러가 할 일이 없는데도 끝없이 쌓이는 이력까지 첫 화면 질의가 전수로 읽는다. 합집합은 단계 enum
+  (`SellerClaimPendingStage.statuses`)에서 뽑으므로 단계를 더하면 좁히는 조건도 함께 넓어진다.
+  남은 비용은 `APPROVED`다 — 끝난 취소·반품이 모두 이 상태로 남으므로 셀러당 이력이 커지면 여전히 많이 읽는다.
+  `(seller_id, status, id)` 인덱스에는 유형·회수 시각·종결 시각이 없어 커버링도 아니다. 실측 실행계획을 보고
+  인덱스를 더할지 판단한다.
+- 승인 이후 지표도 기간 축은 **요청일**이다 — 승인·회수 시각이 아니라 그 클레임이 생긴 날로 자른다.
+  요청일이 기간 밖이면 회수가 지금 진행 중이어도 그 기간의 숫자에는 들어가지 않는다.
+  따라서 `previousValue`는 "직전 기간 끝에 남아 있던 대기 잔량"이 아니라 **직전 기간에 요청됐고 지금도 그 단계인 건수**다.
+  열흘 전 요청을 오늘 승인하면 `7d`의 직전 값이 올라간다. 화면이 두 값의 차이를 "지난주보다 밀린 일"로 읽으면 뜻이 어긋난다.
+- [한계] 단계 판정은 카드와 목록이 같지만 **기간 축의 단위는 다르다.** 대시보드는 `now`를 끝으로 하는 시각 단위
+  반개구간(`7d` = `[now−7일, now)`)이고, 목록 필터(`requestedFrom`/`requestedTo`)는 날짜만 받아 시작일 00:00부터
+  종료일 다음 날 00:00까지다. 그래서 기간을 건 카드의 건수를 목록 필터로 정확히 재현할 수는 없다 — 목록이 양쪽
+  경계에서 더 넓게 잡는다. 카드에서 목록으로 넘길 때 단계 축만 넘기고 기간은 넘기지 않으면 어긋나지 않는다.
+  정확히 맞춰야 한다면 목록에도 시각 단위 구간을 열어야 한다.
 - `unansweredInquiries`는 셀러에게 귀속되는 문의 모델이 아직 없다(`admin_inquiries`는 어드민용).
   0을 그냥 내리면 "문의가 없다"와 "집계할 수 없다"가 구분되지 않아 `supported: false`로 내리고
   화면이 카드를 흐리게 표시한다.
