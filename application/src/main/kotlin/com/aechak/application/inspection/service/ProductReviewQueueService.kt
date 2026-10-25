@@ -49,7 +49,7 @@ class ProductReviewQueueService(
         judgedAt: LocalDateTime,
     ) {
         val outcome = productGate.applyJudgment(productId, judgment, modelVerified) ?: return
-        val pending = reviewQueue.findPendingByProductId(productId)
+        val pending = reviewQueue.findPendingByProductIdForUpdate(productId)
 
         when {
             outcome.needsAdminReview && pending == null -> {
@@ -94,20 +94,36 @@ class ProductReviewQueueService(
     }
 
     /**
+     * 이의 접수를 위해 상품 행을 잠금. 정책 조회보다 **먼저** 불러야 함.
+     *
+     * 폭주 상한과 쿨다운의 분모를 잠금 뒤에서 세게 하려는 것임. 잠금 전에 세면 같은 상품을
+     * 두 번 누른 요청 둘이 서로의 커밋을 보지 못하고 같은 분모를 읽는다.
+     */
+    fun lockProductForAppeal(productId: Long): ProductAppealTarget =
+        productGate.lockForAppeal(productId)
+            ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+
+    /**
      * 셀러 이의를 접수함. 접수는 노출을 바꾸지 않음 — 바꾸면 이의가 곧 반려 해제 수단이 됨.
      *
      * 잠금 순서는 상품 행 -> 큐 행. 판정 반영·관리자 결정과 같은 순서라야 열린 행이 둘로 갈라지지 않음.
      * 열린 행이 있으면 그 행에 쓰고 없으면 새로 엶. 분기자는 열린 행 조회 하나임.
+     *
+     * 그 조회는 **잠금 조회**임. 비잠금으로 읽으면 상품 행 잠금을 받아도 소용이 없음 —
+     * 파사드 트랜잭션의 read view가 잠금보다 먼저 고정돼서, 먼저 커밋한 쪽이 넣은 행을 못 보고
+     * 행을 또 열거나 이미 닫힌 행에 이의를 적는다. 닫힌 것이 보이면 열린 행 없음으로 떨어져
+     * 자격(관리자 반려)을 다시 보게 되는 것이 올바른 답임.
+     *
+     * [target]은 [lockProductForAppeal]이 돌려준 것이어야 함. 잠금을 쥔 채 받은 값이라야
+     * 자격 판단과 쓰기가 같은 상태를 본다.
      */
     fun appealBySeller(
         productId: Long,
+        target: ProductAppealTarget,
         reason: String,
         now: LocalDateTime,
     ): ProductReviewQueueItem {
-        val target =
-            productGate.lockForAppeal(productId)
-                ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
-        val item = reviewQueue.findPendingByProductId(productId) ?: openForAppeal(productId, target, now)
+        val item = reviewQueue.findPendingByProductIdForUpdate(productId) ?: openForAppeal(productId, target, now)
 
         if (item.appealedAt != null) throw BusinessException(ProductErrorCode.INSPECTION_APPEAL_ALREADY_SUBMITTED)
         item.appeal(reason, now)
@@ -161,6 +177,6 @@ class ProductReviewQueueService(
 
     // 상품 전이를 먼저 했어도 여기서 던지면 트랜잭션이 함께 롤백됨
     private fun getPending(productId: Long): ProductReviewQueueItem =
-        reviewQueue.findPendingByProductId(productId)
+        reviewQueue.findPendingByProductIdForUpdate(productId)
             ?: throw BusinessException(ProductErrorCode.PRODUCT_INSPECTION_NOT_PENDING)
 }

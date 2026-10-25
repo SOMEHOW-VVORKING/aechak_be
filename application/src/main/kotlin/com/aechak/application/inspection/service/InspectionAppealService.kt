@@ -13,12 +13,21 @@ import java.time.LocalDateTime
  * 패키지의 요청 발행·조회 서비스와 같다. 셀러센터가 스캔하는 쪽이 이 패키지다.
  *
  * 잠금 순서와 행 쓰기는 검토 큐 서비스가 한 자리에서 들고, 여기는 정책만 들어 그것을 부른다.
- * 정책 조회(셀러별 건수·상품별 기각 이력)를 상품 행 잠금보다 **먼저** 하는 것은 의도다 —
- * 잠금을 쥔 채 셀러 전체를 세면 그 셀러의 다른 상품 판정까지 함께 기다린다.
+ * 정책 조회(셀러별 건수·상품별 기각 이력)는 상품 행 잠금을 쥔 **뒤에** 한다. 잠금 전에 세면
+ * 같은 상품을 두 번 누른 요청 둘이 서로의 커밋을 보지 못하고 같은 분모를 읽어, 한 번 누르는
+ * 것으로 상한이 두 칸 깎인다.
  *
- * 그 대가로 상한은 직렬화되지 않는다. 같은 상품을 두 번 누르면 상품 행 잠금과 이의 중복
- * 검사가 막지만, 서로 다른 상품 두 건을 동시에 누르면 상한을 한 칸 넘길 수 있다. 막으려면
- * 검수 경로가 셀러 행을 잠가야 하고 그것은 교착 면을 넓힌다 — 상한 3에 초과 폭 1이라 둔다.
+ * 그래도 상한은 셀러 단위로 직렬화되지 않는다. 잠그는 것이 상품 행이라, 서로 다른 상품 N건에
+ * 동시에 요청을 쏘면 N개 트랜잭션이 전부 같은 분모를 읽고 통과한다 — 초과 폭은 1이 아니라
+ * **그 순간 겹친 요청 수만큼**이다. 막으려면 분모를 직렬화할 지점이 필요한데, 쓸 수 있는
+ * 후보가 둘이고 둘 다 지금은 비용이 더 크다. 셀러 행 잠금은 검수 쪽이 다른 BC(셀러)의 행을
+ * 쓰기 잠금으로 집는 경로를 새로 만드는 일이고, 열린 이의 행을 범위 잠금으로 집는 쪽은
+ * 판정 경로가 같은 (owner_id, status) 구간에 INSERT 하므로 간극 잠금이 그것과 바로 교착한다.
+ *
+ * 그래서 지금 막고 있는 것은 **상품 단위**다. 상품마다 열린 이의는 하나고(중복 접수는 40503),
+ * 기각 뒤에는 쿨다운이 걸린다. 그러면 한 셀러가 열 수 있는 이의의 상한은 그 셀러가 가진
+ * 차단된 상품 수를 넘지 못하고, 그 상품들은 이미 관리자 큐에 행을 가지고 있다. 폭주의
+ * 실질 상한이 거기라서 이 상한은 2차 방어선으로 둔다.
  */
 @Service
 class InspectionAppealService(
@@ -43,9 +52,12 @@ class InspectionAppealService(
         val trimmed = reason?.trim()
         if (trimmed.isNullOrEmpty()) throw BusinessException(ProductErrorCode.INSPECTION_APPEAL_REASON_REQUIRED)
 
+        // 상품 행을 먼저 잠근다. 정책 조회가 잠금 뒤로 가야 같은 상품에 겹친 요청이 서로의
+        // 커밋을 보고 같은 분모를 두 번 쓰지 않는다.
+        val target = reviewQueueService.lockProductForAppeal(productId)
         requireWithinOpenLimit(sellerId)
         requireCooldownPassed(productId, now)
-        reviewQueueService.appealBySeller(productId, trimmed, now)
+        reviewQueueService.appealBySeller(productId, target, trimmed, now)
     }
 
     private fun requireWithinOpenLimit(sellerId: Long) {
@@ -55,10 +67,15 @@ class InspectionAppealService(
     }
 
     /**
-     * "수정 -> 이의 -> 수정 -> 이의" 루프를 끊는다.
+     * 기각된 이의를 곧바로 다시 올리는 것을 막는다.
      *
      * 기각 이력을 상품 단위로 본다. 행 단위로 보면 내용이 바뀔 때마다 큐 행이 갈려 쿨다운이
      * 걸리지 않는다.
+     *
+     * 끊는 범위는 "기각 뒤 재접수"까지다. 셀러가 내용을 고쳐 새 판정을 받으면 열린 행의 이의는
+     * 무효가 되고 재접수가 열리므로, "수정 -> 이의"를 반복하는 쪽은 이 쿨다운이 아니라 수정마다
+     * 드는 검수 한 번이 비용을 매긴다. 그 반복에 상한을 걸려면 상품 단위 접수 이력이 필요하고
+     * 지금 큐 행은 라이브 칼럼 둘로만 이의를 들고 있어 그 이력이 남지 않는다.
      */
     private fun requireCooldownPassed(
         productId: Long,

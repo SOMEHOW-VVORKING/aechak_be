@@ -4,7 +4,11 @@ import com.aechak.domain.inspection.ProductReviewQueueItem
 import com.aechak.domain.inspection.enums.InspectionTargetType
 import com.aechak.domain.inspection.enums.ReviewQueueStatus
 import com.aechak.domain.inspection.repository.ProductReviewQueueRepository
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
@@ -14,6 +18,21 @@ interface ProductReviewQueueJpaRepository : JpaRepository<ProductReviewQueueItem
         targetId: Long,
         status: ReviewQueueStatus,
     ): ProductReviewQueueItem?
+
+    /**
+     * 열린 행의 잠금 조회. 하나만 나오는 것이 불변식이지만 목록으로 받는다 —
+     * 단건으로 받으면 이미 갈라진 데이터에서 예외가 나 복구 경로까지 함께 막힌다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(
+        "select i from ProductReviewQueueItem i " +
+            "where i.targetType = :targetType and i.targetId = :targetId and i.status = :status order by i.id",
+    )
+    fun findOpenForUpdate(
+        @Param("targetType") targetType: InspectionTargetType,
+        @Param("targetId") targetId: Long,
+        @Param("status") status: ReviewQueueStatus,
+    ): List<ProductReviewQueueItem>
 
     fun findByTargetTypeAndTargetIdAndStatusOrderByIdDesc(
         targetType: InspectionTargetType,
@@ -47,6 +66,14 @@ class ProductReviewQueueRepositoryAdapter(
             productId,
             ReviewQueueStatus.PENDING_REVIEW,
         )
+
+    override fun findPendingByProductIdForUpdate(productId: Long): ProductReviewQueueItem? =
+        jpaRepository
+            .findOpenForUpdate(
+                InspectionTargetType.PRODUCT,
+                productId,
+                ReviewQueueStatus.PENDING_REVIEW,
+            ).firstOrNull()
 
     override fun findRejectedByProductId(productId: Long): List<ProductReviewQueueItem> =
         jpaRepository.findByTargetTypeAndTargetIdAndStatusOrderByIdDesc(

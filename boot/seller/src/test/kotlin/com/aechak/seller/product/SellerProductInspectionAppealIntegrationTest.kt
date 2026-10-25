@@ -27,9 +27,13 @@ import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import java.time.LocalDateTime
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * [통합] 셀러 이의 제기를 고정한다.
@@ -44,8 +48,13 @@ import kotlin.test.assertNull
  * "사람 확인 대기"를 겸하고, 둘을 가르는 것이 그 행이다. 판정값이나 상태만 보면 등록 직후
  * 모든 상품이 이의를 받는다.
  *
- * 노출 게이트 스위치를 켜지 않고 돈다(테스트 기본값은 꺼짐). 사람이 누르는 경로가 그 스위치에
- * 묶이면 스위치가 꺼진 환경에서 이의가 조용히 아무것도 하지 않는다.
+ * 노출 게이트 스위치를 켜지 않고 돈다(테스트 기본값은 꺼짐). 다만 여기서 심는 상태는 손으로
+ * 만든 것이고, **그 상태가 스위치 꺼진 환경에서 실제로 생기는지**는 이 수트가 보지 못한다 —
+ * 그 증명은 판정 수신 경로로 행을 만드는 api 쪽 수트에 있다. 여기서 보는 것은 심어 둔 상태에서
+ * 접수가 어떻게 동작하는가다.
+ *
+ * 열린 행 수는 세어서 단언한다. 조회 헬퍼가 조용히 하나만 골라 주면 행이 둘로 갈라진 것이
+ * 보이지 않는데, 그것이 이 기능에서 실제로 났던 결함 모양이다.
  *
  * 상한을 2로 낮춰 돌린다. 기본값 3으로는 상한 테스트가 상품을 넷 심어야 해서 의도가 흐려진다.
  */
@@ -262,13 +271,45 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(40505))
     }
 
+    /** 경계를 1시간·25시간이 아니라 정확히 설정값으로 본다. 그러지 않으면 상한이 틀려도 통과한다 */
+    @Test
+    fun `쿨다운 경계는 설정한 24시간이다`() {
+        rejectAppeal(productId, resolvedAt = LocalDateTime.now().minusHours(24).plusMinutes(1))
+        changeStatus(productId, InspectionStatus.REJECTED)
+
+        mockMvc
+            .perform(appealRequest(publicId, "1분 남았습니다."))
+            .andExpect(status().isTooManyRequests)
+            .andExpect(jsonPath("$.errorCode").value(40505))
+    }
+
     @Test
     fun `쿨다운이 지나면 다시 제기할 수 있다`() {
-        rejectAppeal(productId, resolvedAt = LocalDateTime.now().minusHours(25))
+        rejectAppeal(productId, resolvedAt = LocalDateTime.now().minusHours(24))
         changeStatus(productId, InspectionStatus.REJECTED)
         settledInspection(InspectionJudgment.FLAG)
 
         mockMvc.perform(appealRequest(publicId, "다시 봐 주세요.")).andExpect(status().isOk)
+    }
+
+    /**
+     * 셀러가 이의 버튼을 두 번 누른 경우.
+     *
+     * 상품 행 잠금만으로는 모자랐다. 파사드 트랜잭션이 잠금을 쥐기 전에 일반 조회를 넷 돌아
+     * REPEATABLE READ 스냅샷이 먼저 고정되고, 그 뒤 열린 행 조회가 비잠금 일관 읽기라 먼저
+     * 커밋한 쪽이 넣은 행을 보지 못했다. 그러면 한 상품에 PENDING 행이 둘 생기고, 관리자가
+     * 닫는 것은 그중 하나뿐이라 남은 행이 셀러 정원을 영구히 먹는다.
+     */
+    @Test
+    fun `같은 상품에 동시 접수가 들어와도 열린 행과 이의는 하나다`() {
+        changeStatus(productId, InspectionStatus.REJECTED)
+        settledInspection(InspectionJudgment.FLAG)
+
+        val statuses = appealTwiceInParallel("첫 번째 사유입니다.", "두 번째 사유입니다.")
+
+        assertEquals(1, pendingCount(productId), "열린 행이 둘이면 관리자가 닫지 못한 행이 정원을 영구히 먹는다")
+        assertEquals(1, statuses.count { it == 200 }, "접수는 한 건만 성공해야 한다. 받은 상태=$statuses")
+        assertEquals(1, appealedCount(sellerUserId), "정원의 분모가 둘이면 상한이 한 번 누르는 것으로 깎인다")
     }
 
     @Test
@@ -394,18 +435,76 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
                 .toLong()
         }!!
 
+    /** 열린 행을 돌려준다. 둘 이상이면 바로 깨뜨린다 — 조용히 하나만 고르면 중복이 보이지 않는다 */
     private fun findPending(target: Long): ProductReviewQueueItem? =
+        tx.execute {
+            val rows =
+                em
+                    .createQuery(
+                        "select i from ProductReviewQueueItem i where i.targetType = :tt and i.targetId = :id and i.status = :st",
+                        ProductReviewQueueItem::class.java,
+                    ).setParameter("tt", InspectionTargetType.PRODUCT)
+                    .setParameter("id", target)
+                    .setParameter("st", ReviewQueueStatus.PENDING_REVIEW)
+                    .resultList
+            assertTrue(rows.size <= 1, "상품마다 열린 행은 하나여야 한다. 실제=${rows.size}")
+            rows.firstOrNull()
+        }
+
+    private fun pendingCount(target: Long): Long =
         tx.execute {
             em
                 .createQuery(
-                    "select i from ProductReviewQueueItem i where i.targetType = :tt and i.targetId = :id and i.status = :st",
-                    ProductReviewQueueItem::class.java,
+                    "select count(i) from ProductReviewQueueItem i " +
+                        "where i.targetType = :tt and i.targetId = :id and i.status = :st",
+                    java.lang.Long::class.java,
                 ).setParameter("tt", InspectionTargetType.PRODUCT)
                 .setParameter("id", target)
                 .setParameter("st", ReviewQueueStatus.PENDING_REVIEW)
-                .resultList
-                .firstOrNull()
+                .singleResult
+                .toLong()
+        }!!
+
+    /** 셀러가 지금 열어 둔 이의 건수. 폭주 상한의 분모와 같은 술어다 */
+    private fun appealedCount(owner: Long): Long =
+        tx.execute {
+            em
+                .createQuery(
+                    "select count(i) from ProductReviewQueueItem i where i.targetType = :tt and i.ownerId = :owner " +
+                        "and i.status = :st and i.appealedAt is not null",
+                    java.lang.Long::class.java,
+                ).setParameter("tt", InspectionTargetType.PRODUCT)
+                .setParameter("owner", owner)
+                .setParameter("st", ReviewQueueStatus.PENDING_REVIEW)
+                .singleResult
+                .toLong()
+        }!!
+
+    /** 같은 상품에 두 요청을 겹쳐 보내고 응답 상태를 돌려준다 */
+    private fun appealTwiceInParallel(
+        first: String,
+        second: String,
+    ): List<Int> {
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val tasks =
+                listOf(first, second).map { reason ->
+                    pool.submit<Int> {
+                        start.await()
+                        mockMvc
+                            .perform(appealRequest(publicId, reason))
+                            .andReturn()
+                            .response
+                            .status
+                    }
+                }
+            start.countDown()
+            return tasks.map { it.get(30, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdownNow()
         }
+    }
 
     private fun openReview(
         target: Long,

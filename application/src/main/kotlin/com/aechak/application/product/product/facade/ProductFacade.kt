@@ -43,6 +43,7 @@ import com.aechak.domain.product.product.Product
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.LocalDateTime
@@ -218,8 +219,12 @@ class ProductFacade(
      *
      * 쓰기 자체는 검수 쪽 서비스가 한다. 셀러 실행 모듈은 검수의 service 패키지만 스캔하므로
      * 파사드에 쓰기를 두면 그 경로가 셀러센터에 아예 없다.
+     *
+     * READ_COMMITTED: 상품 행 잠금 전에 자격 게이트와 소유권 조회가 돌아 REPEATABLE READ
+     * 스냅샷이 먼저 고정된다. 그러면 잠금을 받은 뒤의 정책 조회(열린 이의 건수·기각 이력)가
+     * 그 사이 커밋된 접수를 못 보고 상한과 쿨다운이 같은 분모를 두 번 쓴다.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun appealMyProductInspection(command: AppealProductInspectionCommand): SellerProductInspectionResult {
         requireProductReadableSeller(command.sellerId)
         val product = productService.getOwnedProduct(command.sellerId, command.productPublicId)
