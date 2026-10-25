@@ -11,6 +11,7 @@ import com.aechak.application.inspection.usecase.result.ProductRejectionResult;
 import com.aechak.application.support.PageQuery;
 import com.aechak.application.support.PageResult;
 import com.aechak.domain.inspection.enums.ReviewQueueStatus;
+import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -54,7 +55,7 @@ public class AdminProductInspectionFacade implements AdminProductInspectionUseCa
     @Override
     public void approve(long adminId, String productPublicId) {
         long productId = reviewQueueService.getReviewTarget(productPublicId).getProductId();
-        reviewQueueService.approveByAdmin(productId);
+        reviewQueueService.approveByAdmin(productId, LocalDateTime.now());
         log.info("관리자가 상품 검수를 승인했다. adminId={} productId={}", adminId, productId);
     }
 
@@ -62,7 +63,7 @@ public class AdminProductInspectionFacade implements AdminProductInspectionUseCa
     @Override
     public void reject(long adminId, String productPublicId, String reason) {
         long productId = reviewQueueService.getReviewTarget(productPublicId).getProductId();
-        reviewQueueService.rejectByAdmin(productId, reason);
+        reviewQueueService.rejectByAdmin(productId, reason, LocalDateTime.now());
         log.info("관리자가 상품 검수를 반려했다. adminId={} productId={}", adminId, productId);
     }
 }

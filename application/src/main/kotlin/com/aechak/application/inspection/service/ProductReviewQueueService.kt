@@ -60,27 +60,31 @@ class ProductReviewQueueService(
             }
 
             pending != null -> {
-                pending.supersede()
+                pending.supersede(judgedAt)
                 reviewQueue.save(pending)
                 log.info("고친 내용이 통과해 관리자 검토 없이 닫았다. productId={} itemId={}", productId, pending.id)
             }
         }
     }
 
-    fun approveByAdmin(productId: Long) {
+    fun approveByAdmin(
+        productId: Long,
+        now: LocalDateTime,
+    ) {
         productGate.approveByAdmin(productId)
         val pending = getPending(productId)
-        pending.approve()
+        pending.approve(now)
         reviewQueue.save(pending)
     }
 
     fun rejectByAdmin(
         productId: Long,
         reason: String,
+        now: LocalDateTime,
     ) {
         productGate.rejectByAdmin(productId)
         val pending = getPending(productId)
-        pending.reject(reason)
+        pending.reject(reason, now)
         reviewQueue.save(pending)
     }
 
