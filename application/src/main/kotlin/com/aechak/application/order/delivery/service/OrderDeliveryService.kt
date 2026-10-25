@@ -28,6 +28,28 @@ class OrderDeliveryService(
         limit: Int,
     ): List<Shipment> = shipmentRepository.findPendingDispatchedBefore(dispatchedBefore, afterShipmentId, limit)
 
+    fun findTrackingTargets(
+        afterShipmentId: Long,
+        limit: Int,
+    ): List<Shipment> = shipmentRepository.findTrackingTargets(afterShipmentId, limit)
+
+    /**
+     * 택배사가 준 최근 상태를 발송에 기록하고, 실제로 담긴 문구를 돌려준다. 상태 전이는 일으키지 않는다.
+     * 애그리거트를 읽지 않고 두 컬럼만 원자 UPDATE로 쓴다 — 더티체킹으로 쓰면 행 전체가 다시 써지고,
+     * 같은 행에 배송완료 시각을 쓰는 전이와 겹치면 서로 읽은 시점의 옛 값으로 상대의 컬럼을 덮는다.
+     */
+    fun applyTracking(
+        shipmentId: Long,
+        lastStatus: String,
+        syncedAt: LocalDateTime = LocalDateTime.now(),
+    ): String {
+        val applied = Shipment.normalizeTrackingStatus(lastStatus)
+        if (shipmentRepository.updateTracking(shipmentId, applied, syncedAt) == 0) {
+            throw BusinessException(OrderErrorCode.SHIPMENT_NOT_FOUND)
+        }
+        return applied
+    }
+
     fun completeBySystem(
         orderId: Long,
         deliveredAt: LocalDateTime,
