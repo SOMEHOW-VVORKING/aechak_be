@@ -241,6 +241,11 @@ class InspectionMetricsNativeQueries(
      * 반드시 미판정"이라는 전제는 지금 참이지만(늦게 온 판정은 버려진다) 그 전제가 깨지는 날
      * 지표가 에러 없이 틀어진다. 표식을 직접 보면 전제가 필요 없다.
      *
+     * 기한 만료 표식의 제외 규약은 세 플래그가 같다 — `model_row`·`model_skipped_other`·
+     * `model_dispatched` 모두 그 행을 모델이 본 것으로 세지 않는다. 하나만 빠뜨리면 표식이 적힌
+     * 뒤 같은 행에 판정이 적히는 날(그 어긋남을 감시하려고 만든 경보가 가리키는 바로 그 상황)
+     * 누락률이 노출 게이트의 판단과 갈라진다 — 지표는 누락이라는데 큐에는 안 올라온 상태다.
+     *
      * `model_dispatched`는 호출이 실제로 나간 것만 센다. 선별이 건너뛴 것(TRIAGE_CLEAR)·
      * 스텁 모드(LLM_DISABLED)·기한 만료 표식을 제외한다. 폐기 설계는 이 자리를 "모델 행이 있고
      * 선별이 통과시키지 않았고 미판정이 아닌 건"으로 잡았는데 스텁 건이 분모에 들어온다 —
@@ -263,7 +268,8 @@ class InspectionMetricsNativeQueries(
                    COALESCE(MAX($model AND f.outcome = 'VIOLATION'), 0)                       AS model_viol,
                    COALESCE(MAX($model AND f.outcome = 'CLEAR'), 0)                           AS model_clear,
                    COALESCE(MAX($model AND f.outcome = 'UNCHECKED'
-                                AND COALESCE(f.skip_reason, '') <> '$TRIAGE_CLEAR'), 0)       AS model_skipped_other,
+                                AND COALESCE(f.skip_reason, '') NOT IN
+                                    ('$TRIAGE_CLEAR', '$WAIT_LIMIT_EXCEEDED')), 0)           AS model_skipped_other,
                    COALESCE(MAX($model AND (f.outcome <> 'UNCHECKED'
                                 OR COALESCE(f.skip_reason, '') NOT IN ($notDispatched))), 0)  AS model_dispatched,
                    COALESCE(MAX(f.perspective = 'ALL' AND f.outcome = 'UNCHECKED'

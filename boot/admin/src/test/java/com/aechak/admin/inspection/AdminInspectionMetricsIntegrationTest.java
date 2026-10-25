@@ -235,6 +235,46 @@ class AdminInspectionMetricsIntegrationTest extends InspectionMetricsTestBase {
     }
 
     /**
+     * 선별 재시도가 성공한 건은 <b>건너뜀이고 호출 실패가 아니다</b>.
+     *
+     * <p>실패를 "비성공 원장 행이 하나라도 있는 건"으로 세면 같은 검수가 건너뜀과 실패에 동시에
+     * 들어간다. 그러면 승급(=분모-건너뜀)에서 빠진 건이 실패에 남아 실패가 승급보다 커지고,
+     * "승급은 선별이 올린 것 + 죽어서 올라간 것"이라는 분해가 성립하지 않는다. 정본인 하네스는
+     * 첫 호출 하나만 보고 가른다.
+     */
+    @Test
+    void 선별_재시도가_성공하면_건너뜀이고_호출_실패로는_세지_않는다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        long retried = triageCleared(now);
+        triageCall(retried, "TIMEOUT", 0);
+        triageCall(retried, "SUCCESS", 900);
+
+        mockMvc.perform(bearer(get(BASE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.funnel.stage2.enteredCount").value(1))
+                .andExpect(jsonPath("$.data.funnel.stage2.clearedCount").value(1))
+                .andExpect(jsonPath("$.data.funnel.stage2.promotedCount").value(0))
+                .andExpect(jsonPath("$.data.funnel.stage2.callFailedCount").value(0));
+    }
+
+    /** 호출이 전부 죽은 건은 실패로 센다. 위 규약이 실패 셈을 지워 버리지 않는 것을 함께 본다 */
+    @Test
+    void 선별_호출이_전부_죽으면_호출_실패로_센다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        long dead = modelClear(now);
+        finding(dead, InspectionPerspectiveKind.TRIAGE, PerspectiveOutcome.UNCHECKED, "PROMOTED");
+        triageCall(dead, "TIMEOUT", 0);
+        triageCall(dead, "RATE_LIMITED", 0);
+
+        mockMvc.perform(bearer(get(BASE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.funnel.stage2.enteredCount").value(1))
+                .andExpect(jsonPath("$.data.funnel.stage2.clearedCount").value(0))
+                .andExpect(jsonPath("$.data.funnel.stage2.promotedCount").value(1))
+                .andExpect(jsonPath("$.data.funnel.stage2.callFailedCount").value(1));
+    }
+
+    /**
      * 대기 시간은 <b>유입 시각</b>으로 잰다.
      *
      * <p>{@code blinded_at}으로 재면 안 된다. 그 칼럼은 "행을 열었거나 다시 연 판정의 시각"이고

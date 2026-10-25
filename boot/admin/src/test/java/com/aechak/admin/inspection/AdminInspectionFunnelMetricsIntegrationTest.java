@@ -259,6 +259,28 @@ class AdminInspectionFunnelMetricsIntegrationTest extends InspectionMetricsTestB
     }
 
     /**
+     * 기한 만료 표식은 <b>세 플래그 모두에서</b> 모델이 본 것으로 세지 않는다.
+     *
+     * <p>누락률의 증거 술어가 노출 게이트의 판단을 베낀 것인데, 미검사 플래그 하나만 그 표식을
+     * 제외하지 않아 둘이 갈라졌다. 표식이 적힌 뒤 같은 행에 판정이 적히는 날(그 어긋남을
+     * 감시하려고 만든 경보가 가리키는 바로 그 상황) 선별이 통과시킨 건이 누락으로 넘어가는데,
+     * 메시지만 보는 게이트는 저장된 표식을 못 보므로 "증거 있음"이라고 답한다 — 거울을 만든
+     * 목적인 "지표는 누락이라는데 큐에는 안 올라옴"이 그대로 재현된다.
+     */
+    @Test
+    void 만료_표식이_남은_선별_통과도_증거_있는_통과로_센다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        long cleared = triageCleared(now);
+        finding(cleared, InspectionPerspectiveKind.ALL, PerspectiveOutcome.UNCHECKED, EXPIRED_SKIP_REASON);
+
+        mockMvc.perform(bearer(get(BASE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.coverage.settledCount").value(1))
+                .andExpect(jsonPath("$.data.coverage.modelUnverifiedCount").value(0))
+                .andExpect(jsonPath("$.data.coverage.unverifiedCount").value(0));
+    }
+
+    /**
      * 사유 없는 미검사 기록은 경보가 된다.
      *
      * <p>선별이 일부러 건너뛴 것과 호출이 죽어 못 본 것을 가르는 축이 사유 하나뿐이다. 사유가

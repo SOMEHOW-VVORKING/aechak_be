@@ -23,6 +23,7 @@ import org.springframework.stereotype.Repository
 private val inspection = QContentInspection.contentInspection
 private val finding = QInspectionFinding.inspectionFinding
 private val ledger = QAiCallLedgerEntry.aiCallLedgerEntry
+private val siblingCall = QAiCallLedgerEntry("siblingTriageCall")
 
 /** 원장에 적히는 선별 관점 이름. 열거가 아니라 문자열 칼럼이라 값으로 비교한다 */
 private val TRIAGE_PERSPECTIVE = InspectionPerspectiveKind.TRIAGE.name
@@ -64,6 +65,11 @@ class InspectionMetricsQueryAdapter(
      *
      * 건너뛴 건은 관점 행이 `CLEAR`인 것으로 가른다. 행의 유무로 가르면 승급 경로에도 행이
      * 남아서(`UNCHECKED`/`PROMOTED`) 승급 전건이 건너뜀으로 분류되고 1순위 지표가 뒤집힌다.
+     *
+     * 호출 실패는 **그 검수의 선별 호출이 전부 비성공인 것**으로 센다. 비성공 행이 하나라도
+     * 있는 것으로 세면 재시도가 성공해 건너뜀으로 분류된 건이 실패에도 함께 들어가, "승급은
+     * 선별이 올린 것 + 죽어서 올라간 것"이라는 분해가 성립하지 않는다(실패가 승급보다 커진다).
+     * 하네스는 첫 호출 하나만 보고 가르므로 단일 호출에서는 두 셈이 같은 값이다.
      */
     override fun triageCounts(window: InspectionMetricsWindow): InspectionTriageCounts {
         val triaged = countTriaged(window)
@@ -73,7 +79,7 @@ class InspectionMetricsQueryAdapter(
             triaged,
             countTriaged(window, triageClearedExists(ledger.inspectionId)),
             // 호출이 깨져 강제 승급된 건. 승급으로 세지만 "선별이 판단해 올린 것"과 구분해 둔다.
-            countTriaged(window, ledger.outcome.ne(CALL_SUCCESS)),
+            countTriaged(window, noSuccessfulTriageCall()),
         )
     }
 
@@ -191,6 +197,17 @@ class InspectionMetricsQueryAdapter(
         window.targetType()?.let { predicates += inspection.targetType.eq(it) }
         return predicates.toTypedArray()
     }
+
+    /** 그 검수의 선별 호출 가운데 성공한 것이 하나도 없는가. 건너뜀과 배타가 되는 축이다 */
+    private fun noSuccessfulTriageCall(): Predicate =
+        JPAExpressions
+            .selectOne()
+            .from(siblingCall)
+            .where(
+                siblingCall.inspectionId.eq(ledger.inspectionId),
+                siblingCall.perspective.eq(TRIAGE_PERSPECTIVE),
+                siblingCall.outcome.eq(CALL_SUCCESS),
+            ).notExists()
 
     /** 선별이 "볼 필요 없다"고 판단한 기록이 그 검수에 있는가 */
     private fun triageClearedExists(inspectionId: NumberPath<Long>): Predicate =
