@@ -18,15 +18,16 @@ class PetSummaryQueryAdapter(
 ) : PetSummaryQueryPort {
     override fun findDefaultPetSummaries(userIds: Collection<Long>): List<DefaultPetSummaryView> =
         queryFactory
-            .select(pet.user.id, pet.isDefault, breed.label, pet.birthYearMonth)
+            .select(pet.user.id, breed.label, pet.birthYearMonth)
             .from(pet)
             .join(pet.breed, breed)
             .where(pet.user.id.`in`(userIds), pet.status.eq(PetStatus.ACTIVE))
+            // 대표 펫부터 먼저 등록한 순서라 사용자별 첫 행으로 요약한다
+            .orderBy(pet.isDefault.desc(), pet.createdAt.asc(), pet.id.asc())
             .fetch()
             .groupBy { checkNotNull(it.get(pet.user.id)) }
-            .mapNotNull { (userId, pets) ->
-                pets.firstOrNull { it.get(pet.isDefault) == true }?.let {
-                    DefaultPetSummaryView(userId, checkNotNull(it.get(breed.label)), it.get(pet.birthYearMonth), pets.size)
-                }
+            .map { (userId, pets) ->
+                val first = pets.first()
+                DefaultPetSummaryView(userId, checkNotNull(first.get(breed.label)), first.get(pet.birthYearMonth), pets.size)
             }
 }

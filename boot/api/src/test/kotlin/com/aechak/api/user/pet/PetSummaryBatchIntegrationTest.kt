@@ -13,8 +13,8 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 
 /**
- * 통합: 목록 행에 붙일 펫 요약을 여러 사용자에 대해 한 번에 읽을 때 대표 펫을 isDefault로 고르고 ACTIVE 펫만 세는지.
- * 깨지면 목록 행의 품종이 대표 펫이 아니거나 삭제한 펫까지 품종 외 N에 들어간다.
+ * 통합: 목록 행에 붙일 펫 요약을 여러 사용자에 대해 한 번에 읽을 때 대표 펫을 isDefault로 고르고(없으면 먼저 등록한 펫) ACTIVE 펫만 세는지.
+ * 깨지면 목록 행의 품종이 대표 펫이 아니거나 펫이 있는 사용자의 펫 줄이 빠지거나 삭제한 펫까지 품종 외 N에 들어간다.
  */
 class PetSummaryBatchIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -43,6 +43,24 @@ class PetSummaryBatchIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `대표 펫이 없으면 먼저 등록한 펫으로 요약하고 ACTIVE 펫을 모두 센다`() {
+        val owner = createActiveUser()
+        tx.execute {
+            val user = em.find(User::class.java, owner)
+            val maltese = Breed.of(Species.DOG, "Maltese").also { em.persist(it) }
+            val poodle = Breed.of(Species.DOG, "Poodle").also { em.persist(it) }
+            em.persist(PetProfile.register(user, poodle, "older", birthYearMonth = "2020-01"))
+            em.persist(PetProfile.register(user, maltese, "newer"))
+        }
+
+        val summary = petProfileUseCase.getDefaultPetSummaries(listOf(owner)).single()
+
+        assertEquals("Poodle", summary.breedLabel, "대표 펫이 없으면 먼저 등록한 펫의 품종이어야 한다")
+        assertEquals("2020-01", summary.birthYearMonth, "먼저 등록한 펫의 생년월이어야 한다")
+        assertEquals(2, summary.activePetCount, "대표 펫이 없어도 ACTIVE 펫을 모두 세야 한다")
+    }
+
+    @Test
     fun `펫이 없거나 삭제한 펫만 있는 사용자는 요약이 없다`() {
         val noPet = createActiveUser()
         val onlyDeleted = createActiveUser()
@@ -55,7 +73,7 @@ class PetSummaryBatchIntegrationTest : IntegrationTestBase() {
 
         val summaries = petProfileUseCase.getDefaultPetSummaries(listOf(noPet, onlyDeleted, withPet))
 
-        assertEquals(listOf(withPet), summaries.map { it.userId }, "ACTIVE 대표 펫이 있는 사용자만 요약이 있어야 한다")
+        assertEquals(listOf(withPet), summaries.map { it.userId }, "ACTIVE 펫이 있는 사용자만 요약이 있어야 한다")
         assertEquals(1, summaries.single().activePetCount, "펫 한 마리면 ACTIVE 수는 1이어야 한다")
     }
 
