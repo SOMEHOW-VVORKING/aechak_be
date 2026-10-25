@@ -54,3 +54,7 @@ inspection:
   enabled: true
   # 노출 게이트. api와 같은 값으로 맞춤. 켜져 있으면 등록 직후 상품을 첫 판정까지 숨김
   gate-enabled: false
+  # 셀러 이의 제기 폭주 방지. 관리자 큐를 셀러 한 명이 혼자 채우면 사람이 보는 큐가 쓸모없어짐
+  appeal:
+    max-open-per-seller: 3
+    cooldown-hours: 24

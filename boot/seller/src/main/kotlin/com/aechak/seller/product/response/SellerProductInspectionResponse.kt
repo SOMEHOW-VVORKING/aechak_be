@@ -12,6 +12,10 @@ import java.time.LocalDateTime
  *
  * [progressStep]: REQUESTED, AI_REVIEWING, ADMIN_REVIEWING, APPROVED, REJECTED.
  * [rejectReason]은 관리자가 적은 반려 사유이고 [inspectionStatus]가 REJECTED일 때만 온다.
+ *
+ * [appealedAt]이 차 있으면 지금 걸린 것에 이의를 접수해 둔 상태다. 이의의 답은 따로 오지 않고
+ * [progressStep]으로 온다 — 접수 뒤에는 ADMIN_REVIEWING, 수용되면 APPROVED, 기각되면
+ * REJECTED와 [rejectReason]이다.
  */
 data class SellerProductInspectionResponse(
     val productId: String,
@@ -23,6 +27,8 @@ data class SellerProductInspectionResponse(
     val reasonSummary: String?,
     val sellerNotice: String?,
     val rejectReason: String?,
+    val appealedAt: LocalDateTime?,
+    val appealReason: String?,
     val requestedAt: LocalDateTime?,
     val settledAt: LocalDateTime?,
 ) {
@@ -38,6 +44,8 @@ data class SellerProductInspectionResponse(
                 reasonSummary = result.reasonSummary,
                 sellerNotice = result.sellerNotice,
                 rejectReason = result.rejectReason,
+                appealedAt = result.appealedAt,
+                appealReason = result.appealReason,
                 requestedAt = result.requestedAt,
                 settledAt = result.settledAt,
             )

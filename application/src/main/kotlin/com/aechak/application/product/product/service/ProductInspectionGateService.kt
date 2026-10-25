@@ -1,5 +1,6 @@
 package com.aechak.application.product.product.service
 
+import com.aechak.application.inspection.port.ProductAppealTarget
 import com.aechak.application.inspection.port.ProductGateOutcome
 import com.aechak.application.inspection.port.ProductInspectionGate
 import com.aechak.common.error.BusinessException
@@ -88,6 +89,21 @@ class ProductInspectionGateService(
         product.rejectInspection()
         saveIfChanged(product, before)
     }
+
+    /**
+     * 이의 접수를 위한 상품 행 잠금. 노출 상태를 바꾸지 않는다.
+     *
+     * 게이트 스위치를 보지 않는 유일한 전이 조회다 — 사람이 누르는 경로라서, 스위치가 꺼진
+     * 환경에서 null을 돌려주면 이의가 조용히 아무것도 하지 않는다.
+     */
+    override fun lockForAppeal(productId: Long): ProductAppealTarget? =
+        productRepository.findByIdForUpdate(productId)?.let {
+            ProductAppealTarget(
+                productName = it.name,
+                sellerId = it.sellerId,
+                adminRejected = it.inspectionStatus == InspectionStatus.REJECTED,
+            )
+        }
 
     /** 갓 등록한 상품을 첫 판정이 올 때까지 구매자에게 보이지 않게 둠 */
     fun holdUntilInspected(product: Product) {

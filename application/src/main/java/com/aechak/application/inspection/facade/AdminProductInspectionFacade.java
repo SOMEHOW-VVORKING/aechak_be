@@ -45,7 +45,7 @@ public class AdminProductInspectionFacade implements AdminProductInspectionUseCa
                 product,
                 fileUseCase.resolveMediaUrl(product.getRepresentativeImageKey()),
                 inspectionQueryService.findLatestProductInspection(productId),
-                inspectionQueryService.isAwaitingAdminReview(productId),
+                inspectionQueryService.findOpenProductReview(productId) != null,
                 reviewQueueService.findRejected(productId).stream()
                         .map(ProductRejectionResult::from)
                         .toList());

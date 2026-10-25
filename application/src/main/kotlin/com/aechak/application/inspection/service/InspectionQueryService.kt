@@ -23,7 +23,14 @@ class InspectionQueryService(
             .findLatestByTarget(InspectionTargetType.PRODUCT, productId)
             ?.let(InspectionSnapshot::from)
 
-    fun isAwaitingAdminReview(productId: Long): Boolean = reviewQueue.findPendingByProductId(productId) != null
+    /**
+     * 상품의 열린 관리자 검토 행. 없으면 null — 사람 확인을 기다리지 않는다는 뜻이다.
+     *
+     * 행의 존재와 이의 두 칼럼을 한 번에 돌려준다. 셀러 조회가 둘을 따로 읽으면 같은 행을 두 번
+     * 읽으면서 그 사이에 행이 닫힐 수 있다.
+     */
+    fun findOpenProductReview(productId: Long): OpenProductReviewSnapshot? =
+        reviewQueue.findPendingByProductId(productId)?.let(OpenProductReviewSnapshot::from)
 
     /** 반려된 적이 없으면 null */
     fun findLatestRejectReason(productId: Long): String? = reviewQueue.findRejectedByProductId(productId).firstOrNull()?.rejectReason

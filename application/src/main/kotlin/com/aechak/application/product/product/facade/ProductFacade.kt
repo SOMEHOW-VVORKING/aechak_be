@@ -3,6 +3,7 @@ package com.aechak.application.product.product.facade
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
+import com.aechak.application.inspection.service.InspectionAppealService
 import com.aechak.application.inspection.service.InspectionQueryService
 import com.aechak.application.inspection.service.InspectionRequestService
 import com.aechak.application.inspection.usecase.command.RequestProductInspectionCommand
@@ -12,6 +13,7 @@ import com.aechak.application.product.product.service.ProductInspectionGateServi
 import com.aechak.application.product.product.service.ProductService
 import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.product.product.usecase.SellerProductUseCase
+import com.aechak.application.product.product.usecase.command.AppealProductInspectionCommand
 import com.aechak.application.product.product.usecase.command.ChangeOptionCombinationCommand
 import com.aechak.application.product.product.usecase.command.ChangeProductSaleStatusCommand
 import com.aechak.application.product.product.usecase.command.RegisterProductCommand
@@ -37,6 +39,7 @@ import com.aechak.application.support.OffsetPageResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.error.ProductErrorCode
 import com.aechak.domain.product.option.ProductOptions
+import com.aechak.domain.product.product.Product
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -53,6 +56,7 @@ class ProductFacade(
     private val fileUseCase: FileUseCase,
     private val inspectionRequestService: InspectionRequestService,
     private val inspectionQueryService: InspectionQueryService,
+    private val inspectionAppealService: InspectionAppealService,
     private val productInspectionGateService: ProductInspectionGateService,
     transactionManager: PlatformTransactionManager,
 ) : ProductUseCase,
@@ -206,14 +210,30 @@ class ProductFacade(
         publicId: String,
     ): SellerProductInspectionResult {
         requireProductReadableSeller(sellerId)
-        val product = productService.getOwnedProduct(sellerId, publicId)
-        return SellerProductInspectionResult.of(
+        return inspectionResultOf(productService.getOwnedProduct(sellerId, publicId))
+    }
+
+    /**
+     * 자격 게이트와 소유권 검사를 조회와 같은 부품으로 한다 — 남의 상품은 없는 것으로 답한다.
+     *
+     * 쓰기 자체는 검수 쪽 서비스가 한다. 셀러 실행 모듈은 검수의 service 패키지만 스캔하므로
+     * 파사드에 쓰기를 두면 그 경로가 셀러센터에 아예 없다.
+     */
+    @Transactional
+    override fun appealMyProductInspection(command: AppealProductInspectionCommand): SellerProductInspectionResult {
+        requireProductReadableSeller(command.sellerId)
+        val product = productService.getOwnedProduct(command.sellerId, command.productPublicId)
+        inspectionAppealService.submit(command.sellerId, product.id, command.reason)
+        return inspectionResultOf(product)
+    }
+
+    private fun inspectionResultOf(product: Product): SellerProductInspectionResult =
+        SellerProductInspectionResult.of(
             product = product,
             snapshot = inspectionQueryService.findLatestProductInspection(product.id),
-            awaitingAdminReview = inspectionQueryService.isAwaitingAdminReview(product.id),
+            openReview = inspectionQueryService.findOpenProductReview(product.id),
             latestRejectReason = inspectionQueryService.findLatestRejectReason(product.id),
         )
-    }
 
     private fun requireActiveSeller(sellerId: Long) {
         if (!sellerUseCase.isActiveSeller(sellerId)) {

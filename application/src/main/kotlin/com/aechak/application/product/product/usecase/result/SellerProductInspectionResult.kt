@@ -1,6 +1,7 @@
 package com.aechak.application.product.product.usecase.result
 
 import com.aechak.application.inspection.service.InspectionSnapshot
+import com.aechak.application.inspection.service.OpenProductReviewSnapshot
 import com.aechak.domain.inspection.enums.InspectionJudgment
 import com.aechak.domain.inspection.enums.InspectionProcessingState
 import com.aechak.domain.product.product.Product
@@ -16,6 +17,11 @@ import java.time.LocalDateTime
  *
  * [reasonSummary]는 걸린 구절을 그대로 담는다. 셀러가 직접 쓴 문장이고, 어디를 고쳐야
  * 하는지 알려 주는 것이 반려 통지의 목적이다.
+ *
+ * 이의 상태를 따로 싣지 않는다. [progressStep]이 접수 뒤 자동으로 ADMIN_REVIEWING이 되고
+ * ([appealedAt]이 붙는 행이 곧 열린 검토 행이다), 답은 그 행이 닫히는 방식으로 나온다 —
+ * 수용은 APPROVED, 기각은 REJECTED와 [rejectReason]이다. 관리자 내부 열거를 셀러 계약에
+ * 새게 할 이유가 없다.
  */
 data class SellerProductInspectionResult(
     val productId: String,
@@ -28,6 +34,10 @@ data class SellerProductInspectionResult(
     val sellerNotice: String?,
     /** [inspectionStatus]가 REJECTED일 때만 채움 */
     val rejectReason: String?,
+    /** 이의를 접수한 시각. null이면 지금 걸린 것에 이의가 없다 */
+    val appealedAt: LocalDateTime?,
+    /** 셀러가 접수할 때 적은 문장 */
+    val appealReason: String?,
     val requestedAt: LocalDateTime?,
     val settledAt: LocalDateTime?,
 ) {
@@ -36,19 +46,21 @@ data class SellerProductInspectionResult(
         fun of(
             product: Product,
             snapshot: InspectionSnapshot?,
-            awaitingAdminReview: Boolean,
+            openReview: OpenProductReviewSnapshot?,
             latestRejectReason: String?,
         ): SellerProductInspectionResult =
             SellerProductInspectionResult(
                 productId = product.publicId,
                 inspectionStatus = product.inspectionStatus,
-                progressStep = progressStepOf(product.inspectionStatus, snapshot?.processingState, awaitingAdminReview),
+                progressStep = progressStepOf(product.inspectionStatus, snapshot?.processingState, openReview != null),
                 processingState = snapshot?.processingState,
                 judgment = snapshot?.judgment,
                 reasonCode = snapshot?.reasonCode,
                 reasonSummary = snapshot?.reasonSummary,
                 sellerNotice = snapshot?.sellerNotice,
                 rejectReason = latestRejectReason.takeIf { product.inspectionStatus == InspectionStatus.REJECTED },
+                appealedAt = openReview?.appealedAt,
+                appealReason = openReview?.appealReason,
                 requestedAt = snapshot?.requestedAt,
                 settledAt = snapshot?.settledAt,
             )
