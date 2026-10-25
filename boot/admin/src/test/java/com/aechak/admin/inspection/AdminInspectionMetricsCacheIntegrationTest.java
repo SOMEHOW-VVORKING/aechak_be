@@ -48,6 +48,31 @@ class AdminInspectionMetricsCacheIntegrationTest extends InspectionMetricsTestBa
                 .andExpect(jsonPath("$.data.funnel.settledCount").value(1));
     }
 
+    /**
+     * 빈 문자열 축은 비운 축이다.
+     *
+     * <p>{@code ?policyVersion=} 는 스프링이 {@code null} 이 아니라 {@code ""} 로 바인딩한다
+     * (열거·시각은 빈 값을 null 로 바꿔 주지만 문자열은 그대로다). 정규화하지 않으면 한 글자도
+     * 없는 질의 파라미터 하나가 캐시 분기를 우회해 매 요청이 전수 집계를 다시 돌리고, 게다가
+     * {@code policy_version = ''} 로 좁혀 퍼널이 전부 0인 응답에 전체 큐 적체가 실린다.
+     */
+    @Test
+    void 빈_문자열_정책_버전은_비운_조회와_같은_캐시를_탄다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        modelClear(now, "policy-v1");
+
+        mockMvc.perform(bearer(get(BASE).param("policyVersion", "")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.window.policyVersion").doesNotExist())
+                .andExpect(jsonPath("$.data.funnel.settledCount").value(1));
+
+        modelClear(now, "policy-v1");
+
+        mockMvc.perform(bearer(get(BASE).param("policyVersion", "")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.funnel.settledCount").value(1));
+    }
+
     /** 축을 준 조회는 캐시하지 않는다. 키가 사실상 무한해져 메모리가 요청 수만큼 자란다 */
     @Test
     void 축을_준_조회는_캐시를_타지_않는다() throws Exception {
