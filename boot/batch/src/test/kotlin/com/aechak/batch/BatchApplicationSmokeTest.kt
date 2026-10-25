@@ -2,7 +2,9 @@ package com.aechak.batch
 
 import com.aechak.application.order.claim.usecase.ClaimAutoApproveUseCase
 import com.aechak.application.order.claim.usecase.ClaimRefundUseCase
+import com.aechak.application.order.delivery.port.ShipmentTrackingPort
 import com.aechak.application.order.delivery.usecase.OrderDeliveryUseCase
+import com.aechak.application.order.delivery.usecase.ShipmentTrackingUseCase
 import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.payment.port.PaymentReconciliationSourcePort
@@ -14,6 +16,7 @@ import com.aechak.batch.order.ClaimAutoApproveSchedule
 import com.aechak.batch.order.ClaimRefundSchedule
 import com.aechak.batch.order.OrderDeliverySchedule
 import com.aechak.batch.order.OrderExpirySchedule
+import com.aechak.batch.order.ShipmentTrackingSchedule
 import com.aechak.batch.payment.PaymentReconciliationSchedule
 import com.aechak.batch.settlement.SettlementExecutionSchedule
 import com.aechak.batch.support.BatchIntegrationTestBase
@@ -66,6 +69,21 @@ class BatchApplicationSmokeTest : BatchIntegrationTestBase() {
         assertTrue(
             context.getBeansOfType(OrderDeliverySchedule::class.java).isEmpty(),
             "order.delivery.enabled 기본값이 켜지면 dev 배포 전에 주문이 자동 전이된다",
+        )
+    }
+
+    @Test
+    fun `추적 갱신 유스케이스는 조립되고 배치와 목 어댑터는 둘 다 설정으로 꺼져 있다`() {
+        // 포트는 선택 주입이라 어댑터 없이도 파사드가 떠야 한다 — 그 자리가 깨지면 셀러센터·api 부팅까지 같이 깨진다
+        context.getBean(ShipmentTrackingUseCase::class.java)
+
+        assertTrue(
+            context.getBeansOfType(ShipmentTrackingSchedule::class.java).isEmpty(),
+            "order.delivery.tracking.enabled 기본값이 켜지면 가짜 추적 상태가 DB에 쌓인다",
+        )
+        assertTrue(
+            context.getBeansOfType(ShipmentTrackingPort::class.java).isEmpty(),
+            "목 추적 어댑터 기본값이 켜지면 표식이 붙은 가짜 상태가 화면까지 올라간다",
         )
     }
 
