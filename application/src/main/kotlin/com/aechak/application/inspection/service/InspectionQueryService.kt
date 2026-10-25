@@ -24,6 +24,17 @@ class InspectionQueryService(
             ?.let(InspectionSnapshot::from)
 
     /**
+     * 상품의 가장 최근 **판정이 적힌** 검수. 열린 검토 행을 지금 막고 있는 판정이다.
+     *
+     * 이의 접수가 이것을 쓴다. 미판정 검수까지 세는 쪽을 쓰면 접수한 이의가 아직 아무것도 막지
+     * 않은 내용의 지문을 달고, 그 내용의 판정이 왔을 때 무효가 되지 않는다.
+     */
+    fun findLatestSettledProductInspection(productId: Long): InspectionSnapshot? =
+        inspections
+            .findLatestSettledByTarget(InspectionTargetType.PRODUCT, productId)
+            ?.let(InspectionSnapshot::from)
+
+    /**
      * 상품의 열린 관리자 검토 행. 없으면 null — 사람 확인을 기다리지 않는다는 뜻이다.
      *
      * 행의 존재와 이의 두 칼럼을 한 번에 돌려준다. 셀러 조회가 둘을 따로 읽으면 같은 행을 두 번

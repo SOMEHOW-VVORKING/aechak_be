@@ -115,6 +115,10 @@ class ProductReviewQueueService(
      * 행을 또 열거나 이미 닫힌 행에 이의를 적는다. 닫힌 것이 보이면 열린 행 없음으로 떨어져
      * 자격(관리자 반려)을 다시 보게 되는 것이 올바른 답임.
      *
+     * 지문은 **지금 그 행을 막고 있는 판정**에서 읽음. 판정 여부를 보지 않고 최신 검수를 쓰면,
+     * 셀러가 내용을 고쳐 재검수가 아직 미판정인 사이에 접수한 이의가 그 고친 내용의 지문을 달고
+     * 그 내용의 판정이 와도 무효가 되지 않음 — 관리자가 읽는 사유와 걸린 내용이 어긋남.
+     *
      * [target]은 [lockProductForAppeal]이 돌려준 것이어야 함. 잠금을 쥔 채 받은 값이라야
      * 자격 판단과 쓰기가 같은 상태를 본다.
      */
@@ -124,11 +128,13 @@ class ProductReviewQueueService(
         reason: String,
         now: LocalDateTime,
     ): ProductReviewQueueItem {
-        val latest = inspectionQuery.findLatestProductInspection(productId)
-        val item = reviewQueue.findPendingByProductIdForUpdate(productId) ?: openForAppeal(productId, target, latest?.settledAt ?: now)
+        val blocking = inspectionQuery.findLatestSettledProductInspection(productId)
+        val item =
+            reviewQueue.findPendingByProductIdForUpdate(productId)
+                ?: openForAppeal(productId, target, blocking?.settledAt ?: now)
 
         if (item.appealedAt != null) throw BusinessException(ProductErrorCode.INSPECTION_APPEAL_ALREADY_SUBMITTED)
-        item.appeal(reason, now, latest?.contentHash)
+        item.appeal(reason, now, blocking?.contentHash)
         val saved = reviewQueue.save(item)
         log.info("셀러 이의를 접수했다. productId={} itemId={}", productId, saved.id)
         return saved

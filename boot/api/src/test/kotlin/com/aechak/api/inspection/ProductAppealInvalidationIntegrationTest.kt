@@ -131,6 +131,27 @@ class ProductAppealInvalidationIntegrationTest : IntegrationTestBase() {
         assertTrue(row.appealCleared(), "무효가 됐다는 사실이 남지 않으면 접수 실패와 구별되지 않는다")
     }
 
+    /**
+     * 셀러가 내용을 고치고 **그 판정이 오기 전에** 이의를 누른 경우.
+     *
+     * 접수 사유는 지금 걸려 있는 것(고치기 전 내용)에 대고 쓴 문장이다. 그런데 지문을 "가장
+     * 최근 검수"에서 읽으면 아직 판정도 안 난 고친 내용의 지문이 적히고, 몇 분 뒤 그 내용의
+     * 판정이 오면 지문이 같아 이의가 그대로 유지된다 — 관리자는 "셀러는 A에 억울하다 했는데
+     * 지금 걸린 것은 B"를 읽는다. 지문의 출처는 그 행을 지금 막고 있는 판정이어야 한다.
+     */
+    @Test
+    fun `고친 내용의 판정이 오기 전에 접수한 이의는 그 판정에서 무효가 된다`() {
+        applyVerdict(givenQueued(OLD_CONTENT), InspectionVerdict.FLAG)
+        val edited = givenQueued(NEW_CONTENT)
+        appeal("고치기 전 문구는 성분 설명이었습니다.")
+
+        applyVerdict(edited, InspectionVerdict.FLAG)
+
+        val row = assertNotNull(findPending())
+        assertNull(row.appealedAt, "고치기 전 내용에 쓴 사유가 고친 내용의 판정에 그대로 붙으면 안 된다")
+        assertTrue(row.appealCleared(), "무효가 됐다는 사실은 남아야 한다")
+    }
+
     @Test
     fun `이의를 접수한 적이 없는 행은 무효 표식도 없다`() {
         applyVerdict(givenQueued(OLD_CONTENT), InspectionVerdict.FLAG)

@@ -31,6 +31,18 @@ interface ContentInspectionRepository {
     ): ContentInspection?
 
     /**
+     * 대상의 가장 최근 **판정이 적힌** 검수. 열린 검토 행을 지금 막고 있는 판정이다.
+     *
+     * 이의의 지문이 여기서 나온다. 판정 여부를 보지 않고 최신 검수를 쓰면, 셀러가 내용을 고쳐
+     * 재검수가 아직 미판정으로 걸려 있는 사이에 접수한 이의가 그 **고친 내용**의 지문을 달고,
+     * 몇 분 뒤 그 내용의 판정이 와도 지문이 같아 무효가 되지 않는다.
+     */
+    fun findLatestSettledByTarget(
+        targetType: InspectionTargetType,
+        targetRef: Long,
+    ): ContentInspection?
+
+    /**
      * 판정을 적기 전에 행을 잠그되, 남이 들고 있으면 기다리지 않고 비운다.
      *
      * 기한 정리가 쓴다. 두 스윕이 같은 묶음을 집어 한쪽이 배치 전체를 롤백하는 것을 막는다.
