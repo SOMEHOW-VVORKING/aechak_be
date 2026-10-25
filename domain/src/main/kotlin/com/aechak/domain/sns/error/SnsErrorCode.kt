@@ -8,7 +8,7 @@ enum class SnsErrorCode(
     override val message: String,
     override val status: Int,
 ) : ErrorCode {
-    // SnsUserStats 130000번대. 없는 사용자, 탈퇴, 온보딩 전을 구분하지 않는다
+    // SnsUserStats 130000번대. 없는 사용자, 탈퇴, 온보딩 전, 나를 차단한 사용자를 구분하지 않는다
     SNS_USER_UNAVAILABLE(130000, "볼 수 없는 계정입니다.", 404),
 
     // Block 130100번대
