@@ -51,6 +51,25 @@ class InspectionMetricsSettingsTest {
         }
     }
 
+    /**
+     * 지표 로그가 기한 정리 스윕을 막지 않게 스케줄러 풀이 둘 이상이다.
+     *
+     * 스프링 기본값은 1이다. 그 한 스레드에 스냅샷 한 장(쿼리 열넷 + 적체 집계)과 미판정 검수를
+     * 닫아 셀러를 풀어 주는 스윕이 함께 올라가면, 적체가 쌓여 스냅샷이 느려진 동안 그 안전장치가
+     * 한 번도 돌지 못한다 — 느려지는 조건과 스윕이 필요한 조건이 같은 상태다.
+     */
+    @Test
+    fun `스케줄러 풀이 지표 로그와 기한 정리를 함께 담는다`() {
+        val matched =
+            SCHEDULER_POOL_LINE.find(readResource("application.yml"))
+                ?: error("application.yml 에 spring.task.scheduling.pool.size 설정이 없다")
+
+        assertTrue(
+            matched.groupValues[1].toInt() >= 2,
+            "스케줄러 풀이 1이면 지표 스냅샷이 기한 정리 스윕을 막는다",
+        )
+    }
+
     private fun readResource(name: String): String =
         requireNotNull(javaClass.getResourceAsStream("/$name")) { "설정 리소스를 찾지 못했다: $name" }
             .readAllBytes()
@@ -58,5 +77,8 @@ class InspectionMetricsSettingsTest {
 
     companion object {
         private val BREAKEVEN_LINE = Regex("""promotion-breakeven-rate:\s*([0-9.]+)""")
+
+        /** `scheduling:` 블록에서 처음 나오는 `size:` 가 풀 크기다 */
+        private val SCHEDULER_POOL_LINE = Regex("""scheduling:[\s\S]*?size:\s*(\d+)""")
     }
 }
