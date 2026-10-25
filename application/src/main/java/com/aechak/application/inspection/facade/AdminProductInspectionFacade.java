@@ -26,15 +26,23 @@ public class AdminProductInspectionFacade implements AdminProductInspectionUseCa
     private final InspectionQueryService inspectionQueryService;
     private final FileUseCase fileUseCase;
 
+    /**
+     * 검토 큐 목록. {@code appealedOnly}는 셀러가 이의를 접수한 행만 본다.
+     *
+     * <p>이의 필터에 상태를 주지 않으면 열린 행으로 좁힌다. 이의 목록은 관리자의 작업 목록이고,
+     * 조건을 안 붙이면 한 번이라도 이의가 걸렸던 행 전부 — 이미 승인·반려·대체로 닫힌 것까지 —
+     * 가 섞여 와서 행마다 상태를 눈으로 가려야 한다. 닫힌 이의 이력을 보려면 상태를 명시한다.
+     */
     @Transactional(readOnly = true)
     @Override
     public PageResult<AdminProductInspectionSummaryResult> list(
             ReviewQueueStatus status, boolean appealedOnly, PageQuery pageQuery) {
+        ReviewQueueStatus effective = appealedOnly && status == null ? ReviewQueueStatus.PENDING_REVIEW : status;
         return new PageResult<>(
-                reviewQueueService.findPage(status, appealedOnly, pageQuery).stream()
+                reviewQueueService.findPage(effective, appealedOnly, pageQuery).stream()
                         .map(AdminProductInspectionSummaryResult::from)
                         .toList(),
-                reviewQueueService.count(status, appealedOnly));
+                reviewQueueService.count(effective, appealedOnly));
     }
 
     @Transactional(readOnly = true)

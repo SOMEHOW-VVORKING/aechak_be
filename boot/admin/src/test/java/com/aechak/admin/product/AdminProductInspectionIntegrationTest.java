@@ -144,6 +144,45 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.data.totalCount").value(2));
     }
 
+    /**
+     * 이의 목록은 관리자의 작업 목록이다. status를 함께 주지 않으면 조건이 안 붙어 한 번이라도
+     * 이의가 걸렸던 행 전부(APPROVED·REJECTED·SUPERSEDED 포함)가 섞여 왔다 — 이미 답을 준 건을
+     * 관리자가 행마다 눈으로 가려야 한다. 이력을 보려면 status를 명시한다.
+     */
+    @Test
+    void 이의_목록은_status를_주지_않으면_결정이_끝난_행을_섞지_않는다() throws Exception {
+        long appealedProductId = anotherProductWithAppeal();
+        closeAppealedRow();
+
+        mockMvc.perform(bearer(get(BASE).param("appealed", "true")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].productId").value(publicIdOf(appealedProductId)));
+
+        // 명시하면 그 상태를 그대로 본다 — 닫힌 이의 이력을 보는 길이 남아야 한다
+        mockMvc.perform(bearer(get(BASE).param("appealed", "true").param("status", "REJECTED")))
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].productId").value(publicId));
+    }
+
+    /**
+     * 이의로 새로 연 행은 정렬 키(blinded_at)를 원 판정 시각으로 찍는다. 그래서 이의 목록을
+     * blinded_at으로 정렬하면 3주 전에 반려된 상품에 오늘 걸린 이의가 맨 아래로 간다 —
+     * 위에서부터 처리하는 관리자는 새 이의를 영구히 못 본다. 필터 축과 정렬 축을 맞춘다.
+     */
+    @Test
+    void 이의_목록은_최근_접수부터_보여_준다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        long recentAppeal = anotherProductWithAppeal(now.minusWeeks(3), now);
+        long oldAppeal = anotherProductWithAppeal(now.minusMinutes(5), now.minusDays(2));
+
+        mockMvc.perform(bearer(get(BASE).param("appealed", "true")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2))
+                .andExpect(jsonPath("$.data.items[0].productId").value(publicIdOf(recentAppeal)))
+                .andExpect(jsonPath("$.data.items[1].productId").value(publicIdOf(oldAppeal)));
+    }
+
     @Test
     void 상세는_셀러가_적은_이의_사유를_함께_돌려준다() throws Exception {
         tx.executeWithoutResult(txStatus -> {
@@ -213,6 +252,22 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
 
     /** 이의가 걸린 열린 행을 가진 내 상품을 하나 더 심고 그 id를 돌려준다 */
     private long anotherProductWithAppeal() {
+        LocalDateTime now = LocalDateTime.now();
+        return anotherProductWithAppeal(now, now);
+    }
+
+    /** 기준 상품에 이의가 걸린 행을 열고 관리자 반려로 닫는다. 결정이 끝난 이의 이력이 된다 */
+    private void closeAppealedRow() {
+        tx.executeWithoutResult(txStatus -> {
+            ProductReviewQueueItem item = ProductReviewQueueItem.Companion.openForProduct(
+                    productId, sellerUserId, "연어 건사료 2kg", LocalDateTime.now());
+            item.appeal("이미 답을 준 이의입니다.", LocalDateTime.now(), null);
+            item.reject("효능 표현을 빼 주세요.", LocalDateTime.now());
+            em.persist(item);
+        });
+    }
+
+    private long anotherProductWithAppeal(LocalDateTime blindedAt, LocalDateTime appealedAt) {
         return tx.execute(txStatus -> {
             Category leaf = em.createQuery("select c from Category c where c.depth = 3", Category.class)
                     .setMaxResults(1)
@@ -233,8 +288,8 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
             em.persist(product);
             em.flush();
             ProductReviewQueueItem item = ProductReviewQueueItem.Companion.openForProduct(
-                    product.getId(), sellerUserId, "오리 건사료 1kg", LocalDateTime.now());
-            item.appeal("성분 설명입니다.", LocalDateTime.now(), null);
+                    product.getId(), sellerUserId, "오리 건사료 1kg", blindedAt);
+            item.appeal("성분 설명입니다.", appealedAt, null);
             em.persist(item);
             return product.getId();
         });

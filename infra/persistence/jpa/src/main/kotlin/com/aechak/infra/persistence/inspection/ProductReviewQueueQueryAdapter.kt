@@ -13,6 +13,7 @@ import com.aechak.domain.product.option.repository.OptionGroupRepository
 import com.aechak.domain.product.product.QProduct
 import com.aechak.domain.seller.seller.QSeller
 import com.querydsl.core.types.Expression
+import com.querydsl.core.types.OrderSpecifier
 import com.querydsl.core.types.Projections
 import com.querydsl.jpa.JPAExpressions
 import com.querydsl.jpa.impl.JPAQuery
@@ -51,10 +52,25 @@ class ProductReviewQueueQueryAdapter(
                 item.blindedAt,
                 item.appealedAt,
             ),
-        ).orderBy(item.blindedAt.desc(), item.id.desc())
+        ).orderBy(*order(appealedOnly))
             .offset(pageQuery.page.toLong() * pageQuery.size)
             .limit(pageQuery.size.toLong())
             .fetch()
+
+    /**
+     * 정렬 축을 필터 축에 맞춘다.
+     *
+     * 전체 목록의 축은 `blinded_at`(행을 열었거나 다시 연 판정의 시각)이다. 그런데 이의로 새로
+     * 연 행은 그 칼럼을 **원 판정의 시각**으로 찍으므로, 이의 목록을 그 축으로 정렬하면 3주 전에
+     * 반려된 상품에 오늘 걸린 이의가 맨 아래로 간다 — 위에서부터 처리하는 관리자는 가장 묵은
+     * 이의부터 보고 새 이의는 목록이 길면 영구히 못 본다. 그 사이 그 행은 셀러 정원을 먹는다.
+     */
+    private fun order(appealedOnly: Boolean): Array<OrderSpecifier<*>> =
+        if (appealedOnly) {
+            arrayOf(item.appealedAt.desc(), item.id.desc())
+        } else {
+            arrayOf(item.blindedAt.desc(), item.id.desc())
+        }
 
     override fun count(
         status: ReviewQueueStatus?,

@@ -28,7 +28,13 @@ public class AdminProductInspectionController {
 
     private final AdminProductInspectionUseCase adminProductInspectionUseCase;
 
-    /** appealed=true면 셀러가 이의를 접수한 행만 본다 */
+    /**
+     * appealed=true면 셀러가 이의를 접수한 행만 본다.
+     *
+     * <p>이의 필터에 status를 주지 않으면 열린 행(PENDING_REVIEW)으로 좁힌다 — 그것이 관리자의
+     * 작업 목록이다. 이미 결정이 끝난 이의 이력을 보려면 status를 명시한다. 이의 목록의 정렬은
+     * 접수 시각 내림차순이다(전체 목록은 판정 시각 내림차순).
+     */
     @GetMapping
     public ResponseEntity<ApiResponse<AdminProductInspectionListResponse>> list(
             @RequestParam(required = false) ReviewQueueStatus status,
