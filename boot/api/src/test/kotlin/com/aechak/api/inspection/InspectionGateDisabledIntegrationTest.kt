@@ -130,6 +130,15 @@ class InspectionGateDisabledIntegrationTest : IntegrationTestBase() {
         )
     }
 
+    /**
+     * 스위치가 꺼진 환경에서 PENDING인 상품의 증거 있는 통과.
+     *
+     * 이 상태는 사람 경로가 없다 — 상품은 구매자에게 안 보이고(PENDING), 열린 행이 없어 관리자
+     * 승인도 셀러 이의도 받지 않는다. 그래도 지금 모양을 그대로 고정한다. 스위치를 켠 적이 없는
+     * 환경에서는 신규 상품이 APPROVED로 남아 PENDING이 생기지 않고, 켰다 끈 구간이나 수동 변경이
+     * 그 상태를 만든다. 푸는 쪽은 스위치를 끌 때 PENDING을 APPROVED로 되돌리는 경로이지 통과
+     * 판정을 큐에 올리는 것이 아니다 — 올리면 꺼진 환경의 큐가 통과 건으로 찬다.
+     */
     @Test
     fun `스위치가 꺼지면 통과 판정이 노출을 바꾸지 않는다`() {
         changeStatus(InspectionStatus.PENDING)
@@ -141,7 +150,7 @@ class InspectionGateDisabledIntegrationTest : IntegrationTestBase() {
             storedStatus(),
             "스위치의 뜻이 '구매자 화면에 반영'이다. 꺼진 환경에서 노출이 움직이면 검증 없이 켠 것과 같다",
         )
-        assertEquals(emptyList<ReviewQueueStatus>(), queueStatuses(), "증거 있는 통과는 사람이 볼 것이 없다")
+        assertEquals(emptyList<ReviewQueueStatus>(), queueStatuses(), "증거 있는 통과는 관리자가 결정할 것이 없다")
     }
 
     private fun storedStatus(): InspectionStatus =

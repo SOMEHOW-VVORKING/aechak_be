@@ -117,9 +117,14 @@ class ProductReviewQueueQueryAdapter(
     }
 
     /**
-     * 이의 필터에 전용 인덱스를 두지 않는다. status 등호 + appealed_at 널 아님 + blinded_at 정렬인데,
-     * (status, appealed_at)을 만들면 필터는 받고 정렬을 잃는다(파일소트). 기존 (status, blinded_at)이
-     * 등호와 정렬을 함께 받고 이의는 잔여 필터로 두는 쪽이 지금 행 수에서 이득이다.
+     * 이의 필터에 전용 인덱스를 두지 않는다.
+     *
+     * 그 경로는 status 등호 + appealed_at 널 아님 + **appealed_at 정렬**이다. 기존
+     * (status, blinded_at)은 등호만 받고 정렬은 받지 못해 이 경로는 언제나 파일소트다 —
+     * (status, appealed_at)을 만들면 둘을 함께 받는다. 그래도 지금 두지 않는 쪽을 고른 이유는
+     * 정렬 대상이 **열려 있고 이의가 걸린 행**뿐이고 그 수가 셀러별 동시 접수 상한에 묶여
+     * 작기 때문이다. 이 목록이 눈에 보이게 느려지면 그때 더한다 — 더할 때는 마이그레이션과
+     * 엔티티 선언을 함께 바꿔야 환경 간에 조회 계획이 갈리지 않는다.
      */
     private fun <T> baseQuery(
         status: ReviewQueueStatus?,
