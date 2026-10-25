@@ -182,7 +182,14 @@ class SellerDashboardFacadeTest {
 
         override fun getClaimMetrics(query: SellerClaimMetricsQuery): SellerClaimMetricsResult {
             queries += query
-            return SellerClaimMetricsResult(cancelRequests = 0L, returnRequests = 0L, exchangeRequests = 0L)
+            return SellerClaimMetricsResult(
+                cancelRequests = 0L,
+                returnRequests = 0L,
+                exchangeRequests = 0L,
+                collectionInvoicePending = 0L,
+                collectionCompletionPending = 0L,
+                reshipPending = 0L,
+            )
         }
 
         override fun approveClaim(command: ApproveClaimCommand) = unused()

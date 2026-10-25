@@ -11,11 +11,14 @@ import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.OrderItem
 import com.aechak.domain.order.order.enums.OrderStatus
+import com.aechak.domain.order.shipment.CourierMaster
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.option.OptionCombination
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.product.enums.SaleStatus
+import com.aechak.domain.product.version.ProductVersion
+import com.aechak.domain.product.version.enums.VersionChangedBy
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import com.aechak.domain.settlement.settlement.Settlement
@@ -30,10 +33,12 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
@@ -46,6 +51,9 @@ import java.time.LocalDateTime
 /**
  * 셀러 대시보드 집계 통합. 깨지면 셀러센터 첫 화면이 깨진 것이다 —
  * 지표별 계산, 셀러 범위 격리, 데이터 없는 새 셀러, 기간 필터와 직전 기간, 쿼리 수 상한이 대상이다.
+ *
+ * 승인 이후 단계(승인·회수 송장 등록·회수 완료·재발송)는 상태를 쿼리로 심지 않고 셀러 엔드포인트를
+ * 실제로 태워 만든다 — 상태만 옮기면 회수 시작 시각 같은 판정 근거가 비어 집계가 거짓으로 통과한다.
  */
 class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -74,6 +82,7 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
         token = mintAccessToken(sellerUserId)
         openSeller(sellerUserId)
         buyerUserId = createActiveUser()
+        seedCourier()
     }
 
     @Test
@@ -86,6 +95,9 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.metrics.cancelRequests.value").value(0))
             .andExpect(jsonPath("$.data.metrics.returnRequests.value").value(0))
             .andExpect(jsonPath("$.data.metrics.exchangeRequests.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionInvoicePending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionCompletionPending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.reshipPending.value").value(0))
             .andExpect(jsonPath("$.data.settlement.totalAmount").value(0))
             .andExpect(jsonPath("$.data.settlement.pendingAmount").value(0))
             .andExpect(jsonPath("$.data.settlement.onHoldAmount").value(0))
@@ -130,7 +142,7 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `클레임 지표는 셀러 미응답 건을 유형별로 센다`() {
+    fun `요청 대기 클레임은 유형별로 세고 승인된 건은 요청 건수에서 빠진다`() {
         val cancelOne = seedOrder(status = OrderStatus.PAID)
         val cancelTwo = seedOrder(status = OrderStatus.PAID)
         val returned = seedOrder(status = OrderStatus.PAID)
@@ -146,6 +158,153 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.metrics.cancelRequests.value").value(2))
             .andExpect(jsonPath("$.data.metrics.returnRequests.value").value(1))
             .andExpect(jsonPath("$.data.metrics.exchangeRequests.value").value(1))
+            .andExpect(jsonPath("$.data.metrics.collectionInvoicePending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionCompletionPending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.reshipPending.value").value(0))
+    }
+
+    @Test
+    fun `승인한 반품은 요청 건수에서 빠지고 회수 송장 등록 대기로 넘어간다`() {
+        seedApprovedClaim(ClaimType.RETURN)
+
+        summary()
+            .andExpect(jsonPath("$.data.metrics.returnRequests.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionInvoicePending.value").value(1))
+            .andExpect(jsonPath("$.data.metrics.collectionCompletionPending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.reshipPending.value").value(0))
+    }
+
+    @Test
+    fun `회수 송장을 등록하면 등록 대기에서 완료 처리 대기로 옮겨 간다`() {
+        val claim = seedApprovedClaim(ClaimType.RETURN)
+
+        startCollection(claim)
+
+        summary()
+            .andExpect(jsonPath("$.data.metrics.collectionInvoicePending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionCompletionPending.value").value(1))
+            .andExpect(jsonPath("$.data.metrics.reshipPending.value").value(0))
+    }
+
+    @Test
+    fun `회수가 끝난 반품은 셀러 처리 대기에서 모두 빠진다`() {
+        val claim = seedApprovedClaim(ClaimType.RETURN)
+        startCollection(claim)
+
+        completeCollection(claim)
+
+        summary()
+            .andExpect(jsonPath("$.data.metrics.returnRequests.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionInvoicePending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionCompletionPending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.reshipPending.value").value(0))
+    }
+
+    @Test
+    fun `회수가 끝난 교환은 재발송 대기로 남고 재발송하면 빠진다`() {
+        val claim = seedApprovedClaim(ClaimType.EXCHANGE)
+        startCollection(claim)
+        completeCollection(claim)
+
+        summary()
+            .andExpect(jsonPath("$.data.metrics.exchangeRequests.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionCompletionPending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.reshipPending.value").value(1))
+
+        // 재발송 대기로 센 건은 실제로 재발송이 되는 건이어야 한다 — 숫자와 가능한 행동이 어긋나면 집계가 거짓말이다
+        reship(claim)
+
+        summary().andExpect(jsonPath("$.data.metrics.reshipPending.value").value(0))
+    }
+
+    @Test
+    fun `회수 단계는 반품과 교환을 함께 세고 재발송 대기는 교환만 센다`() {
+        seedApprovedClaim(ClaimType.RETURN)
+        seedApprovedClaim(ClaimType.EXCHANGE)
+        startCollection(seedApprovedClaim(ClaimType.RETURN))
+        val exchange = seedApprovedClaim(ClaimType.EXCHANGE)
+        startCollection(exchange)
+        completeCollection(exchange)
+        val refunding = seedApprovedClaim(ClaimType.RETURN)
+        startCollection(refunding)
+        completeCollection(refunding)
+
+        summary()
+            .andExpect(jsonPath("$.data.metrics.collectionInvoicePending.value").value(2))
+            .andExpect(jsonPath("$.data.metrics.collectionCompletionPending.value").value(1))
+            .andExpect(jsonPath("$.data.metrics.reshipPending.value").value(1))
+            .andExpect(jsonPath("$.data.metrics.returnRequests.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.exchangeRequests.value").value(0))
+    }
+
+    /** 두 화면이 같은 라벨에 다른 숫자를 띄우면 그 자체가 결함 신고가 된다 — 같은 판정에서 나오는지 본다. */
+    @Test
+    fun `처리 대기 카드와 클레임 목록의 단계 필터가 같은 건을 센다`() {
+        seedApprovedClaim(ClaimType.RETURN)
+        val exchange = seedApprovedClaim(ClaimType.EXCHANGE)
+        startCollection(exchange)
+        seedClaim(seedOrder(status = OrderStatus.PAID), ClaimType.CANCEL)
+
+        summary()
+            .andExpect(jsonPath("$.data.metrics.cancelRequests.value").value(1))
+            .andExpect(jsonPath("$.data.metrics.collectionInvoicePending.value").value(1))
+            .andExpect(jsonPath("$.data.metrics.collectionCompletionPending.value").value(1))
+
+        claims("DECISION_PENDING")
+            .andExpect(jsonPath("$.data.totalCount").value(1))
+            .andExpect(jsonPath("$.data.counts.CANCEL").value(1))
+        claims("COLLECTION_INVOICE_PENDING")
+            .andExpect(jsonPath("$.data.totalCount").value(1))
+            .andExpect(jsonPath("$.data.counts.RETURN").value(1))
+            .andExpect(jsonPath("$.data.counts.EXCHANGE").value(0))
+        claims("COLLECTION_COMPLETION_PENDING")
+            .andExpect(jsonPath("$.data.totalCount").value(1))
+            .andExpect(jsonPath("$.data.counts.EXCHANGE").value(1))
+            .andExpect(jsonPath("$.data.counts.RETURN").value(0))
+        claims("RESHIP_PENDING")
+            .andExpect(jsonPath("$.data.totalCount").value(0))
+    }
+
+    @Test
+    fun `승인 이후 지표도 요청일 기준으로 기간을 자른다`() {
+        seedApprovedClaim(ClaimType.RETURN, requestedAt = LocalDateTime.now().minusDays(2))
+        seedApprovedClaim(ClaimType.RETURN, requestedAt = LocalDateTime.now().minusDays(10))
+
+        summary("7d")
+            .andExpect(jsonPath("$.data.metrics.collectionInvoicePending.value").value(1))
+            .andExpect(jsonPath("$.data.metrics.collectionInvoicePending.previousValue").value(1))
+    }
+
+    @Test
+    fun `타 셀러의 승인 이후 클레임도 어느 단계에도 섞이지 않는다`() {
+        val otherSeller = createActiveUser().also { openSeller(it) }
+        startCollection(seedApprovedClaim(ClaimType.RETURN, sellerId = otherSeller), asSeller = otherSeller)
+
+        summary()
+            .andExpect(jsonPath("$.data.metrics.collectionInvoicePending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionCompletionPending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.reshipPending.value").value(0))
+    }
+
+    /**
+     * 셀러가 할 일이 없는 상태는 하나도 세지 않는다 — 집계가 WHERE로 읽을 상태를 좁히므로 그 좁힘이 틀리면
+     * 여기가 깨진다. 승인된 교환에 회수 시작 시각이 없는 조합은 정상 전이로 닿지 않는 자리이고,
+     * 재발송 대기에서 회수 시작 조건을 지우는 변경을 잡기 위해 조회식의 방어 범위로 함께 넣는다.
+     */
+    @Test
+    fun `종결·개입·환불 실패 클레임은 어느 처리 대기 단계에도 섞이지 않는다`() {
+        listOf(ClaimStatus.REJECTED, ClaimStatus.WITHDRAWN, ClaimStatus.ADMIN_OVERRIDDEN, ClaimStatus.REFUND_FAILED)
+            .forEach { seedClaim(seedOrder(status = OrderStatus.PAID), ClaimType.RETURN, status = it) }
+        seedClaim(seedOrder(status = OrderStatus.PAID), ClaimType.RETURN, status = ClaimStatus.APPROVED)
+        seedClaim(seedOrder(status = OrderStatus.PAID), ClaimType.EXCHANGE, status = ClaimStatus.APPROVED)
+
+        summary()
+            .andExpect(jsonPath("$.data.metrics.cancelRequests.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.returnRequests.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.exchangeRequests.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionInvoicePending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.collectionCompletionPending.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.reshipPending.value").value(0))
     }
 
     @Test
@@ -376,6 +535,110 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer $asToken"),
         )
 
+    private fun claims(pendingStage: String): ResultActions =
+        mockMvc
+            .perform(
+                get("/api/v1/sellers/me/claims")
+                    .param("pendingStage", pendingStage)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token"),
+            ).andExpect(status().isOk)
+
+    private fun startCollection(
+        claimPublicId: String,
+        asSeller: Long = sellerUserId,
+    ) {
+        mockMvc
+            .perform(
+                post("/api/v1/sellers/me/claims/$claimPublicId/collection")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"courierCode":"CJ","trackingNumber":"987654321098"}""")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer ${tokenOf(asSeller)}"),
+            ).andExpect(status().isNoContent)
+    }
+
+    private fun completeCollection(claimPublicId: String) {
+        mockMvc
+            .perform(
+                post("/api/v1/sellers/me/claims/$claimPublicId/collection/complete")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token"),
+            ).andExpect(status().isNoContent)
+    }
+
+    private fun reship(claimPublicId: String) {
+        mockMvc
+            .perform(
+                post("/api/v1/sellers/me/claims/$claimPublicId/reship")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"courierCode":"CJ","trackingNumber":"111222333444"}""")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token"),
+            ).andExpect(status().isCreated)
+    }
+
+    private fun tokenOf(sellerId: Long): String = if (sellerId == sellerUserId) token else mintAccessToken(sellerId)
+
+    /**
+     * 셀러가 승인한 반품·교환 1건. 승인도 셀러 엔드포인트를 태운다 — 상태만 쿼리로 심으면
+     * 유형별 분기(취소는 즉시 승인, 반품·교환은 회수 대기)가 빠져 집계가 거짓으로 통과한다.
+     * 요청 가능 주문 상태가 배송완료이므로 주문도 거기에 맞춘다.
+     */
+    private fun seedApprovedClaim(
+        claimType: ClaimType,
+        sellerId: Long = sellerUserId,
+        requestedAt: LocalDateTime? = null,
+    ): String {
+        val orderId = seedOrder(status = OrderStatus.DELIVERED, sellerId = sellerId)
+        val claimPublicId =
+            tx.execute {
+                val order = em.find(Order::class.java, orderId)
+                order.items.forEach {
+                    if (claimType == ClaimType.RETURN) it.markReturnRequested() else it.markExchangeRequested()
+                }
+                val claim =
+                    Claim.request(
+                        order = order,
+                        claimType = claimType,
+                        reasonCode = "DEFECT",
+                        reasonDetail = null,
+                        items = order.items.map { ClaimItem.of(it, quantity = it.quantity, refundAmount = 25_000L) },
+                        autoApproveDueAt = LocalDateTime.now().plusDays(2),
+                    )
+                em.persist(claim)
+                em.flush()
+                claim.publicId
+            }!!
+        approve(claimPublicId, asSeller = sellerId)
+        requestedAt?.let { overrideRequestedAt(claimPublicId, it) }
+        return claimPublicId
+    }
+
+    private fun approve(
+        claimPublicId: String,
+        asSeller: Long = sellerUserId,
+    ) {
+        mockMvc
+            .perform(
+                post("/api/v1/sellers/me/claims/$claimPublicId/approve")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer ${tokenOf(asSeller)}"),
+            ).andExpect(status().isNoContent)
+    }
+
+    private fun overrideRequestedAt(
+        claimPublicId: String,
+        requestedAt: LocalDateTime,
+    ) {
+        tx.execute {
+            em
+                .createQuery("update Claim c set c.requestedAt = :requestedAt where c.publicId = :publicId")
+                .setParameter("requestedAt", requestedAt)
+                .setParameter("publicId", claimPublicId)
+                .executeUpdate()
+        }
+    }
+
+    private fun seedCourier() {
+        tx.execute { em.persist(CourierMaster.register("CJ", "CJ대한통운")) }
+    }
+
     private fun openSeller(userId: Long) {
         tx.execute { em.persist(Seller.open(userId, "애착상회$userId", 0L)) }
     }
@@ -452,7 +715,10 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
         }
     }
 
-    /** 취소 외 유형은 요청 경로가 아직 없어 취소로 만든 뒤 유형·상태·요청일을 쿼리로 옮긴다. */
+    /**
+     * 요청 대기·종결 상태의 클레임을 전이 없이 심는다 — 클레임 전이 규칙은 이 테스트의 대상이 아니다.
+     * 승인 이후 단계를 만들려면 전이 근거까지 필요하므로 seedApprovedClaim을 쓴다.
+     */
     private fun seedClaim(
         orderId: Long,
         claimType: ClaimType,
@@ -491,6 +757,7 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
         val seeded =
             tx.execute {
                 val product = persistProduct(sellerId, "주문상품${System.nanoTime()}")
+                val version = persistProductVersion(product)
                 val group =
                     OrderGroup.create(
                         buyerId = buyerUserId,
@@ -529,7 +796,7 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
                                     quantity = 1,
                                     unitPriceSnapshot = 25_000L,
                                     discountAllocatedAmount = 0L,
-                                    productVersionId = 1L,
+                                    productVersionId = version.id,
                                 ),
                             ),
                     )
@@ -559,6 +826,22 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
                 .executeUpdate()
         }
     }
+
+    /** 클레임 목록이 품목명을 상품 버전에서 읽으므로 주문 품목은 실제 버전 행을 가리켜야 한다. */
+    private fun persistProductVersion(product: Product): ProductVersion =
+        ProductVersion
+            .snapshot(
+                product = product,
+                versionNo = 1,
+                nameSnapshot = product.name,
+                priceSnapshot = 25_000L,
+                statusSnapshot = SaleStatus.ON_SALE,
+                thumbnailKeySnapshot = THUMBNAIL_KEY,
+                changedBy = VersionChangedBy.SELLER,
+            ).also {
+                em.persist(it)
+                em.flush()
+            }
 
     private fun persistProduct(
         sellerId: Long,
