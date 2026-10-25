@@ -1,12 +1,15 @@
 package com.aechak.infra.persistence.inspection
 
 import com.aechak.application.inspection.port.InspectionMetricsWindow
+import com.aechak.application.inspection.port.view.InspectionBacklogCounts
 import com.aechak.application.inspection.port.view.InspectionCoverageCounts
 import com.aechak.application.inspection.port.view.InspectionFunnelCounts
 import com.aechak.application.inspection.port.view.InspectionStageCost
 import jakarta.persistence.EntityManager
 import jakarta.persistence.Query
 import org.springframework.stereotype.Component
+import java.sql.Timestamp
+import java.time.LocalDateTime
 
 /**
  * 네이티브로만 되는 집계 — 검수 한 건의 관점 기록을 한 줄로 접는 것.
@@ -179,6 +182,54 @@ class InspectionMetricsNativeQueries(
     }
 
     /**
+     * 지금 열려 있는 큐의 모양 — 건수, 가장 오래 기다린 유입 시각, 최신 판정 분포.
+     *
+     * 한 쿼리의 집계로 낸다. 열린 행을 적재해 메모리에서 세면 임계가 가리키려는 상태(수만 행이
+     * 쌓여 아무도 비우지 않는 큐)에서 그 적재가 가장 커진다 — 경보를 만드는 조회가 경보
+     * 상황에서 가장 무거워지고, 그것을 어드민이 새로고침마다 돌린다.
+     *
+     * **대기 시계는 `created_at`이다.** `blinded_at`은 "행을 열었거나 다시 연 판정의 시각"이라
+     * 열린 행에 새 판정이 올 때마다 덮인다. 그것으로 재면 관리자가 한 번도 보지 않은 행이 매일
+     * 새 판정에 되감겨 영원히 "방금부터 기다림"으로 보고되고 시간 임계에 닿지 않는다.
+     * `blinded_at`은 어드민 목록의 정렬 키로만 남긴다.
+     *
+     * 필터는 관리자 큐 목록과 같다 — 상품·셀러를 안쪽 조인한다. 그 조인 없이 세면 지표가
+     * "대기 50건"이라 말하는데 화면에는 3건만 보인다. 사람이 처리할 수 있는 건수가 적체의 정의다.
+     */
+    fun backlogCounts(): InspectionBacklogCounts {
+        val rows =
+            em
+                .createNativeQuery(
+                    """
+                    SELECT COALESCE(j.judgment, '${InspectionBacklogCounts.NO_VERDICT}') AS bucket,
+                           COUNT(*),
+                           MIN(q.created_at)
+                    FROM product_review_queue_items q
+                             JOIN products p ON p.id = q.target_id
+                             JOIN sellers s ON s.user_id = p.seller_id
+                             LEFT JOIN content_inspections j
+                                       ON j.id = (SELECT MAX(i.id)
+                                                  FROM content_inspections i
+                                                  WHERE i.target_type = 'PRODUCT'
+                                                    AND i.target_ref = q.target_id)
+                    WHERE q.target_type = 'PRODUCT'
+                      AND q.status = '$PENDING_REVIEW'
+                    GROUP BY bucket
+                    """.trimIndent(),
+                ).resultList
+                .map { it as Array<*> }
+
+        val open = rows.sumOf { it.long(1) }
+        if (open == 0L) return InspectionBacklogCounts.empty()
+
+        return InspectionBacklogCounts(
+            open,
+            rows.mapNotNull { it.time(2) }.minOrNull(),
+            rows.associate { (it[0] as String) to it.long(1) },
+        )
+    }
+
+    /**
      * 검수 한 건을 관점 플래그 한 줄로 접는 서브쿼리.
      *
      * `MAX`가 행이 없을 때 NULL을 주므로 전부 `COALESCE`로 0으로 내린다 — NULL이 섞이면
@@ -272,7 +323,19 @@ class InspectionMetricsNativeQueries(
 
         /** 기한 정리가 미판정으로 닫을 때 남기는 표식. 백엔드가 적는 유일한 사유다 */
         private const val WAIT_LIMIT_EXCEEDED = "WAIT_LIMIT_EXCEEDED"
+
+        /** 열린 검토 행의 상태값. 열거가 아니라 문자열 칼럼이라 값으로 비교한다 */
+        private const val PENDING_REVIEW = "PENDING_REVIEW"
     }
 }
 
 private fun Array<*>.long(index: Int): Long = (this[index] as Number?)?.toLong() ?: 0L
+
+/** 드라이버가 Timestamp로 주는 자리도 있고 LocalDateTime으로 주는 자리도 있어 둘을 함께 받는다 */
+private fun Array<*>.time(index: Int): LocalDateTime? =
+    when (val value = this[index]) {
+        null -> null
+        is Timestamp -> value.toLocalDateTime()
+        is LocalDateTime -> value
+        else -> error("시각 칼럼의 타입을 모른다: ${value::class}")
+    }

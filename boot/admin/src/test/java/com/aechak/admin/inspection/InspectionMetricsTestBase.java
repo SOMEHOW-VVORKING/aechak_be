@@ -257,6 +257,20 @@ abstract class InspectionMetricsTestBase extends IntegrationTestBase {
                 txStatus -> em.find(ProductReviewQueueItem.class, itemId).approve(now));
     }
 
+    /**
+     * 큐 행의 유입 시각을 뒤로 민다. BaseEntity가 현재 시각을 적으므로 네이티브로만 바꿀 수 있다.
+     *
+     * <p>열린 행이 오래 기다린 상태를 만드는 축이 이것이다 — blinded_at은 새 판정이 올 때마다
+     * 덮이므로 "며칠째 아무도 안 본 행"을 그 칼럼으로는 만들 수 없다.
+     */
+    protected void backdateQueueRow(long itemId, LocalDateTime createdAt) {
+        tx.executeWithoutResult(txStatus -> em.createNativeQuery(
+                        "update product_review_queue_items set created_at = :at where id = :id")
+                .setParameter("at", createdAt)
+                .setParameter("id", itemId)
+                .executeUpdate());
+    }
+
     /** 원장 적재는 항상 현재 시각을 적는다. 창 경계를 만들려면 시각만 뒤로 민다 */
     protected void backdateLedger(long inspectionId, LocalDateTime createdAt) {
         tx.executeWithoutResult(

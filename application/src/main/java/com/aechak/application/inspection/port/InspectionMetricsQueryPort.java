@@ -50,8 +50,17 @@ public interface InspectionMetricsQueryPort {
     /** 단계별 지출. 키는 호출 원장의 관점 이름이고 단계를 복원할 수 없는 행은 {@code UNATTRIBUTED}다. */
     Map<String, InspectionStageCost> stageCosts(InspectionMetricsWindow window);
 
-    /** 관리자 대기 적체 — 창과 무관하게 지금 열려 있는 큐의 모양. */
-    InspectionBacklogCounts backlogCounts();
+    /**
+     * 관리자 대기 적체 — 지금 열려 있는 큐의 모양.
+     *
+     * <p>창과 정책 버전은 보지 않는다. 적체는 비율이 아니라 현재 상태이고 큐 행에 정책 버전이
+     * 없다. 창을 걸면 창보다 오래 열려 있는 건이 빠지는데 그게 제일 먼저 봐야 하는 건이다.
+     *
+     * <p>다만 <b>대상 종류는 본다</b>. 이 큐는 상품만 담으므로(리뷰는 노출 게이트가 조기 반환한다)
+     * 리뷰 축으로 좁힌 요청에 상품 수치를 실으면 관리자가 "리뷰 대기 N건"을 읽는데 그 큐에는
+     * 리뷰가 없다. 그래서 창을 받는다 — 축을 보고 비울 수 있어야 한다.
+     */
+    InspectionBacklogCounts backlogCounts(InspectionMetricsWindow window);
 
     /**
      * 창 안 검수의 프롬프트 버전 분포.

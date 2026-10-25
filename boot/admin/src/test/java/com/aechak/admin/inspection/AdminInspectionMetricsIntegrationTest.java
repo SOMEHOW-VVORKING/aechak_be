@@ -30,6 +30,9 @@ import org.springframework.test.context.TestPropertySource;
             "inspection.metrics.promotion-breakeven-rate=0.620",
             "inspection.metrics.backlog-warn-count=2",
             "inspection.metrics.backlog-warn-age-minutes=60",
+            // 캐시를 끈다. 테스트마다 다른 데이터를 심는데 기본 창 스냅샷이 캐시되면
+            // 뒤 테스트가 앞 테스트의 수치를 읽는다. 캐시 자체는 전용 수트가 본다.
+            "inspection.metrics.snapshot-cache-seconds=0",
         })
 class AdminInspectionMetricsIntegrationTest extends InspectionMetricsTestBase {
 
@@ -214,7 +217,8 @@ class AdminInspectionMetricsIntegrationTest extends InspectionMetricsTestBase {
         LocalDateTime now = LocalDateTime.now();
         long blocked = settledProduct("c".repeat(64), InspectionJudgment.FLAG, now.minusMinutes(90));
         finding(blocked, InspectionPerspectiveKind.RULE, PerspectiveOutcome.VIOLATION, null);
-        openQueueRow(now.minusMinutes(90));
+        // 대기 시간의 축은 유입 시각이다. 정렬 키(blinded_at)가 아니라 created_at을 민다
+        backdateQueueRow(openQueueRow(now.minusMinutes(90)), now.minusMinutes(90));
         // 관리자가 이미 결정한 행. 목록에서도 대기가 아니므로 적체에 들어오면 안 된다.
         approveQueueRow(openQueueRow(now.minusMinutes(30)), now);
 
@@ -228,6 +232,59 @@ class AdminInspectionMetricsIntegrationTest extends InspectionMetricsTestBase {
                 .andExpect(jsonPath("$.data.alarms[?(@.code == 'BACKLOG_AGE')]").exists())
                 .andExpect(
                         jsonPath("$.data.alarms[?(@.code == 'BACKLOG_COUNT')]").doesNotExist());
+    }
+
+    /**
+     * 대기 시간은 <b>유입 시각</b>으로 잰다.
+     *
+     * <p>{@code blinded_at}으로 재면 안 된다. 그 칼럼은 "행을 열었거나 다시 연 판정의 시각"이고
+     * 열린 행에 새 판정이 올 때마다 덮인다. 관리자가 한 번도 보지 않은 행인데 셀러가 내용을 고쳐
+     * 매일 새 판정이 걸리면, 그 행은 매일 "방금부터 기다림"으로 되감겨 임계에 영원히 닿지 않는다.
+     * 주기 로그가 존재하는 유일한 이유가 그 경보인데 그것이 구조적으로 발화하지 않는 상태가 된다.
+     */
+    @Test
+    void 적체의_대기_시간은_유입_시각이라_재차단으로_되감기지_않는다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        long blocked = settledProduct("c".repeat(64), InspectionJudgment.FLAG, now.minusMinutes(5));
+        finding(blocked, InspectionPerspectiveKind.RULE, PerspectiveOutcome.VIOLATION, null);
+
+        // 오래전에 열렸고 아무도 보지 않았는데, 방금 온 판정이 정렬 키를 현재로 끌어올렸다
+        long itemId = openQueueRow(now.minusMinutes(5));
+        backdateQueueRow(itemId, now.minusMinutes(5_000));
+
+        mockMvc.perform(bearer(get(BASE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.backlog.openCount").value(1))
+                .andExpect(jsonPath("$.data.backlog.oldestWaitMinutes").value(5_000))
+                .andExpect(jsonPath("$.data.alarms[?(@.code == 'BACKLOG_AGE')]").exists());
+    }
+
+    /**
+     * 적체는 상품 큐의 모양이라 리뷰 축 응답에 실리면 안 된다.
+     *
+     * <p>리뷰 검수는 노출 게이트가 조기 반환해 이 큐에 들어올 수 없다. 축을 무시하고 상품 수치를
+     * 실으면 관리자는 "리뷰 검수 대기 N건, 임계 초과"를 읽는데 그 큐에는 리뷰가 한 건도 없다.
+     */
+    @Test
+    void 리뷰_축으로_좁히면_상품_큐의_수치와_경보가_실리지_않는다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        long blocked = settledProduct("c".repeat(64), InspectionJudgment.FLAG, now.minusMinutes(5));
+        finding(blocked, InspectionPerspectiveKind.RULE, PerspectiveOutcome.VIOLATION, null);
+        long itemId = openQueueRow(now.minusMinutes(5));
+        backdateQueueRow(itemId, now.minusMinutes(5_000));
+
+        mockMvc.perform(bearer(get(BASE).param("targetType", "PRODUCT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.backlog.openCount").value(1))
+                .andExpect(jsonPath("$.data.alarms[?(@.code == 'BACKLOG_AGE')]").exists());
+
+        mockMvc.perform(bearer(get(BASE).param("targetType", "REVIEW")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.window.targetType").value("REVIEW"))
+                .andExpect(jsonPath("$.data.backlog.openCount").value(0))
+                .andExpect(jsonPath("$.data.backlog.oldestWaitMinutes").doesNotExist())
+                .andExpect(jsonPath("$.data.backlog.openByLatestJudgment").isEmpty())
+                .andExpect(jsonPath("$.data.alarms[?(@.code == 'BACKLOG_AGE')]").doesNotExist());
     }
 
     /** 큐가 비어 있으면 임계를 넘지 않고 경보도 없다. */
@@ -256,7 +313,7 @@ class AdminInspectionMetricsIntegrationTest extends InspectionMetricsTestBase {
         long old = verdictFailed(now.minusDays(3));
         triageCall(old, "SUCCESS", 900);
         backdateLedger(old, now.minusDays(3));
-        openQueueRow(now.minusDays(3));
+        backdateQueueRow(openQueueRow(now.minusDays(3)), now.minusDays(3));
 
         mockMvc.perform(bearer(get(BASE)))
                 .andExpect(status().isOk())

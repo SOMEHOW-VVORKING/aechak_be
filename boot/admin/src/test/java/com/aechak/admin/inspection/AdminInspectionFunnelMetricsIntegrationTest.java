@@ -25,6 +25,8 @@ import org.springframework.test.context.TestPropertySource;
             "inspection.metrics.promotion-breakeven-rate=0.620",
             "inspection.metrics.backlog-warn-count=50",
             "inspection.metrics.backlog-warn-age-minutes=1440",
+            // 캐시를 끈다. 테스트마다 다른 데이터를 심으므로 기본 창 스냅샷이 캐시되면 섞인다
+            "inspection.metrics.snapshot-cache-seconds=0",
         })
 class AdminInspectionFunnelMetricsIntegrationTest extends InspectionMetricsTestBase {
 

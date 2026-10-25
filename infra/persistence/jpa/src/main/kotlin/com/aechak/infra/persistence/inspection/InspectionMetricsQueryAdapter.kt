@@ -11,28 +11,18 @@ import com.aechak.application.inspection.port.view.InspectionTriageCounts
 import com.aechak.domain.inspection.QAiCallLedgerEntry
 import com.aechak.domain.inspection.QContentInspection
 import com.aechak.domain.inspection.QInspectionFinding
-import com.aechak.domain.inspection.QProductReviewQueueItem
 import com.aechak.domain.inspection.enums.InspectionPerspectiveKind
 import com.aechak.domain.inspection.enums.InspectionTargetType
 import com.aechak.domain.inspection.enums.PerspectiveOutcome
-import com.aechak.domain.inspection.enums.ReviewQueueStatus
-import com.aechak.domain.product.product.QProduct
-import com.aechak.domain.seller.seller.QSeller
 import com.querydsl.core.types.Predicate
 import com.querydsl.core.types.dsl.NumberPath
 import com.querydsl.jpa.JPAExpressions
-import com.querydsl.jpa.impl.JPAQuery
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.springframework.stereotype.Repository
 
 private val inspection = QContentInspection.contentInspection
 private val finding = QInspectionFinding.inspectionFinding
 private val ledger = QAiCallLedgerEntry.aiCallLedgerEntry
-private val queueItem = QProductReviewQueueItem.productReviewQueueItem
-private val queueProduct = QProduct.product
-private val queueSeller = QSeller.seller
-private val latestInspection = QContentInspection("latestForBacklog")
-private val newerInspection = QContentInspection("newerForBacklog")
 
 /** 원장에 적히는 선별 관점 이름. 열거가 아니라 문자열 칼럼이라 값으로 비교한다 */
 private val TRIAGE_PERSPECTIVE = InspectionPerspectiveKind.TRIAGE.name
@@ -117,33 +107,22 @@ class InspectionMetricsQueryAdapter(
     }
 
     /**
-     * 지금 열려 있는 큐의 모양.
+     * 지금 열려 있는 큐의 모양. 집계는 [InspectionMetricsNativeQueries]가 한 쿼리로 한다.
      *
-     * 사람이 처리할 수 있는 건만 센다 — **관리자 큐 목록과 같은 필터**다. 목록이 상품·셀러를
-     * 안쪽 조인하므로 그 조인 없이 세면 지표가 "대기 50건"이라고 말하는데 화면에는 3건만 보인다.
+     * **대상 종류를 못박는다.** 리뷰 검수는 노출 게이트가 조기 반환해 이 큐에 들어올 수 없으므로,
+     * 상품이 아닌 축으로 좁힌 요청에는 빈 값을 돌려준다. 축을 무시하고 상품 수치를 실으면
+     * 관리자는 "리뷰 검수 대기 N건, 임계 초과"를 읽는데 그 큐에는 리뷰가 한 건도 없다.
      *
-     * 목록에서 내려간 묵은 행을 따로 세지 않는다. 새 판정이 오면 큐 서비스가 열린 행을 갱신하거나
-     * 닫으므로 목록 필터와 지표 필터가 같은 열린 상태 하나이고, 둘이 어긋날 자리가 없다.
+     * 창과 정책 버전은 보지 않는다. 적체는 비율이 아니라 지금 열려 있는 큐의 모양이고, 큐 행에는
+     * 정책 버전이 없다. 창을 걸면 창보다 오래 열려 있는 건이 빠지는데 그게 제일 먼저 봐야 하는
+     * 건이다 — 정책 축으로 좁힌 요청에도 적체는 전체 큐라는 뜻이다.
      */
-    override fun backlogCounts(): InspectionBacklogCounts {
-        val open = openQueue().select(queueItem.count()).fetchOne() ?: 0L
-        if (open == 0L) return InspectionBacklogCounts.empty()
-
-        // 열린 행마다 최신 판정을 읽어 접는다. 상관 서브쿼리를 GROUP BY 축으로 쓸 수 없어
-        // 메모리에서 센다 — 열린 큐는 사람이 비우는 목록이고 임계가 수십 건이라 범위가 좁다.
-        val byLatestJudgment =
-            openQueue()
-                .select(latestJudgment())
-                .fetch()
-                .groupingBy { it?.name ?: InspectionBacklogCounts.NO_VERDICT }
-                .eachCount()
-                .mapValues { (_, count) -> count.toLong() }
-
-        return InspectionBacklogCounts(
-            open,
-            openQueue().select(queueItem.blindedAt.min()).fetchOne(),
-            byLatestJudgment,
-        )
+    override fun backlogCounts(window: InspectionMetricsWindow): InspectionBacklogCounts {
+        val targetType = window.targetType()
+        if (targetType != null && targetType != InspectionTargetType.PRODUCT) {
+            return InspectionBacklogCounts.empty()
+        }
+        return nativeQueries.backlogCounts()
     }
 
     override fun promptVersionCounts(window: InspectionMetricsWindow): Map<String, Long> {
@@ -223,43 +202,4 @@ class InspectionMetricsQueryAdapter(
                 finding.perspective.eq(InspectionPerspectiveKind.TRIAGE),
                 finding.outcome.eq(PerspectiveOutcome.CLEAR),
             ).exists()
-
-    /**
-     * 관리자 큐에 열려 있는 행. 상품·셀러를 안쪽 조인하는 것이 목록과 같은 필터다.
-     *
-     * 대상 종류를 상품으로 못박는다. 리뷰 검수는 노출 게이트가 조기 반환해 이 큐에 들어오지
-     * 않으므로, 축을 열어 두면 리뷰 적체가 항상 0인 이유를 응답이 설명할 수 없다.
-     */
-    private fun openQueue(): JPAQuery<*> =
-        queryFactory
-            .from(queueItem)
-            .join(queueProduct)
-            .on(queueProduct.id.eq(queueItem.targetId))
-            .join(queueSeller)
-            .on(queueSeller.userId.eq(queueProduct.sellerId))
-            .where(
-                queueItem.targetType.eq(InspectionTargetType.PRODUCT),
-                queueItem.status.eq(ReviewQueueStatus.PENDING_REVIEW),
-            )
-
-    /**
-     * 그 행의 상품의 가장 최근 검수 판정. 행이 왜 열렸는지의 대리 지표다.
-     *
-     * 등재 사유 칼럼은 채우는 경로가 없어 비어 있고, 유입 경로 칼럼은 AI 고정값 하나뿐이다.
-     */
-    private fun latestJudgment() =
-        JPAExpressions
-            .select(latestInspection.judgment)
-            .from(latestInspection)
-            .where(
-                latestInspection.id.eq(
-                    JPAExpressions
-                        .select(newerInspection.id.max())
-                        .from(newerInspection)
-                        .where(
-                            newerInspection.targetType.eq(InspectionTargetType.PRODUCT),
-                            newerInspection.targetRef.eq(queueItem.targetId),
-                        ),
-                ),
-            )
 }

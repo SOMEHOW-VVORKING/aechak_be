@@ -124,9 +124,21 @@ class InspectionMetricsReportIntegrationTest : IntegrationTestBase() {
     @Test
     fun `적체가 임계를 넘으면 경보로 올라가고 문장이 함께 남는다`() {
         val now = LocalDateTime.now()
+        val itemId =
+            tx.execute {
+                val item = ProductReviewQueueItem.openForProduct(productId, sellerUserId, "연어 건사료 2kg", now.minusMinutes(90))
+                em.persist(item)
+                em.flush()
+                item.id
+            }!!
+        // 대기 시간의 축은 유입 시각이다. 정렬 키(blinded_at)는 새 판정마다 덮이므로
+        // 그것으로 재면 매일 재차단되는 행이 영원히 임계에 닿지 않는다
         tx.execute {
-            em.persist(ProductReviewQueueItem.openForProduct(productId, sellerUserId, "연어 건사료 2kg", now.minusMinutes(90)))
-            em.flush()
+            em
+                .createNativeQuery("update product_review_queue_items set created_at = :at where id = :id")
+                .setParameter("at", now.minusMinutes(90))
+                .setParameter("id", itemId)
+                .executeUpdate()
         }
 
         schedule.report()

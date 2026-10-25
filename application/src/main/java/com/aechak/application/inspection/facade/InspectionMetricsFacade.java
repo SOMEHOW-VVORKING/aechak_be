@@ -96,7 +96,9 @@ public class InspectionMetricsFacade implements InspectionMetricsUseCase {
      * 집계 하나를 모은다.
      *
      * <p>적체만 창을 보지 않는다. 24시간보다 오래 열려 있는 건이 빠지면 가장 오래 기다린 건이
-     * 지표에서 사라지고, 그게 제일 먼저 봐야 하는 건이다.
+     * 지표에서 사라지고, 그게 제일 먼저 봐야 하는 건이다. 대신 <b>축은 넘긴다</b> — 이 큐는
+     * 상품만 담으므로 리뷰 축으로 좁힌 요청에 상품 수치와 그 수치로 만든 경보가 함께 실리면
+     * 관리자가 "리뷰 검수 대기 N건, 임계 초과"를 읽는데 그 큐에는 리뷰가 한 건도 없다.
      */
     private InspectionMetricsResult collect(InspectionMetricsWindow window, LocalDateTime measuredAt) {
         Map<String, Long> promptVersions = metricsQueryPort.promptVersionCounts(window);
@@ -112,7 +114,7 @@ public class InspectionMetricsFacade implements InspectionMetricsUseCase {
                 metricsQueryPort.coverageCounts(window),
                 metricsQueryPort.costCounts(window),
                 metricsQueryPort.stageCosts(window),
-                metricsQueryPort.backlogCounts());
+                metricsQueryPort.backlogCounts(window));
     }
 
     /** 비운 창을 설정 창으로 채우고 폭을 검증한다 */
