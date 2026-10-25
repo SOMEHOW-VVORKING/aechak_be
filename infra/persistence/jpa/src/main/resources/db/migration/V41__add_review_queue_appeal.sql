@@ -2,10 +2,14 @@
 -- 번호 주의: develop이 V34, 열린 PR이 V35~V40을 점유해 그 다음 번호를 받음.
 -- 이의 상태를 따로 열거로 두지 않음 — appealed_at(걸렸는가)과 status(행이 어떻게 닫혔는가)에서 파생됨.
 -- 접수는 노출을 바꾸지 않으므로 block_source는 그대로 AI_DETECTION임(원래 가린 것이 AI다).
+-- appeal_attempt_count는 무효화가 지우지 않는 유일한 이의 축이다. 무효화는 재접수를 열어 주려고
+-- appealed_at을 비우는데, 그 칼럼이 상한의 분모까지 겸하면 "한 글자 고쳐 새 판정을 받고 다시 접수"가
+-- 아무 상한에도 걸리지 않고 무한히 돈다. 무효가 된 이의의 흔적도 이 숫자가 든다.
 ALTER TABLE product_review_queue_items
     ADD COLUMN appeal_reason        VARCHAR(500) NULL COMMENT '셀러가 쓴 문장. 관리자에게 그대로 보임',
     ADD COLUMN appealed_at          DATETIME(6)  NULL COMMENT 'NULL이면 이의 없음. 관리자 이의 필터의 축',
-    ADD COLUMN appealed_content_hash VARCHAR(64) NULL COMMENT '이의를 접수한 시점의 내용 지문. 이의 무효 판단의 축이고 비운 뒤에는 흔적',
+    ADD COLUMN appealed_content_hash VARCHAR(64) NULL COMMENT '이의를 접수한 시점의 내용 지문. 이의 무효 판단의 축',
+    ADD COLUMN appeal_attempt_count INT          NOT NULL DEFAULT 0 COMMENT '이 행에 접수된 횟수. 무효화가 지우지 않음 — 되돌이 상한과 무효 흔적의 축',
     ADD COLUMN resolved_at          DATETIME(6)  NULL COMMENT '행이 닫힌 시각. 기각 쿨다운의 기준';
 
 -- 닫힌 시각을 과거 행에 연결한다. 반려 이력의 표시 시각이 updated_at에서 이 칼럼으로 옮겨

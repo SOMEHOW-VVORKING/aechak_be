@@ -106,6 +106,21 @@ class ProductReviewQueueItemTest {
 
         // 무엇에 대한 이의인지 모르면 지금 걸린 것을 가리킨다고 볼 근거가 없다
         assertNull(item.appealedAt)
+        // 지문이 없어도 접수했다는 사실은 남는다. 흔적을 지문이 겸하면 이 경우에 함께 사라져
+        // 셀러 응답이 "접수한 적 없음"과 같은 모양이 된다
+        assertTrue(item.appealCleared())
+    }
+
+    @Test
+    fun `무효화는 접수 횟수를 지우지 않는다`() {
+        val item = openItem()
+        item.appeal("성분 설명입니다.", now, OLD_CONTENT)
+        item.refresh("연어 건사료 2kg", now.plusHours(1), NEW_CONTENT)
+
+        item.appeal("고친 문구도 성분 설명입니다.", now.plusHours(2), NEW_CONTENT)
+
+        // 무효화가 횟수까지 비우면 "한 글자 고쳐 새 판정을 받고 다시 접수"가 무한히 돈다
+        assertEquals(2, item.appealAttemptCount)
     }
 
     private fun openItem(): ProductReviewQueueItem = ProductReviewQueueItem.openForProduct(1L, 2L, "연어 건사료 2kg", now)

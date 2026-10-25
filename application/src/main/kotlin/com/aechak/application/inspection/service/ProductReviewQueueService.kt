@@ -136,9 +136,20 @@ class ProductReviewQueueService(
         if (item.appealedAt != null) throw BusinessException(ProductErrorCode.INSPECTION_APPEAL_ALREADY_SUBMITTED)
         item.appeal(reason, now, blocking?.contentHash)
         val saved = reviewQueue.save(item)
-        log.info("셀러 이의를 접수했다. productId={} itemId={}", productId, saved.id)
+        log.info("셀러 이의를 접수했다. productId={} itemId={} attempts={}", productId, saved.id, saved.appealAttemptCount)
         return saved
     }
+
+    /**
+     * 열린 행의 이의 이력. 행이 없으면 null — 접수가 그 행을 새로 연다는 뜻이다.
+     *
+     * 정책(중복·시도 횟수)은 호출부가 판단하고 여기는 그 입력만 읽는다. 쓰기와 같은 **잠금
+     * 조회**로 읽는다 — 자격 판단과 쓰기가 같은 행 상태를 봐야 한다.
+     */
+    fun findOpenAppealState(productId: Long): OpenAppealState? =
+        reviewQueue.findPendingByProductIdForUpdate(productId)?.let {
+            OpenAppealState(alreadyAppealed = it.appealedAt != null, attemptCount = it.appealAttemptCount)
+        }
 
     /** 셀러별 열린 이의 건수. 폭주 상한의 분모임 */
     fun countOpenAppeals(sellerId: Long): Long = reviewQueue.countOpenAppealsByOwner(sellerId)

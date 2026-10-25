@@ -62,6 +62,7 @@ import kotlin.test.assertTrue
     properties = [
         "inspection.appeal.max-open-per-seller=2",
         "inspection.appeal.cooldown-hours=24",
+        "inspection.appeal.max-attempts-per-item=2",
     ],
 )
 class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
@@ -299,6 +300,12 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
      * REPEATABLE READ 스냅샷이 먼저 고정되고, 그 뒤 열린 행 조회가 비잠금 일관 읽기라 먼저
      * 커밋한 쪽이 넣은 행을 보지 못했다. 그러면 한 상품에 PENDING 행이 둘 생기고, 관리자가
      * 닫는 것은 그중 하나뿐이라 남은 행이 셀러 정원을 영구히 먹는다.
+     *
+     * **이 테스트가 고정하는 것은 접수 경로의 격리 수준이다.** 장벽이 없어 두 트랜잭션이 실제로
+     * 겹쳤는지는 보장하지 않고, 겹치지 않으면 두 번째가 순차 재접수로 거부돼 그대로 통과한다.
+     * 겹쳤을 때 갈라지지 않는 근거도 잠금 조회 자체가 아니라 READ COMMITTED에서 매 구문이
+     * 최신 커밋을 읽는 것이다. 잠금 조회가 쓸모를 갖는 자리는 격리 수준을 올리지 않은 경로
+     * (관리자 결정)이고, 간극 잠금을 쥐지 않는지는 판정 경로의 api 쪽 수트가 본다.
      */
     @Test
     fun `같은 상품에 동시 접수가 들어와도 열린 행과 이의는 하나다`() {
@@ -331,6 +338,43 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
             .perform(appealRequest(publicId, "고친 문구도 성분 설명입니다."))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.appealReason").value("고친 문구도 성분 설명입니다."))
+    }
+
+    /**
+     * "고치고 또 접수"를 반복하는 되돌이.
+     *
+     * 무효화는 셀러에게 재접수를 열어 주는 장치고 그래야 하는 이유가 있다 — 결정할 수 없게 된
+     * 이의가 정원을 영구히 먹으면 차단의 유일한 탈출 경로가 막힌다. 그런데 무효화가 라이브
+     * 칼럼을 비우는 일이라, 비우는 것이 곧 상한의 분모를 지우는 일이기도 하다. 그러면 한 글자만
+     * 고쳐 새 판정을 받는 것으로 정원·중복·쿨다운 어디에도 걸리지 않고 무한히 다시 접수할 수
+     * 있고, 한 바퀴마다 관리자가 새 사유를 읽고 검수 비용 한 번이 플랫폼 부담으로 든다.
+     *
+     * 그래서 접수 **시도 횟수**를 행이 따로 들고, 무효화가 그 숫자를 지우지 않는다.
+     */
+    @Test
+    fun `무효화를 반복해도 상품당 접수 횟수 상한에서 끊긴다`() {
+        changeStatus(productId, InspectionStatus.PENDING)
+        openReview(productId)
+
+        repeat(MAX_ATTEMPTS_PER_ITEM) { round ->
+            mockMvc.perform(appealRequest(publicId, "$round 번째 사유입니다.")).andExpect(status().isOk)
+            invalidateByNewContent(round)
+        }
+
+        mockMvc
+            .perform(appealRequest(publicId, "또 접수합니다."))
+            .andExpect(status().isTooManyRequests)
+            .andExpect(jsonPath("$.errorCode").value(40507))
+    }
+
+    /** 셀러가 내용을 고쳐 새 판정이 온 것과 같은 상태 — 열린 행은 그대로고 이의만 무효가 된다 */
+    private fun invalidateByNewContent(round: Int) {
+        tx.execute {
+            val row = findPending(productId)!!
+            row.refresh("연어 건사료 2kg", LocalDateTime.now(), "c$round".padEnd(64, 'c'))
+            reviewQueue.save(row)
+        }
+        assertNull(findPending(productId)!!.appealedAt, "무효화가 되지 않으면 이 되돌이 자체가 성립하지 않는다")
     }
 
     @Test
@@ -539,5 +583,10 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
             inspections.save(inspection)
         }
         return settledAt
+    }
+
+    private companion object {
+        /** 위 [TestPropertySource]의 `max-attempts-per-item`과 같은 값이어야 한다 */
+        const val MAX_ATTEMPTS_PER_ITEM = 2
     }
 }

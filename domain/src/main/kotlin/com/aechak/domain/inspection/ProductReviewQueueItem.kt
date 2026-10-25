@@ -90,12 +90,25 @@ class ProductReviewQueueItem protected constructor(
     /**
      * 이의를 접수한 시점의 내용 지문. 그 이의가 **무엇에 대한 것인지**임.
      *
-     * 두 가지를 이 한 칼럼으로 든다. 새 판정이 왔을 때 이의를 비울지 가르는 축이고([refresh]),
-     * 비운 뒤에는 "이의가 있었고 무효가 됐다"는 흔적이다([appealCleared]). 흔적이 없으면
-     * 셀러 응답이 "접수한 적 없음"과 "접수했지만 무효가 됨"을 같은 모양으로 내려보낸다.
+     * 새 판정이 왔을 때 이의를 비울지 가르는 축이다([refresh]). 지문을 모르는 접수도 있어서
+     * "이의가 있었는가"의 축으로는 쓰지 않음 — 그쪽은 [appealAttemptCount]다. 한 칼럼이 둘을
+     * 겸하면 지문이 없는 이의에서 무효 흔적이 함께 사라진다.
      */
     @Column(length = CONTENT_HASH_MAX)
     var appealedContentHash: String? = null
+        protected set
+
+    /**
+     * 이 행에 이의가 접수된 **횟수**. 무효화가 지우지 않는 유일한 이의 축임.
+     *
+     * 두 가지를 든다. 첫째, 무효화된 이의의 흔적이다 — [appealedAt]이 비었는데 이 숫자가 0이
+     * 아니면 "접수했지만 무효가 됐다"이고, 그러지 않으면 셀러 응답이 그것을 "접수한 적 없음"과
+     * 같은 모양으로 내려보낸다. 둘째, 폭주 상한의 분모다. 무효화는 재접수를 열어 주는 장치라
+     * 라이브 칼럼([appealedAt])을 비우는데, 그 칼럼이 상한의 분모까지 겸하면 "한 글자 고쳐
+     * 새 판정을 받고 다시 접수"가 아무 상한에도 걸리지 않고 무한히 돈다.
+     */
+    @Column(nullable = false)
+    var appealAttemptCount: Int = 0
         protected set
 
     /**
@@ -110,7 +123,7 @@ class ProductReviewQueueItem protected constructor(
     fun isPending(): Boolean = status == ReviewQueueStatus.PENDING_REVIEW
 
     /** 이의가 접수됐다가 내용이 바뀌어 무효가 된 행인가 */
-    fun appealCleared(): Boolean = appealedAt == null && appealedContentHash != null
+    fun appealCleared(): Boolean = appealedAt == null && appealAttemptCount > 0
 
     /**
      * 열린 행에 새 판정이 또 왔을 때. 행을 새로 만들지 않고 시각과 상품명만 갱신함.
@@ -125,7 +138,8 @@ class ProductReviewQueueItem protected constructor(
      * 둘 다 셀러가 한 일이 없는데 거기서 지우면 모델 장애가 곧 "제출한 이의를 아무도 못 보는
      * 상태"가 됨. 지문을 모르는 이의([appealedContentHash]가 비었음)는 가릴 근거가 없어 비움.
      *
-     * 비울 때 [appealedContentHash]는 남겨 둠. 그것이 "이의가 있었고 무효가 됐다"는 흔적임.
+     * 비울 때 [appealAttemptCount]는 건드리지 않음. 그것이 "이의가 있었고 무효가 됐다"는
+     * 흔적이고 동시에 되돌이를 끊는 분모임.
      */
     fun refresh(
         targetName: String?,
@@ -158,6 +172,7 @@ class ProductReviewQueueItem protected constructor(
         appealReason = reason
         appealedAt = now
         appealedContentHash = contentHash
+        appealAttemptCount += 1
     }
 
     fun approve(now: LocalDateTime) {

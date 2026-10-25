@@ -50,6 +50,20 @@ class ReviewQueueSchemaParityTest {
         )
     }
 
+    /**
+     * 엔티티가 든 이의 칼럼이 마이그레이션에도 있는지 본다. 통합 테스트는 `ddl-auto=create`로
+     * 엔티티에서 테이블을 만들어서, 칼럼을 더하고 마이그레이션을 빠뜨리면 전 수트가 녹색인데
+     * 운영 부팅에서 "Unknown column"이 난다.
+     */
+    @Test
+    fun `엔티티의 이의 칼럼을 마이그레이션도 더한다`() {
+        val text = resource(APPEAL_MIGRATION).lowercase()
+
+        APPEAL_COLUMNS.forEach { column ->
+            assertTrue(text.contains(column), "마이그레이션에 $column 칼럼이 없다")
+        }
+    }
+
     private fun migrationText(): String = MIGRATIONS.joinToString("\n", transform = ::resource)
 
     private fun resource(name: String): String =
@@ -61,6 +75,10 @@ class ReviewQueueSchemaParityTest {
 
         /** 검토 큐 테이블을 만드는 파일과 그 뒤 칼럼·인덱스를 더하는 파일 전부 */
         val MIGRATIONS = listOf("V39__create_product_review_queue_items.sql", APPEAL_MIGRATION)
+
+        /** 이의 축이 쓰는 칼럼 전부. 엔티티 필드와 함께 늘어난다 */
+        val APPEAL_COLUMNS =
+            listOf("appeal_reason", "appealed_at", "appealed_content_hash", "appeal_attempt_count", "resolved_at")
 
         /** `CREATE INDEX <이름> ON product_review_queue_items` — 조건부로 감싼 것도 같은 구문이다 */
         val INDEX_LINE =
