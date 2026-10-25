@@ -322,7 +322,7 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
         // 억울하다 했는데 지금 걸린 것은 B"를 보고, 재접수도 막혀 셀러는 할 수 있는 것이 없다
         tx.execute {
             val row = findPending(productId)!!
-            row.refresh("연어 건사료 2kg", LocalDateTime.now())
+            row.refresh("연어 건사료 2kg", LocalDateTime.now(), "b".repeat(64))
             reviewQueue.save(row)
         }
         assertNull(findPending(productId)!!.appealedAt, "갱신된 행의 이의는 옛 내용을 가리킨다")
@@ -381,7 +381,7 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
     ) {
         tx.execute {
             val row = openReview(target)
-            row.appeal("처음 사유입니다.", resolvedAt.minusHours(1))
+            row.appeal("처음 사유입니다.", resolvedAt.minusHours(1), null)
             row.reject("효능 표현을 빼고 다시 등록해 주세요.", resolvedAt)
             reviewQueue.save(row)
         }

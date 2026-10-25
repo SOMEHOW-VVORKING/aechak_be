@@ -47,6 +47,7 @@ class ProductReviewQueueService(
         judgment: InspectionJudgment,
         modelVerified: Boolean,
         judgedAt: LocalDateTime,
+        contentHash: String?,
     ) {
         val outcome = productGate.applyJudgment(productId, judgment, modelVerified) ?: return
         val pending = reviewQueue.findPendingByProductIdForUpdate(productId)
@@ -60,7 +61,7 @@ class ProductReviewQueueService(
             }
 
             outcome.needsAdminReview && pending != null -> {
-                pending.refresh(outcome.productName, judgedAt)
+                pending.refresh(outcome.productName, judgedAt, contentHash)
                 reviewQueue.save(pending)
             }
 
@@ -123,10 +124,11 @@ class ProductReviewQueueService(
         reason: String,
         now: LocalDateTime,
     ): ProductReviewQueueItem {
-        val item = reviewQueue.findPendingByProductIdForUpdate(productId) ?: openForAppeal(productId, target, now)
+        val latest = inspectionQuery.findLatestProductInspection(productId)
+        val item = reviewQueue.findPendingByProductIdForUpdate(productId) ?: openForAppeal(productId, target, latest?.settledAt ?: now)
 
         if (item.appealedAt != null) throw BusinessException(ProductErrorCode.INSPECTION_APPEAL_ALREADY_SUBMITTED)
-        item.appeal(reason, now)
+        item.appeal(reason, now, latest?.contentHash)
         val saved = reviewQueue.save(item)
         log.info("셀러 이의를 접수했다. productId={} itemId={}", productId, saved.id)
         return saved
@@ -150,11 +152,10 @@ class ProductReviewQueueService(
     private fun openForAppeal(
         productId: Long,
         target: ProductAppealTarget,
-        now: LocalDateTime,
+        blindedAt: LocalDateTime,
     ): ProductReviewQueueItem {
         if (!target.adminRejected) throw BusinessException(ProductErrorCode.INSPECTION_APPEAL_NOT_ALLOWED)
 
-        val blindedAt = inspectionQuery.findLatestProductInspection(productId)?.settledAt ?: now
         return ProductReviewQueueItem.openForProduct(productId, target.sellerId, target.productName, blindedAt)
     }
 

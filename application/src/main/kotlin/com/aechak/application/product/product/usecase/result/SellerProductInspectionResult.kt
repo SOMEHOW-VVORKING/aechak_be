@@ -38,6 +38,13 @@ data class SellerProductInspectionResult(
     val appealedAt: LocalDateTime?,
     /** 셀러가 접수할 때 적은 문장 */
     val appealReason: String?,
+    /**
+     * 접수한 이의가 내용이 바뀌어 무효가 됐다. 재접수가 열려 있다는 뜻이다.
+     *
+     * [appealedAt]이 빈 이유를 가른다 — 이것이 없으면 "접수한 적 없음"과 "무효가 됨"이 같은
+     * 모양으로 나가서, 셀러는 접수가 실패했다고 읽는다.
+     */
+    val appealCleared: Boolean,
     val requestedAt: LocalDateTime?,
     val settledAt: LocalDateTime?,
 ) {
@@ -61,6 +68,7 @@ data class SellerProductInspectionResult(
                 rejectReason = latestRejectReason.takeIf { product.inspectionStatus == InspectionStatus.REJECTED },
                 appealedAt = openReview?.appealedAt,
                 appealReason = openReview?.appealReason,
+                appealCleared = openReview?.appealCleared == true,
                 requestedAt = snapshot?.requestedAt,
                 settledAt = snapshot?.settledAt,
             )

@@ -149,7 +149,7 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
         tx.executeWithoutResult(txStatus -> {
             ProductReviewQueueItem item = ProductReviewQueueItem.Companion.openForProduct(
                     productId, sellerUserId, "연어 건사료 2kg", LocalDateTime.now());
-            item.appeal("치료 효능이 아니라 성분 설명입니다.", LocalDateTime.now());
+            item.appeal("치료 효능이 아니라 성분 설명입니다.", LocalDateTime.now(), null);
             em.persist(item);
         });
 
@@ -234,7 +234,7 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
             em.flush();
             ProductReviewQueueItem item = ProductReviewQueueItem.Companion.openForProduct(
                     product.getId(), sellerUserId, "오리 건사료 1kg", LocalDateTime.now());
-            item.appeal("성분 설명입니다.", LocalDateTime.now());
+            item.appeal("성분 설명입니다.", LocalDateTime.now(), null);
             em.persist(item);
             return product.getId();
         });

@@ -230,6 +230,7 @@ class InspectionFacade(
             judgment = judgment,
             modelVerified = modelVerified,
             judgedAt = checkNotNull(inspection.settledAt),
+            contentHash = inspection.contentHash,
         )
     }
 

@@ -13,6 +13,8 @@ import java.time.LocalDateTime
  */
 data class InspectionSnapshot(
     val processingState: InspectionProcessingState,
+    /** 이 검수가 본 내용의 지문. 이의가 아직 그 내용을 가리키는지 가르는 축이다 */
+    val contentHash: String,
     val judgment: InspectionJudgment?,
     val reasonCode: String?,
     val reasonSummary: String?,
@@ -24,6 +26,7 @@ data class InspectionSnapshot(
         fun from(inspection: ContentInspection): InspectionSnapshot =
             InspectionSnapshot(
                 processingState = inspection.processingState,
+                contentHash = inspection.contentHash,
                 judgment = inspection.judgment,
                 reasonCode = inspection.reasonCode,
                 reasonSummary = inspection.reasonSummary,

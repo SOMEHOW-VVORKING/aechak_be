@@ -5,7 +5,9 @@ import java.time.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * [단위] 관리자 검토 행의 전이를 고정함.
@@ -48,7 +50,7 @@ class ProductReviewQueueItemTest {
         val blindedAt = now.minusDays(2)
         val item = ProductReviewQueueItem.openForProduct(1L, 2L, "연어 건사료 2kg", blindedAt)
 
-        item.appeal("성분 설명입니다.", now)
+        item.appeal("성분 설명입니다.", now, OLD_CONTENT)
 
         assertEquals(now, item.appealedAt)
         assertEquals("성분 설명입니다.", item.appealReason)
@@ -60,24 +62,56 @@ class ProductReviewQueueItemTest {
     @Test
     fun `이미 이의가 걸린 행에는 다시 걸 수 없다`() {
         val item = openItem()
-        item.appeal("첫 사유입니다.", now)
+        item.appeal("첫 사유입니다.", now, OLD_CONTENT)
 
         assertFailsWith<IllegalStateException>("두 번째 사유가 첫 사유를 덮으면 관리자가 무엇에 답하는지 알 수 없다") {
-            item.appeal("둘째 사유입니다.", now)
+            item.appeal("둘째 사유입니다.", now, OLD_CONTENT)
         }
     }
 
     @Test
-    fun `행을 갱신하면 이의가 비워진다`() {
+    fun `내용이 바뀐 판정으로 갱신하면 이의가 비워지고 흔적이 남는다`() {
         val item = openItem()
-        item.appeal("성분 설명입니다.", now)
+        item.appeal("성분 설명입니다.", now, OLD_CONTENT)
 
-        item.refresh("연어 건사료 2kg", now.plusHours(1))
+        item.refresh("연어 건사료 2kg", now.plusHours(1), NEW_CONTENT)
 
-        // 내용이 바뀌면 셀러가 적은 사유가 지금 걸린 것을 가리키지 않는다. 비워서 재접수를 연다
+        // 고친 뒤의 사유는 지금 걸린 것을 가리키지 않는다. 비워서 재접수를 연다
         assertNull(item.appealedAt)
         assertNull(item.appealReason)
+        // 비웠다는 흔적이 없으면 셀러 응답이 "접수한 적 없음"과 "무효가 됨"을 같은 모양으로 낸다
+        assertTrue(item.appealCleared())
+    }
+
+    @Test
+    fun `같은 내용에 판정이 또 와도 이의는 남는다`() {
+        val item = openItem()
+        item.appeal("성분 설명입니다.", now, OLD_CONTENT)
+
+        item.refresh("연어 건사료 2kg", now.plusHours(1), OLD_CONTENT)
+
+        // 재검수 기한 만료나 반려 상품의 재판정은 셀러가 한 일이 없다. 거기서 지우면
+        // 모델 장애가 곧 "제출한 이의를 아무도 못 보는 상태"가 된다
+        assertEquals(now, item.appealedAt)
+        assertEquals("성분 설명입니다.", item.appealReason)
+        assertFalse(item.appealCleared())
+    }
+
+    @Test
+    fun `지문을 모르는 이의는 갱신으로 비워진다`() {
+        val item = openItem()
+        item.appeal("성분 설명입니다.", now, null)
+
+        item.refresh("연어 건사료 2kg", now.plusHours(1), NEW_CONTENT)
+
+        // 무엇에 대한 이의인지 모르면 지금 걸린 것을 가리킨다고 볼 근거가 없다
+        assertNull(item.appealedAt)
     }
 
     private fun openItem(): ProductReviewQueueItem = ProductReviewQueueItem.openForProduct(1L, 2L, "연어 건사료 2kg", now)
+
+    private companion object {
+        const val OLD_CONTENT = "a"
+        const val NEW_CONTENT = "b"
+    }
 }

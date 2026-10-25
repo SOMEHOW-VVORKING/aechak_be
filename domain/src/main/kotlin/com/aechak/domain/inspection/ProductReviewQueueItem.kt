@@ -31,9 +31,14 @@ import java.time.LocalDateTime
 @Entity
 @Table(
     name = "product_review_queue_items",
-    // 셀러별 열린 이의 건수(폭주 상한의 분모)를 세는 경로. 마이그레이션과 같은 이름으로 선언해
-    // ddl-auto 환경(테스트)과 Flyway 환경의 조회 계획이 갈리지 않게 함
-    indexes = [Index(name = "ix_product_review_queue_items_owner", columnList = "owner_id, status")],
+    // 마이그레이션의 인덱스를 같은 이름·같은 칼럼 순서로 모두 선언함. 한쪽만 두면 ddl-auto로
+    // 스키마를 만드는 테스트·로컬만 인덱스 없이 돌아 조회 계획이 환경 간에 갈린다 —
+    // 어드민 목록(status 등호 + blinded_at 정렬)이 한쪽에서는 파일소트가 된다
+    indexes = [
+        Index(name = "ix_product_review_queue_items_target", columnList = "target_type, target_id, status"),
+        Index(name = "ix_product_review_queue_items_status", columnList = "status, blinded_at"),
+        Index(name = "ix_product_review_queue_items_owner", columnList = "owner_id, status"),
+    ],
 )
 class ProductReviewQueueItem protected constructor(
     @Enumerated(EnumType.STRING)
@@ -83,6 +88,17 @@ class ProductReviewQueueItem protected constructor(
         protected set
 
     /**
+     * 이의를 접수한 시점의 내용 지문. 그 이의가 **무엇에 대한 것인지**임.
+     *
+     * 두 가지를 이 한 칼럼으로 든다. 새 판정이 왔을 때 이의를 비울지 가르는 축이고([refresh]),
+     * 비운 뒤에는 "이의가 있었고 무효가 됐다"는 흔적이다([appealCleared]). 흔적이 없으면
+     * 셀러 응답이 "접수한 적 없음"과 "접수했지만 무효가 됨"을 같은 모양으로 내려보낸다.
+     */
+    @Column(length = CONTENT_HASH_MAX)
+    var appealedContentHash: String? = null
+        protected set
+
+    /**
      * 행이 닫힌 시각. 기각 쿨다운의 기준임.
      *
      * [BaseEntity]의 수정 시각으로 대신하지 않음 — "닫힌 행에는 더 쓰지 않는다"는 지금의 사실에만
@@ -93,20 +109,34 @@ class ProductReviewQueueItem protected constructor(
 
     fun isPending(): Boolean = status == ReviewQueueStatus.PENDING_REVIEW
 
+    /** 이의가 접수됐다가 내용이 바뀌어 무효가 된 행인가 */
+    fun appealCleared(): Boolean = appealedAt == null && appealedContentHash != null
+
     /**
      * 열린 행에 새 판정이 또 왔을 때. 행을 새로 만들지 않고 시각과 상품명만 갱신함.
      *
-     * 이의는 함께 비움. 내용이 바뀌면 셀러가 적은 사유가 지금 걸린 것을 가리키지 않아서,
-     * 그대로 두면 관리자는 "셀러가 A에 억울하다 했는데 지금 걸린 것은 B"를 보고 셀러는
+     * 이의는 **내용이 바뀌었을 때만** 비움. 바뀌면 셀러가 적은 사유가 지금 걸린 것을 가리키지
+     * 않아서, 그대로 두면 관리자는 "셀러가 A에 억울하다 했는데 지금 걸린 것은 B"를 보고 셀러는
      * 재접수도 막혀 할 수 있는 것이 없어짐. 비우면 재접수가 열리고 셀러 상한의 정원도 비워짐.
+     *
+     * 반대로 내용이 그대로인 판정으로 비우면 안 됨. 같은 내용에 판정이 또 오는 길이 둘 있음 —
+     * 재검수가 기한을 넘겨 미판정으로 닫히는 경우와, 관리자가 반려한 상품에 판정이 또 오는
+     * 경우(그 상품은 어떤 판정이 와도 관리자가 다시 봐야 해서 매번 이 메서드로 들어옴)다.
+     * 둘 다 셀러가 한 일이 없는데 거기서 지우면 모델 장애가 곧 "제출한 이의를 아무도 못 보는
+     * 상태"가 됨. 지문을 모르는 이의([appealedContentHash]가 비었음)는 가릴 근거가 없어 비움.
+     *
+     * 비울 때 [appealedContentHash]는 남겨 둠. 그것이 "이의가 있었고 무효가 됐다"는 흔적임.
      */
     fun refresh(
         targetName: String?,
         blindedAt: LocalDateTime,
+        contentHash: String?,
     ) {
         requirePending()
         this.targetName = targetName
         this.blindedAt = blindedAt
+        if (appealedAt == null || appealedContentHash == contentHash) return
+
         appealReason = null
         appealedAt = null
     }
@@ -120,12 +150,14 @@ class ProductReviewQueueItem protected constructor(
     fun appeal(
         reason: String,
         now: LocalDateTime,
+        contentHash: String?,
     ) {
         requirePending()
         require(reason.isNotBlank()) { "이의 사유가 비어 있음" }
         check(appealedAt == null) { "이미 이의가 걸린 행임. id=$id" }
         appealReason = reason
         appealedAt = now
+        appealedContentHash = contentHash
     }
 
     fun approve(now: LocalDateTime) {
@@ -162,6 +194,7 @@ class ProductReviewQueueItem protected constructor(
 
     companion object {
         const val TARGET_NAME_MAX = 255
+        const val CONTENT_HASH_MAX = 64
         const val REJECT_REASON_MAX = 500
         const val APPEAL_REASON_MAX = 500
 

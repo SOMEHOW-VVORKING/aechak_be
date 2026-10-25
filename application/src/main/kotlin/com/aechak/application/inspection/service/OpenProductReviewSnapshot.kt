@@ -16,12 +16,20 @@ data class OpenProductReviewSnapshot(
     /** null이면 이의가 걸리지 않은 행 */
     val appealedAt: LocalDateTime?,
     val appealReason: String?,
+    /**
+     * 이의를 접수했는데 내용이 바뀌어 무효가 된 행인가.
+     *
+     * [appealedAt]만 내려보내면 "접수한 적 없음"과 "접수했지만 무효가 됨"이 셀러에게 같은
+     * 모양으로 나가 접수가 실패한 것과 구별되지 않는다.
+     */
+    val appealCleared: Boolean,
 ) {
     companion object {
         fun from(item: ProductReviewQueueItem): OpenProductReviewSnapshot =
             OpenProductReviewSnapshot(
                 appealedAt = item.appealedAt,
                 appealReason = item.appealReason,
+                appealCleared = item.appealCleared(),
             )
     }
 }
