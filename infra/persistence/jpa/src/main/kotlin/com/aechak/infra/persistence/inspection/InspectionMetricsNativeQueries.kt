@@ -5,6 +5,7 @@ import com.aechak.application.inspection.port.view.InspectionBacklogCounts
 import com.aechak.application.inspection.port.view.InspectionCoverageCounts
 import com.aechak.application.inspection.port.view.InspectionFunnelCounts
 import com.aechak.application.inspection.port.view.InspectionStageCost
+import com.aechak.message.inspection.ContentVerdictMessage
 import jakarta.persistence.EntityManager
 import jakarta.persistence.Query
 import org.springframework.stereotype.Component
@@ -253,7 +254,7 @@ class InspectionMetricsNativeQueries(
      * 가용성이 아니라 조립 상태를 재게 된다.
      */
     private fun funnelFlags(window: InspectionMetricsWindow): String {
-        val model = "f.perspective IN ('ALL', 'DISPLAY_ADS', 'CONDUCT_TRADE')"
+        val model = "f.perspective IN ($MODEL_PERSPECTIVE_LIST)"
         val notDispatched = "'$TRIAGE_CLEAR', '$LLM_DISABLED', '$WAIT_LIMIT_EXCEEDED'"
         return """
             SELECT i.id       AS id,
@@ -322,8 +323,21 @@ class InspectionMetricsNativeQueries(
         /** 단일 판정·비평·수정 문구가 함께 쓰는 관점 값 */
         private const val OVERLOADED_PERSPECTIVE = "ALL"
 
+        /**
+         * 모델이 내용을 읽고 결과를 내는 관점 목록 — 계약 클래스의 집합에서 만든다.
+         *
+         * 리터럴로 적지 않는다. 게이트가 증거로 받아들이는 관점 집합이 늘어나는 날(비평·수정
+         * 문구 관점을 더하는 순서가 이미 예정돼 있다) 여기 사본이 따라가지 않으면, 게이트는
+         * 그 행을 증거로 받는데 지표는 같은 건을 "모델이 보지 않았다"로 세고 3단 검출율의
+         * 분모도 조용히 줄어든다. 양쪽 수트는 녹색이다.
+         *
+         * 관점 기록 칼럼이 도메인 열거의 이름을 담고 계약 열거와 이름이 1:1이라 이름으로 쓴다.
+         */
+        private val MODEL_PERSPECTIVE_LIST =
+            ContentVerdictMessage.MODEL_PERSPECTIVES.joinToString(", ") { "'${it.name}'" }
+
         // 관점 기록의 사유 어휘. AI 레포·기한 정리와의 약속 문자열이라 값으로 비교한다.
-        private const val TRIAGE_CLEAR = "TRIAGE_CLEAR"
+        private val TRIAGE_CLEAR = ContentVerdictMessage.TRIAGE_SKIP_REASON
         private const val LLM_DISABLED = "LLM_DISABLED"
         private const val RULE_HIT = "RULE_HIT"
 

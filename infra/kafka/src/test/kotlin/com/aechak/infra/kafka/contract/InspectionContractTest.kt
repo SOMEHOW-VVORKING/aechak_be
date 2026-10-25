@@ -1,5 +1,6 @@
 package com.aechak.infra.kafka.contract
 
+import com.aechak.domain.inspection.enums.InspectionPerspectiveKind
 import com.aechak.infra.kafka.config.MessagingJacksonConfig
 import com.aechak.message.Envelope
 import com.aechak.message.inspection.ContentVerdictMessage
@@ -184,6 +185,24 @@ class InspectionContractTest {
             mapper.readTree(mapper.writeValueAsString(readBack)).propertyNames().toSet(),
             "계약 클래스가 표본과 어긋나면 표본만 고쳐 둔 것이다",
         )
+    }
+
+    /**
+     * 모델 관점 집합의 이름이 도메인 열거에도 그대로 있는지 본다.
+     *
+     * 지표 집계의 SQL이 모델 관점 목록을 이 집합의 **이름**으로 만들고, 관점 기록 칼럼에는
+     * 도메인 열거의 이름이 들어간다. 두 열거의 이름이 어긋나는 순간 게이트는 그 행을 증거로
+     * 받는데 지표는 같은 건을 "모델이 보지 않았다"로 세고, 3단 검출율의 분모도 조용히 줄어든다.
+     */
+    @Test
+    fun `모델 관점의 이름이 도메인 열거에 그대로 있다`() {
+        ContentVerdictMessage.MODEL_PERSPECTIVES.forEach { perspective ->
+            assertEquals(
+                perspective.name,
+                InspectionPerspectiveKind.valueOf(perspective.name).name,
+                "계약 열거의 관점 이름이 도메인 열거에 없으면 지표의 SQL이 그 행을 모델 관점으로 세지 않는다",
+            )
+        }
     }
 
     /**
