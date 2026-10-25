@@ -241,8 +241,7 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
     }
 
     private String publicIdOf(long target) {
-        return tx.execute(txStatus -> em.createQuery(
-                        "select p.publicId from Product p where p.id = :id", String.class)
+        return tx.execute(txStatus -> em.createQuery("select p.publicId from Product p where p.id = :id", String.class)
                 .setParameter("id", target)
                 .getSingleResult());
     }
