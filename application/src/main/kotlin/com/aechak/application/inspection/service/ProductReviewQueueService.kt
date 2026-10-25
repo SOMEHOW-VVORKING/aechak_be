@@ -38,6 +38,9 @@ class ProductReviewQueueService(
      *
      * [modelVerified]가 false인 통과는 관리자가 봐야 하는 쪽으로 간다. 증거 없는 통과로 열린
      * 행을 닫으면 사람이 봐야 할 상품이 조용히 큐에서 사라진다.
+     *
+     * 큐 등재는 노출 게이트 스위치를 보지 않는다. 상품이 없을 때만 null이 와서 돌아간다 —
+     * 스위치가 등재까지 끄면 꺼진 환경에 사람이 볼 목록이 영구히 비고 이의 자격도 안 열린다.
      */
     fun applyJudgment(
         productId: Long,

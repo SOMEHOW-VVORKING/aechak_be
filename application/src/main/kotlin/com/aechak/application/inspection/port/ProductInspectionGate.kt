@@ -13,7 +13,11 @@ import com.aechak.domain.inspection.enums.InspectionJudgment
  */
 interface ProductInspectionGate {
     /**
-     * 노출 게이트 스위치가 꺼졌거나 상품이 없으면 null
+     * 상품이 없으면 null
+     *
+     * 노출 게이트 스위치는 **상태 전이만** 끈다. 돌려주는 판단(관리자가 봐야 하는가)은 끄지
+     * 않는다 — 큐 등재가 스위치에 묶이면 꺼진 환경에 열린 행이 영구히 없고, 그러면 관리자
+     * 결정과 셀러 이의가 둘 다 자격을 얻지 못한다.
      *
      * [modelVerified]는 통과 판정을 뒷받침하는 증거가 있는지다. 통과라고 말해 놓고 그 통과를
      * 뒷받침하는 관점이 하나도 없는 판정은 받아들이면 아무도 보지 않은 상품이 노출된다.
