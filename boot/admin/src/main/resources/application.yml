@@ -76,8 +76,9 @@ aechak:
 inspection:
   metrics:
     window-hours: 24
-    # 손익분기 승급률. 정본은 AI 레포 측정 하네스의 BREAKEVEN_PROMOTION_RATE 다.
+    # 손익분기 승급률. 정본은 AI 레포 측정 하네스이고, 레포 안의 사본은 InspectionTriageCostModel 하나다.
     # 45.7%·88%는 폐기된 계산이다 — 낮은 값을 쓰면 아직 이득인 구간에서 "선별을 끄라"는 거짓 경보가 난다.
+    # 기본값이 없으므로 이 키를 지우면 부팅이 실패한다. api 쪽과 같은 값이어야 한다.
     promotion-breakeven-rate: 0.620
     backlog-warn-count: 50
     backlog-warn-age-minutes: 1440

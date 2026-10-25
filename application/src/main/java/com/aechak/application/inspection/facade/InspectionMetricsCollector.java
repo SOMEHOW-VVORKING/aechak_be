@@ -21,8 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>한 스냅샷의 집계를 전부 한 트랜잭션에서 읽는다. 갈라 읽으면 그 사이에 판정이 적혀 퍼널의
  * 분모와 비용의 분모가 다른 시점을 보게 된다.
  *
- * <p>임계·손익분기값은 전부 설정이다. 손익분기 승급률의 정본은 AI 레포의 측정 하네스이고, 그
- * 값이 코드에 박히면 전제가 바뀐 뒤에도 옛 기준으로 경보한다.
+ * <p>임계·손익분기값은 전부 설정이다. 손익분기 승급률은 기본값을 두지 않는다 — 설정이 빠지면
+ * 부팅에서 터져야 한다. 기본값을 두면 설정 누락이 조용히 옛 기준으로 경보하고, 그 리터럴이
+ * {@link com.aechak.application.inspection.usecase.InspectionTriageCostModel}과 어긋날 수 있는
+ * 또 한 자리 사본이 된다.
  */
 @Component
 public class InspectionMetricsCollector {
@@ -34,7 +36,9 @@ public class InspectionMetricsCollector {
 
     public InspectionMetricsCollector(
             InspectionMetricsQueryPort metricsQueryPort,
-            @Value("${inspection.metrics.promotion-breakeven-rate:0.620}") double promotionBreakevenRate,
+            // 기본값을 두지 않는다. 두면 설정 누락이 조용히 옛 기준으로 경보하는 상태가 되고,
+            // 그 리터럴 자체가 손익분기값의 또 한 자리 사본이 된다.
+            @Value("${inspection.metrics.promotion-breakeven-rate}") double promotionBreakevenRate,
             @Value("${inspection.metrics.backlog-warn-count:50}") long backlogWarnCount,
             @Value("${inspection.metrics.backlog-warn-age-minutes:1440}") long backlogWarnAgeMinutes) {
         this.metricsQueryPort = metricsQueryPort;

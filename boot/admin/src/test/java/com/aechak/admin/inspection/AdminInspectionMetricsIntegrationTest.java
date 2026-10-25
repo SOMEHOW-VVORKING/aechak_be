@@ -394,9 +394,8 @@ class AdminInspectionMetricsIntegrationTest extends InspectionMetricsTestBase {
     void 한_시간보다_짧은_창도_길이를_읽을_수_있다() throws Exception {
         LocalDateTime now = LocalDateTime.now().withNano(0);
 
-        mockMvc.perform(bearer(get(BASE)
-                        .param("from", now.minusMinutes(30).toString())
-                        .param("to", now.toString())))
+        mockMvc.perform(bearer(
+                        get(BASE).param("from", now.minusMinutes(30).toString()).param("to", now.toString())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.window.windowHours").value(0))
                 .andExpect(jsonPath("$.data.window.windowMinutes").value(30));
