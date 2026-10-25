@@ -149,3 +149,23 @@ aechak:
     aes-keys:
       1: ${PII_AES_KEY_V1}   # base64 32바이트
     hmac-key: ${PII_HMAC_KEY} # 검색용 base64 32바이트 해시 키. AES 키와 분리해 관리한다.
+
+# AI 검수 운영 지표. 환경별로 갈라 두지 않는다 — 어드민 화면과 api 주기 로그가 같은 기준으로
+# 경보해야 하므로, 두 실행 모듈이 프로파일과 무관하게 같은 값을 읽는 쪽을 택했다.
+inspection:
+  metrics:
+    window-hours: 24
+    # 손익분기 승급률. 정본은 AI 레포 측정 하네스의 BREAKEVEN_PROMOTION_RATE 다.
+    # 선별 1회 1400microUSD / Sonnet 2관점 3680microUSD 에서 1 - 1400/3680 = 0.6196 이 나온다.
+    # 이 값 위로 가면 선별이 비용을 줄이는 장치가 아니라 더하는 장치다. 어드민 쪽과 같은 값이어야 한다.
+    promotion-breakeven-rate: 0.620
+    # 임계 둘. 건수만 보면 하루 한 건씩 쌓이는 큐가 임계에 닿지 않고,
+    # 시간만 보면 사람이 오래된 것부터 치우는 동안 뒤에 쌓이는 양이 안 보인다.
+    backlog-warn-count: 50
+    backlog-warn-age-minutes: 1440
+    # 창 폭 상한. 스냅샷의 창이 옵셔널이라 상한이 없으면 10년 창 요청 하나로 전수 스캔이 된다
+    max-window-days: 92
+    snapshot-cache-seconds: 60
+    # 주기 로그. 조회만 두면 아무도 열어 보지 않을 때 쌓인 것이 드러나지 않는다
+    log-enabled: true
+    log-interval-ms: 600000

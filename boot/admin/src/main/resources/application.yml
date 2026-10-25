@@ -70,3 +70,16 @@ aechak:
     aes-keys:
       1: ${PII_AES_KEY_V1}
     hmac-key: ${PII_HMAC_KEY}
+
+# AI 검수 운영 지표. api 쪽 application.yml과 같은 값이어야 한다 — 한쪽만 고치면 화면과
+# 주기 로그가 다른 기준으로 경보한다. 주기 로그는 api가 찍고 어드민은 조회만 한다.
+inspection:
+  metrics:
+    window-hours: 24
+    # 손익분기 승급률. 정본은 AI 레포 측정 하네스의 BREAKEVEN_PROMOTION_RATE 다.
+    # 45.7%·88%는 폐기된 계산이다 — 낮은 값을 쓰면 아직 이득인 구간에서 "선별을 끄라"는 거짓 경보가 난다.
+    promotion-breakeven-rate: 0.620
+    backlog-warn-count: 50
+    backlog-warn-age-minutes: 1440
+    max-window-days: 92
+    snapshot-cache-seconds: 60
