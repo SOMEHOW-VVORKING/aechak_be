@@ -67,7 +67,8 @@ class InspectionMetricsSchedule(
         val cost = snapshot.cost()
         val backlog = snapshot.backlog()
         return listOf(
-            "창=${snapshot.window().windowHours()}시간",
+            // 분으로 적는다. 시간은 절삭이라 한 시간보다 짧은 창이 "창=0시간"으로 찍힌다
+            "창=${snapshot.window().windowMinutes()}분",
             "설정=${funnel.settledCount()}건(통과율=${rate(snapshot.judgment().passRate())}" +
                 " 미분류=${funnel.unclassifiedCount()} 만료표식=${funnel.expiredMarkerCount()})",
             "탈출=" + funnel.exits().joinToString(",") { "${it.label()}:${it.count()}" },

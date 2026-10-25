@@ -369,6 +369,37 @@ class AdminInspectionMetricsIntegrationTest extends InspectionMetricsTestBase {
                         get(BASE).param("from", now.minusDays(200).toString()).param("to", now.toString())))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value(40506));
+
+        // 상한을 일 단위로 절삭해 비교하면 여기가 통과한다 — 92일 23시간 59분이 92로 계산되어
+        // 실효 상한이 93일에 1초 못 미치는 값이 되고, 상한을 둔 이유가 하루치 느슨해진다.
+        mockMvc.perform(bearer(get(BASE)
+                        .param(
+                                "from",
+                                now.minusDays(92)
+                                        .minusHours(23)
+                                        .minusMinutes(59)
+                                        .toString())
+                        .param("to", now.toString())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value(40506));
+    }
+
+    /**
+     * 창 길이를 분으로도 싣는다.
+     *
+     * <p>시간은 절삭이라 한 시간보다 짧은 창이 0으로 나간다. 그 값만 보면 30분 창과 창이 없는
+     * 상태가 같은 글자가 되고, 주기 로그도 "창=0시간"으로 찍힌다.
+     */
+    @Test
+    void 한_시간보다_짧은_창도_길이를_읽을_수_있다() throws Exception {
+        LocalDateTime now = LocalDateTime.now().withNano(0);
+
+        mockMvc.perform(bearer(get(BASE)
+                        .param("from", now.minusMinutes(30).toString())
+                        .param("to", now.toString())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.window.windowHours").value(0))
+                .andExpect(jsonPath("$.data.window.windowMinutes").value(30));
     }
 
     /**

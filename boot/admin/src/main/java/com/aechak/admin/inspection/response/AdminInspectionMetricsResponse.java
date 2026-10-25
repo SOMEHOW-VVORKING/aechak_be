@@ -40,11 +40,13 @@ public record AdminInspectionMetricsResponse(
         Cost cost,
         Backlog backlog) {
 
+    /** {@code windowHours}는 절삭이라 한 시간보다 짧은 창에서 0이다. 복원은 {@code windowMinutes}로 한다 */
     public record Window(
             LocalDateTime from,
             LocalDateTime to,
             LocalDateTime measuredAt,
             int windowHours,
+            long windowMinutes,
             String policyVersion,
             String targetType,
             Map<String, Long> promptVersions) {}
@@ -152,6 +154,7 @@ public record AdminInspectionMetricsResponse(
                 window.to(),
                 window.measuredAt(),
                 window.windowHours(),
+                window.windowMinutes(),
                 window.policyVersion(),
                 window.targetType() == null ? null : window.targetType().name(),
                 window.promptVersions());

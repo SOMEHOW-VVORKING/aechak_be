@@ -24,8 +24,18 @@ public record InspectionMetricsWindow(
         return new InspectionMetricsWindow(from, to, null, null);
     }
 
-    /** 창 길이(시간). 응답이 창을 사람이 읽을 수 있는 단위로 함께 적는다 */
+    /**
+     * 창 길이(시간). 응답이 창을 사람이 읽을 수 있는 단위로 함께 적는다.
+     *
+     * <p>절삭이다. 한 시간보다 짧은 창은 0이 되므로 {@link #minutes()}를 함께 싣는다 — 이 값만
+     * 보면 30분 창과 창이 없는 상태가 같은 글자가 된다.
+     */
     public int hours() {
         return (int) Math.max(0, Duration.between(from, to).toHours());
+    }
+
+    /** 창 길이(분). 시간으로 절삭되는 창을 읽는 쪽이 복원할 수 있는 축이다 */
+    public long minutes() {
+        return Math.max(0, Duration.between(from, to).toMinutes());
     }
 }

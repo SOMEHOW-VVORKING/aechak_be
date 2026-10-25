@@ -35,12 +35,18 @@ import java.util.Map;
 public record InspectionMetricsResult(
         Window window, List<Alarm> alarms, Funnel funnel, Judgment judgment, Coverage coverage, Cost cost, Backlog backlog) {
 
-    /** 집계 창과 쪼갠 축. 프롬프트 버전 분포가 여기 붙는 이유는 축이 어긋났는지를 드러내려는 것이다 */
+    /**
+     * 집계 창과 쪼갠 축. 프롬프트 버전 분포가 여기 붙는 이유는 축이 어긋났는지를 드러내려는 것이다.
+     *
+     * <p>{@code windowHours}는 절삭이라 한 시간보다 짧은 창에서 0이 된다. {@code windowMinutes}를
+     * 함께 싣는다 — 시간만 보면 30분 창과 창이 없는 상태가 같은 글자가 된다.
+     */
     public record Window(
             LocalDateTime from,
             LocalDateTime to,
             LocalDateTime measuredAt,
             int windowHours,
+            long windowMinutes,
             String policyVersion,
             InspectionTargetType targetType,
             Map<String, Long> promptVersions) {}
@@ -283,6 +289,7 @@ public record InspectionMetricsResult(
                         window.to(),
                         measuredAt,
                         window.hours(),
+                        window.minutes(),
                         window.policyVersion(),
                         window.targetType(),
                         promptVersions),
