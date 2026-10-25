@@ -78,6 +78,22 @@ class SnsProfileIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `빈 소개글과 공백만 있는 소개글은 두 조회 모두 null이다`() {
+        listOf("emptybio" to "", "blankbio" to "  ").forEach { (nickname, bio) ->
+            val target = onboardedUser(nickname, bio = bio)
+
+            mockMvc
+                .perform(get("/api/v1/sns/users/${target.publicId}"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.bio").value(nullValue()))
+            mockMvc
+                .perform(get("/api/v1/sns/me").header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(target.id)}"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.bio").value(nullValue()))
+        }
+    }
+
+    @Test
     fun `세 수는 통계 행에서 읽는다`() {
         val target = onboardedUser("countowner")
         tx.execute {
