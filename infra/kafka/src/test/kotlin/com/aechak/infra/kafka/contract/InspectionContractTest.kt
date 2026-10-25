@@ -187,8 +187,16 @@ class InspectionContractTest {
     }
 
     /**
-     * 선별 계층이 붙기 전에 계약만 먼저 올리므로, 선별 경로의 모양을 지금 못박아 둔다.
-     * 선별이 통과시킨 건은 모델 판정 관점 행이 아예 없이 PASS로 온다.
+     * 선별이 통과시킨 건의 모양 — **건너뛴 관점마다 사유를 적은 행이 함께 온다.**
+     *
+     * 표본이 그 행들을 빼고 `[RULE/CLEAR, TRIAGE/CLEAR]` 둘로만 적고 있었고, 이 테스트는 그것을
+     * "모델 판정 관점 없이 통과하는 것이 선별의 정상 경로다"로 못박고 있었다. 그런데 같은 레포의
+     * 노출 게이트는 모델 관점 행이 비어 있는 통과를 증거 없는 통과로 다룬다 — 표본대로 보내면
+     * 선별이 통과시킨 전건이 관리자 검토 큐로 간다. 선별이 관점 호출만 아끼고 사람 손은 그만큼 더
+     * 쓰는 상태다. 생산자는 건너뛴 관점마다 사유 행을 남기므로 어긋난 것은 표본과 이 테스트였다.
+     *
+     * 그래서 표본을 게이트 술어에 직접 태운다. 두 테스트가 서로를 부정할 수 있었던 이유가 그
+     * 묶음이 없었던 것이다.
      */
     @Test
     fun `선별이 통과시킨 판정을 역직렬화한다`() {
@@ -196,13 +204,32 @@ class InspectionContractTest {
 
         assertEquals(InspectionVerdict.PASS, verdict.verdict)
         assertEquals(
-            setOf(InspectionPerspective.RULE, InspectionPerspective.TRIAGE),
+            setOf(
+                InspectionPerspective.RULE,
+                InspectionPerspective.TRIAGE,
+                InspectionPerspective.DISPLAY_ADS,
+                InspectionPerspective.CONDUCT_TRADE,
+            ),
             verdict.perspectives.map { it.perspective }.toSet(),
-            "모델 판정 관점 없이 통과하는 것이 선별의 정상 경로다",
+            "건너뛴 모델 관점 행이 빠지면 노출 게이트가 이 통과를 증거 없는 통과로 다룬다",
         )
         assertEquals(
             PerspectiveOutcome.CLEAR,
             verdict.perspectives.first { it.perspective == InspectionPerspective.TRIAGE }.outcome,
+        )
+        verdict.perspectives
+            .filter { it.perspective in ContentVerdictMessage.MODEL_PERSPECTIVES }
+            .forEach { row ->
+                assertEquals(PerspectiveOutcome.UNCHECKED, row.outcome, "선별이 건너뛴 관점은 판정한 것이 아니다")
+                assertEquals(
+                    ContentVerdictMessage.TRIAGE_SKIP_REASON,
+                    row.skipReason,
+                    "사유가 없으면 호출이 죽어 못 본 것과 구분되지 않아 게이트가 통과를 받지 못한다",
+                )
+            }
+        assertTrue(
+            verdict.hasModelEvidence(),
+            "표본이 노출 게이트의 증거 조건을 통과하지 못한다 — 이 모양을 보내면 선별 통과 전건이 관리자 큐로 간다",
         )
         assertEquals(
             InspectionPerspective.TRIAGE,

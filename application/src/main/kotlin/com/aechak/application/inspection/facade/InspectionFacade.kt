@@ -134,7 +134,9 @@ class InspectionFacade(
             now = LocalDateTime.now(),
         )
         inspections.save(inspection)
-        applyGate(inspection, modelVerified = modelVerified(message))
+        // 증거 술어는 계약 클래스가 소유한다. 여기 사본을 두면 계약 표본과 갈라져도
+        // 양쪽 수트가 녹색이고, 실제로 그 상태였다.
+        applyGate(inspection, modelVerified = message.hasModelEvidence())
 
         log.info(
             "판정 적용. inspectionId={} target={}:{} verdict={} violations={} unchecked={}",
@@ -249,29 +251,6 @@ class InspectionFacade(
     }
 
     /**
-     * 통과 판정을 뒷받침하는 증거가 있는지 가른다.
-     *
-     * 모델 관점 가운데 하나라도 결과를 낸 것이 있으면 모델이 그 내용을 읽었다. 위반을 낸
-     * 관점도 증거로 센다 — 여기서 보는 것은 무엇을 찾았는지가 아니라 읽었는지다.
-     *
-     * 선별이 일부러 건너뛴 건은 결과가 없어도 증거로 센다. 선별이 통과로 가른 것은 판단이고
-     * 장애가 아니다. 호출이 죽어 건너뛴 것과 가르는 축은 사유뿐이라, 사유가 규약이 된다.
-     * 모델 관점 행이 아예 없으면 무엇을 봤는지 알 길이 없으므로 증거로 세지 않는다.
-     */
-    private fun modelVerified(message: ContentVerdictMessage): Boolean {
-        val modelRows = message.perspectives.filter { it.perspective in MODEL_PERSPECTIVES }
-        if (modelRows.any { it.outcome != ContractOutcome.UNCHECKED }) return true
-
-        val triageCleared =
-            message.perspectives.any {
-                it.perspective == InspectionPerspective.TRIAGE && it.outcome == ContractOutcome.CLEAR
-            }
-        return triageCleared &&
-            modelRows.isNotEmpty() &&
-            modelRows.all { it.skipReason == TRIAGE_SKIP_REASON }
-    }
-
-    /**
      * 호출마다 한 행씩 적는다.
      *
      * 판정 결과와 함께 들어오지만 판정의 전제는 아니다. 중복 전달에 같은 호출이 다시 와도
@@ -374,16 +353,5 @@ class InspectionFacade(
 
     companion object {
         private const val REASON_SUMMARY_MAX = 500
-
-        /** 모델이 내용을 읽고 결과를 내는 관점. RULE과 TRIAGE는 모델 판정이 아니라 제외한다 */
-        private val MODEL_PERSPECTIVES =
-            setOf(
-                InspectionPerspective.ALL,
-                InspectionPerspective.DISPLAY_ADS,
-                InspectionPerspective.CONDUCT_TRADE,
-            )
-
-        // 선별이 모델 호출을 일부러 건너뛸 때 쓰는 사유. AI 서버와 맞춰 둔 값이다
-        private const val TRIAGE_SKIP_REASON = "TRIAGE_CLEAR"
     }
 }
