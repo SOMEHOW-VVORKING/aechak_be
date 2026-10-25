@@ -124,7 +124,15 @@ public record AdminInspectionMetricsResponse(
 
     public record StageCost(long callCount, long costMicroUsd, long cacheMissCallCount, Long costPerSettledMicroUsd) {}
 
-    /** 적체만 창을 보지 않는다 — 창보다 오래 열려 있는 건이 빠지면 제일 먼저 봐야 하는 건이 사라진다 */
+    /**
+     * 적체만 창을 보지 않는다 — 창보다 오래 열려 있는 건이 빠지면 제일 먼저 봐야 하는 건이 사라진다.
+     *
+     * <p>정책 버전 축도 보지 않는다. 큐 행에 정책 버전이 없어서인데, 그러면 축으로 좁힌 응답에서
+     * 비율은 그 버전만 센 값이고 적체는 전체 큐라 수치의 뜻이 블록마다 다르다. 정책 버전 둘을
+     * 번갈아 조회해 비교하는 관리자는 같은 적체를 두 버전 모두에 귀속시킨다. 그래서 그 사실을
+     * 응답에 싣는다 — {@code windowScoped}·{@code policyScoped} 가 거짓이면 이 블록은 창·버전과
+     * 무관한 "지금 열려 있는 큐"다. 대상 종류는 가린다(상품 큐라 리뷰 축에는 빈 값이 나간다).
+     */
     public record Backlog(
             long openCount,
             LocalDateTime oldestWaitingSince,
@@ -132,7 +140,9 @@ public record AdminInspectionMetricsResponse(
             Map<String, Long> openByLatestJudgment,
             long warnCount,
             long warnAgeMinutes,
-            boolean breached) {}
+            boolean breached,
+            boolean windowScoped,
+            boolean policyScoped) {}
 
     public static AdminInspectionMetricsResponse from(InspectionMetricsResult result) {
         return new AdminInspectionMetricsResponse(
@@ -259,6 +269,9 @@ public record AdminInspectionMetricsResponse(
                 backlog.openByLatestJudgment(),
                 backlog.warnCount(),
                 backlog.warnAgeMinutes(),
-                backlog.breached());
+                backlog.breached(),
+                // 집계가 창도 정책 버전도 보지 않는다. 그쪽을 보게 되는 날 이 둘도 함께 바뀐다.
+                false,
+                false);
     }
 }

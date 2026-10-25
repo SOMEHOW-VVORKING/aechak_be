@@ -442,6 +442,39 @@ class AdminInspectionMetricsIntegrationTest extends InspectionMetricsTestBase {
     }
 
     /**
+     * 대상 종류 축으로 좁히면 그 종류만 센다.
+     *
+     * <p>적체 블록은 축을 가르는 테스트가 있었지만 퍼널·판정의 분모는 없었다. 그러면 창 술어의
+     * {@code target_type} 조건이 빠지거나 뒤집혀도 전 수트가 녹색이고, 관리자는 리뷰 축으로
+     * 좁힌 화면에서 상품 검수까지 센 통과율을 읽는다.
+     */
+    @Test
+    void 대상_종류_축으로_좁히면_그_종류의_검수만_센다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        modelClear(now);
+        long blocked = settledProduct("c".repeat(64), InspectionJudgment.FLAG, now);
+        finding(blocked, InspectionPerspectiveKind.RULE, PerspectiveOutcome.VIOLATION, null);
+
+        mockMvc.perform(bearer(get(BASE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.funnel.settledCount").value(2));
+
+        mockMvc.perform(bearer(get(BASE).param("targetType", "PRODUCT")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.window.targetType").value("PRODUCT"))
+                .andExpect(jsonPath("$.data.funnel.settledCount").value(1))
+                .andExpect(jsonPath("$.data.judgment.settledCount").value(1))
+                .andExpect(jsonPath("$.data.funnel.exits[?(@.exit == 'RULE_BLOCKED')].count")
+                        .value(1));
+
+        mockMvc.perform(bearer(get(BASE).param("targetType", "REVIEW")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.funnel.settledCount").value(1))
+                .andExpect(jsonPath("$.data.funnel.exits[?(@.exit == 'RULE_BLOCKED')].count")
+                        .value(0));
+    }
+
+    /**
      * 정책 버전 축으로 좁히면 그 버전만 센다.
      *
      * <p>정책 버전 리터럴이 백엔드 설정과 AI 정책 문구 두 곳에 손으로 적혀 있어 어긋날 수 있다.
@@ -463,5 +496,30 @@ class AdminInspectionMetricsIntegrationTest extends InspectionMetricsTestBase {
                         .value(2))
                 .andExpect(jsonPath("$.data.window.promptVersions['inspection-v1+policy-v1+triage-v2']")
                         .doesNotExist());
+    }
+
+    /**
+     * 정책 버전 축으로 좁혀도 적체는 전체 큐다.
+     *
+     * <p>큐 행에 정책 버전이 없어서 그렇게 센다. 그러면 한 응답 안에서 비율은 그 버전만 센 값이고
+     * 적체는 전체 큐라 수치의 뜻이 블록마다 다른데, 경보까지 그 전체 큐 수치로 함께 실린다.
+     * 그 사실을 응답이 드러내야 관리자가 적체를 버전에 귀속시키지 않는다.
+     */
+    @Test
+    void 정책_축으로_좁힌_응답의_적체는_전체_큐이고_그_사실을_드러낸다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        modelClear(now, "policy-v1");
+        long itemId = openQueueRow(now.minusMinutes(5));
+        backdateQueueRow(itemId, now.minusMinutes(5_000));
+
+        mockMvc.perform(bearer(get(BASE).param("policyVersion", "policy-v2")))
+                .andExpect(status().isOk())
+                // 그 버전의 검수는 한 건도 없다
+                .andExpect(jsonPath("$.data.funnel.settledCount").value(0))
+                // 그런데 적체와 경보는 전체 큐의 것이 실린다
+                .andExpect(jsonPath("$.data.backlog.openCount").value(1))
+                .andExpect(jsonPath("$.data.alarms[?(@.code == 'BACKLOG_AGE')]").exists())
+                .andExpect(jsonPath("$.data.backlog.policyScoped").value(false))
+                .andExpect(jsonPath("$.data.backlog.windowScoped").value(false));
     }
 }
