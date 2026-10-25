@@ -28,12 +28,13 @@ public class AdminProductInspectionFacade implements AdminProductInspectionUseCa
 
     @Transactional(readOnly = true)
     @Override
-    public PageResult<AdminProductInspectionSummaryResult> list(ReviewQueueStatus status, PageQuery pageQuery) {
+    public PageResult<AdminProductInspectionSummaryResult> list(
+            ReviewQueueStatus status, boolean appealedOnly, PageQuery pageQuery) {
         return new PageResult<>(
-                reviewQueueService.findPage(status, pageQuery).stream()
+                reviewQueueService.findPage(status, appealedOnly, pageQuery).stream()
                         .map(AdminProductInspectionSummaryResult::from)
                         .toList(),
-                reviewQueueService.count(status));
+                reviewQueueService.count(status, appealedOnly));
     }
 
     @Transactional(readOnly = true)
@@ -45,7 +46,7 @@ public class AdminProductInspectionFacade implements AdminProductInspectionUseCa
                 product,
                 fileUseCase.resolveMediaUrl(product.getRepresentativeImageKey()),
                 inspectionQueryService.findLatestProductInspection(productId),
-                inspectionQueryService.findOpenProductReview(productId) != null,
+                inspectionQueryService.findOpenProductReview(productId),
                 reviewQueueService.findRejected(productId).stream()
                         .map(ProductRejectionResult::from)
                         .toList());

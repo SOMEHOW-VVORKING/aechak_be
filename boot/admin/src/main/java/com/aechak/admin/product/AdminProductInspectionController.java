@@ -28,13 +28,15 @@ public class AdminProductInspectionController {
 
     private final AdminProductInspectionUseCase adminProductInspectionUseCase;
 
+    /** appealed=true면 셀러가 이의를 접수한 행만 본다 */
     @GetMapping
     public ResponseEntity<ApiResponse<AdminProductInspectionListResponse>> list(
             @RequestParam(required = false) ReviewQueueStatus status,
+            @RequestParam(defaultValue = "false") boolean appealed,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(ApiResponse.Companion.of(AdminProductInspectionListResponse.from(
-                adminProductInspectionUseCase.list(status, PageQuery.of(page, size)))));
+                adminProductInspectionUseCase.list(status, appealed, PageQuery.of(page, size)))));
     }
 
     @GetMapping("/{productId}")

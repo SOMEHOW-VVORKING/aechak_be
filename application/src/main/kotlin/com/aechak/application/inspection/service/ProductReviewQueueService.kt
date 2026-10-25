@@ -143,10 +143,14 @@ class ProductReviewQueueService(
 
     fun findPage(
         status: ReviewQueueStatus?,
+        appealedOnly: Boolean,
         pageQuery: PageQuery,
-    ): List<ProductReviewQueueRowView> = reviewQueueQuery.findPage(status, pageQuery)
+    ): List<ProductReviewQueueRowView> = reviewQueueQuery.findPage(status, appealedOnly, pageQuery)
 
-    fun count(status: ReviewQueueStatus?): Long = reviewQueueQuery.count(status)
+    fun count(
+        status: ReviewQueueStatus?,
+        appealedOnly: Boolean,
+    ): Long = reviewQueueQuery.count(status, appealedOnly)
 
     fun getReviewTarget(productPublicId: String): ReviewTargetProductView =
         reviewQueueQuery.findReviewTarget(productPublicId)

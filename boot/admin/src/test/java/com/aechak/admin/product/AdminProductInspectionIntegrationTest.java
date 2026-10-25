@@ -127,6 +127,40 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void 목록은_이의가_걸린_행만_걸러_준다() throws Exception {
+        openReview();
+        long appealedProductId = anotherProductWithAppeal();
+
+        // 등재 사유에 값을 더하지 않고 "이의가 걸렸는가"를 별 축으로 뒀다. 이미 AI_DETECTION으로
+        // 열린 행에 이의가 붙는데 그 값을 덮으면 경로별 유입량을 셀 수 없다
+        mockMvc.perform(bearer(get(BASE).param("status", "PENDING_REVIEW").param("appealed", "true")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].productId").value(publicIdOf(appealedProductId)))
+                .andExpect(jsonPath("$.data.items[0].appealedAt").exists());
+
+        // 필터를 걸지 않으면 전체가 와야 한다
+        mockMvc.perform(bearer(get(BASE).param("status", "PENDING_REVIEW")))
+                .andExpect(jsonPath("$.data.totalCount").value(2));
+    }
+
+    @Test
+    void 상세는_셀러가_적은_이의_사유를_함께_돌려준다() throws Exception {
+        tx.executeWithoutResult(txStatus -> {
+            ProductReviewQueueItem item = ProductReviewQueueItem.Companion.openForProduct(
+                    productId, sellerUserId, "연어 건사료 2kg", LocalDateTime.now());
+            item.appeal("치료 효능이 아니라 성분 설명입니다.", LocalDateTime.now());
+            em.persist(item);
+        });
+
+        // 사유를 못 보면 관리자는 무엇에 답하는지 모른 채 승인·반려를 누른다
+        mockMvc.perform(bearer(get(BASE + "/" + publicId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.appealReason").value("치료 효능이 아니라 성분 설명입니다."))
+                .andExpect(jsonPath("$.data.appealedAt").exists());
+    }
+
+    @Test
     void 승인하면_상품이_노출되고_검토_행이_승인으로_닫힌다() throws Exception {
         openReview();
 
@@ -175,6 +209,42 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
         mockMvc.perform(bearer(get(BASE + "/01ARZ3NDEKTSV4RRFFQ69G5FAV")))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value(40000));
+    }
+
+    /** 이의가 걸린 열린 행을 가진 내 상품을 하나 더 심고 그 id를 돌려준다 */
+    private long anotherProductWithAppeal() {
+        return tx.execute(txStatus -> {
+            Category leaf = em.createQuery("select c from Category c where c.depth = 3", Category.class)
+                    .setMaxResults(1)
+                    .getSingleResult();
+            Product product = Product.Companion.register(
+                    leaf,
+                    sellerUserId,
+                    "오리 건사료 1kg",
+                    "우리 아이 주식으로 좋습니다.",
+                    "products/thumbnail2.png",
+                    19_000L,
+                    null,
+                    null,
+                    null,
+                    List.of(),
+                    List.of());
+            product.holdInspection();
+            em.persist(product);
+            em.flush();
+            ProductReviewQueueItem item = ProductReviewQueueItem.Companion.openForProduct(
+                    product.getId(), sellerUserId, "오리 건사료 1kg", LocalDateTime.now());
+            item.appeal("성분 설명입니다.", LocalDateTime.now());
+            em.persist(item);
+            return product.getId();
+        });
+    }
+
+    private String publicIdOf(long target) {
+        return tx.execute(txStatus -> em.createQuery(
+                        "select p.publicId from Product p where p.id = :id", String.class)
+                .setParameter("id", target)
+                .getSingleResult());
     }
 
     private void openReview() {

@@ -35,10 +35,12 @@ class ProductReviewQueueQueryAdapter(
 ) : ProductReviewQueueQueryPort {
     override fun findPage(
         status: ReviewQueueStatus?,
+        appealedOnly: Boolean,
         pageQuery: PageQuery,
     ): List<ProductReviewQueueRowView> =
         baseQuery(
             status,
+            appealedOnly,
             Projections.constructor(
                 ProductReviewQueueRowView::class.java,
                 product.publicId,
@@ -47,13 +49,17 @@ class ProductReviewQueueQueryAdapter(
                 item.status,
                 latestJudgment(),
                 item.blindedAt,
+                item.appealedAt,
             ),
         ).orderBy(item.blindedAt.desc(), item.id.desc())
             .offset(pageQuery.page.toLong() * pageQuery.size)
             .limit(pageQuery.size.toLong())
             .fetch()
 
-    override fun count(status: ReviewQueueStatus?): Long = baseQuery(status, item.count()).fetchOne() ?: 0L
+    override fun count(
+        status: ReviewQueueStatus?,
+        appealedOnly: Boolean,
+    ): Long = baseQuery(status, appealedOnly, item.count()).fetchOne() ?: 0L
 
     override fun findReviewTarget(productPublicId: String): ReviewTargetProductView? {
         val row =
@@ -94,8 +100,14 @@ class ProductReviewQueueQueryAdapter(
         )
     }
 
+    /**
+     * 이의 필터에 전용 인덱스를 두지 않는다. status 등호 + appealed_at 널 아님 + blinded_at 정렬인데,
+     * (status, appealed_at)을 만들면 필터는 받고 정렬을 잃는다(파일소트). 기존 (status, blinded_at)이
+     * 등호와 정렬을 함께 받고 이의는 잔여 필터로 두는 쪽이 지금 행 수에서 이득이다.
+     */
     private fun <T> baseQuery(
         status: ReviewQueueStatus?,
+        appealedOnly: Boolean,
         select: Expression<T>,
     ): JPAQuery<T> =
         queryFactory
@@ -108,6 +120,7 @@ class ProductReviewQueueQueryAdapter(
             .where(
                 item.targetType.eq(InspectionTargetType.PRODUCT),
                 status?.let(item.status::eq),
+                item.appealedAt.isNotNull.takeIf { appealedOnly },
             )
 
     /** 상품의 가장 최근 검수 판정 */

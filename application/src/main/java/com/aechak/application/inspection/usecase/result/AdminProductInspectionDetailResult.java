@@ -2,13 +2,14 @@ package com.aechak.application.inspection.usecase.result;
 
 import com.aechak.application.inspection.port.view.ReviewTargetProductView;
 import com.aechak.application.inspection.service.InspectionSnapshot;
+import com.aechak.application.inspection.service.OpenProductReviewSnapshot;
 import com.aechak.domain.inspection.enums.InspectionJudgment;
 import com.aechak.domain.inspection.enums.InspectionProcessingState;
 import com.aechak.domain.product.product.enums.InspectionStatus;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/** 검수 필드는 상품이 한 번도 검수를 타지 않았으면 전부 null임 */
+/** 검수 필드는 상품이 한 번도 검수를 타지 않았으면 전부 null임. 이의 필드는 열린 행에 이의가 걸렸을 때만 참 */
 public record AdminProductInspectionDetailResult(
         String productId,
         String productName,
@@ -19,6 +20,8 @@ public record AdminProductInspectionDetailResult(
         List<String> optionNames,
         InspectionStatus inspectionStatus,
         boolean awaitingAdminReview,
+        LocalDateTime appealedAt,
+        String appealReason,
         InspectionProcessingState processingState,
         InspectionJudgment judgment,
         String reasonCode,
@@ -32,7 +35,7 @@ public record AdminProductInspectionDetailResult(
             ReviewTargetProductView product,
             String representativeImageUrl,
             InspectionSnapshot snapshot,
-            boolean awaitingAdminReview,
+            OpenProductReviewSnapshot openReview,
             List<ProductRejectionResult> rejections) {
         return new AdminProductInspectionDetailResult(
                 product.getProductPublicId(),
@@ -43,7 +46,9 @@ public record AdminProductInspectionDetailResult(
                 representativeImageUrl,
                 product.getOptionNames(),
                 product.getInspectionStatus(),
-                awaitingAdminReview,
+                openReview != null,
+                openReview == null ? null : openReview.getAppealedAt(),
+                openReview == null ? null : openReview.getAppealReason(),
                 snapshot == null ? null : snapshot.getProcessingState(),
                 snapshot == null ? null : snapshot.getJudgment(),
                 snapshot == null ? null : snapshot.getReasonCode(),
