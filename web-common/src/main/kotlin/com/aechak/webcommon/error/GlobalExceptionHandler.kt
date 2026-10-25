@@ -7,12 +7,15 @@ import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.validation.FieldError
+import org.springframework.web.HttpRequestMethodNotSupportedException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingRequestHeaderException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
+import org.springframework.web.servlet.resource.NoResourceFoundException
 
 /**
  * 웹 계열 실행 모듈(api/admin) 공용 전역 예외 처리기.
@@ -21,6 +24,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  * - @Valid 형식 검증 실패: 90001(INVALID_REQUEST)로 매핑하되 message에 필드별 사유를 싣는다(분기는 errorCode 고정).
  * - 본문 파싱 실패(필수 필드 누락·타입 오류·깨진 JSON): 400. 이 핸들러가 없으면 아래 catch-all이 먼저 잡아
  *   클라이언트 버그가 5xx 알람으로 둔갑한다. 파싱 예외 메시지는 페이로드 조각(PII)을 물고 올 수 있어 싣지 않는다.
+ * - 매핑 없는 경로·메서드: 404·405. 같은 이유로 catch-all보다 먼저 잡는다.
  * - 그 외 Exception: 최후 방어선. 90000으로 감싸고 스택트레이스는 로그로만 남긴다.
  *   (즉석 문자열 코드("C500" 등) 생성 금지 — errorCode 분기 일관성 유지)
  *
@@ -33,15 +37,20 @@ class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleInvalidRequest(e: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
         // 제약의 message가 그대로 실린다 — 기본 메시지는 JVM 로케일 의존이라 제약 쪽에 message 명시가 전제.
+        // 타입 변환 실패는 제약이 아니라 바인딩 단계라 스프링 기본 문구가 오는데, 거기엔 내부 타입명이
+        // 그대로 들어 있다("... required type 'int'"). 그 자리만 필드 이름으로 갈아 끼운다.
         val detail =
             e.bindingResult.fieldErrors
-                .mapNotNull { it.defaultMessage }
-                .joinToString(", ")
+                .mapNotNull { error ->
+                    if (error.isTypeMismatch()) "${error.field}: 잘못된 값입니다." else error.defaultMessage
+                }.joinToString(", ")
                 .ifBlank { CommonErrorCode.INVALID_REQUEST.message }
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse(CommonErrorCode.INVALID_REQUEST.code, detail))
     }
+
+    private fun FieldError.isTypeMismatch(): Boolean = codes?.any { it.startsWith(TYPE_MISMATCH_CODE) } == true
 
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleUnreadableBody(e: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> =
@@ -85,11 +94,33 @@ class GlobalExceptionHandler {
             .body(ErrorResponse.of(CommonErrorCode.CONCURRENT_MODIFICATION))
     }
 
+    // 매핑이 없는 경로. 안 걸러주면 catch-all이 500으로 내보내고 요청마다 error 로그를 쌓는다.
+    @ExceptionHandler(NoResourceFoundException::class)
+    fun handleNoResource(e: NoResourceFoundException): ResponseEntity<ErrorResponse> {
+        log.debug("매핑 없는 경로 {} {}", e.httpMethod, e.resourcePath)
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse.of(CommonErrorCode.ENDPOINT_NOT_FOUND))
+    }
+
+    // 경로는 있는데 그 메서드가 없는 경우. Allow 헤더를 함께 돌려줘야 클라이언트가 무엇을 쓸지 안다.
+    @ExceptionHandler(HttpRequestMethodNotSupportedException::class)
+    fun handleMethodNotAllowed(e: HttpRequestMethodNotSupportedException): ResponseEntity<ErrorResponse> {
+        log.debug("지원하지 않는 메서드 {}", e.method)
+        val builder = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+        e.supportedHttpMethods?.takeIf { it.isNotEmpty() }?.let { builder.allow(*it.toTypedArray()) }
+        return builder.body(ErrorResponse.of(CommonErrorCode.METHOD_NOT_ALLOWED))
+    }
+
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(e: Exception): ResponseEntity<ErrorResponse> {
         log.error("unexpected exception", e)
         return ResponseEntity
             .status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(ErrorResponse.of(CommonErrorCode.INTERNAL_SERVER_ERROR))
+    }
+
+    companion object {
+        private const val TYPE_MISMATCH_CODE = "typeMismatch"
     }
 }
