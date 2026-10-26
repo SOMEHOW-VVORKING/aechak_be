@@ -18,6 +18,7 @@ import com.aechak.domain.user.term.Term
 import com.aechak.domain.user.term.enums.TermType
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserStatus
+import com.aechak.domain.user.user.repository.UserRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -38,6 +39,9 @@ class UserUseCaseTest : IntegrationTestBase() {
 
     @Autowired
     lateinit var fileStorage: FileStorage
+
+    @Autowired
+    lateinit var userRepository: UserRepository
 
     @BeforeEach
     fun resetFakes() = (fileStorage as FakeFileStorage).clearPromoted()
@@ -375,5 +379,21 @@ class UserUseCaseTest : IntegrationTestBase() {
         linkSocial(userId, email = null)
 
         assertNull(userUseCase.getMe(userId).email)
+    }
+
+    @Test
+    fun `소셜로 새로 가입한 사용자는 ULID publicId를 받고 그 값으로 찾을 수 있다`() {
+        val userId = userUseCase.registerFromSocial()
+
+        val publicId =
+            em
+                .createNativeQuery("select public_id from users where id = :id")
+                .setParameter("id", userId)
+                .singleResult as String
+
+        assertTrue(Regex("^[0-9A-HJKMNP-TV-Z]{26}$").matches(publicId), "Crockford 26자: $publicId")
+        assertFalse(Regex("^0[0-9A-F]{25}$").matches(publicId), "DB 기본값이 아닌 엔티티 채번 값: $publicId")
+        assertEquals(userId, tx.execute { userRepository.findByPublicId(publicId)?.id }, "publicId로 찾은 사용자가 가입한 사용자여야 한다")
+        assertNull(tx.execute { userRepository.findByPublicId("NOT-A-PUBLIC-ID") }, "없는 publicId는 null이어야 한다")
     }
 }

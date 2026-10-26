@@ -13,6 +13,7 @@ import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
 import com.aechak.application.user.user.usecase.query.UserSearchQuery
 import com.aechak.application.user.user.usecase.result.UserAuthorResult
 import com.aechak.application.user.user.usecase.result.UserMeResult
+import com.aechak.application.user.user.usecase.result.UserPublicProfileResult
 import com.aechak.application.user.user.usecase.result.UserSummaryResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.error.UserErrorCode
@@ -165,6 +166,24 @@ class UserFacade(
             )
         }
     }
+
+    @Transactional(readOnly = true)
+    override fun findPublicProfile(publicId: String): UserPublicProfileResult? =
+        userService.findByPublicId(publicId)?.let(::toPublicProfile)
+
+    @Transactional(readOnly = true)
+    override fun findPublicProfileById(userId: Long): UserPublicProfileResult? = userService.findById(userId)?.let(::toPublicProfile)
+
+    /** 정지 사용자도 프로필 행이 있으면 그대로 싣는다. */
+    private fun toPublicProfile(user: User): UserPublicProfileResult =
+        UserPublicProfileResult(
+            userId = user.id,
+            publicId = user.publicId,
+            status = user.status,
+            nickname = user.nickname,
+            profileImageUrl = fileUseCase.resolveMediaUrl(user.profileImageKey),
+            bio = user.bio,
+        )
 
     @Transactional
     override fun registerFromSocial(): Long = userService.registerFromSocial().id

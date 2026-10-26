@@ -23,7 +23,7 @@ import javax.sql.DataSource
  * V34(users.public_id 추가와 기존 사용자 채우기)의 안전성 검증.
  * 깨지면 기존 사용자의 공개 ID가 겹치거나 비거나, 재실행이 이미 공유된 값을 바꾼다는 뜻이다.
  *
- * legacy 스키마는 ddl-auto가 만든 V34 직전 users(public_id 없음)에 여러 행을 넣은 뒤 Flyway를 끝까지 적용한다.
+ * legacy 스키마는 엔티티 DDL에서 public_id 컬럼과 uk_users_public_id를 뺀 V34 직전 users에 여러 행을 넣은 뒤 Flyway를 끝까지 적용한다.
  */
 @SpringBootTest(
     properties = [
@@ -197,11 +197,12 @@ class V34UsersPublicIdMigrationIntegrationTest {
         assertThat(ids).describedAs("public_id 형식").allSatisfy { assertThat(it).matches(PUBLIC_ID_FORMAT) }
     }
 
-    /** ddl-auto가 V34 직전까지 만들어 둔 users. 엔티티 선언대로 만들되 FK는 뺀다. */
+    /** ddl-auto가 V34 직전까지 만들어 둔 users. 엔티티 선언대로 만들되 FK와 public_id 컬럼, 인덱스는 뺀다. */
     private fun preV34UsersStatements(): List<String> {
         val statements =
             statementsOf(File(ENTITY_SCHEMA_SCRIPT).readText())
-                .filter { USERS_TABLE.containsMatchIn(it) && !FOREIGN_KEY.containsMatchIn(it) }
+                .filter { USERS_TABLE.containsMatchIn(it) && !FOREIGN_KEY.containsMatchIn(it) && !it.contains(PUBLIC_ID_INDEX) }
+                .map { it.replace(PUBLIC_ID_COLUMN, "") }
                 .distinct() // Hibernate가 실행마다 스크립트 파일에 이어 쓴다
         assertThat(statements).anyMatch { it.startsWith("create table users", ignoreCase = true) }
         assertThat(statements).noneMatch { it.contains("public_id") }
@@ -307,6 +308,8 @@ class V34UsersPublicIdMigrationIntegrationTest {
         private val PUBLIC_ID_FORMAT = Regex("^0[0-9A-F]{25}$").toPattern()
         private val USERS_TABLE = Regex("^(create|alter) table (?:if exists )?`?users`?\\s", RegexOption.IGNORE_CASE)
         private val FOREIGN_KEY = Regex("foreign key", RegexOption.IGNORE_CASE)
+        private const val PUBLIC_ID_INDEX = "uk_users_public_id"
+        private val PUBLIC_ID_COLUMN = Regex(",\\s*public_id [^,]+")
 
         @JvmStatic
         @DynamicPropertySource
