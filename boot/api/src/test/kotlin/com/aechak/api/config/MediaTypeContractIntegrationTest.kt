@@ -1,6 +1,7 @@
 package com.aechak.api.config
 
 import com.aechak.api.support.IntegrationTestBase
+import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -9,6 +10,7 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
@@ -20,12 +22,15 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 
 /**
- * 미디어 타입이 어긋난 요청의 응답을 고정한다.
+ * 미디어 타입이 어긋난 요청의 응답과, 실패 봉투가 Accept에 눌리지 않는 것을 고정한다.
  *
- * 전역 핸들러에 415·406 분기가 없으면 둘 다 클라이언트 실수인데 서버 장애로 둔갑한다.
- * 415 자리는 catch-all이 500으로 내보내고, 406 자리는 catch-all이 만든 500 봉투조차
- * Accept 협상에 걸려 쓸 수 없어 sendError가 /error로 넘기고 — 실 컨테이너에서는 거기서
- * 시큐리티가 401 "로그인이 필요합니다"를 쓴다. 요청 하나에 error 로그가 둘 남는다.
+ * 전부 **인증 없이 열린 경로를 토큰 없이** 때린다 — 토큰을 달면 결함의 핵심 입력이 아니다.
+ * 전역 핸들러에 415·406 분기가 없으면 클라이언트 실수가 서버 장애로 둔갑하고, 실패 봉투가
+ * Content-Type을 못박지 않으면 404·400 같은 평범한 오류조차 Accept 하나로 봉투째 사라진다
+ * (실 컨테이너에서는 ERROR 디스패치의 시큐리티가 그 자리에 401 "로그인이 필요합니다"를 쓴다).
+ *
+ * MockMvc는 컨테이너 ERROR 디스패치를 재현하지 못하므로 401 자체는 여기서 볼 수 없다.
+ * 대신 **MVC가 봉투를 끝까지 썼는지**를 본다 — 그걸 쓰는 한 sendError가 호출되지 않아 401 경로가 열리지 않는다.
  */
 class MediaTypeContractIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -35,7 +40,6 @@ class MediaTypeContractIntegrationTest : IntegrationTestBase() {
     private lateinit var securityFilterChain: FilterChainProxy
 
     private lateinit var mockMvc: MockMvc
-    private lateinit var token: String
 
     @BeforeEach
     fun setUp() {
@@ -44,33 +48,25 @@ class MediaTypeContractIntegrationTest : IntegrationTestBase() {
                 .webAppContextSetup(context)
                 .addFilters<DefaultMockMvcBuilder>(securityFilterChain)
                 .build()
-        token = mintAccessToken(createActiveUser())
     }
 
     @Test
-    @DisplayName("본문 Content-Type을 읽을 수 없으면 415와 90008이고 지원 타입이 Accept 헤더에 실린다")
+    @DisplayName("본문 Content-Type을 읽을 수 없으면 415와 90008이고 지원 타입을 Accept 헤더로 알려준다")
     fun unsupportedContentTypeReturnsUnsupportedMediaType() {
         mockMvc
             .perform(
-                post("/api/v1/auth/refresh")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                post(REFRESH)
                     .contentType(MediaType.TEXT_PLAIN)
                     .content("{}"),
-            ).andExpect(status().isUnsupportedMediaType)
-            .andExpect(jsonPath("$.errorCode").value(90008))
-            .andExpect(header().exists(HttpHeaders.ACCEPT))
+            ).expectEnvelope(415, 90008)
+            // 존재만 보면 값이 엉뚱해도 통과한다 — JSON을 실제로 알려주는지 본다.
+            .andExpect(header().string(HttpHeaders.ACCEPT, containsString(MediaType.APPLICATION_JSON_VALUE)))
     }
 
     @Test
     @DisplayName("Content-Type이 없는 본문 요청도 415다")
     fun missingContentTypeReturnsUnsupportedMediaType() {
-        mockMvc
-            .perform(
-                post("/api/v1/auth/refresh")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
-                    .content("{}"),
-            ).andExpect(status().isUnsupportedMediaType)
-            .andExpect(jsonPath("$.errorCode").value(90008))
+        mockMvc.perform(post(REFRESH).content("{}")).expectEnvelope(415, 90008)
     }
 
     @Test
@@ -79,41 +75,82 @@ class MediaTypeContractIntegrationTest : IntegrationTestBase() {
         val body =
             mockMvc
                 .perform(
-                    post("/api/v1/auth/refresh")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                    post(REFRESH)
                         .contentType(MediaType.TEXT_PLAIN)
                         .content("{}"),
-                ).andReturn()
+                ).expectEnvelope(415, 90008)
+                .andReturn()
                 .response
                 .contentAsString
 
-        assert(!body.contains("com.aechak")) { "패키지명이 응답에 실렸다: $body" }
-        assert(!body.contains("org.springframework")) { "패키지명이 응답에 실렸다: $body" }
-        assert(!body.contains("Content-Type")) { "스프링 기본 문구가 그대로 실렸다: $body" }
+        listOf("com.aechak", "org.springframework", "Content-Type", "text/plain").forEach {
+            assert(!body.contains(it)) { "내부 구현이 응답에 실렸다($it): $body" }
+        }
     }
 
     @Test
     @DisplayName("JSON을 받지 않겠다는 요청은 406과 90009이고 봉투는 JSON으로 나간다")
     fun unacceptableAcceptReturnsNotAcceptable() {
         mockMvc
-            .perform(
-                get("/api/v1/products")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
-                    .accept(MediaType.APPLICATION_XML),
-            ).andExpect(status().isNotAcceptable)
-            // Accept 협상에 맡기면 이 봉투도 쓸 수 없어 /error로 떨어진다 — Content-Type을 못박았는지가 핵심.
-            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-            .andExpect(jsonPath("$.errorCode").value(90009))
+            .perform(get(PRODUCTS).header(HttpHeaders.ACCEPT, MediaType.APPLICATION_XML_VALUE))
+            .expectEnvelope(406, 90009)
     }
 
     @Test
-    @DisplayName("JSON을 받는 정상 요청은 그대로 200이다")
-    fun acceptableRequestStillSucceeds() {
+    @DisplayName("Accept 문법이 깨진 요청도 406 봉투로 나간다")
+    fun unparsableAcceptReturnsNotAcceptable() {
+        mockMvc.perform(get(PRODUCTS).header(HttpHeaders.ACCEPT, "///")).expectEnvelope(406, 90009)
+    }
+
+    @Test
+    @DisplayName("없는 상품의 404 봉투는 Accept가 적대적이어도 그대로 404다")
+    fun notFoundEnvelopeSurvivesHostileAccept() {
+        mockMvc
+            .perform(get("$PRODUCTS/no-such-product").header(HttpHeaders.ACCEPT, MediaType.APPLICATION_XML_VALUE))
+            .expectEnvelope(404, 40000)
+    }
+
+    @Test
+    @DisplayName("파라미터 검증 400 봉투도 Accept가 적대적이어도 그대로 400이다")
+    fun validationEnvelopeSurvivesHostileAccept() {
+        mockMvc
+            .perform(get("$PRODUCTS?size=0").header(HttpHeaders.ACCEPT, MediaType.APPLICATION_XML_VALUE))
+            .expectEnvelope(400, 90001)
+    }
+
+    @Test
+    @DisplayName("Content-Type과 Accept가 동시에 어긋나도 415 봉투가 나간다")
+    fun unsupportedContentTypeSurvivesHostileAccept() {
         mockMvc
             .perform(
-                get("/api/v1/products?size=1")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
-                    .accept(MediaType.APPLICATION_JSON),
-            ).andExpect(status().isOk)
+                post(REFRESH)
+                    .contentType(MediaType.TEXT_PLAIN)
+                    .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_XML_VALUE)
+                    .content("{}"),
+            ).expectEnvelope(415, 90008)
+    }
+
+    @Test
+    @DisplayName("JSON을 받는 정상 요청은 토큰 없이도 그대로 200이다")
+    fun acceptableRequestStillSucceeds() {
+        mockMvc
+            .perform(get("$PRODUCTS?size=1").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+    }
+
+    /** 상태코드·errorCode·JSON Content-Type을 한 번에 본다. Content-Type 단언이 "협상에 맡기지 않았는지"를 고정한다. */
+    private fun ResultActions.expectEnvelope(
+        expectedStatus: Int,
+        expectedErrorCode: Int,
+    ): ResultActions =
+        andExpect(status().`is`(expectedStatus))
+            .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+            .andExpect(jsonPath("$.errorCode").value(expectedErrorCode))
+            .andExpect(jsonPath("$.message").isNotEmpty())
+
+    companion object {
+        private const val REFRESH = "/api/v1/auth/refresh"
+        private const val PRODUCTS = "/api/v1/products"
     }
 }
