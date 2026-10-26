@@ -17,6 +17,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
+import org.springframework.web.multipart.MaxUploadSizeExceededException
+import org.springframework.web.multipart.MultipartException
 
 /**
  * 웹 계열 실행 모듈(api/seller/admin) 공용 전역 예외 처리기.
@@ -26,6 +28,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  * - 본문 파싱 실패(필수 필드 누락·타입 오류·깨진 JSON): 400. 이 핸들러가 없으면 아래 catch-all이 먼저 잡아
  *   클라이언트 버그가 5xx 알람으로 둔갑한다. 파싱 예외 메시지는 페이로드 조각(PII)을 물고 올 수 있어 싣지 않는다.
  * - 미디어 타입 불일치: 415·406. 같은 이유로 catch-all보다 먼저 잡는다.
+ * - 멀티파트 요청 오류: 400·413. 업로드를 받는 엔드포인트가 없어도 도달한다.
  * - 그 외 Exception: 최후 방어선. 90000으로 감싸고 스택트레이스는 로그로만 남긴다.
  *   (즉석 문자열 코드("C500" 등) 생성 금지 — errorCode 분기 일관성 유지)
  *
@@ -126,6 +129,23 @@ class GlobalExceptionHandler {
     fun handleNotAcceptable(e: HttpMediaTypeNotAcceptableException): ResponseEntity<ErrorResponse> {
         log.debug("협상 불가한 Accept — 지원 {}", e.supportedMediaTypes)
         return envelope(HttpStatus.NOT_ACCEPTABLE, ErrorResponse.of(CommonErrorCode.NOT_ACCEPTABLE))
+    }
+
+    /**
+     * 업로드 용량 초과. 업로드를 받는 엔드포인트가 없어도 도달한다 — `DispatcherServlet`이 핸들러를 찾기
+     * 전에 `checkMultipart`를 돌리고, 멀티파트 resolver는 요청 Content-Type만 보고 파싱한다.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException::class)
+    fun handleUploadTooLarge(e: MaxUploadSizeExceededException): ResponseEntity<ErrorResponse> {
+        log.debug("업로드 용량 초과 — 상한 {}bytes", e.maxUploadSize)
+        return envelope(HttpStatus.CONTENT_TOO_LARGE, ErrorResponse.of(CommonErrorCode.PAYLOAD_TOO_LARGE))
+    }
+
+    /** 멀티파트 파싱 실패(boundary 누락·끊긴 본문). 위와 같은 이유로 도달하고, 전부 클라이언트가 만든 요청이다. */
+    @ExceptionHandler(MultipartException::class)
+    fun handleMalformedMultipart(e: MultipartException): ResponseEntity<ErrorResponse> {
+        log.debug("멀티파트 파싱 실패")
+        return envelope(HttpStatus.BAD_REQUEST, ErrorResponse.of(CommonErrorCode.MALFORMED_MULTIPART))
     }
 
     @ExceptionHandler(Exception::class)

@@ -18,6 +18,8 @@ import org.springframework.web.bind.MissingRequestHeaderException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
+import org.springframework.web.multipart.MaxUploadSizeExceededException
+import org.springframework.web.multipart.MultipartException
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import kotlin.test.Test
@@ -48,6 +50,8 @@ class GlobalExceptionHandlerEnvelopeTest {
         assertEnvelope(handler.handleConcurrentModification(OptimisticLockingFailureException("버전 충돌")), 409, 90003)
         assertEnvelope(handler.handleUnsupportedMediaType(unsupportedMediaType()), 415, 90008)
         assertEnvelope(handler.handleNotAcceptable(HttpMediaTypeNotAcceptableException(jsonOnly)), 406, 90009)
+        assertEnvelope(handler.handleMalformedMultipart(MultipartException("boundary 없음")), 400, 90010)
+        assertEnvelope(handler.handleUploadTooLarge(MaxUploadSizeExceededException(MAX_UPLOAD_BYTES)), 413, 90011)
         assertEnvelope(handler.handleUnexpected(IllegalStateException("예상 못한 오류")), 500, 90000)
     }
 
@@ -151,6 +155,7 @@ class GlobalExceptionHandlerEnvelopeTest {
     private fun sampleParameterTarget(header: String) = Unit
 
     companion object {
+        private const val MAX_UPLOAD_BYTES = 1_048_576L
         private const val FIELD_REASON = "size는 1~100 사이여야 합니다."
 
         /** 위 불변식 테스트가 직접 호출해 검증하는 핸들러 전수. */
@@ -159,6 +164,7 @@ class GlobalExceptionHandlerEnvelopeTest {
                 "handleBusiness",
                 "handleConcurrentModification",
                 "handleInvalidRequest",
+                "handleMalformedMultipart",
                 "handleMissingHeader",
                 "handleMissingParameter",
                 "handleNotAcceptable",
@@ -166,6 +172,7 @@ class GlobalExceptionHandlerEnvelopeTest {
                 "handleUnexpected",
                 "handleUnreadableBody",
                 "handleUnsupportedMediaType",
+                "handleUploadTooLarge",
             )
 
         private const val UNCOVERED_HINT =

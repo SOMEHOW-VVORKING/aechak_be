@@ -21,4 +21,8 @@ enum class CommonErrorCode(
     // 90006·90007은 매핑 없는 경로·메서드(404·405)가 선점한다 — 재배정 금지.
     UNSUPPORTED_MEDIA_TYPE(90008, "지원하지 않는 형식입니다.", 415),
     NOT_ACCEPTABLE(90009, "응답할 수 있는 형식이 없습니다.", 406),
+
+    // 멀티파트는 업로드 엔드포인트가 없어도 도달한다 — DispatcherServlet이 핸들러를 찾기 전에 파싱한다.
+    MALFORMED_MULTIPART(90010, "멀티파트 요청을 읽을 수 없습니다.", 400),
+    PAYLOAD_TOO_LARGE(90011, "요청 본문이 너무 큽니다.", 413),
 }
