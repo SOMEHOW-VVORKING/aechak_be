@@ -178,7 +178,7 @@ enum class CommonErrorCode(
 }
 ```
 
-> **위 목록은 뼈대다. 90000번대의 정본은 enum 파일 자체이고, 실제로는 멱등키·미디어 타입 등
+> **위 목록은 뼈대다. 90000번대의 정본은 enum 파일 자체이고, 실제로는 멱등키·미디어 타입·멀티파트 등
 > 여기 없는 코드가 더 있다.** 이 문서를 에러표로 쓰지 말고 코드를 읽는다. 새 코드는 enum 끝에
 > 이어 붙이고 **쓰인 번호는 재배정하지 않는다** — 다른 브랜치가 선점한 번호가 있으면 건너뛴다.
 
@@ -246,6 +246,7 @@ import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -255,10 +256,16 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  *
  * - BusinessException: errorCode.status(int) → HttpStatus 변환. 여기가 유일한 변환 지점.
  * - 미디어 타입 불일치: 415(90008)·406(90009). 안 걸러주면 아래 catch-all이 500으로 내보내고
- *   요청마다 error 로그가 쌓인다. 406은 응답 Content-Type을 JSON으로 못박아야 봉투가 살아난다 —
- *   협상에 맡기면 그 봉투도 쓸 수 없어 sendError가 /error로 넘기고 엉뚱한 401이 나간다.
+ *   요청마다 error 로그가 쌓인다.
+ * - 멀티파트 요청 오류: 400(90010)·413(90011). 업로드를 받는 엔드포인트가 없어도 도달한다 —
+ *   DispatcherServlet이 핸들러를 찾기 전에 요청 Content-Type만 보고 멀티파트를 파싱한다.
  * - 그 외 Exception: 최후 방어선. 90000으로 감싸고 스택트레이스는 로그로만 남긴다.
  *   (즉석 문자열 코드("C500" 등) 생성 금지 — errorCode 분기 일관성 유지)
+ *
+ * 모든 실패 응답은 응답 Content-Type을 application/json으로 못박는 한 지점(envelope)을 지난다.
+ * 협상에 맡기면 협상이 깨지는 요청(Accept: application/xml, 문법이 깨진 Accept)에서 봉투를 쓸 수 없어
+ * MVC가 처리를 포기하고, sendError가 띄운 ERROR 디스패치에서 시큐리티가 공개 경로에도 401을 쓴다.
+ * 핸들러를 새로 추가할 때 이 못박기를 빠뜨리면 그 오류만 같은 함정에 빠진다.
  *
  * 실행 모듈에서 컴포넌트 스캔에 포함시켜 활성화한다.
  * @Valid 검증 실패(MethodArgumentNotValidException)는 90001로 매핑한다.
@@ -268,20 +275,23 @@ class GlobalExceptionHandler {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
+    // 실패 봉투를 만드는 유일한 지점 — Content-Type을 못박는 자리다.
+    private fun envelope(status: HttpStatus, body: ErrorResponse): ResponseEntity<ErrorResponse> =
+        ResponseEntity
+            .status(status)
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+
     @ExceptionHandler(BusinessException::class)
     fun handleBusiness(e: BusinessException): ResponseEntity<ErrorResponse> {
         // TODO: 필요 시 warn 레벨 로깅 (traceId는 MDC로 자동 포함)
-        return ResponseEntity
-            .status(HttpStatus.valueOf(e.errorCode.status))
-            .body(ErrorResponse.of(e.errorCode))
+        return envelope(HttpStatus.valueOf(e.errorCode.status), ErrorResponse.of(e.errorCode))
     }
 
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(e: Exception): ResponseEntity<ErrorResponse> {
         log.error("unexpected exception", e)
-        return ResponseEntity
-            .status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(ErrorResponse.of(CommonErrorCode.INTERNAL_SERVER_ERROR))
+        return envelope(HttpStatus.INTERNAL_SERVER_ERROR, ErrorResponse.of(CommonErrorCode.INTERNAL_SERVER_ERROR))
     }
 }
 ```
