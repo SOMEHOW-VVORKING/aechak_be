@@ -178,6 +178,10 @@ enum class CommonErrorCode(
 }
 ```
 
+> **위 목록은 뼈대다. 90000번대의 정본은 enum 파일 자체이고, 실제로는 멱등키·미디어 타입 등
+> 여기 없는 코드가 더 있다.** 이 문서를 에러표로 쓰지 말고 코드를 읽는다. 새 코드는 enum 끝에
+> 이어 붙이고 **쓰인 번호는 재배정하지 않는다** — 다른 브랜치가 선점한 번호가 있으면 건너뛴다.
+
 ---
 
 ## 4. web-common 모듈 코드 템플릿
@@ -250,6 +254,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  * 웹 계열 실행 모듈(api/admin) 공용 전역 예외 처리기.
  *
  * - BusinessException: errorCode.status(int) → HttpStatus 변환. 여기가 유일한 변환 지점.
+ * - 미디어 타입 불일치: 415(90008)·406(90009). 안 걸러주면 아래 catch-all이 500으로 내보내고
+ *   요청마다 error 로그가 쌓인다. 406은 응답 Content-Type을 JSON으로 못박아야 봉투가 살아난다 —
+ *   협상에 맡기면 그 봉투도 쓸 수 없어 sendError가 /error로 넘기고 엉뚱한 401이 나간다.
  * - 그 외 Exception: 최후 방어선. 90000으로 감싸고 스택트레이스는 로그로만 남긴다.
  *   (즉석 문자열 코드("C500" 등) 생성 금지 — errorCode 분기 일관성 유지)
  *
