@@ -17,4 +17,8 @@ enum class CommonErrorCode(
     // 멱등키는 도메인이 아니라 API 공통 메커니즘 — 소비 EP가 늘어도 코드는 하나여야 한다
     INVALID_IDEMPOTENCY_KEY(90004, "멱등키가 올바르지 않습니다.", 400),
     IDEMPOTENCY_KEY_ACCESS_DENIED(90005, "본인의 요청만 재시도할 수 있습니다.", 403),
+
+    // 90006·90007은 매핑 없는 경로·메서드(404·405)가 선점한다 — 재배정 금지.
+    UNSUPPORTED_MEDIA_TYPE(90008, "지원하지 않는 형식입니다.", 415),
+    NOT_ACCEPTABLE(90009, "응답할 수 있는 형식이 없습니다.", 406),
 }
