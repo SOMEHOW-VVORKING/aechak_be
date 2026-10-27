@@ -259,7 +259,7 @@ class SellerReviewIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `이미 답글이 있는 리뷰에 또 등록하면 109201로 거절하고 원래 답글이 남는다`() {
+    fun `이미 답글이 있는 리뷰에 또 등록하면 110201로 거절하고 원래 답글이 남는다`() {
         val productId = persistProduct("자동 급식기 5L", sellerUserId)
         val reviewId = persistReview(productId, rating = 2, orderItemId = 1L)
         writeReply(reviewId, "첫 답글").andExpect(status().isCreated)
@@ -325,8 +325,12 @@ class SellerReviewIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(110000))
         assertEquals(0, replyRowCount(foreignReview))
 
-        editReply(foreignReview, "남의 리뷰 수정").andExpect(jsonPath("$.errorCode").value(110000))
-        deleteReply(foreignReview).andExpect(jsonPath("$.errorCode").value(110000))
+        editReply(foreignReview, "남의 리뷰 수정")
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(110000))
+        deleteReply(foreignReview)
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(110000))
     }
 
     @Test
@@ -383,6 +387,24 @@ class SellerReviewIntegrationTest : IntegrationTestBase() {
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90001))
         assertEquals(0, replyRowCount(blank))
+    }
+
+    @Test
+    fun `길이는 공백을 포함한 원문으로 재고 저장은 잘라낸 값으로 한다`() {
+        val productId = persistProduct("자동 급식기 5L", sellerUserId)
+        val padded = persistReview(productId, rating = 4, orderItemId = 1L)
+        val tooLongRaw = persistReview(productId, rating = 4, orderItemId = 2L)
+
+        // 앞뒤 공백은 저장 전에 잘려 나간다 — 500자 한도는 잘라낸 값이 아니라 원문에 걸린다
+        writeReply(padded, "  실측값으로 고쳤어요.  ").andExpect(status().isCreated)
+        assertEquals("실측값으로 고쳤어요.", replyContentOf(padded))
+
+        // 그래서 "공백 + 500자"는 잘라내면 500자여도 원문이 501자라 거절한다. 공백으로 한도를
+        // 늘릴 수 없게 하는 쪽을 골랐고, OpenAPI 설명도 이 기준으로 적었다.
+        writeReply(tooLongRaw, " " + "가".repeat(ReviewReply.CONTENT_MAX))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+        assertEquals(0, replyRowCount(tooLongRaw))
     }
 
     @Test
