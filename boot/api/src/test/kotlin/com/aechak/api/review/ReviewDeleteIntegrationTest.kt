@@ -141,8 +141,9 @@ class ReviewDeleteIntegrationTest : KafkaIntegrationTestBase() {
 
     @Test
     fun `이미 지워진 리뷰로 다시 들어와도 남아 있던 답글을 정리한다`() {
-        // 답글 등록과 리뷰 삭제가 같은 순간에 들어오면(둘 다 reviews 행을 먼저 잠그므로 한쪽이 기다린다)
-        // 드물게 삭제가 먼저 끝난 뒤 답글이 들어올 수 있다. 그 행을 다음 삭제 요청이 걷어내는지 본다.
+        // 지금의 등록·삭제 경로는 reviews 행을 같은 순서로 잠가 고아 답글을 만들지 않는다. 이 분기는
+        // 그래도 남은 행을 걷어내는 자리다 — 잠금을 넣기 전에 생긴 행, 서비스를 거치지 않은 수동 보정,
+        // 앞으로 추가될 다른 경로가 만든 행이 대상이다. 여기서는 그 상태를 직접 만들어 정리를 확인한다.
         val ownerId = createActiveUser()
         val reviewId =
             tx.execute {

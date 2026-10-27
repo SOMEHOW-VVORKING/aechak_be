@@ -78,6 +78,21 @@ class ReviewReplyServiceTest {
     }
 
     @Test
+    fun `수정·삭제는 답글도 잠금 읽기로 집는다`() {
+        // 스냅샷으로 읽으면 같은 답글을 지우는 요청과 겹쳤을 때 이미 사라진 행을 들고 와
+        // 0행 UPDATE/DELETE 가 되고, 계약의 404/110200 대신 409/90003 이 나간다.
+        val existing = ReviewReply.write(reviewId, sellerId, "원래 답글")
+        val replies = RecordingReplyRepository(existing)
+        val service = ReviewReplyService(replies, FixedReviewRepository(visibleReview()), AlwaysOwnedPort())
+
+        service.edit(command())
+        service.delete(sellerId, reviewId)
+
+        assertEquals(2, replies.lockedReads)
+        assertEquals(0, replies.snapshotReads, "수정·삭제가 스냅샷 조회로 대상을 집었다")
+    }
+
+    @Test
     fun `선조회에서 걸리면 잠금 읽기까지 가지 않는다`() {
         // 없는 id로 곧장 FOR UPDATE를 걸면 PK 갭 잠금이 생겨 남의 리뷰 작성까지 막는다
         val reviews = FixedReviewRepository(visibleReview())
@@ -124,8 +139,14 @@ class ReviewReplyServiceTest {
     ) : ReviewReplyRepository {
         val saved = mutableListOf<ReviewReply>()
         val deleted = mutableListOf<ReviewReply>()
+        var snapshotReads = 0
+            private set
+        var lockedReads = 0
+            private set
 
-        override fun findByReviewId(reviewId: Long): ReviewReply? = existing
+        override fun findByReviewId(reviewId: Long): ReviewReply? = existing.also { snapshotReads++ }
+
+        override fun findByReviewIdForUpdate(reviewId: Long): ReviewReply? = existing.also { lockedReads++ }
 
         override fun save(reviewReply: ReviewReply): ReviewReply = reviewReply.also { saved += it }
 

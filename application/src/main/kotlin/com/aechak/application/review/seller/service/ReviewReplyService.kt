@@ -52,7 +52,11 @@ class ReviewReplyService(
         sellerId: Long,
     ): ReviewReply {
         requireOwnedVisibleReview(reviewId, sellerId)
-        return reviewReplyRepository.findByReviewId(reviewId)
+        // 답글도 잠금 읽기로 집는다. 스냅샷으로 읽으면 같은 답글을 지우는 요청과 겹쳤을 때
+        // 이미 사라진 행을 들고 와 0행 UPDATE/DELETE 가 되고, 계약의 404/110200 대신
+        // 409/90003(낙관적 락 충돌)이 나간다. 없는 키를 잠그면 UNIQUE 인덱스에 갭 잠금이
+        // 생기지만 곧바로 404 로 롤백하므로 머무는 시간이 없다.
+        return reviewReplyRepository.findByReviewIdForUpdate(reviewId)
             ?: throw BusinessException(ReviewErrorCode.REVIEW_REPLY_NOT_FOUND)
     }
 
