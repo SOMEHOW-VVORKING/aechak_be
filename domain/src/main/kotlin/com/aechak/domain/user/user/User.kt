@@ -99,9 +99,16 @@ class User protected constructor() : AggregateRoot() {
     val profile: UserProfile
         get() = _profile ?: throw IllegalStateException("프로필이 로딩/생성되지 않았습니다 (userId=$id)")
 
-    /** 온보딩 전·탈퇴 계정은 프로필이 없다 — 없을 수 있음을 아는 호출부가 쓴다. */
-    val profileOrNull: UserProfile?
-        get() = _profile
+    /**
+     * 프로필이 없는 것이 정상인 상태(온보딩 전·탈퇴)면 null, 그 외는 [profile]이 답한다.
+     * 있어야 할 프로필이 없으면 숨기지 않고 터뜨린다 — 조용히 null을 내리면 손상된 계정이 정상으로 보인다.
+     */
+    val profileIfExpected: UserProfile?
+        get() =
+            when (effectiveStatus()) {
+                UserStatus.PENDING_ONBOARDING, UserStatus.WITHDRAWN -> null
+                else -> profile
+            }
 
     /** 프로필 이미지 key */
     val profileImageKey: String?

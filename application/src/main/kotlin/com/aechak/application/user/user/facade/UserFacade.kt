@@ -58,7 +58,8 @@ class UserFacade(
     override fun setNickname(command: SetNicknameCommand): UserMeResult {
         try {
             tx.execute {
-                val user = userService.getById(command.userId)
+                // 상태를 ACTIVE로 전이하는 경로라 잠그고 읽는다 — 제재가 끼어들면 그 제재가 사라진다
+                val user = userService.getByIdForUpdate(command.userId)
                 when (user.effectiveStatus()) {
                     UserStatus.PENDING_ONBOARDING -> {
                         completeOnboarding(user, command.nickname)
@@ -119,7 +120,7 @@ class UserFacade(
             }
         try {
             tx.execute {
-                userService.getById(command.userId).updateProfile(command.nickname, command.bio, finalKey)
+                userService.getByIdForUpdate(command.userId).updateProfile(command.nickname, command.bio, finalKey)
             }
         } catch (e: DataIntegrityViolationException) {
             translateNicknameConflict(e)
@@ -136,12 +137,12 @@ class UserFacade(
     override fun getMe(userId: Long): UserMeResult = loadMe(userId)
 
     /**
-     * 프로필 계열은 프로필이 있을 때만 — 온보딩 전·탈퇴 계정은 null이다.
+     * 프로필 계열은 프로필이 없는 것이 정상인 상태(온보딩 전·탈퇴)에서만 null이고, 그 외 누락은 500으로 드러난다.
      * 저장 상태가 아니라 유효 상태를 내린다: 기간이 지난 임시 정지는 접근이 열려 있어 화면도 정상으로 읽어야 한다.
      */
     private fun loadMe(userId: Long): UserMeResult {
         val user = userService.getById(userId)
-        val profile = user.profileOrNull
+        val profile = user.profileIfExpected
         return UserMeResult(
             status = user.effectiveStatus(),
             nickname = profile?.nickname,

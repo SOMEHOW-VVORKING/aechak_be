@@ -134,20 +134,43 @@ class V45UserSanctionsMigrationIntegrationTest {
     fun `V45를 다시 실행해도 스키마가 그대로고 세션 설정이 남지 않는다`() {
         val before = columnsOf(freshUrl, SANCTIONS_TABLE) to indexesOf(freshUrl, SANCTIONS_TABLE)
 
-        val timeouts =
-            connect(freshUrl).use { conn ->
-                conn.createStatement().use { statement ->
-                    val original = scalar(statement.executeQuery("SELECT @@SESSION.lock_wait_timeout"))
-                    statementsOf(migrationSql()).forEach { statement.execute(it) }
-                    original to scalar(statement.executeQuery("SELECT @@SESSION.lock_wait_timeout"))
-                }
-            }
+        val timeouts = reapplyMigration(freshUrl)
 
         assertThat(columnsOf(freshUrl, SANCTIONS_TABLE) to indexesOf(freshUrl, SANCTIONS_TABLE))
             .describedAs("재실행 뒤 스키마")
             .isEqualTo(before)
         assertThat(timeouts.second).describedAs("재실행 뒤 lock_wait_timeout").isEqualTo(timeouts.first)
     }
+
+    /** freshUrl에는 users가 없어 두 조건부 ALTER가 건너뛰어진다 — users 쪽 재실행은 적용을 마친 DB에서 봐야 한다. */
+    @Test
+    fun `users에 이미 적용된 DB에 V45를 다시 실행해도 컬럼과 기존 데이터가 그대로다`() {
+        val before = columnsOf(legacyUrl, "users")
+        val rowsBefore =
+            query(legacyUrl, "SELECT public_id, status, sanction_until FROM users ORDER BY id") { rs ->
+                "${rs.getString(1)}/${rs.getString(2)}/${rs.getString(3)}"
+            }
+
+        val timeouts = reapplyMigration(legacyUrl)
+
+        assertThat(columnsOf(legacyUrl, "users")).describedAs("재실행 뒤 users 컬럼").isEqualTo(before)
+        assertThat(
+            query(legacyUrl, "SELECT public_id, status, sanction_until FROM users ORDER BY id") { rs ->
+                "${rs.getString(1)}/${rs.getString(2)}/${rs.getString(3)}"
+            },
+        ).describedAs("재실행 뒤 기존 행").isEqualTo(rowsBefore)
+        assertThat(timeouts.second).describedAs("재실행 뒤 lock_wait_timeout").isEqualTo(timeouts.first)
+    }
+
+    /** 세션 변수와 PREPARE를 쓰는 마이그레이션이라 한 커넥션에서 돌리고 전후 lock_wait_timeout을 함께 돌려준다. */
+    private fun reapplyMigration(url: String): Pair<Long, Long> =
+        connect(url).use { conn ->
+            conn.createStatement().use { statement ->
+                val original = scalar(statement.executeQuery("SELECT @@SESSION.lock_wait_timeout"))
+                statementsOf(migrationSql()).forEach { statement.execute(it) }
+                original to scalar(statement.executeQuery("SELECT @@SESSION.lock_wait_timeout"))
+            }
+        }
 
     /** Hibernate는 enum을 네이티브 enum으로, 마이그레이션은 VARCHAR로 만든다 — 길이가 모든 값을 담는지까지 본다. */
     private fun assertTypeCompatible(
