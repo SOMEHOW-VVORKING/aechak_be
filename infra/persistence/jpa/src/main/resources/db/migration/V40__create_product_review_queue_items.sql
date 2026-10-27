@@ -1,5 +1,6 @@
 -- 관리자 검토 큐. AI가 문제를 찾았거나 판단하지 못한 상품이 들어옴.
--- 번호 주의: V35~V38은 열린 SNS PR들이 쓰고 있어 그 다음 번호를 받음.
+-- 번호 주의: develop이 V35까지이고 V36~V38은 열린 SNS PR, V39는 앞선 검수 스키마 PR이 점유해
+-- 그 다음 번호를 받음. 머지 순서를 맞추려고 V39에서 옮겨 왔고 본문은 그대로다.
 -- 상품마다 열린 행(PENDING_REVIEW)은 하나뿐이고 DB 제약이 아니라 상품 행 잠금으로 지킴. 닫힌 행은 이력으로 남김.
 -- detection_stage, reason_summary, locked_admin_id, locked_at은 ERD 컬럼이지만 아직 채우는 경로가 없음.
 -- target_id, owner_id는 값 참조라 FK 없음. created_at/updated_at은 BaseEntity가 채움.
