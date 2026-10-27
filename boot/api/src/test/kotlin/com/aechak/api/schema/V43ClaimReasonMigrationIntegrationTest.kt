@@ -41,8 +41,11 @@ class V43ClaimReasonMigrationIntegrationTest {
     @BeforeAll
     fun migrateLegacyRows() {
         migratedUrl = recreateDatabase("v43_legacy")
-        // V34 가 이 브랜치에서 V43 바로 앞의 실제 마이그레이션이다. 없는 번호를 target 으로 주면
-        // Flyway 가 "No migration with a target version .. could be found" 로 거부한다.
+        // target 은 그 트리에 실제로 있는 버전이어야 한다 — 없는 번호를 주면 Flyway 가
+        // "No migration with a target version .. could be found" 로 거부한다. 그리고 legacy 행을
+        // 심기 전에 claims 가 이미 있어야 한다(V27 이 만든다). V34 는 두 조건을 모두 만족한다.
+        // 뒤이은 migrate() 가 남은 번호와 V43 을 함께 적용하는데 그 사이 번호들은 claims 를
+        // 건드리지 않으므로, 앞선 PR 들이 머지된 뒤에도 이 테스트가 보는 것은 그대로다.
         migrateUpTo(migratedUrl, "34")
         execute(migratedUrl, legacyClaimRows() + canonicalClaimRows())
         flyway(migratedUrl).migrate()
