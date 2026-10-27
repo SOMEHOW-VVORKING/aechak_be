@@ -38,6 +38,10 @@ import com.aechak.message.inspection.PerspectiveOutcome as ContractOutcome
  * 그래서 가르는 두 축을 각각 단언한다. **노출 전이는 스위치를 본다** — 꺼져 있으면 AI 판정이
  * 구매자에게 보이는 상태를 바꾸지 않는다. **큐 등재와 사람 결정은 스위치를 보지 않는다** —
  * 판정을 쌓아 품질을 보는 단계에서도 사람이 볼 목록은 차야 하고, 사람이 내린 결정은 반영된다.
+ *
+ * 꺼진 환경을 따로 보는 이유가 하나 더 있다. 스위치가 꺼져 있으면 AI 위반 판정이 상품을 반려하지
+ * 못해 "이전 상태가 반려"에 기대는 방어가 전부 무효가 된다. 그 자리에서 무엇이 여전히 서는지를
+ * 여기서 고정한다.
  */
 @TestPropertySource(properties = ["inspection.gate-enabled=false"])
 class InspectionGateDisabledIntegrationTest : IntegrationTestBase() {
@@ -97,17 +101,6 @@ class InspectionGateDisabledIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `스위치가 꺼져도 미판정은 관리자 검토 큐에 오른다`() {
-        val inspection = givenQueued()
-        backdateRequestedAt(inspection.id, minutes = 60)
-
-        assertEquals(1, inspectionUseCase.expireOverdue())
-
-        assertEquals(listOf(ReviewQueueStatus.PENDING_REVIEW), queueStatuses(), "아무도 보지 않은 상품은 사람이 봐야 한다")
-        assertEquals(InspectionStatus.APPROVED, storedStatus())
-    }
-
-    @Test
     fun `스위치가 꺼져도 관리자가 반려해 이의 자격을 열 수 있다`() {
         applyVerdict(givenQueued(), InspectionVerdict.FLAG)
 
@@ -131,26 +124,28 @@ class InspectionGateDisabledIntegrationTest : IntegrationTestBase() {
     }
 
     /**
-     * 스위치가 꺼진 환경에서 PENDING인 상품의 증거 있는 통과.
+     * 꺼진 환경에서도 증거 없는 통과는 열린 행을 닫지 않는다.
      *
-     * 이 상태는 사람 경로가 없다 — 상품은 구매자에게 안 보이고(PENDING), 열린 행이 없어 관리자
-     * 승인도 셀러 이의도 받지 않는다. 그래도 지금 모양을 그대로 고정한다. 스위치를 켠 적이 없는
-     * 환경에서는 신규 상품이 APPROVED로 남아 PENDING이 생기지 않고, 켰다 끈 구간이나 수동 변경이
-     * 그 상태를 만든다. 푸는 쪽은 스위치를 끌 때 PENDING을 APPROVED로 되돌리는 경로이지 통과
-     * 판정을 큐에 올리는 것이 아니다 — 올리면 꺼진 환경의 큐가 통과 건으로 찬다.
+     * 증거 없는 통과를 "되살림 전이를 막는다"로 푸는 쪽을 버린 이유가 여기다. 꺼진 환경에서는
+     * 위반 판정이 상품을 반려하지 못해 "이전 상태가 반려"가 성립하지 않고, 그 상태에서 모델이
+     * 아무것도 읽지 못한 통과가 사람이 볼 행을 조용히 닫는다. 배포된 전 환경이 꺼짐이라
+     * 그 구멍이 곧 현재가 된다. 게이트 분기에서 빼면 꺼진 환경에서도 행이 살아 있다.
      */
     @Test
-    fun `스위치가 꺼지면 통과 판정이 노출을 바꾸지 않는다`() {
-        changeStatus(InspectionStatus.PENDING)
+    fun `스위치가 꺼져도 증거 없는 통과는 열린 행을 닫지 않는다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
 
-        applyVerdict(givenQueued(), InspectionVerdict.PASS)
+        applyVerdict(
+            givenQueued(hash = "b".repeat(64)),
+            InspectionVerdict.PASS,
+            perspectives = listOf(PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.UNCHECKED, "RATE_LIMITED")),
+        )
 
         assertEquals(
-            InspectionStatus.PENDING,
-            storedStatus(),
-            "스위치의 뜻이 '구매자 화면에 반영'이다. 꺼진 환경에서 노출이 움직이면 검증 없이 켠 것과 같다",
+            listOf(ReviewQueueStatus.PENDING_REVIEW),
+            queueStatuses(),
+            "모델이 아무것도 읽지 못한 통과가 사람이 볼 행을 닫으면 아무도 그 상품을 보지 않는다",
         )
-        assertEquals(emptyList<ReviewQueueStatus>(), queueStatuses(), "증거 있는 통과는 관리자가 결정할 것이 없다")
     }
 
     private fun storedStatus(): InspectionStatus =
@@ -171,20 +166,20 @@ class InspectionGateDisabledIntegrationTest : IntegrationTestBase() {
                 .resultList
         }!!
 
-    private fun changeStatus(status: InspectionStatus) {
-        tx.execute {
-            em
-                .createQuery("update Product p set p.inspectionStatus = :status where p.id = :id")
-                .setParameter("status", status)
-                .setParameter("id", productId)
-                .executeUpdate()
-        }
-    }
-
     private fun applyVerdict(
         inspection: ContentInspection,
         verdict: InspectionVerdict,
-    ) = inspectionUseCase.applyVerdict(ApplyVerdictCommand(verdictFor(inspection, verdict)))
+        perspectives: List<PerspectiveResult> = defaultPerspectives(verdict),
+    ) = inspectionUseCase.applyVerdict(ApplyVerdictCommand(verdictFor(inspection, verdict, perspectives)))
+
+    /** 판정을 뒷받침하는 관점 결과. 어긋나게 실으면 증거를 보는 분기가 우연히 통과한다 */
+    private fun defaultPerspectives(verdict: InspectionVerdict): List<PerspectiveResult> =
+        listOf(
+            PerspectiveResult(
+                InspectionPerspective.DISPLAY_ADS,
+                if (verdict == InspectionVerdict.FLAG) ContractOutcome.VIOLATION else ContractOutcome.CLEAR,
+            ),
+        )
 
     private fun givenQueued(hash: String = "c".repeat(64)): ContentInspection =
         tx.execute {
@@ -199,24 +194,10 @@ class InspectionGateDisabledIntegrationTest : IntegrationTestBase() {
             )
         }!!
 
-    /** 요청 시각을 과거로 밀어 기한 경과를 만든다. 테스트가 10분을 기다릴 수는 없다 */
-    private fun backdateRequestedAt(
-        inspectionId: Long,
-        minutes: Long,
-    ) {
-        tx.execute {
-            em
-                .createNativeQuery(
-                    "update content_inspections set requested_at = DATE_SUB(NOW(6), INTERVAL :m MINUTE) where id = :id",
-                ).setParameter("m", minutes)
-                .setParameter("id", inspectionId)
-                .executeUpdate()
-        }
-    }
-
     private fun verdictFor(
         inspection: ContentInspection,
         verdict: InspectionVerdict,
+        perspectives: List<PerspectiveResult>,
     ): ContentVerdictMessage =
         ContentVerdictMessage(
             inspectionId = inspection.id,
@@ -224,13 +205,7 @@ class InspectionGateDisabledIntegrationTest : IntegrationTestBase() {
             targetRef = inspection.targetRef,
             contentHash = inspection.contentHash,
             verdict = verdict,
-            perspectives =
-                listOf(
-                    PerspectiveResult(
-                        InspectionPerspective.DISPLAY_ADS,
-                        if (verdict == InspectionVerdict.FLAG) ContractOutcome.VIOLATION else ContractOutcome.CLEAR,
-                    ),
-                ),
+            perspectives = perspectives,
             violations = emptyList(),
             sellerNotice = null,
             calls = emptyList(),
