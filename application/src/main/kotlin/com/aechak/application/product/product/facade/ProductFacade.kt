@@ -42,6 +42,7 @@ import com.aechak.domain.product.product.Product
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
@@ -61,6 +62,24 @@ class ProductFacade(
 ) : ProductUseCase,
     SellerProductUseCase {
     private val tx = TransactionTemplate(transactionManager)
+
+    /**
+     * 상품 수정의 쓰기 경계. **READ COMMITTED로 연다.**
+     *
+     * 이 트랜잭션 안에서 이의 무효화가 돈다. 무효화는 간극 잠금을 피하려고 열린 검토 행을
+     * 비잠금으로 먼저 걸러내는데, 기본 격리(REPEATABLE READ)에서는 읽기 뷰가 상품 조회(이
+     * 트랜잭션의 첫 일관 읽기)에서 고정된다. 그러면 그 사이 커밋된 이의가 보이지 않아 무효화가
+     * 조용히 건너뛰고, 셀러가 적은 사유는 이미 없어진 내용을 가리키는데 재접수는 중복으로
+     * 막혀 셀러가 할 수 있는 것이 없어진다. 셀러가 이의를 넣고 곧바로 문구를 고치면(두 탭·
+     * 중복 클릭·재시도) 두 요청이 겹친다.
+     *
+     * 행이 없을 때 이어지는 잠금 조회가 비유일 인덱스의 꼬리 간극을 쥐지 않는 것도 같은 선언이
+     * 떠받친다. 그 간극이 판정 경로의 첫 큐 등재 INSERT 자리다.
+     */
+    private val writeTx =
+        TransactionTemplate(transactionManager).apply {
+            isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
+        }
 
     @Transactional(readOnly = true)
     override fun getProducts(
@@ -114,14 +133,16 @@ class ProductFacade(
         val version =
             tx.execute {
                 val saved = productService.register(stored, options)
-                requestInspection(
-                    productId = saved.product.id,
-                    versionNo = saved.versionNo,
-                    categoryId = stored.categoryId,
-                    productName = stored.productName,
-                    description = stored.description,
-                    optionNames = optionNamesOf(options),
-                    representativeImageKey = saved.product.representativeImageKey,
+                inspectionRequestService.requestProduct(
+                    productInspectionCommand(
+                        productId = saved.product.id,
+                        versionNo = saved.versionNo,
+                        categoryId = stored.categoryId,
+                        productName = stored.productName,
+                        description = stored.description,
+                        optionNames = optionNamesOf(options),
+                        representativeImageKey = saved.product.representativeImageKey,
+                    ),
                 )
                 saved
             }!!
@@ -143,13 +164,13 @@ class ProductFacade(
         val storedKeys = tx.execute { productService.validateAndGetCurrentImageKeys(command) }!!
         val stored = promoteNewImageKeys(command, storedKeys)
         val outcome =
-            tx.execute {
+            writeTx.execute {
                 val updated = productService.updateProduct(stored)
                 // 버전이 남지 않았다는 것은 수정 가능한 필드가 하나도 달라지지 않았다는 뜻이다.
                 // 판정 대상 본문도 그대로이므로 요청하지 않는다.
                 updated.versionNo?.let { versionNo ->
-                    val contentHash =
-                        requestInspection(
+                    val inspectionCommand =
+                        productInspectionCommand(
                             productId = updated.product.id,
                             versionNo = versionNo,
                             categoryId = stored.categoryId,
@@ -158,10 +179,19 @@ class ProductFacade(
                             optionNames = productService.optionNamesOf(updated.product.id),
                             representativeImageKey = updated.product.representativeImageKey,
                         )
+                    inspectionRequestService.requestProduct(inspectionCommand)
                     // 내용이 바뀌면 그 전 내용에 걸린 이의는 지금 걸린 것을 가리키지 않는다.
                     // 판정이 와서 비워 주기를 기다릴 수 없다 — 판정이 실패하거나 기한을 넘기면
                     // 그 판정은 검토 큐에 닿지 않아 비울 기회가 아예 없다.
-                    contentHash?.let { inspectionAppealService.invalidateOnContentChange(updated.product.id, it) }
+                    //
+                    // 지문을 요청 발행에서 받지 않고 따로 계산한다. 발행 스위치가 꺼지면 요청은
+                    // null을 돌려주는데, 장애 때 요청을 끄는 것이 그 스위치의 용도라서 그 시점에
+                    // 열린 이의가 이미 있다. 거기에 무효화까지 묶이면 셀러가 문구를 고쳐도
+                    // 이의가 그대로 남는다.
+                    inspectionAppealService.invalidateOnContentChange(
+                        updated.product.id,
+                        inspectionRequestService.productContentHash(inspectionCommand),
+                    )
                 }
                 updated
             }!!
@@ -254,16 +284,15 @@ class ProductFacade(
     }
 
     /**
-     * 검수 요청을 발행한다. 호출부의 트랜잭션 안에서 돌아야 한다.
+     * 검수 요청 한 건. 판정에 필요한 본문을 여기서 다 모은다.
      *
-     * 판정에 필요한 본문을 여기서 다 모아 보낸다. AI 서버가 우리를 되묻지 않게 하려는 것이고,
-     * 그래야 역방향 호출 인증과 보안그룹 인바운드가 필요 없어진다.
+     * AI 서버가 우리를 되묻지 않게 하려는 것이고, 그래야 역방향 호출 인증과 보안그룹 인바운드가
+     * 필요 없어진다.
      *
-     * 돌려주는 것은 그 검수가 가리키는 **내용 지문**이다. 요청 발행 스위치가 꺼져 있으면 null.
-     * 지문을 여기서 받아 쓰는 이유는 한 수정에서 두 번 계산하지 않기 위함이고, 같은 값이라야
-     * 이의 무효화가 판정이 들고 올 지문과 같은 축에서 비교된다.
+     * 커맨드로 돌려주는 이유는 내용 지문이다. 수정 경로는 요청 발행과 이의 무효화 둘에 같은
+     * 본문이 필요한데, 발행 스위치가 꺼지면 요청이 null을 돌려줘서 그쪽에서 지문을 받을 수 없다.
      */
-    private fun requestInspection(
+    private fun productInspectionCommand(
         productId: Long,
         versionNo: Int,
         categoryId: Long,
@@ -271,19 +300,16 @@ class ProductFacade(
         description: String?,
         optionNames: List<String>,
         representativeImageKey: String?,
-    ): String? =
-        inspectionRequestService
-            .requestProduct(
-                RequestProductInspectionCommand(
-                    productId = productId,
-                    productVersionNo = versionNo,
-                    productName = productName,
-                    description = description,
-                    optionNames = optionNames,
-                    categoryPath = productService.categoryPathOf(categoryId),
-                    imageUrls = listOfNotNull(fileUseCase.resolveMediaUrl(representativeImageKey)),
-                ),
-            )?.contentHash
+    ): RequestProductInspectionCommand =
+        RequestProductInspectionCommand(
+            productId = productId,
+            productVersionNo = versionNo,
+            productName = productName,
+            description = description,
+            optionNames = optionNames,
+            categoryPath = productService.categoryPathOf(categoryId),
+            imageUrls = listOfNotNull(fileUseCase.resolveMediaUrl(representativeImageKey)),
+        )
 
     /** 그룹명과 값 이름을 함께 넘긴다. 옵션 이름에도 금칙 표현이 들어온다 */
     private fun optionNamesOf(options: ProductOptions): List<String> =
