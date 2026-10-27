@@ -6,7 +6,9 @@ import com.aechak.application.inspection.usecase.command.ApplyVerdictCommand
 import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.domain.inspection.ContentInspection
+import com.aechak.domain.inspection.ProductReviewQueueItem
 import com.aechak.domain.inspection.enums.InspectionTargetType
+import com.aechak.domain.inspection.enums.ReviewQueueStatus
 import com.aechak.domain.inspection.repository.ContentInspectionRepository
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
@@ -24,6 +26,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.TestPropertySource
 import java.time.Instant
+import java.time.LocalDateTime
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -38,6 +41,9 @@ import com.aechak.message.inspection.PerspectiveOutcome as ContractOutcome
  *
  * 함께 잡는 것이 하나 더 있다. **판정을 받지 못한 건은 막지 않는다.** 모델이 보지 못한 것을
  * 위반으로 다루면 모델 장애가 그대로 매출 장애가 된다.
+ *
+ * 위반 판정은 상품을 바로 반려하고 관리자 검토 큐에 올린다. 관리자는 그 행에서 오탐을 풀거나
+ * 반려를 확정한다. 관리자가 반려한 상품은 고친 내용이 통과해도 관리자가 다시 본다.
  */
 @TestPropertySource(properties = ["inspection.gate-enabled=true"])
 class InspectionGateIntegrationTest : IntegrationTestBase() {
@@ -50,12 +56,13 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var productUseCase: ProductUseCase
 
+    private var sellerUserId = 0L
     private var productId = 0L
     private lateinit var publicId: String
 
     @BeforeEach
     fun seed() {
-        val sellerUserId = createActiveUser()
+        sellerUserId = createActiveUser()
         tx.execute {
             em.persist(Seller.open(sellerUserId, "애착상회", 0L))
             val root = Category.create(null, Category.ROOT_DEPTH, "강아지", null, 1)
@@ -87,43 +94,48 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `위반 판정이면 구매자 조회에서 사라진다`() {
-        assertTrue(listedByBuyer(), "판정 전에는 보여야 한다 — 등록 직후 숨기는 정책이 아니다")
+    fun `위반 판정이면 반려되어 구매자 조회에서 사라지고 관리자 검토 큐에 오른다`() {
+        assertTrue(listedByBuyer(), "판정 전에는 보여야 한다. 등록 직후 숨기는 정책이 아니다")
         val inspection = givenQueued()
 
-        inspectionUseCase.applyVerdict(ApplyVerdictCommand(verdictFor(inspection, InspectionVerdict.FLAG)))
+        applyVerdict(inspection, InspectionVerdict.FLAG)
 
         assertEquals(InspectionStatus.REJECTED, storedStatus())
         assertFalse(listedByBuyer(), "위반 판정을 받은 상품이 목록에 남아 있으면 게이트가 장식이다")
+        assertEquals(
+            listOf(ReviewQueueStatus.PENDING_REVIEW),
+            queueStatuses(),
+            "행이 없으면 관리자가 오탐을 풀어 줄 길이 없다",
+        )
     }
 
     @Test
-    fun `통과 판정이면 노출이 되돌아온다`() {
-        inspectionUseCase.applyVerdict(
-            ApplyVerdictCommand(verdictFor(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)),
-        )
+    fun `고친 내용이 통과하면 노출이 되돌아오고 큐 행은 관리자 확인 없이 닫힌다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
         assertFalse(listedByBuyer())
 
-        inspectionUseCase.applyVerdict(
-            ApplyVerdictCommand(verdictFor(givenQueued(hash = "b".repeat(64)), InspectionVerdict.PASS)),
-        )
+        applyVerdict(givenQueued(hash = "b".repeat(64)), InspectionVerdict.PASS)
 
         assertEquals(InspectionStatus.APPROVED, storedStatus())
         assertTrue(listedByBuyer(), "되돌리는 경로가 없으면 한 번 걸린 상품을 셀러가 영구히 되살릴 수 없다")
+        assertEquals(
+            listOf(ReviewQueueStatus.SUPERSEDED),
+            queueStatuses(),
+            "고친 내용이 통과했는데 행이 열려 있으면 관리자가 이미 끝난 일을 다시 본다",
+        )
     }
 
     @Test
-    fun `판정 과정이 실패한 건은 노출을 막지 않는다`() {
-        val inspection = givenQueued()
-
-        inspectionUseCase.applyVerdict(ApplyVerdictCommand(verdictFor(inspection, InspectionVerdict.FAILED)))
+    fun `판정 과정이 실패한 건은 노출을 막지 않고 큐에도 올리지 않는다`() {
+        applyVerdict(givenQueued(), InspectionVerdict.FAILED)
 
         assertEquals(InspectionStatus.APPROVED, storedStatus())
         assertTrue(listedByBuyer(), "판정에 실패한 것을 위반으로 다루면 모델 장애가 곧 매출 장애가 된다")
+        assertEquals(emptyList<ReviewQueueStatus>(), queueStatuses(), "숨기지 않은 상품까지 올리면 관리자가 풀 것도 확정할 것도 없는 행을 본다")
     }
 
     @Test
-    fun `기한이 지나 미판정으로 닫힌 건은 노출을 막지 않는다`() {
+    fun `기한이 지나 미판정으로 닫힌 건은 노출을 막지 않고 큐에도 올리지 않는다`() {
         val inspection = givenQueued()
         backdateRequestedAt(inspection.id, minutes = 60)
 
@@ -131,6 +143,53 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
 
         assertEquals(InspectionStatus.APPROVED, storedStatus())
         assertTrue(listedByBuyer(), "아무도 보지 않은 상품을 막으면 외부 지연이 그대로 노출 중단이 된다")
+        assertEquals(emptyList<ReviewQueueStatus>(), queueStatuses())
+    }
+
+    @Test
+    fun `관리자가 반려한 상품은 고친 내용이 통과해도 관리자가 다시 본다`() {
+        changeStatus(InspectionStatus.REJECTED)
+        givenAdminDecisions(ReviewQueueStatus.REJECTED)
+
+        applyVerdict(givenQueued(), InspectionVerdict.PASS)
+
+        assertEquals(InspectionStatus.REJECTED, storedStatus(), "사람이 내린 반려를 AI 통과가 풀면 안 된다")
+        assertEquals(listOf(ReviewQueueStatus.REJECTED, ReviewQueueStatus.PENDING_REVIEW), queueStatuses())
+    }
+
+    @Test
+    fun `예전에 관리자가 반려했어도 마지막 관리자 결정이 승인이면 AI 반려는 통과로 풀린다`() {
+        givenAdminDecisions(ReviewQueueStatus.REJECTED, ReviewQueueStatus.APPROVED)
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
+
+        applyVerdict(givenQueued(hash = "b".repeat(64)), InspectionVerdict.PASS)
+
+        assertEquals(InspectionStatus.APPROVED, storedStatus(), "지난 반려 이력만 보고 묶어 두면 셀러가 고쳐도 관리자 없이는 못 푼다")
+        assertTrue(listedByBuyer())
+    }
+
+    @Test
+    fun `같은 상품에 판정이 또 와도 열린 행은 하나다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
+        applyVerdict(givenQueued(hash = "b".repeat(64)), InspectionVerdict.FLAG)
+
+        assertEquals(
+            listOf(ReviewQueueStatus.PENDING_REVIEW),
+            queueStatuses(),
+            "열린 행이 둘이면 관리자가 같은 상품을 두 번 처리하고 하나는 409로 남는다",
+        )
+    }
+
+    @Test
+    fun `옛 내용의 판정이 늦게 오면 상품과 큐에 반영하지 않는다`() {
+        val older = givenQueued(hash = "a".repeat(64))
+        val newer = givenQueued(hash = "b".repeat(64))
+        applyVerdict(newer, InspectionVerdict.FLAG)
+
+        applyVerdict(older, InspectionVerdict.PASS)
+
+        assertEquals(InspectionStatus.REJECTED, storedStatus(), "고치기 전 문구의 통과가 고친 뒤 문구의 위반을 덮으면 안 된다")
+        assertEquals(listOf(ReviewQueueStatus.PENDING_REVIEW), queueStatuses())
     }
 
     private fun listedByBuyer(): Boolean = productUseCase.getProducts(ProductSearchQuery(), null).items.any { it.productId == publicId }
@@ -142,6 +201,42 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
                 .setParameter("id", productId)
                 .singleResult
         }!!
+
+    private fun applyVerdict(
+        inspection: ContentInspection,
+        verdict: InspectionVerdict,
+    ) = inspectionUseCase.applyVerdict(ApplyVerdictCommand(verdictFor(inspection, verdict)))
+
+    private fun queueStatuses(): List<ReviewQueueStatus> =
+        tx.execute {
+            em
+                .createQuery(
+                    "select q.status from ProductReviewQueueItem q where q.targetId = :id order by q.id",
+                    ReviewQueueStatus::class.java,
+                ).setParameter("id", productId)
+                .resultList
+        }!!
+
+    private fun changeStatus(status: InspectionStatus) {
+        tx.execute {
+            em
+                .createQuery("update Product p set p.inspectionStatus = :status where p.id = :id")
+                .setParameter("status", status)
+                .setParameter("id", productId)
+                .executeUpdate()
+        }
+    }
+
+    /** 관리자가 결정하고 닫은 행을 순서대로 쌓는다 */
+    private fun givenAdminDecisions(vararg decisions: ReviewQueueStatus) {
+        tx.execute {
+            decisions.forEach { decision ->
+                val item = ProductReviewQueueItem.openForProduct(productId, sellerUserId, "연어 건사료 2kg", LocalDateTime.now())
+                if (decision == ReviewQueueStatus.REJECTED) item.reject("치료 효능 표현을 빼 주세요.") else item.approve()
+                em.persist(item)
+            }
+        }
+    }
 
     private fun givenQueued(hash: String = "c".repeat(64)): ContentInspection =
         tx.execute {
