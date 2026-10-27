@@ -3,6 +3,7 @@ package com.aechak.api.review
 import com.aechak.api.support.KafkaIntegrationTestBase
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
+import com.aechak.domain.review.reply.ReviewReply
 import com.aechak.domain.review.review.Review
 import com.aechak.domain.review.review.enums.ReviewStatus
 import com.aechak.domain.seller.seller.Seller
@@ -116,6 +117,51 @@ class ReviewDeleteIntegrationTest : KafkaIntegrationTestBase() {
     }
 
     @Test
+    fun `리뷰를 지우면 셀러 답글 행도 같은 트랜잭션에서 사라진다`() {
+        val ownerId = createActiveUser()
+        val reviewId =
+            tx.execute {
+                val product = persistVisibleProduct("사료")
+                em.flush()
+                val review = persistReview(product.id, ownerId, orderItemId = 1L)
+                em.flush()
+                em.persist(ReviewReply.write(review.id, defaultSellerId, "이용해 주셔서 감사해요."))
+                review.id
+            }!!
+        assertEquals(1L, replyRowCount(reviewId))
+
+        mockMvc
+            .perform(delete("/api/v1/reviews/$reviewId").header(HttpHeaders.AUTHORIZATION, bearer(ownerId)))
+            .andExpect(status().isNoContent)
+
+        // 리뷰는 소프트 삭제라 FK CASCADE로는 정리되지 않는다 — 고아 답글이 남지 않는지가 핵심
+        assertEquals(ReviewStatus.DELETED, findReview(reviewId).reviewStatus)
+        assertEquals(0L, replyRowCount(reviewId))
+    }
+
+    @Test
+    fun `삭제가 403으로 막히면 답글도 그대로 남는다`() {
+        val ownerId = createActiveUser()
+        val attackerId = createActiveUser()
+        val reviewId =
+            tx.execute {
+                val product = persistVisibleProduct("사료")
+                em.flush()
+                val review = persistReview(product.id, ownerId, orderItemId = 1L)
+                em.flush()
+                em.persist(ReviewReply.write(review.id, defaultSellerId, "남아 있어야 하는 답글"))
+                review.id
+            }!!
+
+        mockMvc
+            .perform(delete("/api/v1/reviews/$reviewId").header(HttpHeaders.AUTHORIZATION, bearer(attackerId)))
+            .andExpect(status().isForbidden)
+
+        assertEquals(ReviewStatus.PUBLIC, findReview(reviewId).reviewStatus)
+        assertEquals(1L, replyRowCount(reviewId))
+    }
+
+    @Test
     fun `없는 리뷰를 삭제하면 404를 반환한다`() {
         val userId = createActiveUser()
 
@@ -215,6 +261,15 @@ class ReviewDeleteIntegrationTest : KafkaIntegrationTestBase() {
             .andReturn()
             .response
             .getContentAsString(Charsets.UTF_8)
+
+    private fun replyRowCount(reviewId: Long): Long =
+        tx.execute {
+            em
+                .createQuery("select count(r) from ReviewReply r where r.reviewId = :id", java.lang.Long::class.java)
+                .setParameter("id", reviewId)
+                .singleResult
+                .toLong()
+        }!!
 
     private fun findReview(reviewId: Long): Review =
         tx.execute {

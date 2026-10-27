@@ -5,6 +5,7 @@ import com.aechak.application.review.moderation.service.ReviewModerationDecision
 import com.aechak.application.review.usecase.command.CreateReviewCommand
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.review.error.ReviewErrorCode
+import com.aechak.domain.review.reply.repository.ReviewReplyRepository
 import com.aechak.domain.review.review.Review
 import com.aechak.domain.review.review.ReviewImage
 import com.aechak.domain.review.review.repository.DuplicateOrderItemReviewException
@@ -15,6 +16,7 @@ import java.time.LocalDateTime
 @Service
 class ReviewCommandService(
     private val reviewRepository: ReviewRepository,
+    private val reviewReplyRepository: ReviewReplyRepository,
 ) {
     fun ensureCanCreateReview(
         command: CreateReviewCommand,
@@ -71,6 +73,9 @@ class ReviewCommandService(
         if (review.authorUserId != userId) {
             throw BusinessException(ReviewErrorCode.REVIEW_ACCESS_DENIED)
         }
+        // 리뷰가 사라지면 셀러 답글이 붙을 자리가 없어진다. 리뷰는 소프트 삭제라 DB FK로는 정리되지 않으므로
+        // 삭제 전이와 같은 트랜잭션에서 지운다. 이미 지워진 리뷰로 다시 들어와도 남은 행을 정리한다.
+        reviewReplyRepository.deleteByReviewId(reviewId)
         if (review.isDeleted()) return null
         review.delete()
         reviewRepository.save(review)
