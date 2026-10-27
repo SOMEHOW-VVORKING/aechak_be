@@ -12,4 +12,6 @@ class InquiryRepositoryAdapter(
     private val jpaRepository: InquiryJpaRepository,
 ) : InquiryRepository {
     override fun save(inquiry: Inquiry): Inquiry = jpaRepository.save(inquiry)
+
+    override fun findById(inquiryId: Long): Inquiry? = jpaRepository.findById(inquiryId).orElse(null)
 }
