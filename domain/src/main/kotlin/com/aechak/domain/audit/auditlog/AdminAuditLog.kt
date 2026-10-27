@@ -93,11 +93,15 @@ class AdminAuditLog protected constructor(
         const val CLIENT_IP_MAX = 45
 
         /**
-         * 조치 한 건을 기록한다. 조치와 대상 종류의 짝, 식별자의 종류를 여기서 대조한다 —
-         * 기록 경로가 여럿이라 호출부 규율로는 어긋남을 막을 수 없다.
+         * 조치 한 건을 기록한다. 조치와 대상 종류의 짝은 결과와 무관하게 대조한다 —
+         * 둘 다 코드가 정하는 값이라 어긋나면 그건 조립 오류다.
          *
-         * 사유·대상 이름은 저장 길이로 자른다. 기록이 길이 때문에 통째로 실패하면 조치 자체는
-         * 성공했는데 흔적만 사라지는, 가장 나쁜 조합이 된다.
+         * 대상 식별자의 **종류 대조는 성공 행에만** 적용한다. 거부된 시도의 식별자는 요청이
+         * 들고 온 값 그대로여서 형식부터 틀려 있을 수 있고, 거기서 막으면 "누가 무엇을 하려다
+         * 거부당했나"의 행이 통째로 사라진다 — 막아야 할 쪽은 잘못된 식별자가 아니라 기록의 공백이다.
+         *
+         * 사유·대상 이름·실패 행의 식별자는 저장 길이로 자른다. 기록이 길이 때문에 통째로
+         * 실패하면 조치 자체는 성공했는데 흔적만 사라지는, 가장 나쁜 조합이 된다.
          */
         fun record(
             actorUserId: Long,
@@ -116,14 +120,15 @@ class AdminAuditLog protected constructor(
             require(action.targetType == targetType) {
                 "조치 $action 의 대상 종류는 ${action.targetType} 인데 $targetType 로 기록하려 했습니다."
             }
-            require(targetType.idKind.accepts(targetId)) {
+            require(targetId.isNotBlank()) { "대상을 알 수 없는 기록은 남기지 않습니다." }
+            require(result != AdminAuditResult.SUCCESS || targetType.idKind.accepts(targetId)) {
                 "$targetType 의 식별자는 ${targetType.idKind} 여야 합니다."
             }
             return AdminAuditLog(
                 actorUserId = actorUserId,
                 action = action,
                 targetType = targetType,
-                targetId = targetId,
+                targetId = targetId.take(TARGET_ID_MAX),
                 targetLabel = targetLabel?.take(TARGET_LABEL_MAX),
                 reason = reason?.take(REASON_MAX),
                 result = result,

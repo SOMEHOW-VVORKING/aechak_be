@@ -215,6 +215,38 @@ class AdminAuditRecordingIntegrationTest extends SellerReviewIntegrationTestBase
         assertThat(row.getClientIp()).isEqualTo("203.0.113.7");
     }
 
+    /**
+     * 없는 대상을 집은 시도도 남아야 한다. 경로 변수가 {@code long}이라 0·음수는 핸들러까지
+     * 들어오는데, 그 값은 내부 id 형식(양의 정수)이 아니다 — 생성 시점 대조가 실패 행까지 막으면
+     * "누가 무엇을 하려다 거부당했나"가 사라진다.
+     */
+    @Test
+    void 형식이_틀린_대상을_집은_시도도_실패_행으로_남는다() throws Exception {
+        mockMvc.perform(bearer(delete(ROSTER + "/0"), adminToken)).andExpect(status().is4xxClientError());
+
+        AdminAuditLog row = onlyRow();
+        assertThat(row.getAction()).isEqualTo(AdminAuditAction.ADMIN_DEMOTED);
+        assertThat(row.getTargetId()).as("요청이 집은 대상을 그대로 남겨야 한다").isEqualTo("0");
+        assertThat(row.getResult()).isEqualTo(AdminAuditResult.FAILURE);
+    }
+
+    /**
+     * 클라이언트가 보내는 헤더 한 줄로 감사 행이 사라지면 안 된다. 쉼표만 있는 X-Forwarded-For는
+     * {@code split(",")}에서 빈 배열이 되어 봉투 조립이 터지던 자리다.
+     */
+    @Test
+    void 쉼표만_있는_전달_IP_헤더에도_행이_남는다() throws Exception {
+        long applicationId = seedApplication(createUser(), true);
+
+        mockMvc.perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken)
+                        .header("X-Forwarded-For", ","))
+                .andExpect(status().isNoContent());
+
+        AdminAuditLog row = onlyRow();
+        assertThat(row.getResult()).isEqualTo(AdminAuditResult.SUCCESS);
+        assertThat(row.getClientIp()).as("전달 IP를 못 읽으면 접속 주소로 대체해야 한다").isNotBlank();
+    }
+
     private AdminAuditLog onlyRow() {
         List<AdminAuditLog> rows = auditRows();
         assertThat(rows).as("감사 행이 정확히 한 건이어야 한다").hasSize(1);

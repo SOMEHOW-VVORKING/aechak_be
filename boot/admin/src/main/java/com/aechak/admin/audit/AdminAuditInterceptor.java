@@ -156,7 +156,9 @@ public class AdminAuditInterceptor implements HandlerInterceptor {
         if (forwardedFor == null || forwardedFor.isBlank()) {
             return request.getRemoteAddr();
         }
-        String firstHop = forwardedFor.split(",")[0].strip();
+        // limit=2 — 인자 없는 split 은 뒤쪽 빈 조각을 버려서 ","·",," 같은 헤더에 빈 배열을 준다.
+        // 그 상태로 [0]을 읽으면 봉투 조립이 터져 클라이언트가 보낸 헤더 한 줄로 감사 행이 사라진다.
+        String firstHop = forwardedFor.split(",", 2)[0].strip();
         return firstHop.isEmpty() ? request.getRemoteAddr() : firstHop;
     }
 }

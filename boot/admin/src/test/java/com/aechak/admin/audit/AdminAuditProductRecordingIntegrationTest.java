@@ -33,8 +33,11 @@ import org.springframework.web.context.WebApplicationContext;
  * [통합] <b>공개 식별자(ULID)로 대상을 가리키는</b> 조치의 기록을 고정한다.
  *
  * <p>상품 검수는 어드민 경로가 상품을 공개 ULID로 가리키는 유일한 조치다. 대상 종류별 식별자
- * 규칙이 실제로 통하는지는 여기서만 확인된다 — 숫자 id를 적으려 하면 도메인 대조가 기록을
- * 통째로 버리고, 그 사고는 조치가 성공한 채로 조용히 일어난다.
+ * 규칙이 실제로 통하는지는 여기서만 확인된다 — 성공 행에 숫자 id를 적으려 하면 도메인 대조가
+ * 기록을 버리고, 그 사고는 조치가 성공한 채로 조용히 일어난다.
+ *
+ * <p>반대로 <b>거부된 시도</b>는 식별자 형식이 틀려도 남아야 한다. 경로 변수가 그대로 들어오는
+ * 자리라 그 대조를 결과와 무관하게 걸면 운영자가 집은 대상이 기록에서 사라진다.
  */
 class AdminAuditProductRecordingIntegrationTest extends IntegrationTestBase {
 
@@ -134,6 +137,35 @@ class AdminAuditProductRecordingIntegrationTest extends IntegrationTestBase {
         assertThat(failure.getResult()).isEqualTo(AdminAuditResult.FAILURE);
         assertThat(failure.getHttpStatus()).isEqualTo(409);
         assertThat(inspectionStatus()).isEqualTo(InspectionStatus.APPROVED);
+    }
+
+    /**
+     * 상품 경로 변수는 {@code String}이라 ULID가 아닌 값도 핸들러까지 들어와 상품 조회에서
+     * 거부된다. 그 시도가 남지 않으면 운영자가 어떤 대상을 집었는지 알 수 없다 — 생성 시점
+     * 식별자 대조는 성공 행에만 걸려야 한다.
+     */
+    @Test
+    void ULID가_아닌_대상을_집은_승인_시도도_그_값_그대로_실패_행으로_남는다() throws Exception {
+        mockMvc.perform(bearer(post(BASE + "/4071/approve"))).andExpect(status().is4xxClientError());
+
+        AdminAuditLog row = onlyRow();
+        assertThat(row.getAction()).isEqualTo(AdminAuditAction.PRODUCT_INSPECTION_APPROVED);
+        assertThat(row.getTargetType()).isEqualTo(AdminAuditTargetType.PRODUCT);
+        assertThat(row.getTargetId()).as("요청이 집은 대상을 그대로 남겨야 한다").isEqualTo("4071");
+        assertThat(row.getResult()).isEqualTo(AdminAuditResult.FAILURE);
+        assertThat(inspectionStatus()).as("실패 행을 남기면서 검수 상태가 바뀌었다").isEqualTo(InspectionStatus.REJECTED);
+    }
+
+    /** 긴 대상이 칼럼을 넘겨 INSERT가 터지면 실패 행이 다시 사라진다 */
+    @Test
+    void 저장_길이를_넘는_대상을_집은_시도도_잘려서_남는다() throws Exception {
+        String tooLong = "9".repeat(AdminAuditLog.TARGET_ID_MAX + 40);
+
+        mockMvc.perform(bearer(post(BASE + "/" + tooLong + "/approve"))).andExpect(status().is4xxClientError());
+
+        AdminAuditLog row = onlyRow();
+        assertThat(row.getTargetId()).hasSize(AdminAuditLog.TARGET_ID_MAX);
+        assertThat(row.getResult()).isEqualTo(AdminAuditResult.FAILURE);
     }
 
     private AdminAuditLog onlyRow() {

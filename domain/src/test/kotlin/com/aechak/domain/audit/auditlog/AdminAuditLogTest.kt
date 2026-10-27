@@ -86,6 +86,79 @@ class AdminAuditLogTest {
         }
     }
 
+    /**
+     * 거부된 시도의 식별자는 요청이 들고 온 값이라 형식부터 틀려 있을 수 있다. 거기서 막으면
+     * "누가 무엇을 하려다 거부당했나"의 행이 사라진다 — 종류 대조는 성공 행에만 걸린다.
+     */
+    @Test
+    fun `거부된 시도는 형식이 틀린 식별자라도 행으로 남는다`() {
+        listOf(
+            AdminAuditAction.PRODUCT_INSPECTION_APPROVED to "4071",
+            AdminAuditAction.ADMIN_DEMOTED to "0",
+            AdminAuditAction.ADMIN_DEMOTED to "-5",
+            AdminAuditAction.ADMIN_PROMOTED to "nonsense",
+        ).forEach { (action, badId) ->
+            val log =
+                record(
+                    action = action,
+                    targetType = action.targetType,
+                    targetId = badId,
+                    result = AdminAuditResult.FAILURE,
+                    httpStatus = 404,
+                )
+
+            assertEquals(badId, log.targetId, "거부된 시도의 식별자를 그대로 남기지 못했다: $badId")
+            assertEquals(AdminAuditResult.FAILURE, log.result)
+        }
+    }
+
+    /** 성공 행의 종류 대조는 그대로 남아야 한다 — 실패 행을 살리면서 같이 풀려서는 안 된다 */
+    @Test
+    fun `성공 행의 식별자 종류 대조는 그대로 막는다`() {
+        assertFailsWith<IllegalArgumentException> {
+            record(
+                action = AdminAuditAction.PRODUCT_INSPECTION_APPROVED,
+                targetType = AdminAuditTargetType.PRODUCT,
+                targetId = "4071",
+                result = AdminAuditResult.SUCCESS,
+            )
+        }
+    }
+
+    /**
+     * 실패 행의 식별자는 길이 제한이 풀린 통로다 — 경로 변수로 아무리 긴 값이 와도 칼럼을
+     * 넘겨 INSERT가 터지면 안 된다(그러면 행이 다시 사라진다).
+     */
+    @Test
+    fun `저장 길이를 넘는 실패 행 식별자는 잘라서 남긴다`() {
+        val log =
+            record(
+                action = AdminAuditAction.PRODUCT_INSPECTION_APPROVED,
+                targetType = AdminAuditTargetType.PRODUCT,
+                targetId = "9".repeat(AdminAuditLog.TARGET_ID_MAX + 80),
+                result = AdminAuditResult.FAILURE,
+                httpStatus = 404,
+            )
+
+        assertEquals(AdminAuditLog.TARGET_ID_MAX, log.targetId.length)
+    }
+
+    @Test
+    fun `대상이 빈 문자열이면 결과와 무관하게 남기지 않는다`() {
+        listOf(AdminAuditResult.SUCCESS, AdminAuditResult.FAILURE).forEach { result ->
+            listOf("", "   ").forEach { blank ->
+                assertFailsWith<IllegalArgumentException>("result=$result targetId=[$blank] 가 통과했다") {
+                    record(
+                        action = AdminAuditAction.ADMIN_PROMOTED,
+                        targetType = AdminAuditTargetType.ADMIN_USER,
+                        targetId = blank,
+                        result = result,
+                    )
+                }
+            }
+        }
+    }
+
     @Test
     fun `운영자를 알 수 없는 기록은 남기지 않는다`() {
         assertFailsWith<IllegalArgumentException> {
