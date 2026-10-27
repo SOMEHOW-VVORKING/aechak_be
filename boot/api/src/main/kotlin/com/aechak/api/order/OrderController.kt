@@ -9,12 +9,14 @@ import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.ModelAttribute
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -41,6 +43,7 @@ class OrderController(
         )
 
     @PostMapping("/orders/{orderPublicId}/confirm")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun confirmPurchase(
         @PathVariable orderPublicId: String,
         @AuthenticationPrincipal principal: AuthPrincipal,

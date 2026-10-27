@@ -4,6 +4,7 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
@@ -14,6 +15,7 @@ import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.shipment.CourierMaster
 import com.aechak.domain.order.shipment.Shipment
 import com.aechak.domain.order.shipment.enums.ShipmentType
+import com.aechak.domain.order.shipment.repository.ShipmentRepository
 import com.aechak.domain.payment.Payment
 import com.aechak.domain.payment.enums.PaymentMethod
 import com.aechak.domain.payment.repository.PaymentRepository
@@ -64,6 +66,9 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var paymentRepository: PaymentRepository
+
+    @Autowired
+    private lateinit var shipmentRepository: ShipmentRepository
 
     private lateinit var mockMvc: MockMvc
 
@@ -266,7 +271,7 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
                 Claim.request(
                     order = order,
                     claimType = ClaimType.CANCEL,
-                    reasonCode = "CHANGE_MIND",
+                    reasonCode = ClaimReasonCode.CHANGE_OF_MIND,
                     reasonDetail = "단순 변심",
                     items = targets.map { ClaimItem.of(it, it.quantity, it.unitPriceSnapshot * it.quantity) },
                     autoApproveDueAt = LocalDateTime.now().plusDays(2),
@@ -380,7 +385,10 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
 
     private fun orderItemIdOf(orderPublicId: String): Long = tx.execute { loadOrder(orderPublicId).items.first().id }!!
 
-    /** 배송완료와 마지막 추적 상태를 심는다. 추적 동기화 경로가 없어 상태 문구는 리플렉션으로 넣는다. */
+    /**
+     * 배송완료와 마지막 추적 상태를 심는다. 추적 두 컬럼은 더티체킹 UPDATE에서 빠져 있어
+     * 엔티티를 고쳐서는 담기지 않는다 — 운영과 같은 원자 UPDATE로 심는다.
+     */
     private fun seedDeliveredTracking(
         orderPublicId: String,
         lastTrackingStatus: String,
@@ -394,9 +402,8 @@ class OrderQueryIntegrationTest : IntegrationTestBase() {
                     .resultList
                     .first()
             shipment.markDelivered(deliveredAt)
-            val field = Shipment::class.java.getDeclaredField("lastTrackingStatus")
-            field.isAccessible = true
-            field.set(shipment, lastTrackingStatus)
+            em.flush()
+            shipmentRepository.updateTracking(shipment.id, lastTrackingStatus, deliveredAt)
         }
     }
 

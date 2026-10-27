@@ -2,6 +2,7 @@ package com.aechak.domain.user.user
 
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.support.AggregateRoot
+import com.aechak.domain.support.Ulid
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.user.enums.UserRole
 import com.aechak.domain.user.user.enums.UserStatus
@@ -22,12 +23,18 @@ import java.time.LocalDateTime
 @Entity
 @Table(
     name = "users",
-    uniqueConstraints = [UniqueConstraint(name = User.UK_PHONE_HMAC, columnNames = ["phone_hmac"])],
+    uniqueConstraints = [
+        UniqueConstraint(name = User.UK_PHONE_HMAC, columnNames = ["phone_hmac"]),
+        UniqueConstraint(name = "uk_users_public_id", columnNames = ["public_id"]),
+    ],
 )
 class User protected constructor() : AggregateRoot() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
+
+    @Column(nullable = false, updatable = false, length = 26)
+    val publicId: String = Ulid.generate()
 
     @Enumerated(EnumType.STRING)
     @Column(length = 30, nullable = false)
@@ -91,6 +98,10 @@ class User protected constructor() : AggregateRoot() {
     /** 표시용 닉네임 — 프로필이 없으면 null. */
     val nickname: String?
         get() = _profile?.nickname
+
+    /** 소개글 — 프로필이 없으면 null. */
+    val bio: String?
+        get() = _profile?.bio
 
     /** 사용자를 탈퇴 상태로 바꾸고 닉네임과 전화번호 값을 삭제해 UNIQUE 제약에서 해제 */
     fun withdraw() {

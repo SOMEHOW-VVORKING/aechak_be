@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -35,6 +36,7 @@ class DeliveryAddressController(
         ResponseEntity.ok(ApiResponse.of(DeliveryAddressListResponse.from(deliveryAddressUseCase.getDeliveryAddresses(principal.userId))))
 
     @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
     fun addDeliveryAddress(
         @Valid @RequestBody request: AddDeliveryAddressRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,

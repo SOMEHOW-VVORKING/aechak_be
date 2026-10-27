@@ -6,6 +6,7 @@ import com.aechak.application.order.usecase.command.MarkConfirmNotifiedCommand
 import com.aechak.application.order.usecase.query.AutoConfirmScanQuery
 import com.aechak.application.order.usecase.query.ConfirmNotifyScanQuery
 import com.aechak.common.error.BusinessException
+import com.aechak.domain.order.error.OrderErrorCode
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -98,7 +99,10 @@ class OrderAutoConfirmSchedule(
         }
     }
 
-    /** 건별 격리 — 유보(BusinessException)는 스캔과 처리 사이에 상태가 바뀐 정상 흐름이라 로그만 남긴다. */
+    /**
+     * 건별 격리 — 스캔과 처리 사이에 주문 상태가 바뀐 건만 유보로 보고 로그만 남기고,
+     * 그 밖의 실패는 운영 확인이 필요한 쪽이라 스택과 함께 ERROR로 남긴다. 어느 쪽이든 다음 건으로 넘어간다.
+     */
     private fun isolate(
         step: String,
         orderId: Long,
@@ -107,7 +111,11 @@ class OrderAutoConfirmSchedule(
         try {
             action()
         } catch (e: BusinessException) {
-            log.info("{} 유보. orderId={}, errorCode={}", step, orderId, e.errorCode.code)
+            if (e.errorCode in DEFERRED_ERROR_CODES) {
+                log.info("{} 유보. orderId={}, errorCode={}", step, orderId, e.errorCode.code)
+            } else {
+                log.error("{} 실패. orderId={}, errorCode={}", step, orderId, e.errorCode.code, e)
+            }
             false
         } catch (e: Exception) {
             log.error("{} 실패. orderId={}", step, orderId, e)
@@ -119,5 +127,16 @@ class OrderAutoConfirmSchedule(
         private const val STEP_CONFIRM = "자동확정"
         private const val STEP_NOTIFY = "구매확정 사전 안내"
         private val KST = ZoneId.of(KST_ID)
+
+        /**
+         * 스캔과 처리 사이에 주문 상태가 바뀐 정상 흐름의 에러 코드. 사람이 손댈 것이 없어 INFO로 지나간다.
+         * 적립·정산 원장 쪽 실패는 요율 정책 누락처럼 사람이 설정을 고쳐야 풀리므로 여기에 넣지 않는다.
+         */
+        private val DEFERRED_ERROR_CODES =
+            setOf(
+                OrderErrorCode.ORDER_NOT_FOUND,
+                OrderErrorCode.ORDER_ALREADY_CONFIRMED,
+                OrderErrorCode.ORDER_NOT_CONFIRMABLE,
+            )
     }
 }

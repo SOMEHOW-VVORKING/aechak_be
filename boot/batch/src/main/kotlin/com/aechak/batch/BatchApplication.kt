@@ -36,6 +36,7 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.infra.persistence", // JPA 어댑터 (QuerydslConfig 포함)
         "com.aechak.infra.client.payment", // 포트원 어댑터·대사 소스
         "com.aechak.infra.s3", // FileStorage 어댑터
+        "com.aechak.infra.client.tracking", // 택배사 추적 어댑터 — 목 구현이 기본 꺼짐이라 켜지 않으면 빈이 없다
     ],
     excludeFilters = [
         // @ComponentScan을 직접 선언하면 @SpringBootApplication의 메타 필터가 가려진다 — 기본 두 개를 복원한다.
@@ -52,6 +53,9 @@ import org.springframework.context.annotation.FilterType
             type = FilterType.REGEX,
             pattern = ["com\\.aechak\\.application\\.order\\.claim\\.facade\\.ClaimFacade"],
         ),
+        // 셀러센터 전용 정산 조회 제외. 구매확정 원장 생성을 위해 settlement BC를 스캔하지만 이 묶음은
+        // 셀러 자격(application.seller)을 요구해 조립하면 배치가 쓰지도 않는 의존을 끌고 온다.
+        ComponentScan.Filter(type = FilterType.REGEX, pattern = ["com\\.aechak\\.application\\.settlement\\.seller\\..*"]),
     ],
 )
 class BatchApplication

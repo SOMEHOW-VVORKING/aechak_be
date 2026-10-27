@@ -1,10 +1,12 @@
 package com.aechak.application.user.pet.facade
 
 import com.aechak.application.file.usecase.FileUseCase
+import com.aechak.application.user.pet.port.PetSummaryQueryPort
 import com.aechak.application.user.pet.service.PetProfileService
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.application.user.pet.usecase.command.RegisterPetProfileCommand
 import com.aechak.application.user.pet.usecase.command.UpdatePetProfileCommand
+import com.aechak.application.user.pet.usecase.result.DefaultPetSummaryResult
 import com.aechak.application.user.pet.usecase.result.DeletePetProfileResult
 import com.aechak.application.user.pet.usecase.result.PetProfileListResult
 import com.aechak.application.user.pet.usecase.result.PetProfileResult
@@ -17,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional
 class PetProfileFacade(
     private val petProfileService: PetProfileService,
     private val fileUseCase: FileUseCase,
+    private val petSummaryQueryPort: PetSummaryQueryPort,
 ) : PetProfileUseCase {
     @Transactional
     override fun registerPet(command: RegisterPetProfileCommand): RegisterPetProfileResult {
@@ -31,6 +34,10 @@ class PetProfileFacade(
                 PetProfileResult.from(it, fileUseCase.resolveMediaUrl(it.profileImageKey))
             },
         )
+
+    @Transactional(readOnly = true)
+    override fun getDefaultPetSummaries(userIds: Collection<Long>): List<DefaultPetSummaryResult> =
+        if (userIds.isEmpty()) emptyList() else petSummaryQueryPort.findDefaultPetSummaries(userIds).map(DefaultPetSummaryResult::from)
 
     @Transactional
     override fun updatePet(command: UpdatePetProfileCommand): PetProfileResult {

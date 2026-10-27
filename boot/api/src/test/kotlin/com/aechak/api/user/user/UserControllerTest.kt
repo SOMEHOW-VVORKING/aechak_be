@@ -11,6 +11,7 @@ import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
 import com.aechak.application.user.user.usecase.query.UserSearchQuery
 import com.aechak.application.user.user.usecase.result.UserAuthorResult
 import com.aechak.application.user.user.usecase.result.UserMeResult
+import com.aechak.application.user.user.usecase.result.UserPublicProfileResult
 import com.aechak.application.user.user.usecase.result.UserSummaryResult
 import com.aechak.application.user.withdrawal.usecase.WithdrawalUseCase
 import com.aechak.application.user.withdrawal.usecase.result.WithdrawalCheckResult
@@ -97,6 +98,10 @@ class UserControllerTest {
             override fun searchUsers(query: UserSearchQuery): List<UserSummaryResult> = error("not used")
 
             override fun getAuthors(userIds: Collection<Long>): Map<Long, UserAuthorResult> = error("not used")
+
+            override fun findPublicProfile(publicId: String): UserPublicProfileResult? = error("not used")
+
+            override fun findPublicProfileById(userId: Long): UserPublicProfileResult? = error("not used")
 
             override fun registerFromSocial(): Long = error("not used")
         }
@@ -277,6 +282,21 @@ class UserControllerTest {
                 post("/users/me/consents")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{"items":[{"termId":1,"isAgreed":true},{"termId":1,"isAgreed":false}]}"""),
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
+    }
+
+    /** isTermIdUnique는 요청이 스스로를 검사하는 프로퍼티라 문서에서 숨겼다 — 실어 보내도 검증을 뒤집지 못해야 한다. */
+    @Test
+    fun `내부 검증 프로퍼티를 본문에 실어도 중복 제출은 그대로 거절된다`() {
+        mockMvc
+            .perform(
+                post("/users/me/consents")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """{"isTermIdUnique":true,"termIdUnique":true,
+                        "items":[{"termId":1,"isAgreed":true},{"termId":1,"isAgreed":false}]}""",
+                    ),
             ).andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
     }
