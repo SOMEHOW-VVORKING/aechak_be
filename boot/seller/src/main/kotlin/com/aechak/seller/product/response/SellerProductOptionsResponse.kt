@@ -1,6 +1,7 @@
 package com.aechak.seller.product.response
 
 import com.aechak.application.product.product.usecase.result.SellerProductOptionsResult
+import com.fasterxml.jackson.annotation.JsonProperty
 
 data class SellerProductOptionsResponse(
     val optionCombinations: List<OptionCombinationResponse>,
@@ -10,6 +11,7 @@ data class SellerProductOptionsResponse(
         val name: String,
         val additionalPrice: Long,
         val stockQuantity: Int,
+        @get:JsonProperty("isActive")
         val isActive: Boolean,
     )
 

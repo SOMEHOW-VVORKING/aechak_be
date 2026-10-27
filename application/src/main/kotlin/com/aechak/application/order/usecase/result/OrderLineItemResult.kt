@@ -1,6 +1,7 @@
 package com.aechak.application.order.usecase.result
 
 import com.aechak.application.order.port.view.OrderLineView
+import com.aechak.domain.order.order.enums.OrderItemStatus
 
 data class OrderLineItemResult(
     val orderItemId: Long,
@@ -10,7 +11,7 @@ data class OrderLineItemResult(
     val optionName: String,
     val quantity: Int,
     val unitPrice: Long,
-    val itemStatus: String,
+    val itemStatus: OrderItemStatus,
 ) {
     companion object {
         fun of(
@@ -25,7 +26,7 @@ data class OrderLineItemResult(
                 optionName = view.optionName,
                 quantity = view.quantity,
                 unitPrice = view.unitPrice,
-                itemStatus = view.itemStatus.name,
+                itemStatus = view.itemStatus,
             )
     }
 }
