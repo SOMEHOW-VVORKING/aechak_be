@@ -42,6 +42,11 @@ enum class UserErrorCode(
     SELF_SANCTION_NOT_ALLOWED(30020, "자신을 제재할 수 없습니다.", 403),
     ADMIN_CANNOT_BE_SANCTIONED(30021, "관리자 계정은 제재할 수 없습니다. 먼저 강등해 주세요.", 409),
     SANCTION_PERIOD_NOT_IN_FUTURE(30022, "제재 기간은 현재보다 미래여야 합니다.", 400),
+    SANCTION_REQUIRES_ONBOARDED_ACCOUNT(
+        30023,
+        "가입을 마치지 않은 계정에는 이용 제한·임시 정지를 걸 수 없습니다. 영구 정지나 탈퇴 처리를 사용해 주세요.",
+        409,
+    ),
 
     // 적립금
     INVALID_POINT_AMOUNT(30100, "적립금 거래 금액은 0보다 커야 합니다.", 400),

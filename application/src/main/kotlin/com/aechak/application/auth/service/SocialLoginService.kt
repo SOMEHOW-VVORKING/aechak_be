@@ -44,7 +44,7 @@ class SocialLoginService(
         // 교환에 실패해도 로그인은 허용하고 다음 로그인에서 다시 저장을 시도
 
         val tokens = tokenService.issue(user.id, user.role)
-        return SocialLoginResult(tokens, user.status, isNew)
+        return SocialLoginResult(tokens, user.effectiveStatus(), isNew)
     }
 
     /** 기존 소셜 계정의 상태에 따라 로그인을 허용하거나 재가입을 진행 */

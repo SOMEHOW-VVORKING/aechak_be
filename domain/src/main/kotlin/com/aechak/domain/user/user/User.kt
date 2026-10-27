@@ -99,6 +99,10 @@ class User protected constructor() : AggregateRoot() {
     val profile: UserProfile
         get() = _profile ?: throw IllegalStateException("프로필이 로딩/생성되지 않았습니다 (userId=$id)")
 
+    /** 온보딩 전·탈퇴 계정은 프로필이 없다 — 없을 수 있음을 아는 호출부가 쓴다. */
+    val profileOrNull: UserProfile?
+        get() = _profile
+
     /** 프로필 이미지 key */
     val profileImageKey: String?
         get() = _profile?.profileImageKey
@@ -129,13 +133,13 @@ class User protected constructor() : AggregateRoot() {
         status = UserStatus.ACTIVE
     }
 
-    /** 프로필 전체 교체 - ACTIVE 사용자만 프로필을 수정할 수 있다. */
+    /** 프로필 전체 교체 - 이용 가능한 사용자만 프로필을 수정할 수 있다. */
     fun updateProfile(
         nickname: String,
         bio: String?,
         profileImageKey: String?,
     ) {
-        check(status == UserStatus.ACTIVE) { "프로필 수정은 ACTIVE 상태에서만 가능합니다 (userId=$id, status=$status)" }
+        requireUsableAccount("프로필 수정")
         profile.updateProfile(nickname, bio, profileImageKey)
     }
 
@@ -148,7 +152,7 @@ class User protected constructor() : AggregateRoot() {
         phoneHmac: ByteArray,
         last4Hmac: ByteArray,
     ) {
-        check(status == UserStatus.ACTIVE) { "전화 인증은 ACTIVE 상태에서만 가능합니다 (userId=$id, status=$status)" }
+        requireUsableAccount("전화 인증")
         this.phoneNumber = encryptedPhone
         this.phoneHmac = phoneHmac
         this.phoneLast4Hmac = last4Hmac
@@ -183,6 +187,7 @@ class User protected constructor() : AggregateRoot() {
     /** 이용 제한 — 로그인은 되고 커뮤니티성 쓰기만 막힌다. 기간이 없는 제재라 만료 시각을 비운다. */
     fun restrict() {
         rejectStatusChangeOnClosedAccount()
+        rejectReversibleSanctionBeforeOnboarding()
         status = UserStatus.RESTRICTED
         sanctionUntil = null
     }
@@ -190,6 +195,7 @@ class User protected constructor() : AggregateRoot() {
     /** 임시 정지 — 만료 시각은 미래여야 한다. 과거 시각이면 걸자마자 풀린 정지가 된다. */
     fun suspendUntil(until: LocalDateTime) {
         rejectStatusChangeOnClosedAccount()
+        rejectReversibleSanctionBeforeOnboarding()
         if (!until.isAfter(LocalDateTime.now())) {
             throw BusinessException(UserErrorCode.SANCTION_PERIOD_NOT_IN_FUTURE)
         }
@@ -226,6 +232,24 @@ class User protected constructor() : AggregateRoot() {
         }
         if (status == UserStatus.BANNED) {
             throw BusinessException(UserErrorCode.PERMANENT_BAN_IS_FINAL)
+        }
+    }
+
+    /**
+     * 해제·만료로 되돌아오는 제재(이용 제한·임시 정지)는 온보딩을 마친 계정에만 걸 수 있다.
+     * 상태가 한 축이라 PENDING_ONBOARDING을 덮으면 돌아올 상태를 잃고 온보딩을 건너뛴 ACTIVE가 된다.
+     */
+    private fun rejectReversibleSanctionBeforeOnboarding() {
+        if (status == UserStatus.PENDING_ONBOARDING) {
+            throw BusinessException(UserErrorCode.SANCTION_REQUIRES_ONBOARDED_ACCOUNT)
+        }
+    }
+
+    /** 자기 정보를 다루는 경로의 전제 — 이용 제한은 커뮤니티성 쓰기만 막는 제재라 통과한다. */
+    private fun requireUsableAccount(action: String) {
+        val effective = effectiveStatus()
+        check(effective == UserStatus.ACTIVE || effective == UserStatus.RESTRICTED) {
+            "${action}은 이용 가능한 계정에서만 가능합니다 (userId=$id, status=$status)"
         }
     }
 

@@ -31,6 +31,31 @@ class UserSanctionTransitionTest {
     }
 
     @Test
+    fun `온보딩 전 계정에는 되돌아오는 제재를 걸 수 없다 — 돌아올 상태를 잃는다`() {
+        for (apply in listOf<(User) -> Unit>({ it.restrict() }, { it.suspendUntil(future()) })) {
+            val user = User.preRegister()
+
+            val exception = assertFailsWith<BusinessException> { apply(user) }
+
+            assertEquals(UserErrorCode.SANCTION_REQUIRES_ONBOARDED_ACCOUNT, exception.errorCode)
+            assertEquals(UserStatus.PENDING_ONBOARDING, user.status, "거부된 제재는 상태를 건드리지 않는다")
+            assertNull(user.sanctionUntil)
+        }
+    }
+
+    @Test
+    fun `온보딩 전 계정도 종단 제재는 받는다 — 되돌아올 상태가 필요 없다`() {
+        User.preRegister().let {
+            it.ban()
+            assertEquals(UserStatus.BANNED, it.status)
+        }
+        User.preRegister().let {
+            it.forceWithdraw()
+            assertEquals(UserStatus.WITHDRAWN, it.status)
+        }
+    }
+
+    @Test
     fun `suspendUntil은 상태와 만료 시각을 함께 세팅한다`() {
         val user = activeUser()
         val until = future()

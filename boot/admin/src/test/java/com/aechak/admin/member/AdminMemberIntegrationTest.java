@@ -526,6 +526,41 @@ class AdminMemberIntegrationTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.errorCode").value(30021));
     }
 
+    /**
+     * 되돌아오는 제재는 상태 축 하나에 PENDING_ONBOARDING을 덮어쓰고, 해제·만료가 그 계정을
+     * 약관 동의도 프로필도 없는 ACTIVE로 만든다 — 온보딩 게이트를 우회한다.
+     */
+    @Test
+    void 온보딩_전_계정에는_이용_제한과_임시_정지를_걸_수_없다() throws Exception {
+        long pending = createUser(UserStatus.PENDING_ONBOARDING, UserRole.GENERAL);
+
+        sanction(pending, "RESTRICT", "ABUSIVE_REVIEW", null, null, null)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(30023));
+        sanction(pending, "SUSPEND", "ABUSIVE_REVIEW", 7, null, null)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(30023));
+
+        assertThat(statusOf(pending)).isEqualTo(UserStatus.PENDING_ONBOARDING);
+        assertThat(sanctionUntilOf(pending)).isNull();
+        assertThat(sanctionsOf(pending)).isEmpty();
+    }
+
+    /** 영구 정지·탈퇴 처리는 돌아올 상태가 없어 온보딩 전 계정에도 걸 수 있어야 한다. */
+    @Test
+    void 온보딩_전_계정도_영구_정지와_탈퇴_처리는_받는다() throws Exception {
+        long banned = createUser(UserStatus.PENDING_ONBOARDING, UserRole.GENERAL);
+        long withdrawn = createUser(UserStatus.PENDING_ONBOARDING, UserRole.GENERAL);
+
+        sanction(banned, "BAN", "FALSE_REPORT", null, null, null).andExpect(status().isNoContent());
+        sanction(withdrawn, "FORCE_WITHDRAW", "FALSE_REPORT", null, null, null).andExpect(status().isNoContent());
+
+        assertThat(statusOf(banned)).isEqualTo(UserStatus.BANNED);
+        assertThat(statusOf(withdrawn)).isEqualTo(UserStatus.WITHDRAWN);
+        assertThat(sanctionsOf(banned)).hasSize(1);
+        assertThat(sanctionsOf(withdrawn)).hasSize(1);
+    }
+
     // --- 보조 ---
 
     private org.springframework.test.web.servlet.ResultActions sanction(

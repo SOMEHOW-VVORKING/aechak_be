@@ -2,6 +2,7 @@ package com.aechak.api.security
 
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.auth.error.AuthErrorCode
+import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserStatus
 import org.junit.jupiter.api.BeforeEach
@@ -14,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
@@ -63,20 +65,39 @@ class SanctionedAccountGateIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `기간이 지난 임시 정지는 다시 통과한다 — 자동 해제가 재로그인 없이 반영된다`() {
+    fun `기간이 지난 임시 정지는 다시 통과하고 유효 상태를 ACTIVE로 내린다`() {
         val userId = createMember(UserStatus.SUSPENDED, LocalDateTime.now().minusMinutes(1))
 
         mockMvc
             .perform(bearer(get("/api/v1/users/me"), mintAccessToken(userId)))
             .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.status").value(UserStatus.ACTIVE.name))
+            .andExpect(jsonPath("$.data.nickname").value(nicknameOf(userId)))
     }
 
     @Test
-    fun `이용 제한 계정은 조회는 되고 리뷰 작성만 403 20013으로 막힌다`() {
+    fun `기간이 지난 임시 정지는 프로필 수정도 다시 된다`() {
+        val userId = createMember(UserStatus.SUSPENDED, LocalDateTime.now().minusMinutes(1))
+
+        mockMvc
+            .perform(
+                bearer(put("/api/v1/users/me/profile"), mintAccessToken(userId))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"nickname":"풀린회원","bio":null,"profileImageKey":null}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.nickname").value("풀린회원"))
+    }
+
+    @Test
+    fun `이용 제한 계정은 조회에서 프로필을 그대로 보고 리뷰 작성만 403 20013으로 막힌다`() {
         val userId = createMember(UserStatus.RESTRICTED, null)
         val token = mintAccessToken(userId)
 
-        mockMvc.perform(bearer(get("/api/v1/users/me"), token)).andExpect(status().isOk)
+        mockMvc
+            .perform(bearer(get("/api/v1/users/me"), token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.status").value(UserStatus.RESTRICTED.name))
+            .andExpect(jsonPath("$.data.nickname").value(nicknameOf(userId)))
 
         mockMvc
             .perform(
@@ -87,18 +108,32 @@ class SanctionedAccountGateIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.ACCOUNT_RESTRICTED.code))
     }
 
+    /** 이용 제한은 커뮤니티성 쓰기만 막는 제재다 — 자기 프로필 수정이 500으로 터지면 안 된다. */
+    @Test
+    fun `이용 제한 계정의 프로필 수정은 통과한다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        mockMvc
+            .perform(
+                bearer(put("/api/v1/users/me/profile"), mintAccessToken(userId))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"nickname":"제한회원","bio":null,"profileImageKey":null}"""),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.nickname").value("제한회원"))
+    }
+
     @Test
     fun `이용 제한 계정의 주문은 막지 않는다 — 거래를 끊는 제재는 정지다`() {
         val userId = createMember(UserStatus.RESTRICTED, null)
 
-        // 본문이 비어 요청 자체는 실패하지만, 게이트가 아니라 컨트롤러까지 도달했음을 에러코드로 확인한다
+        // 본문이 비어 요청 자체는 실패하지만, 게이트가 아니라 컨트롤러의 입력 검증까지 도달했음을 본다
         mockMvc
             .perform(
                 bearer(post("/api/v1/order-groups"), mintAccessToken(userId))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{}"),
-            ).andExpect(jsonPath("$.errorCode").value(org.hamcrest.Matchers.not(AuthErrorCode.ACCOUNT_RESTRICTED.code)))
-            .andExpect(jsonPath("$.errorCode").value(org.hamcrest.Matchers.not(AuthErrorCode.ACCOUNT_BLOCKED.code)))
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
     }
 
     @Test
@@ -110,7 +145,8 @@ class SanctionedAccountGateIntegrationTest : IntegrationTestBase() {
                 bearer(post("/api/v1/reviews"), token)
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{}"),
-            ).andExpect(jsonPath("$.errorCode").value(org.hamcrest.Matchers.not(AuthErrorCode.ACCOUNT_RESTRICTED.code)))
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
     }
 
     private fun createMember(
@@ -129,6 +165,14 @@ class SanctionedAccountGateIntegrationTest : IntegrationTestBase() {
                 .setParameter("id", user.id)
                 .executeUpdate()
             user.id
+        }!!
+
+    private fun nicknameOf(userId: Long): String =
+        tx.execute {
+            em
+                .createQuery("select p.nickname from UserProfile p where p.userId = :id", String::class.java)
+                .setParameter("id", userId)
+                .singleResult
         }!!
 
     private fun bearer(
