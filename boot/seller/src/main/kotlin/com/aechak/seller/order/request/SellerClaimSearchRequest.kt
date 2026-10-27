@@ -1,11 +1,14 @@
 package com.aechak.seller.order.request
 
+import com.aechak.application.order.claim.port.SellerClaimPendingStage
 import com.aechak.application.order.claim.usecase.query.SellerClaimSearchQuery
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
+import io.swagger.v3.oas.annotations.media.ArraySchema
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.PositiveOrZero
 import org.hibernate.validator.constraints.Range
 import java.time.LocalDate
@@ -14,11 +17,36 @@ import java.time.format.DateTimeParseException
 /**
  * 셀러 클레임 목록 조회 파라미터. 상태 필터는 응답에 나가는 enum 이름을 그대로 받는다(복수 지정 가능) —
  * 화면 표시 상태로 접는 판정은 프론트에 있으므로 서버는 축 어휘만 안다.
+ *
+ * `pendingStage`는 셀러가 할 일이 남은 단계 축이다. 대시보드 처리 대기 카드가 세는 집합과 같은 판정을 쓰므로
+ * 카드에서 목록으로 넘어와도 두 숫자가 어긋나지 않는다 — 상태 축만으로는 회수 중 한 상태에 들어 있는
+ * 송장 등록 대기와 완료 처리 대기를 가를 수 없다.
  */
 data class SellerClaimSearchRequest(
+    @field:ArraySchema(schema = Schema(allowableValues = ["CANCEL", "RETURN", "EXCHANGE"]))
     val claimType: List<String> = emptyList(),
+    @field:ArraySchema(
+        schema =
+            Schema(
+                allowableValues = [
+                    "CLAIM_REQUESTED", "COLLECTING", "APPROVED", "REJECTED",
+                    "ADMIN_OVERRIDDEN", "REFUND_FAILED", "WITHDRAWN",
+                ],
+            ),
+    )
     val status: List<String> = emptyList(),
+    @field:ArraySchema(schema = Schema(allowableValues = ["NONE", "REQUESTED", "DONE", "REFUND_FAILED"]))
     val refundStatus: List<String> = emptyList(),
+    @field:ArraySchema(
+        schema =
+            Schema(
+                allowableValues = [
+                    "DECISION_PENDING", "COLLECTION_INVOICE_PENDING",
+                    "COLLECTION_COMPLETION_PENDING", "RESHIP_PENDING",
+                ],
+            ),
+    )
+    val pendingStage: List<String> = emptyList(),
     val requestedFrom: String? = null,
     val requestedTo: String? = null,
     @field:PositiveOrZero(message = "page는 0 이상이어야 합니다.")
@@ -41,6 +69,7 @@ data class SellerClaimSearchRequest(
             claimTypes = claimType.map { parseEnum<ClaimType>("claimType", it) },
             statuses = status.map { parseEnum<ClaimStatus>("status", it) },
             refundStatuses = refundStatus.map { parseEnum<RefundStatus>("refundStatus", it) },
+            pendingStages = pendingStage.map { parseEnum<SellerClaimPendingStage>("pendingStage", it) },
             requestedFrom = from,
             requestedTo = to,
             page = page,

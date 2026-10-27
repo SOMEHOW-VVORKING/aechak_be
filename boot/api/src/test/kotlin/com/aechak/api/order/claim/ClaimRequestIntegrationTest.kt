@@ -187,7 +187,7 @@ class ClaimRequestIntegrationTest : IntegrationTestBase() {
             .andExpect(status().isCreated)
 
         mockMvc
-            .perform(requestClaim(token, seeded.orderPublicId, """{"claimType":"CANCEL","reasonCode":"BROKEN"}"""))
+            .perform(requestClaim(token, seeded.orderPublicId, """{"claimType":"CANCEL","reasonCode":"DELIVERY_DELAY"}"""))
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.errorCode").value(50403))
 
@@ -203,7 +203,7 @@ class ClaimRequestIntegrationTest : IntegrationTestBase() {
             .andExpect(status().isNoContent)
 
         mockMvc
-            .perform(requestClaim(token, seeded.orderPublicId, """{"claimType":"CANCEL","reasonCode":"BROKEN"}"""))
+            .perform(requestClaim(token, seeded.orderPublicId, """{"claimType":"CANCEL","reasonCode":"DELIVERY_DELAY"}"""))
             .andExpect(status().isCreated)
 
         assertEquals(2, claimCount(seeded.orderId))
@@ -271,6 +271,70 @@ class ClaimRequestIntegrationTest : IntegrationTestBase() {
             .perform(requestClaim(token, seeded.orderPublicId, """{"claimType":"CANCEL","reasonCode":"  "}"""))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90001))
+    }
+
+    /** 자유 문자열이던 자리를 고정 어휘로 좁혔다 — 어휘 밖의 값은 본문 파싱에서 걸린다. */
+    @Test
+    fun `어휘에 없는 사유 코드는 400과 90001이고 클레임이 생기지 않는다`() {
+        val seeded = seedOrder(items = listOf(ItemSpec(20_000L, 1)))
+
+        mockMvc
+            .perform(requestClaim(token, seeded.orderPublicId, """{"claimType":"CANCEL","reasonCode":"BROKEN"}"""))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+
+        assertEquals(0, claimCount(seeded.orderId))
+    }
+
+    /**
+     * 취소는 물건이 나가기 전이라 불량·오배송이 성립하지 않는다. 받아 주면 셀러가 코드만 보고
+     * 반품비 부담을 가를 수 없게 된다.
+     */
+    @Test
+    fun `취소가 받지 않는 사유를 보내면 400과 50412이다`() {
+        val seeded = seedOrder(items = listOf(ItemSpec(20_000L, 1)))
+
+        mockMvc
+            .perform(requestClaim(token, seeded.orderPublicId, """{"claimType":"CANCEL","reasonCode":"DEFECTIVE"}"""))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(50412))
+
+        assertEquals(0, claimCount(seeded.orderId))
+    }
+
+    /** 상세를 받지 않으면 선택지가 전부 기타로 몰려 사유를 고정한 의미가 없어진다. */
+    @Test
+    fun `기타 사유에 상세가 없으면 400과 50413이다`() {
+        val seeded = seedOrder(items = listOf(ItemSpec(20_000L, 1)))
+
+        mockMvc
+            .perform(requestClaim(token, seeded.orderPublicId, """{"claimType":"CANCEL","reasonCode":"OTHER"}"""))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(50413))
+
+        mockMvc
+            .perform(
+                requestClaim(token, seeded.orderPublicId, """{"claimType":"CANCEL","reasonCode":"OTHER","reasonDetail":"   "}"""),
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(50413))
+
+        assertEquals(0, claimCount(seeded.orderId))
+    }
+
+    @Test
+    fun `기타 사유에 상세를 적으면 요청을 받는다`() {
+        val seeded = seedOrder(items = listOf(ItemSpec(20_000L, 1)))
+
+        mockMvc
+            .perform(
+                requestClaim(
+                    token,
+                    seeded.orderPublicId,
+                    """{"claimType":"CANCEL","reasonCode":"OTHER","reasonDetail":"다른 곳에서 더 싸게 샀어요"}""",
+                ),
+            ).andExpect(status().isCreated)
+
+        assertEquals(1, claimCount(seeded.orderId))
     }
 
     @Test

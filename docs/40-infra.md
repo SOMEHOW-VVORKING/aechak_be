@@ -92,12 +92,18 @@ allowedDelay를 넘기면 HOLD로 전이돼 수동 재개를 기다린다(재개
 
 ## 3. infra/client
 
-- 구체 모듈은 용도별로 추가한다 — 현재 `client/pg-client`·`client/social-client`·`client/s3-client`·`client/ses-client`·`client/sms-client`.
+- 구체 모듈은 용도별로 추가한다 — 현재 `client/pg-client`·`client/social-client`·`client/s3-client`·`client/ses-client`·`client/sms-client`·`client/tracking-client`.
 - `pg-client`: 확정 흐름의 `PaymentGatewayPort` 어댑터(포트원 V2, `PortOneAdapter`)와 **대사 소스** `PaymentReconciliationSourcePort` 어댑터 둘
   (`reconciliation/` — 포트원 `GET /payments` 기반 `PortOneReconciliationSource`, 토스페이먼츠 직접 연동용 `TossPaymentsReconciliationSource`).
   소스 어댑터는 설정으로 켜고 끈다(`payment.reconciliation.portone.enabled` 기본 켜짐, `payment.toss.enabled` 기본 꺼짐) —
   Boot의 `@ConditionalOnProperty`는 autoconfigure 의존이라 이 모듈에선 Framework `Condition`으로 같은 일을 한다.
   대사 목록 조회는 읽기 타임아웃 60초의 전용 RestClient를 쓴다(포트원 권장) — 확정 흐름의 10초 클라이언트와 분리.
+- `tracking-client`: 택배사 추적 조회 포트(`ShipmentTrackingPort`, application 소유)의 어댑터. 실제 택배사 계약이 아직 없어
+  현재 구현은 외부를 부르지 않는 목 하나뿐이다 — 송장번호 해시로 고정 단계 하나를 골라 `[모의]` 표식을 앞에 붙여 돌려준다.
+  표식을 값 자체에 박는 이유는, 이 값이 DB에 들어가면 구매자·셀러 주문 조회에 그대로 실려 진짜 추적 정보처럼 보이기 때문이다.
+  스위치(`order.delivery.tracking.mock.enabled`)는 기본 꺼짐이고 운영 프로파일에서는 켜도 조립되지 않는다.
+  pg-client의 대사 소스와 같은 이유로 Boot의 `@ConditionalOnProperty` 대신 Framework `Condition`을 쓴다.
+  실연동은 이 모듈에 어댑터를 하나 더하고 목 스위치를 끄는 것으로 끝난다 — 포트·도메인·배치는 그대로다.
 - `sms-client`: SmsSender 포트(application 소유)의 어댑터. 실발송(CoolSMS)은 dev·staging·prod 프로필, 그 외는 발송 생략(로그) 어댑터가 뜬다 — 실발송 프로필에서 키 미주입이면 부팅 실패. SDK가 HTTP 타임아웃을 50초로 고정해 두어, 어댑터가 전용 풀(동시 발송 상한 = 격벽)에 발송을 맡기고 5초까지만 기다린다 — 초과·포화는 즉시 예외로 드러나 application의 보상 경로를 탄다. 단, 타임아웃은 대기 포기일 뿐 발송 취소가 아니다(SDK가 취소를 노출하지 않음) — 5초를 넘겨 완료된 발송은 소각된 코드로 도착할 수 있고, 어댑터가 warn 로그로 남긴다.
 
 ```kotlin

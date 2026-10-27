@@ -63,4 +63,6 @@ enum class OrderErrorCode(
     CLAIM_COLLECTION_NOT_STARTABLE(50409, "회수를 진행할 수 없는 클레임 상태입니다.", 409),
     CLAIM_PARTIAL_QUANTITY_NOT_SUPPORTED(50410, "주문한 수량 전부를 대상으로만 요청할 수 있습니다.", 422),
     CLAIM_RESHIP_NOT_ALLOWED(50411, "회수가 끝난 교환 클레임만 재발송할 수 있습니다.", 409),
+    CLAIM_REASON_NOT_SELECTABLE(50412, "요청 유형에서 선택할 수 없는 사유입니다.", 400),
+    CLAIM_REASON_DETAIL_REQUIRED(50413, "기타 사유를 선택하면 상세 내용을 입력해 주세요.", 400),
 }
