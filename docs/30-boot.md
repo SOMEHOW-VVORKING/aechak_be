@@ -176,6 +176,10 @@ class OrderMessageConsumer(private val someUseCase: SomeUseCase) {
 - **선별 스캔**: 루트(com.aechak) 스캔은 auth·kafka 등 api 전용 조립까지 요구해 부팅이 깨진다.
   스캔 목록은 `SellerApiApplication` 소유 — application 패키지를 추가로 쓰면 그 패키지가 요구하는 infra 어댑터·config 조립도 함께 늘린다.
 - **셀러센터 전용 유스케이스는 BC 패키지의 `seller` 하위에 둔다**(`application.order.seller`, `application.settlement.seller`).
+  구매자와 셀러가 **같은 파사드를 공유**하는 애그리거트는 `seller` 하위로 내리지 않고 애그리거트 패키지째
+  스캔에 넣는다(`application.order.claim`, `application.inquiry.product`) — 파사드를 쪼개면 같은 서비스 주입이
+  양쪽에 복제된다(20 문서 §2). 이때도 **BC 패키지 전체를 넣지 않는다**: `application.inquiry`를 통째로 넣으면
+  앱 서비스 문의의 메일 발송 조립(ses-client)까지 딸려온다.
   BC 패키지 전체를 스캔하면 셀러센터가 안 쓰는 파사드가 딸려온다 — `application.order`는 구매자 주문서·장바구니가 배송지·적립금
   조립까지 요구하고, `application.settlement`는 구매확정 원장 생성과 계좌 이관이 딸려온다. 뒤집어, batch는 두 BC 패키지를
   스캔하므로 이 하위 패키지들을 excludeFilters로 뺀다 — 셀러 자격(`application.seller`)을 배치가 끌고 오지 않게 한다.
