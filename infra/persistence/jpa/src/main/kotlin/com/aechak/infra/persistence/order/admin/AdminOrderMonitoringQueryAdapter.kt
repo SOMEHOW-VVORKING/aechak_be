@@ -37,9 +37,6 @@ private val courier = QCourierMaster.courierMaster
 private val claim = QClaim.claim
 private val statusHistory = QOrderStatusHistory.orderStatusHistory
 
-/** 종결 시각이 찍히지 않더라도 더 진행되지 않는 상태 — 진행 중 판정에서 뺀다. */
-private val CLOSED_CLAIM_STATUSES = setOf(ClaimStatus.REJECTED, ClaimStatus.WITHDRAWN)
-
 /**
  * 운영자용 전체 주문 조회. 셀러 스코프가 없어 모수가 전체 주문이므로 정렬·커서·기간 필터·지연 판정을
  * 전부 `orders` 한 테이블의 컬럼으로 끝낸다 — 주문그룹 조인은 구매자 식별자 하나 때문이고
@@ -143,7 +140,8 @@ class AdminOrderMonitoringQueryAdapter(
             .where(
                 claim.orderId.`in`(orderIds),
                 claim.resolvedAt.isNull,
-                claim.status.notIn(CLOSED_CLAIM_STATUSES),
+                // 종결 시각이 없어도 품목을 놓아준 클레임은 진행 중이 아니다 — 상태 집합은 도메인에서 뽑는다
+                claim.status.`in`(ClaimStatus.HOLDING),
             ).orderBy(claim.orderId.asc(), claim.id.asc())
             .fetch()
     }
