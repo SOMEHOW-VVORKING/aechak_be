@@ -3,6 +3,7 @@ package com.aechak.admin.review;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -11,8 +12,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aechak.admin.support.IntegrationTestBase;
+import com.aechak.application.review.admin.usecase.AdminReviewUseCase;
+import com.aechak.application.review.admin.usecase.command.DeleteReviewCommand;
+import com.aechak.application.review.admin.usecase.command.UnblindReviewCommand;
+import com.aechak.common.error.BusinessException;
 import com.aechak.domain.product.category.Category;
 import com.aechak.domain.product.product.Product;
+import com.aechak.domain.review.error.ReviewErrorCode;
 import com.aechak.domain.review.report.ReviewReport;
 import com.aechak.domain.review.report.enums.ReviewReportReason;
 import com.aechak.domain.review.review.Review;
@@ -25,6 +31,9 @@ import com.aechak.domain.user.user.enums.UserRole;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,6 +60,9 @@ class AdminReviewIntegrationTest extends IntegrationTestBase {
 
     @Autowired
     private FilterChainProxy securityFilterChain;
+
+    @Autowired
+    private AdminReviewUseCase adminReviewUseCase;
 
     private MockMvc mockMvc;
     private String adminToken;
@@ -404,7 +416,46 @@ class AdminReviewIntegrationTest extends IntegrationTestBase {
         assertNull(blindActorOf(target));
     }
 
+    /**
+     * 삭제가 커밋되기 전에 들어온 해제 요청이 종결을 되살리지 못하는지 — 전이 대상을 잠가 읽지 않으면
+     * 두 요청이 같은 BLOCKED 상태를 읽어 둘 다 성공하고, 나중에 쓰는 해제가 DELETED를 PUBLIC으로 덮어쓴다.
+     * 잠그면 해제의 조회 자체가 삭제 커밋까지 기다렸다가 DELETED를 읽고 409로 거절된다.
+     */
+    @Test
+    void 삭제가_커밋되기_전에_들어온_해제는_종결을_되살리지_못한다() throws Exception {
+        long target = persistReview(1, 1L, "악의적 리뷰");
+        blind(target, "ABUSE", "욕설");
+        CountDownLatch deleteApplied = new CountDownLatch(1);
+
+        // 삭제 트랜잭션은 전이를 반영한 뒤 잠금을 쥔 채로 잠시 커밋을 미룬다
+        CompletableFuture<Void> deleting = CompletableFuture.runAsync(() -> tx.executeWithoutResult(txStatus -> {
+            adminReviewUseCase.delete(new DeleteReviewCommand(adminId, target, ReviewBlindReason.AD_SPAM, null));
+            deleteApplied.countDown();
+            sleep(600);
+        }));
+
+        assertTrue(deleteApplied.await(10, TimeUnit.SECONDS), "삭제 전이가 반영되어야 한다");
+        BusinessException rejected = assertThrows(
+                BusinessException.class,
+                () -> adminReviewUseCase.unblind(new UnblindReviewCommand(adminId, target)),
+                "삭제가 커밋된 뒤의 해제는 거절되어야 한다");
+
+        deleting.join();
+        assertEquals(ReviewErrorCode.REVIEW_NOT_BLINDED, rejected.getErrorCode());
+        assertEquals(ReviewStatus.DELETED, statusOf(target), "해제가 종결된 리뷰를 되살려서는 안 된다");
+        assertEquals(0, reviewCountStat(), "되살아나지 않았으므로 평점 집계도 그대로여야 한다");
+    }
+
     // --- 고정 장치 ---
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
 
     private MockHttpServletRequestBuilder bearer(MockHttpServletRequestBuilder builder) {
         return builder.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken);
