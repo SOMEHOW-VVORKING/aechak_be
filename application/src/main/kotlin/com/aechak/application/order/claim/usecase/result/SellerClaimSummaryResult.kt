@@ -2,6 +2,7 @@ package com.aechak.application.order.claim.usecase.result
 
 import com.aechak.application.order.claim.port.view.SellerClaimItemView
 import com.aechak.application.order.claim.port.view.SellerClaimView
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimSettlementStatus
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
@@ -18,7 +19,7 @@ data class SellerClaimSummaryResult(
     val claimPublicId: String,
     val orderPublicId: String,
     val claimType: ClaimType,
-    val reasonCode: String?,
+    val reasonCode: ClaimReasonCode?,
     val reasonDetail: String?,
     val status: ClaimStatus,
     val refundStatus: RefundStatus?,

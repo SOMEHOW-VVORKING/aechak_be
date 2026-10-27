@@ -4,15 +4,18 @@ import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.order.seller.port.view.SellerOrderClaimView
 import com.aechak.application.order.seller.port.view.SellerOrderShipmentView
 import com.aechak.application.order.seller.port.view.SellerOrderSummaryView
+import com.aechak.application.order.seller.service.SellerOrderMetricsService
 import com.aechak.application.order.seller.service.SellerOrderService
 import com.aechak.application.order.seller.usecase.SellerOrderUseCase
 import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
 import com.aechak.application.order.seller.usecase.command.CompleteDeliveryCommand
 import com.aechak.application.order.seller.usecase.command.RegisterShipmentCommand
+import com.aechak.application.order.seller.usecase.query.SellerOrderMetricsQuery
 import com.aechak.application.order.seller.usecase.query.SellerOrderSearchQuery
 import com.aechak.application.order.seller.usecase.result.RegisterShipmentResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderDetailResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderLineResult
+import com.aechak.application.order.seller.usecase.result.SellerOrderMetricsResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderSummaryResult
 import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.application.support.OffsetPageResult
@@ -26,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class SellerOrderFacade(
     private val sellerOrderService: SellerOrderService,
+    private val sellerOrderMetricsService: SellerOrderMetricsService,
     private val sellerUseCase: SellerUseCase,
     private val userUseCase: UserUseCase,
     private val fileUseCase: FileUseCase,
@@ -80,6 +84,11 @@ class SellerOrderFacade(
             nicknames = userUseCase.getAuthors(orders.map { it.buyerId }).mapValues { it.value.nickname },
             decryptPii = sellerOrderService::decryptPii,
         )
+
+    /** 자격 게이트 없음 — 계약 KDoc대로 호출자(대시보드 조립)가 이미 통과시킨 sellerId만 들어온다. */
+    @Transactional(readOnly = true)
+    override fun getOrderMetrics(query: SellerOrderMetricsQuery): SellerOrderMetricsResult =
+        SellerOrderMetricsResult.from(sellerOrderMetricsService.countMetrics(query))
 
     private fun requireActiveSeller(sellerId: Long) {
         if (!sellerUseCase.isActiveSeller(sellerId)) {

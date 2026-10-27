@@ -13,6 +13,7 @@ import com.aechak.application.order.claim.usecase.command.StartClaimCollectionCo
 import com.aechak.application.order.claim.usecase.result.ExecuteClaimRefundStatus
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.claim.Claim
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
@@ -281,6 +282,31 @@ class ClaimReturnExchangeIntegrationTest : IntegrationTestBase() {
         mockMvc.perform(claimRequest(seeded, ClaimType.RETURN)).andExpect(status().isCreated)
     }
 
+    /** 교환은 돈을 돌려주지 않아 가격 조건이 성립하지 않는다 — 유형별 허용 사유를 서버가 가른다. */
+    @Test
+    fun `교환이 받지 않는 사유를 보내면 400과 50412이다`() {
+        val seeded = seedDeliveredOrder(listOf(ItemSpec(10_000L, 1)))
+
+        mockMvc
+            .perform(claimRequest(seeded, ClaimType.EXCHANGE, reasonCode = ClaimReasonCode.PRICE_MISMATCH))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(50412))
+
+        assertEquals(listOf(OrderItemStatus.ORDERED), itemStatusesOf(seeded.orderId))
+        assertEquals(0, claimCountOf(seeded.orderId))
+    }
+
+    @Test
+    fun `반품은 상품 설명과 다름 사유를 받는다`() {
+        val seeded = seedDeliveredOrder(listOf(ItemSpec(10_000L, 1)))
+
+        mockMvc
+            .perform(claimRequest(seeded, ClaimType.RETURN, reasonCode = ClaimReasonCode.NOT_AS_DESCRIBED))
+            .andExpect(status().isCreated)
+
+        assertEquals(1, claimCountOf(seeded.orderId))
+    }
+
     @Test
     fun `진행 중인 반품이 있으면 같은 품목에 교환을 걸 수 없다`() {
         val seeded = seedDeliveredOrder(listOf(ItemSpec(10_000L, 1)))
@@ -314,6 +340,7 @@ class ClaimReturnExchangeIntegrationTest : IntegrationTestBase() {
         seeded: SeededOrder,
         claimType: ClaimType,
         targets: Map<Long, Int>? = null,
+        reasonCode: ClaimReasonCode = reasonCodeOf(claimType),
     ): MockHttpServletRequestBuilder {
         val itemsJson =
             targets?.entries?.joinToString(",", prefix = ""","items":[""", postfix = "]") {
@@ -322,8 +349,12 @@ class ClaimReturnExchangeIntegrationTest : IntegrationTestBase() {
         return post("/api/v1/orders/${seeded.orderPublicId}/claims")
             .bearer(token)
             .contentType(MediaType.APPLICATION_JSON)
-            .content("""{"claimType":"$claimType","reasonCode":"DEFECT"$itemsJson}""")
+            .content("""{"claimType":"$claimType","reasonCode":"$reasonCode"$itemsJson}""")
     }
+
+    /** 유형마다 받을 수 있는 사유가 다르다 — 취소에는 불량이 없다. */
+    private fun reasonCodeOf(claimType: ClaimType): ClaimReasonCode =
+        if (claimType == ClaimType.CANCEL) ClaimReasonCode.CHANGE_OF_MIND else ClaimReasonCode.DEFECTIVE
 
     private fun startCollection(claimPublicId: String) {
         sellerClaimUseCase.startCollection(

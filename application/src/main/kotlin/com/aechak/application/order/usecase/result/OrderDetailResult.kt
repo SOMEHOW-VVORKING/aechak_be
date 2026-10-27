@@ -5,13 +5,17 @@ import com.aechak.application.order.port.view.OrderDeliveryAddressView
 import com.aechak.application.order.port.view.OrderDetailView
 import com.aechak.application.order.port.view.OrderLineView
 import com.aechak.application.order.port.view.OrderShipmentView
+import com.aechak.domain.order.claim.enums.ClaimStatus
+import com.aechak.domain.order.claim.enums.ClaimType
+import com.aechak.domain.order.claim.enums.RefundStatus
+import com.aechak.domain.order.order.enums.OrderStatus
 import java.time.LocalDateTime
 
 data class OrderDetailResult(
     val orderId: String,
     val orderGroupId: String,
     val orderedAt: LocalDateTime,
-    val status: String,
+    val status: OrderStatus,
     val sellerName: String?,
     val items: List<OrderLineItemResult>,
     val payment: OrderPaymentResult,
@@ -33,7 +37,7 @@ data class OrderDetailResult(
                 orderId = view.orderPublicId,
                 orderGroupId = view.orderGroupPublicId,
                 orderedAt = view.orderedAt,
-                status = view.status.name,
+                status = view.status,
                 sellerName = view.sellerName,
                 items = lines.map { OrderLineItemResult.of(it, resolveThumbnail(it.thumbnailKey)) },
                 payment = OrderPaymentResult.from(view),
@@ -117,17 +121,17 @@ data class OrderShipmentResult(
 
 data class OrderActiveClaimResult(
     val claimPublicId: String,
-    val claimType: String,
-    val status: String,
-    val refundStatus: String?,
+    val claimType: ClaimType,
+    val status: ClaimStatus,
+    val refundStatus: RefundStatus?,
 ) {
     companion object {
         fun from(view: OrderActiveClaimView): OrderActiveClaimResult =
             OrderActiveClaimResult(
                 claimPublicId = view.claimPublicId,
-                claimType = view.claimType.name,
-                status = view.status.name,
-                refundStatus = view.refundStatus?.name,
+                claimType = view.claimType,
+                status = view.status,
+                refundStatus = view.refundStatus,
             )
     }
 }
