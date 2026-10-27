@@ -34,7 +34,8 @@ public class AdminAuditLogController {
     private final AdminAuditLogUseCase adminAuditLogUseCase;
 
     /**
-     * 조치 시각 내림차순 커서 페이징.
+     * 기록 순서 내림차순(최근 기록이 먼저) 커서 페이징. 동시 조치에서는 이 순서와 {@code actedAt}
+     * 순서가 밀리초 단위로 어긋날 수 있다 — 기록 순서로 읽으면 늦게 들어온 행을 건너뛰지 않는다.
      *
      * <p>필터는 모두 AND다. {@code action}과 {@code targetType}을 함께 주면 짝이 맞아야 한다 —
      * 어긋난 조합은 언제나 0건이므로 조용히 빈 목록을 주는 대신 400으로 끊는다.

@@ -28,7 +28,10 @@ internal fun auditKeywordPattern(keyword: String): String =
  * 감사 로그 조회. 조치한 운영자의 신원은 user BC의 users·user_profiles를 **LEFT JOIN**으로 붙인다 —
  * 조치한 계정이 지워져도 그 조치의 행은 사라지면 안 된다(그게 사라지면 감사 로그가 아니다).
  *
- * 정렬과 커서가 id 하나인 이유: 이 테이블은 더하기만 있어 id 순서와 acted_at 순서가 같다.
+ * 정렬과 커서는 id 하나다 — 기록 순서로 내려 읽는다. acted_at 은 INSERT 전에 요청 스레드가
+ * 찍으므로 동시 조치에서 id 순서와 밀리초 단위로 어긋날 수 있다(그 경우 목록의 시각이 아주
+ * 조금 뒤바뀌어 보인다). acted_at 정렬로 바꾸면 늦게 INSERT 된 행이 이미 지나간 시각 자리로
+ * 들어가 **읽는 중에 건너뛰어진다** — 감사 로그에서는 그게 더 나쁜 고장이다.
  */
 @Repository
 class AdminAuditTrailQueryAdapter(

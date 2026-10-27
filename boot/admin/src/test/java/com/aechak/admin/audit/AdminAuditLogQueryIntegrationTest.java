@@ -154,25 +154,44 @@ class AdminAuditLogQueryIntegrationTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.data.items[1].targetId").value("11"));
     }
 
+    /**
+     * 이름·사유·식별자 셋을 <b>서로 다른 값</b>으로 심는다. 한 행에 같은 값을 넣어 두면 OR 분기
+     * 하나가 빠져도 테스트가 통과해 세 갈래 중 둘이 검증되지 않는다.
+     */
     @Test
-    void 검색어는_대상_이름과_사유와_대상_식별자를_부분_일치한다() throws Exception {
-        seedRow(viewerId, AdminAuditAction.SELLER_APPLICATION_REJECTED, "31", base, AdminAuditResult.SUCCESS, "보리펫샵");
-        seedRow(
-                viewerId,
-                AdminAuditAction.SELLER_APPLICATION_REJECTED,
-                "32",
-                base,
-                AdminAuditResult.SUCCESS,
-                "통장 사본 불일치");
+    void 검색어는_대상_이름과_사유와_대상_식별자를_각각_부분_일치한다() throws Exception {
+        seedRow(viewerId, AdminAuditAction.SELLER_APPLICATION_REJECTED, "31", base, "보리펫샵", "서류 미비");
+        seedRow(viewerId, AdminAuditAction.SELLER_APPLICATION_REJECTED, "32", base, "다정상회", "통장 사본 불일치");
 
+        // 대상 이름만 맞는 행
+        mockMvc.perform(bearer(get(BASE).param("keyword", "보리펫샵")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].targetId").value("31"));
+        // 사유만 맞는 행
         mockMvc.perform(bearer(get(BASE).param("keyword", "통장")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalCount").value(1))
                 .andExpect(jsonPath("$.data.items[0].targetId").value("32"));
+        // 대상 식별자만 맞는 행
         mockMvc.perform(bearer(get(BASE).param("keyword", "31")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalCount").value(1))
                 .andExpect(jsonPath("$.data.items[0].targetId").value("31"));
+    }
+
+    /**
+     * 화면이 운영자 입력을 지우면 {@code ?actorPublicId=}로 보낸다. 빈 문자열을 조건으로 그대로
+     * 넘기면 {@code publicId = ''}가 되어 늘 0건이고, 운영자에게 그 0건은 "조치가 없었다"로 읽힌다.
+     */
+    @Test
+    void 빈_운영자_필터는_거르지_않는다() throws Exception {
+        seedRow(viewerId, AdminAuditAction.ADMIN_PROMOTED, "11", base, AdminAuditResult.SUCCESS, null);
+        seedRow(otherAdminId, AdminAuditAction.ADMIN_PROMOTED, "12", base, AdminAuditResult.SUCCESS, null);
+
+        mockMvc.perform(bearer(get(BASE).param("actorPublicId", "").param("keyword", "")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2));
     }
 
     /** LIKE 와일드카드가 글자 그대로 취급돼야 한다 — 아니면 `%` 검색이 전체를 돌려준다 */
@@ -304,13 +323,35 @@ class AdminAuditLogQueryIntegrationTest extends IntegrationTestBase {
             LocalDateTime actedAt,
             AdminAuditResult result,
             String labelAndReason) {
+        seedRow(actorUserId, action, targetId, actedAt, result, labelAndReason, labelAndReason);
+    }
+
+    /** 이름과 사유를 따로 심는다 — 검색의 OR 분기를 각각 확인하려면 둘이 달라야 한다 */
+    private void seedRow(
+            long actorUserId,
+            AdminAuditAction action,
+            String targetId,
+            LocalDateTime actedAt,
+            String targetLabel,
+            String reason) {
+        seedRow(actorUserId, action, targetId, actedAt, AdminAuditResult.SUCCESS, targetLabel, reason);
+    }
+
+    private void seedRow(
+            long actorUserId,
+            AdminAuditAction action,
+            String targetId,
+            LocalDateTime actedAt,
+            AdminAuditResult result,
+            String targetLabel,
+            String reason) {
         tx.executeWithoutResult(txStatus -> em.persist(AdminAuditLog.Companion.record(
                 actorUserId,
                 action,
                 action.getTargetType(),
                 targetId,
-                labelAndReason,
-                labelAndReason,
+                targetLabel,
+                reason,
                 result,
                 result == AdminAuditResult.SUCCESS ? 204 : 409,
                 "req-" + targetId,

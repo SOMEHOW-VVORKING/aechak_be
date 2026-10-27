@@ -16,7 +16,7 @@ import java.time.LocalDateTime
  * 빈 목록으로 돌려주면 "그 기간에 조치가 없었다"로 읽힌다 — 감사 화면에서 가장 위험한 거짓말이다.
  */
 data class AdminAuditLogListQuery(
-    val actorPublicId: String? = null,
+    val rawActorPublicId: String? = null,
     val targetType: AdminAuditTargetType? = null,
     val action: AdminAuditAction? = null,
     val result: AdminAuditResult? = null,
@@ -26,6 +26,14 @@ data class AdminAuditLogListQuery(
     val cursor: String? = null,
     val size: Int = CursorPageSize.DEFAULT,
 ) {
+    /**
+     * trim한 운영자 공개 식별자. 비면 null이라 거르지 않는다.
+     *
+     * 빈 문자열을 그대로 두면 `?actorPublicId=`(화면이 입력을 지우면 흔히 그렇게 보낸다)가
+     * `publicId = ''` 조건이 되어 늘 0건을 돌려준다 — 운영자에게는 "조치가 없었다"로 읽힌다.
+     */
+    val actorPublicId: String? = rawActorPublicId?.trim()?.ifEmpty { null }
+
     /** trim한 검색어. 비면 null이라 거르지 않는다 */
     val keyword: String? = rawKeyword?.trim()?.ifEmpty { null }
 

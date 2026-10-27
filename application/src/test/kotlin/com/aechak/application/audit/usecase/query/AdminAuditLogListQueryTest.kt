@@ -58,6 +58,20 @@ class AdminAuditLogListQueryTest {
         listOf(0, -1, 101).forEach { size -> assertInvalid("size=$size 가 통과했다") { AdminAuditLogListQuery(size = size) } }
     }
 
+    /**
+     * `?actorPublicId=` 를 그대로 조건에 넣으면 `publicId = ''` 가 되어 늘 0건이다 —
+     * 감사 화면에서 그 0건은 "조치가 없었다"로 읽힌다.
+     */
+    @Test
+    fun `공백만 있는 운영자 식별자는 거르지 않는다`() {
+        assertNull(AdminAuditLogListQuery(rawActorPublicId = "").actorPublicId)
+        assertNull(AdminAuditLogListQuery(rawActorPublicId = "   ").actorPublicId)
+        assertEquals(
+            "01JD5G7HJK8M2N4PQ6RSTV9WXY",
+            AdminAuditLogListQuery(rawActorPublicId = " 01JD5G7HJK8M2N4PQ6RSTV9WXY ").actorPublicId,
+        )
+    }
+
     @Test
     fun `공백만 있는 검색어는 거르지 않는다`() {
         assertNull(AdminAuditLogListQuery(rawKeyword = "   ").keyword)

@@ -64,6 +64,36 @@ class AdminAuditCursorCodecTest {
         }
     }
 
+    /**
+     * 구분자만으로 칸을 이으면 검색어에 구분자를 넣어 칸 경계를 옮길 수 있다. 아래 두 조건은
+     * 서로 다른 필터인데, 길이를 앞세우지 않으면 같은 해시가 나와 남의 커서가 통과한다.
+     */
+    @Test
+    fun `구분자를 끼운 검색어로 다른 필터와 같은 해시를 만들 수 없다`() {
+        val separator = ""
+        val shifted = base.copy(actorPublicId = "a" + separator.repeat(6) + "b", keyword = "c")
+        val plain = base.copy(actorPublicId = "a", keyword = "b" + separator.repeat(6) + "c")
+
+        val cursor = AdminAuditCursorCodec.encode(shifted, 7L)
+
+        assertEquals(7L, AdminAuditCursorCodec.decode(cursor, shifted))
+        assertCursorRejected("칸 경계를 옮긴 조건의 커서가 통과했다") { AdminAuditCursorCodec.decode(cursor, plain) }
+    }
+
+    /**
+     * null 과 빈 문자열은 SQL에서 다르게 동작한다(전자는 필터 없음, 후자는 `= ''`). 해시가 둘을
+     * 구별하지 못하면 필터가 실제로 바뀐 요청이 90002 없이 통과한다.
+     */
+    @Test
+    fun `지정하지 않은 필터와 빈 문자열 필터의 커서를 구별한다`() {
+        val cursor = AdminAuditCursorCodec.encode(base, 11L)
+
+        assertCursorRejected("빈 문자열 운영자 필터가 통과했다") {
+            AdminAuditCursorCodec.decode(cursor, base.copy(actorPublicId = ""))
+        }
+        assertCursorRejected("빈 문자열 검색어가 통과했다") { AdminAuditCursorCodec.decode(cursor, base.copy(keyword = "")) }
+    }
+
     /** 범위 해시만 싣고 조건의 원문을 싣지 않는다 — 커서에 검색어·운영자 식별자가 드러나면 안 된다 */
     @Test
     fun `커서 페이로드에 조건 원문이 드러나지 않는다`() {
