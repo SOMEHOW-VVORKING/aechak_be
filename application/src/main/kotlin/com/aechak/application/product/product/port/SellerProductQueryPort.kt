@@ -2,6 +2,7 @@ package com.aechak.application.product.product.port
 
 import com.aechak.application.product.product.port.view.SellerProductOptionView
 import com.aechak.application.product.product.port.view.SellerProductOwnershipView
+import com.aechak.application.product.product.port.view.SellerProductStatusCountView
 import com.aechak.application.product.product.port.view.SellerProductView
 
 /** 셀러 자신의 상품 목록·옵션 재고 조회 포트 — 검수·판매 상태 무관 전체 조회 */
@@ -15,4 +16,7 @@ interface SellerProductQueryPort {
 
     /** 조합별 재고 — 비활성 조합 포함 */
     fun findCombinations(productId: Long): List<SellerProductOptionView>
+
+    /** 상태별 상품 수 — 대시보드 요약. 네 건수를 쿼리 한 번으로 받는다 */
+    fun countStatuses(sellerId: Long): SellerProductStatusCountView
 }

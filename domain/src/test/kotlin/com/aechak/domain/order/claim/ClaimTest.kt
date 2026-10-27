@@ -2,6 +2,7 @@ package com.aechak.domain.order.claim
 
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimSettlementStatus
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
@@ -46,7 +47,7 @@ class ClaimTest {
         assertEquals(ClaimSettlementStatus.PENDING, claim.settlementStatus)
         assertNotNull(claim.requestedAt)
         assertNotNull(claim.autoApproveDueAt)
-        assertEquals("CHANGE_OF_MIND", claim.reasonCode)
+        assertEquals(ClaimReasonCode.CHANGE_OF_MIND, claim.reasonCode)
     }
 
     @Test
@@ -55,7 +56,7 @@ class ClaimTest {
             Claim.request(
                 order = order(id = 4242L),
                 claimType = ClaimType.CANCEL,
-                reasonCode = "CHANGE_OF_MIND",
+                reasonCode = ClaimReasonCode.CHANGE_OF_MIND,
                 reasonDetail = null,
                 items = emptyList(),
                 autoApproveDueAt = DUE_AT,
@@ -72,7 +73,7 @@ class ClaimTest {
             Claim.request(
                 order = target,
                 claimType = ClaimType.CANCEL,
-                reasonCode = "CHANGE_OF_MIND",
+                reasonCode = ClaimReasonCode.CHANGE_OF_MIND,
                 reasonDetail = null,
                 items = listOf(claimItem(other)),
                 autoApproveDueAt = DUE_AT,
@@ -121,6 +122,64 @@ class ClaimTest {
         val exception = assertFailsWith<BusinessException> { request(delivered, ClaimType.CANCEL) }
 
         assertEquals(OrderErrorCode.CLAIM_NOT_REQUESTABLE, exception.errorCode)
+    }
+
+    /**
+     * 셀러는 반품비 부담 주체를 코드만 보고 가른다 — 변심은 구매자, 불량·오배송은 셀러다.
+     * 유형이 받지 않는 코드가 저장되면 그 구분이 무너지므로 생성 자체를 막는다.
+     */
+    @Test
+    fun `유형이 받지 않는 사유로는 클레임을 만들 수 없다`() {
+        val paid = order()
+        val delivered = order(status = OrderStatus.DELIVERED)
+
+        val rejected =
+            listOf(
+                Triple(paid, ClaimType.CANCEL, ClaimReasonCode.DEFECTIVE),
+                Triple(paid, ClaimType.CANCEL, ClaimReasonCode.WRONG_ITEM),
+                Triple(paid, ClaimType.CANCEL, ClaimReasonCode.NOT_AS_DESCRIBED),
+                Triple(delivered, ClaimType.RETURN, ClaimReasonCode.PRICE_MISMATCH),
+                Triple(delivered, ClaimType.RETURN, ClaimReasonCode.DELIVERY_DELAY),
+                Triple(delivered, ClaimType.RETURN, ClaimReasonCode.WRONG_OPTION),
+                Triple(delivered, ClaimType.EXCHANGE, ClaimReasonCode.CHANGE_OF_MIND),
+                Triple(delivered, ClaimType.EXCHANGE, ClaimReasonCode.PRICE_MISMATCH),
+                Triple(delivered, ClaimType.EXCHANGE, ClaimReasonCode.NOT_AS_DESCRIBED),
+            )
+
+        rejected.forEach { (target, claimType, reasonCode) ->
+            val exception = assertFailsWith<BusinessException> { request(target, claimType, reasonCode) }
+            assertEquals(OrderErrorCode.CLAIM_REASON_NOT_SELECTABLE, exception.errorCode, "$claimType + $reasonCode")
+        }
+    }
+
+    @Test
+    fun `유형이 받는 사유는 모두 클레임이 된다`() {
+        ClaimType.entries.forEach { claimType ->
+            val target = order(status = if (claimType == ClaimType.CANCEL) OrderStatus.PAID else OrderStatus.DELIVERED)
+            ClaimReasonCode.selectableFor(claimType).forEach { reasonCode ->
+                val claim = request(target, claimType, reasonCode, reasonDetail = "상세를 적었어요")
+                assertEquals(reasonCode, claim.reasonCode, "$claimType + $reasonCode")
+            }
+        }
+    }
+
+    /** 상세를 받지 않으면 선택지가 전부 기타로 몰려 사유를 고정한 의미가 사라진다. */
+    @Test
+    fun `기타 사유는 상세가 없으면 클레임을 만들 수 없다`() {
+        val paid = order()
+
+        listOf(null, "", "   ").forEach { detail ->
+            val exception =
+                assertFailsWith<BusinessException> {
+                    request(paid, ClaimType.CANCEL, ClaimReasonCode.OTHER, reasonDetail = detail)
+                }
+            assertEquals(OrderErrorCode.CLAIM_REASON_DETAIL_REQUIRED, exception.errorCode, "detail=$detail")
+        }
+
+        val claim = request(paid, ClaimType.CANCEL, ClaimReasonCode.OTHER, reasonDetail = "다른 곳에서 더 싸게 샀어요")
+
+        assertEquals(ClaimReasonCode.OTHER, claim.reasonCode)
+        assertEquals("다른 곳에서 더 싸게 샀어요", claim.reasonDetail)
     }
 
     @Test
@@ -176,15 +235,19 @@ class ClaimTest {
         assertEquals("거부 사유 고객 안내 완료", claim.sellerMemo)
     }
 
+    /** 유형이 받지 않는 사유는 생성 자체가 막히므로 기본값을 유형에 맞춰 고른다 — 교환에는 변심이 없다. */
     private fun request(
         order: Order,
         claimType: ClaimType = ClaimType.CANCEL,
+        reasonCode: ClaimReasonCode =
+            if (claimType == ClaimType.EXCHANGE) ClaimReasonCode.DEFECTIVE else ClaimReasonCode.CHANGE_OF_MIND,
+        reasonDetail: String? = "사이즈를 잘못 골랐어요",
     ): Claim =
         Claim.request(
             order = order,
             claimType = claimType,
-            reasonCode = "CHANGE_OF_MIND",
-            reasonDetail = "사이즈를 잘못 골랐어요",
+            reasonCode = reasonCode,
+            reasonDetail = reasonDetail,
             items = listOf(claimItem(order)),
             autoApproveDueAt = DUE_AT,
         )

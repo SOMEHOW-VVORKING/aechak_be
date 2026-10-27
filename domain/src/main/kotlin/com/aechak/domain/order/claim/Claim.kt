@@ -2,6 +2,7 @@ package com.aechak.domain.order.claim
 
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimSettlementStatus
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
@@ -63,8 +64,9 @@ class Claim protected constructor(
     @Column(nullable = false, updatable = false)
     val orderId: Long = orderId
 
-    @Column(length = 60)
-    var reasonCode: String? = null
+    @Enumerated(EnumType.STRING)
+    @Column(length = 30)
+    var reasonCode: ClaimReasonCode? = null
         protected set
 
     @Enumerated(EnumType.STRING)
@@ -294,7 +296,7 @@ class Claim protected constructor(
         fun request(
             order: Order,
             claimType: ClaimType,
-            reasonCode: String,
+            reasonCode: ClaimReasonCode,
             reasonDetail: String?,
             items: List<ClaimItem>,
             autoApproveDueAt: LocalDateTime,
@@ -305,11 +307,17 @@ class Claim protected constructor(
             require(items.all { claimItem -> orderItems.any { it === claimItem.orderItem } }) {
                 "클레임 품목은 모두 이 주문의 품목이어야 합니다 (orderId=${order.id})"
             }
+            if (!reasonCode.isSelectableFor(claimType)) {
+                throw BusinessException(OrderErrorCode.CLAIM_REASON_NOT_SELECTABLE)
+            }
+            if (reasonCode.requiresDetail() && reasonDetail.isNullOrBlank()) {
+                throw BusinessException(OrderErrorCode.CLAIM_REASON_DETAIL_REQUIRED)
+            }
             if (!claimType.isRequestableFrom(order.status)) {
                 throw BusinessException(OrderErrorCode.CLAIM_NOT_REQUESTABLE)
             }
             return Claim(claimType, order.sellerId, order.id).apply {
-                this.reasonCode = reasonCode.trim().take(REASON_CODE_MAX_LENGTH)
+                this.reasonCode = reasonCode
                 this.reasonDetail = reasonDetail?.trim()?.take(REASON_MAX_LENGTH)
                 sellerApprovalStatus = SellerApprovalStatus.REQUESTED
                 refundStatus = RefundStatus.NONE
@@ -319,7 +327,5 @@ class Claim protected constructor(
                 items.forEach { _items += it }
             }
         }
-
-        private const val REASON_CODE_MAX_LENGTH = 60
     }
 }

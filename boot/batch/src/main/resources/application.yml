@@ -77,6 +77,16 @@ order:
     dispatch-delay-days: 1    # 송장 등록 후 1일이 지나도 배송완료가 아니면 집화 지연으로 경고
     auto-complete-days: 4     # 송장 등록 후 4일이 지나면 배송완료로 자동 전이
     scan-limit: 200
+    tracking:
+      # 기본값 false — 지금 조립할 수 있는 추적 어댑터가 목뿐이라, 켜면 표식이 붙은 가짜 상태가 DB에 쌓여 화면에 뜬다.
+      # 실제 택배사 어댑터가 붙은 환경에서만 켠다
+      enabled: ${ORDER_DELIVERY_TRACKING_ENABLED:false}
+      cron: "0 0 */6 * * *"   # KST 00·06·12·18시 — 다른 배치 시각(02·03·04:30·05)과 겹치지 않게
+      scan-limit: 200         # 한 페이지에 읽을 건수. 회차는 커서로 페이지를 넘기며 전부 처리한다
+      mock:
+        # 기본값 false. 켜면 택배사를 부르지 않고 '[모의]' 표식이 붙은 가짜 상태를 돌려준다 —
+        # 운영 프로파일에서는 켜도 어댑터가 조립되지 않는다
+        enabled: ${ORDER_DELIVERY_TRACKING_MOCK_ENABLED:false}
   claim:
     refund:
       # 기본값 false — 실제로 PG 환불이 나가는 경로다. dev 상점이 테스트 상점인지 확인한 뒤 켠다
