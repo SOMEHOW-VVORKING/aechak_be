@@ -64,13 +64,13 @@ class SellerReviewFacade(
 
     @Transactional
     override fun writeReply(command: WriteReviewReplyCommand): ReviewReplyResult {
-        requireActiveSeller(command.sellerId)
+        requireReplyWritableSeller(command.sellerId)
         return ReviewReplyResult.from(reviewReplyService.create(command))
     }
 
     @Transactional
     override fun editReply(command: WriteReviewReplyCommand): ReviewReplyResult {
-        requireActiveSeller(command.sellerId)
+        requireReplyWritableSeller(command.sellerId)
         return ReviewReplyResult.from(reviewReplyService.edit(command))
     }
 
@@ -79,7 +79,7 @@ class SellerReviewFacade(
         sellerId: Long,
         reviewId: Long,
     ) {
-        requireActiveSeller(sellerId)
+        requireReplyWritableSeller(sellerId)
         reviewReplyService.delete(sellerId, reviewId)
     }
 
@@ -91,8 +91,8 @@ class SellerReviewFacade(
                 images.map { ReviewImageItemResult(fileUseCase.resolveMediaUrl(it.storageKey)!!, it.sortOrder) }
             }
 
-    /** 답글은 공개 글이라 영업 자격이 살아 있는 셀러만 쓴다 — 휴점(PAUSED)은 응대의 일부이므로 허용한다. */
-    private fun requireActiveSeller(sellerId: Long) {
+    /** 쓰기 자격 게이트 — 답글은 공개 글이라 영업 자격이 살아 있어야 한다. 휴점(PAUSED)은 응대의 일부이므로 허용한다. */
+    private fun requireReplyWritableSeller(sellerId: Long) {
         if (sellerUseCase.getSellerStatus(sellerId) !in REPLY_WRITABLE_SELLER_STATUSES) {
             throw BusinessException(ReviewErrorCode.REVIEW_SELLER_ACCESS_DENIED)
         }

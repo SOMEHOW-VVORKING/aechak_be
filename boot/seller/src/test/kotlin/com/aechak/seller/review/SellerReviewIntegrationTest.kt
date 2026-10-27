@@ -396,6 +396,32 @@ class SellerReviewIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `형식이 깨진 상품 식별자는 90001을 반환한다`() {
+        val productId = persistProduct("자동 급식기 5L", sellerUserId)
+        persistReview(productId, rating = 5, orderItemId = 1L)
+        persistReview(productId, rating = 5, orderItemId = 2L)
+
+        // 커서가 이 값을 담아 필터 변경을 판정하므로 커서 구분자(:)가 섞이면 커서를 만드는 자리에서
+        // 터진다 — 다음 페이지가 있는 상황(size=1)으로 그 경로를 지나게 해 500이 아닌지 본다
+        mockMvc
+            .perform(
+                get(LIST_URL)
+                    .param("productId", "01JABC:DEF")
+                    .param("size", "1")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer $token"),
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+            .andExpect(jsonPath("$.message").value("productId: 상품 식별자 형식이 올바르지 않습니다."))
+
+        request("productId" to "짧다", "size" to "1")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+
+        // 형식이 맞는 값은 남의 것이어도 형식 오류가 아니다 — 빈 목록으로 응답한다
+        request("productId" to "0".repeat(26)).andExpect(status().isOk)
+    }
+
+    @Test
     fun `인증 없이는 접근할 수 없다`() {
         mockMvc.perform(get(LIST_URL)).andExpect(status().isUnauthorized)
     }

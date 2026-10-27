@@ -4,6 +4,7 @@ import com.aechak.application.review.seller.usecase.query.SellerReviewListQuery
 import com.aechak.application.support.CursorPageSize
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
+import com.aechak.domain.support.Ulid
 import io.swagger.v3.oas.annotations.media.Schema
 import org.hibernate.validator.constraints.Range
 
@@ -34,7 +35,7 @@ data class SellerReviewSearchRequest(
         }
         return SellerReviewListQuery(
             sellerId = sellerId,
-            productPublicId = productId?.trim()?.takeIf { it.isNotEmpty() },
+            productPublicId = productId?.trim()?.takeIf { it.isNotEmpty() }?.also(::requireUlid),
             rating = rating,
             hasReply = hasReply,
             cursor = cursor,
@@ -42,7 +43,20 @@ data class SellerReviewSearchRequest(
         )
     }
 
+    /**
+     * 형식을 여기서 거른다. 커서가 이 값을 그대로 담아 필터 변경을 판정하므로 커서 구분자가 섞인 값은
+     * 커서를 만드는 자리에서 터진다 — 해석할 수 없는 값은 빈 목록이 아니라 형식 오류로 끊는 쪽이 맞다.
+     */
+    private fun requireUlid(value: String) {
+        if (value.length != Ulid.LENGTH || value.any { it !in ULID_ALPHABET }) {
+            throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "productId: 상품 식별자 형식이 올바르지 않습니다.")
+        }
+    }
+
     private companion object {
         val RATING_RANGE = 1..5
+
+        /** Crockford Base32 — ulid-creator가 대문자로 채번한다. */
+        const val ULID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
     }
 }
