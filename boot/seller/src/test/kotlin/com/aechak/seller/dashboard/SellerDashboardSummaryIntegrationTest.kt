@@ -598,7 +598,7 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
                     Claim.request(
                         order = order,
                         claimType = claimType,
-                        reasonCode = "DEFECT",
+                        reasonCode = ClaimReasonCode.DEFECTIVE,
                         reasonDetail = null,
                         items = order.items.map { ClaimItem.of(it, quantity = it.quantity, refundAmount = 25_000L) },
                         autoApproveDueAt = LocalDateTime.now().plusDays(2),
