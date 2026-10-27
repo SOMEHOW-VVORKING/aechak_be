@@ -1,10 +1,13 @@
 package com.aechak.admin.product;
 
+import com.aechak.admin.audit.AdminAudited;
 import com.aechak.admin.product.request.RejectProductInspectionRequest;
 import com.aechak.admin.product.response.AdminProductInspectionDetailResponse;
 import com.aechak.admin.product.response.AdminProductInspectionListResponse;
+import com.aechak.application.audit.support.AdminAuditContextHolder;
 import com.aechak.application.inspection.usecase.AdminProductInspectionUseCase;
 import com.aechak.application.support.PageQuery;
+import com.aechak.domain.audit.auditlog.enums.AdminAuditAction;
 import com.aechak.domain.inspection.enums.ReviewQueueStatus;
 import com.aechak.webcommon.response.ApiResponse;
 import com.aechak.websecurity.authentication.AuthPrincipal;
@@ -53,6 +56,7 @@ public class AdminProductInspectionController {
 
     /** 열린 검토 행이 없으면 409(40500). 셀러가 고친 내용이 먼저 AI를 통과한 경우임 */
     @PostMapping("/{productId}/approve")
+    @AdminAudited(value = AdminAuditAction.PRODUCT_INSPECTION_APPROVED, targetVar = "productId")
     public ResponseEntity<Void> approve(
             @PathVariable String productId, @AuthenticationPrincipal AuthPrincipal principal) {
         adminProductInspectionUseCase.approve(principal.getUserId(), productId);
@@ -60,12 +64,15 @@ public class AdminProductInspectionController {
     }
 
     @PostMapping("/{productId}/reject")
+    @AdminAudited(value = AdminAuditAction.PRODUCT_INSPECTION_REJECTED, targetVar = "productId")
     public ResponseEntity<Void> reject(
             @PathVariable String productId,
             @Valid @RequestBody RejectProductInspectionRequest request,
             @AuthenticationPrincipal AuthPrincipal principal) {
-        adminProductInspectionUseCase.reject(
-                principal.getUserId(), productId, request.reason().strip());
+        String reason = request.reason().strip();
+        // 사유는 요청 본문에만 있다. 조치보다 먼저 올려 둬야 거부된 시도의 행에도 사유가 남는다.
+        AdminAuditContextHolder.INSTANCE.reason(reason);
+        adminProductInspectionUseCase.reject(principal.getUserId(), productId, reason);
         return ResponseEntity.noContent().build();
     }
 }
