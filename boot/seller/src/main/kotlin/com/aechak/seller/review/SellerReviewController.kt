@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 /**
@@ -68,7 +69,9 @@ class SellerReviewController(
             ),
         )
 
+    // 본문 없는 성공은 @ResponseStatus로 적어 둔다 — ResponseEntity만으로는 생성 문서가 200으로 적힌다
     @DeleteMapping("/{reviewId}/reply")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun deleteReply(
         @PathVariable reviewId: Long,
         @AuthenticationPrincipal principal: AuthPrincipal,
