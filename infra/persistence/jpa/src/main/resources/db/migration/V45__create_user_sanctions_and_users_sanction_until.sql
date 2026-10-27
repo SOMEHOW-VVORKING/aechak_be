@@ -49,4 +49,19 @@ PREPARE add_sanction_until FROM @stmt;
 EXECUTE add_sanction_until;
 DEALLOCATE PREPARE add_sanction_until;
 
+-- 3. users.status를 VARCHAR로 바꾼다(V27 규약). ddl-auto가 만든 DB에서 이 컬럼은 네이티브 enum이고
+--    값 목록이 테이블에 박혀 있어, 이번에 추가한 RESTRICTED·BANNED 저장이 실패한다.
+SET @stmt = IF(
+    EXISTS(
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'
+          AND COLUMN_NAME = 'status' AND DATA_TYPE = 'enum'
+    ),
+    'ALTER TABLE users MODIFY COLUMN status VARCHAR(30) NOT NULL',
+    'SELECT 1'
+);
+PREPARE widen_status FROM @stmt;
+EXECUTE widen_status;
+DEALLOCATE PREPARE widen_status;
+
 SET SESSION lock_wait_timeout = @saved_lock_wait_timeout;

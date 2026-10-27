@@ -45,6 +45,7 @@ class V45UserSanctionsMigrationIntegrationTest {
     private lateinit var freshUrl: String
     private lateinit var entityUrl: String
     private lateinit var legacyUrl: String
+    private lateinit var legacyUsersBefore: Map<String, ColumnShape>
 
     @BeforeAll
     fun prepareSchemas() {
@@ -56,7 +57,8 @@ class V45UserSanctionsMigrationIntegrationTest {
 
         legacyUrl = recreateDatabase("v45_legacy")
         migrateUpTo(legacyUrl, "35")
-        execute(legacyUrl, entityStatementsOf("users") + seedUser())
+        execute(legacyUrl, legacyUsersStatements() + seedUser())
+        legacyUsersBefore = columnsOf(legacyUrl, "users")
         flyway(legacyUrl).migrate()
     }
 
@@ -72,6 +74,16 @@ class V45UserSanctionsMigrationIntegrationTest {
         assertThat(tableExists(freshUrl, "users")).describedAs("빈 DB의 users 테이블").isFalse()
     }
 
+    /** 이 단언이 깨지면 legacy 픽스처가 이미 최신이라는 뜻이고, 아래 두 테스트는 아무것도 검증하지 않는다. */
+    @Test
+    fun `V45 적용 전 users에는 sanction_until이 없고 status는 새 값이 없는 네이티브 enum이다`() {
+        assertThat(legacyUsersBefore).describedAs("적용 전 users 컬럼").doesNotContainKey("sanction_until")
+        assertThat(legacyUsersBefore.getValue("status").type)
+            .describedAs("적용 전 users.status 타입")
+            .startsWith("enum(")
+            .doesNotContain("restricted", "banned")
+    }
+
     @Test
     fun `ddl-auto가 만든 users에 sanction_until이 NULL 허용으로 추가된다`() {
         val column =
@@ -85,6 +97,20 @@ class V45UserSanctionsMigrationIntegrationTest {
         assertThat(query(legacyUrl, "SELECT COUNT(*) FROM users WHERE sanction_until IS NULL") { it.getInt(1) })
             .describedAs("기존 행의 제재 만료 시각은 비어 있어야 한다")
             .containsExactly(1)
+    }
+
+    /** 네이티브 enum으로 남으면 값 목록이 테이블에 박혀 있어 이번에 추가한 상태를 저장할 수 없다. */
+    @Test
+    fun `ddl-auto가 만든 users_status가 VARCHAR로 바뀌어 새 상태값을 저장할 수 있다`() {
+        assertThat(columnsOf(legacyUrl, "users").getValue("status").type)
+            .describedAs("V45 적용 뒤 users.status 타입")
+            .isEqualTo("varchar(30)")
+
+        execute(legacyUrl, listOf("UPDATE users SET status = 'BANNED'"))
+
+        assertThat(query(legacyUrl, "SELECT status FROM users") { it.getString(1) })
+            .describedAs("새 상태값 저장 결과")
+            .containsExactly("BANNED")
     }
 
     @Test
@@ -158,6 +184,18 @@ class V45UserSanctionsMigrationIntegrationTest {
         assertThat(statements).anyMatch { it.startsWith("create table $table", ignoreCase = true) }
         return statements
     }
+
+    /**
+     * V45 적용 전의 users — 엔티티 DDL에서 sanction_until을 떼고 status를 옛 enum으로 되돌린다.
+     * 현재 엔티티 DDL을 그대로 쓰면 두 컬럼이 이미 최신이라 V45의 ALTER가 한 번도 실행되지 않는다.
+     */
+    private fun legacyUsersStatements(): List<String> =
+        entityStatementsOf("users").map { statement ->
+            if (!statement.startsWith("create table users", ignoreCase = true)) return@map statement
+            val legacy = LEGACY_STATUS_ENUM.replace(SANCTION_UNTIL_COLUMN.replace(statement, ""), LEGACY_STATUS_COLUMN)
+            assertThat(legacy).describedAs("적용 전 users DDL").doesNotContain("sanction_until").contains(LEGACY_STATUS_COLUMN)
+            legacy
+        }
 
     private fun seedUser(): List<String> =
         listOf(
@@ -296,6 +334,10 @@ class V45UserSanctionsMigrationIntegrationTest {
         private const val ROOT_PASSWORD = "test"
 
         private val FOREIGN_KEY = Regex("foreign key", RegexOption.IGNORE_CASE)
+
+        private val SANCTION_UNTIL_COLUMN = Regex(",\\s*sanction_until\\s+datetime\\(6\\)", RegexOption.IGNORE_CASE)
+        private val LEGACY_STATUS_ENUM = Regex("status\\s+enum\\s*\\([^)]*\\)", RegexOption.IGNORE_CASE)
+        private const val LEGACY_STATUS_COLUMN = "status enum ('ACTIVE','PENDING_ONBOARDING','SUSPENDED','WITHDRAWN')"
 
         @JvmStatic
         @DynamicPropertySource
