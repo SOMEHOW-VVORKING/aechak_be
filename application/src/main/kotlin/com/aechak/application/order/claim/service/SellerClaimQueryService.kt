@@ -1,11 +1,14 @@
 package com.aechak.application.order.claim.service
 
 import com.aechak.application.order.claim.port.SellerClaimCondition
+import com.aechak.application.order.claim.port.SellerClaimMetricsCondition
 import com.aechak.application.order.claim.port.SellerClaimQueryPort
 import com.aechak.application.order.claim.port.view.SellerClaimItemView
 import com.aechak.application.order.claim.port.view.SellerClaimView
+import com.aechak.application.order.claim.usecase.query.SellerClaimMetricsQuery
 import com.aechak.application.order.claim.usecase.query.SellerClaimSearchQuery
 import com.aechak.application.order.claim.usecase.result.SellerClaimDetailResult
+import com.aechak.application.order.claim.usecase.result.SellerClaimMetricsResult
 import com.aechak.application.order.claim.usecase.result.SellerClaimPageResult
 import com.aechak.application.order.claim.usecase.result.SellerClaimSummaryResult
 import com.aechak.application.pii.support.PiiStringCodec
@@ -91,6 +94,22 @@ class SellerClaimQueryService(
             )
         }
     }
+
+    /**
+     * 셀러 처리 대기 클레임 건수. 요청 상태만 세면 승인 직후부터 회수가 끝날 때까지 셀러가 할 일이
+     * 남은 건이 전부 빠진다 — 반품·교환은 승인하면 회수 중으로 넘어가고, 교환은 회수가 끝나도 재발송이 남는다.
+     * 단계 판정은 목록의 단계 필터와 같은 식을 쓰는 집계 포트가 들고 있다.
+     */
+    fun countMetrics(query: SellerClaimMetricsQuery): SellerClaimMetricsResult =
+        SellerClaimMetricsResult.from(
+            sellerClaimQueryPort.countPendingMetrics(
+                SellerClaimMetricsCondition(
+                    sellerId = query.sellerId,
+                    requestedFrom = query.requestedFrom,
+                    requestedToExclusive = query.requestedToExclusive,
+                ),
+            ),
+        )
 
     private fun countsOf(condition: SellerClaimCondition): Map<ClaimType, Long> =
         sellerClaimQueryPort.countByClaimType(condition).associate { it.claimType to it.count }
