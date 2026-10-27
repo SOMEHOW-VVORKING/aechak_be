@@ -35,7 +35,6 @@ import com.aechak.application.support.OffsetPageResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.error.ProductErrorCode
 import com.aechak.domain.product.option.ProductOptions
-import com.aechak.domain.product.version.ProductVersion
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -108,24 +107,53 @@ class ProductFacade(
         val version =
             tx.execute {
                 val saved = productService.register(stored, options)
-                requestInspection(stored.categoryId, stored.productName, stored.description, options, saved)
+                requestInspection(
+                    productId = saved.product.id,
+                    versionNo = saved.versionNo,
+                    categoryId = stored.categoryId,
+                    productName = stored.productName,
+                    description = stored.description,
+                    optionNames = optionNamesOf(options),
+                    representativeImageKey = saved.product.representativeImageKey,
+                )
                 saved
             }!!
         return ProductRegisterResult.of(version.product, version.versionNo)
     }
 
     /**
-     * 수정은 아직 검수를 다시 타지 않는다.
+     * 수정도 등록과 같은 검수를 탄다.
      *
-     * 지금은 섀도 단계라 노출 상태를 바꾸지 않으므로 우회할 대상이 없다. 다만 **노출 게이트를
-     * 켜기 전에 수정 재검수를 반드시 붙여야 한다** — 정상 문구로 등록한 뒤 위반 문구로 고치면
-     * 검수를 통째로 우회할 수 있고, 그러면 게이트가 장식이 된다.
+     * 붙이지 않으면 정상 문구로 등록해 통과 판정을 받은 뒤 위반 문구로 고치는 것만으로
+     * 검수를 통째로 건너뛸 수 있다. 노출 게이트를 켜는 순간 그 구멍이 게이트를 장식으로 만든다.
+     *
+     * 옵션 이름을 저장된 값에서 읽어 오는 이유는 수정 명령에 옵션이 들어 있지 않기 때문이다.
+     * 내용 해시가 상품명·설명·옵션 이름으로 계산되므로, 옵션을 빼면 본문이 하나도 바뀌지 않은
+     * 상품도 등록 때와 다른 해시를 받아 모델을 다시 부른다.
      */
     override fun updateProduct(command: UpdateProductCommand): ProductUpdateResult {
         requireActiveSeller(command.sellerId)
         val storedKeys = tx.execute { productService.validateAndGetCurrentImageKeys(command) }!!
         val stored = promoteNewImageKeys(command, storedKeys)
-        return tx.execute { productService.updateProduct(stored) }!!
+        val outcome =
+            tx.execute {
+                val updated = productService.updateProduct(stored)
+                // 버전이 남지 않았다는 것은 수정 가능한 필드가 하나도 달라지지 않았다는 뜻이다.
+                // 판정 대상 본문도 그대로이므로 요청하지 않는다.
+                updated.versionNo?.let { versionNo ->
+                    requestInspection(
+                        productId = updated.product.id,
+                        versionNo = versionNo,
+                        categoryId = stored.categoryId,
+                        productName = stored.productName,
+                        description = stored.description,
+                        optionNames = productService.optionNamesOf(updated.product.id),
+                        representativeImageKey = updated.product.representativeImageKey,
+                    )
+                }
+                updated
+            }!!
+        return ProductUpdateResult.of(outcome.product)
     }
 
     @Transactional
@@ -190,21 +218,23 @@ class ProductFacade(
      * 그래야 역방향 호출 인증과 보안그룹 인바운드가 필요 없어진다.
      */
     private fun requestInspection(
+        productId: Long,
+        versionNo: Int,
         categoryId: Long,
         productName: String,
         description: String?,
-        options: ProductOptions,
-        version: ProductVersion,
+        optionNames: List<String>,
+        representativeImageKey: String?,
     ) {
         inspectionRequestService.requestProduct(
             RequestProductInspectionCommand(
-                productId = version.product.id,
-                productVersionNo = version.versionNo,
+                productId = productId,
+                productVersionNo = versionNo,
                 productName = productName,
                 description = description,
-                optionNames = optionNamesOf(options),
+                optionNames = optionNames,
                 categoryPath = productService.categoryPathOf(categoryId),
-                imageUrls = listOfNotNull(fileUseCase.resolveMediaUrl(version.product.representativeImageKey)),
+                imageUrls = listOfNotNull(fileUseCase.resolveMediaUrl(representativeImageKey)),
             ),
         )
     }
