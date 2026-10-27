@@ -54,8 +54,10 @@ class SocialLoginService(
         providerUser: ProviderUser,
     ): ResolvedUser {
         val user = identity.user
-        return when (user.status) {
-            UserStatus.SUSPENDED -> {
+        // 저장값이 아니라 유효 상태로 판정한다 — 기간이 지난 임시 정지는 재로그인을 막지 않는다.
+        // RESTRICTED는 여기서 걸러지지 않는다: 이용 제한은 로그인을 막는 제재가 아니다.
+        return when (user.effectiveStatus()) {
+            UserStatus.SUSPENDED, UserStatus.BANNED -> {
                 throw BusinessException(AuthErrorCode.ACCOUNT_BLOCKED)
             }
 

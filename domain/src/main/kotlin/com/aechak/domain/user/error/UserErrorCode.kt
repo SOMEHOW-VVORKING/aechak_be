@@ -36,6 +36,13 @@ enum class UserErrorCode(
     // 30015·30016은 다른 작업에 배정돼 있어 비워 둔다
     USER_NOT_PROMOTABLE(30017, "활성 상태인 계정만 관리자로 승격할 수 있습니다.", 409),
 
+    // 회원 제재의 계정 상태 판정 — 검증 대상이 User라 User의 100번대를 쓴다
+    PERMANENT_BAN_IS_FINAL(30018, "영구 정지된 계정은 상태를 바꿀 수 없습니다.", 409),
+    NO_ACTIVE_SANCTION(30019, "해제할 제재가 없습니다.", 409),
+    SELF_SANCTION_NOT_ALLOWED(30020, "자신을 제재할 수 없습니다.", 403),
+    ADMIN_CANNOT_BE_SANCTIONED(30021, "관리자 계정은 제재할 수 없습니다. 먼저 강등해 주세요.", 409),
+    SANCTION_PERIOD_NOT_IN_FUTURE(30022, "제재 기간은 현재보다 미래여야 합니다.", 400),
+
     // 적립금
     INVALID_POINT_AMOUNT(30100, "적립금 거래 금액은 0보다 커야 합니다.", 400),
     INSUFFICIENT_POINT_BALANCE(30101, "적립금 잔액이 부족합니다.", 409),
@@ -65,4 +72,10 @@ enum class UserErrorCode(
     // 품종
     // 미존재와 종 불일치를 한 코드로 묶음. 클라이언트가 할 일이 같음
     INVALID_BREED(30700, "선택한 품종이 올바르지 않습니다.", 400),
+
+    // 제재 이력 — 기록 자체의 입력 검증. 검증 대상이 UserSanction이라 별도 100번대를 받는다
+    SANCTION_REASON_DETAIL_REQUIRED(30800, "기타 사유 제재는 상세 사유가 필요합니다.", 400),
+    SANCTION_PERIOD_REQUIRED(30801, "임시 정지는 제재 기간이 필요합니다.", 400),
+    SANCTION_PERIOD_NOT_ALLOWED(30802, "임시 정지가 아닌 제재에는 기간을 지정할 수 없습니다.", 400),
+    SANCTION_TEXT_TOO_LONG(30803, "제재 사유 또는 메모가 너무 깁니다.", 400),
 }

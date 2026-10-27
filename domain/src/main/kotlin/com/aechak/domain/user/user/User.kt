@@ -76,6 +76,14 @@ class User protected constructor() : AggregateRoot() {
     var warningCount: Int = 0
         protected set
 
+    /**
+     * 임시 정지의 만료 시각 — 임시 정지에만 값이 있다.
+     * 만료 판정은 저장값을 되돌리는 배치가 아니라 UserStatus.effective 가 소유한다.
+     */
+    @Column
+    var sanctionUntil: LocalDateTime? = null
+        protected set
+
     @Column
     var withdrawnAt: LocalDateTime? = null
         protected set
@@ -163,6 +171,62 @@ class User protected constructor() : AggregateRoot() {
             return
         }
         role = UserRole.GENERAL
+    }
+
+    /**
+     * 접근 판정에 쓸 유효 상태 — 기간이 지난 임시 정지는 ACTIVE 로 본다.
+     * 인가 게이트(포트 경유)와 어드민 조회가 같은 판정을 공유한다.
+     */
+    @JvmOverloads
+    fun effectiveStatus(at: LocalDateTime = LocalDateTime.now()): UserStatus = UserStatus.effective(status, sanctionUntil, at)
+
+    /** 이용 제한 — 로그인은 되고 커뮤니티성 쓰기만 막힌다. 기간이 없는 제재라 만료 시각을 비운다. */
+    fun restrict() {
+        rejectStatusChangeOnClosedAccount()
+        status = UserStatus.RESTRICTED
+        sanctionUntil = null
+    }
+
+    /** 임시 정지 — 만료 시각은 미래여야 한다. 과거 시각이면 걸자마자 풀린 정지가 된다. */
+    fun suspendUntil(until: LocalDateTime) {
+        rejectStatusChangeOnClosedAccount()
+        if (!until.isAfter(LocalDateTime.now())) {
+            throw BusinessException(UserErrorCode.SANCTION_PERIOD_NOT_IN_FUTURE)
+        }
+        status = UserStatus.SUSPENDED
+        sanctionUntil = until
+    }
+
+    /** 영구 정지 — 종단 상태. 탈퇴(본인 의사)와 달리 프로필·전화 점유는 그대로 둬 재가입 우회를 막는다. */
+    fun ban() {
+        rejectStatusChangeOnClosedAccount()
+        status = UserStatus.BANNED
+        sanctionUntil = null
+    }
+
+    /** 운영자의 탈퇴 처리 — 상태 전이는 본인 탈퇴와 같고, 운영 조치였다는 사실은 제재 이력이 남긴다. */
+    fun forceWithdraw() {
+        rejectStatusChangeOnClosedAccount()
+        withdraw()
+    }
+
+    /** 제재 해제 — 걸려 있는 제재가 없으면 거부한다. 기간이 지난 임시 정지도 저장값 정리를 위해 해제할 수 있다. */
+    fun releaseSanction() {
+        if (status != UserStatus.RESTRICTED && status != UserStatus.SUSPENDED) {
+            throw BusinessException(UserErrorCode.NO_ACTIVE_SANCTION)
+        }
+        status = UserStatus.ACTIVE
+        sanctionUntil = null
+    }
+
+    /** 탈퇴·영구 정지는 운영 조치로 더 건드리지 않는다 — 둘 다 종단 상태다. */
+    private fun rejectStatusChangeOnClosedAccount() {
+        if (status == UserStatus.WITHDRAWN) {
+            throw BusinessException(UserErrorCode.ALREADY_WITHDRAWN)
+        }
+        if (status == UserStatus.BANNED) {
+            throw BusinessException(UserErrorCode.PERMANENT_BAN_IS_FINAL)
+        }
     }
 
     /** 다른 계정으로 전화번호를 이전하거나 탈퇴할 때 저장된 전화번호 정보를 삭제 */
