@@ -23,7 +23,7 @@ WHERE status <> 'PENDING_REVIEW'
   AND resolved_at IS NULL;
 
 -- 셀러별 열린 이의 건수(폭주 상한의 분모)를 세는 경로.
--- 조건부로 만듦: V39와 달리 기존 테이블에 붙어서, 이 파일이 한 번 실패해 미적용으로 남으면
+-- 조건부로 만듦: 큐 테이블을 만드는 V40과 달리 기존 테이블에 붙어서, 이 파일이 한 번 실패해 미적용으로 남으면
 -- ddl-auto(update)가 엔티티 선언을 보고 같은 이름 인덱스를 먼저 만들고, MySQL에
 -- CREATE INDEX IF NOT EXISTS가 없어 그 뒤로 영구 적용 불가가 됨.
 SET @idx_exists = (SELECT COUNT(*)
