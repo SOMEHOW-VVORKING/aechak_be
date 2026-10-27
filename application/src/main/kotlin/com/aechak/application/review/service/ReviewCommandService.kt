@@ -75,10 +75,16 @@ class ReviewCommandService(
         }
         // 리뷰가 사라지면 셀러 답글이 붙을 자리가 없어진다. 리뷰는 소프트 삭제라 DB FK로는 정리되지 않으므로
         // 삭제 전이와 같은 트랜잭션에서 지운다. 이미 지워진 리뷰로 다시 들어와도 남은 행을 정리한다.
-        reviewReplyRepository.deleteByReviewId(reviewId)
-        if (review.isDeleted()) return null
+        if (review.isDeleted()) {
+            reviewReplyRepository.deleteByReviewId(reviewId)
+            return null
+        }
         review.delete()
+        // save가 saveAndFlush라 이 줄에서 reviews 행에 쓰기 잠금이 걸린다. 답글 정리를 **그 뒤로** 둬야
+        // 같은 순간에 들어온 답글 등록이 이 정리보다 먼저 끼어들지 못한다 — 답글 쓰기 경로도 reviews를
+        // 먼저 잠그므로, 둘 중 어느 쪽이 먼저 잠그든 결과가 하나로 모인다(고아 답글이 남지 않는다).
         reviewRepository.save(review)
+        reviewReplyRepository.deleteByReviewId(reviewId)
         return review.productId
     }
 }

@@ -140,6 +140,37 @@ class ReviewDeleteIntegrationTest : KafkaIntegrationTestBase() {
     }
 
     @Test
+    fun `이미 지워진 리뷰로 다시 들어와도 남아 있던 답글을 정리한다`() {
+        // 답글 등록과 리뷰 삭제가 같은 순간에 들어오면(둘 다 reviews 행을 먼저 잠그므로 한쪽이 기다린다)
+        // 드물게 삭제가 먼저 끝난 뒤 답글이 들어올 수 있다. 그 행을 다음 삭제 요청이 걷어내는지 본다.
+        val ownerId = createActiveUser()
+        val reviewId =
+            tx.execute {
+                val product = persistVisibleProduct("사료")
+                em.flush()
+                val review = persistReview(product.id, ownerId, orderItemId = 1L)
+                em.flush()
+                review.id
+            }!!
+        tx.execute {
+            em
+                .createQuery("update Review r set r.reviewStatus = :st where r.id = :id")
+                .setParameter("st", ReviewStatus.DELETED)
+                .setParameter("id", reviewId)
+                .executeUpdate()
+            em.persist(ReviewReply.write(reviewId, defaultSellerId, "뒤늦게 들어온 답글"))
+        }
+        assertEquals(1L, replyRowCount(reviewId))
+
+        // 이미 DELETED라 상태 전이는 없지만(204) 남은 답글은 지워진다
+        mockMvc
+            .perform(delete("/api/v1/reviews/$reviewId").header(HttpHeaders.AUTHORIZATION, bearer(ownerId)))
+            .andExpect(status().isNoContent)
+
+        assertEquals(0L, replyRowCount(reviewId))
+    }
+
+    @Test
     fun `삭제가 403으로 막히면 답글도 그대로 남는다`() {
         val ownerId = createActiveUser()
         val attackerId = createActiveUser()
