@@ -18,6 +18,7 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToMany
@@ -30,6 +31,8 @@ import java.time.LocalDateTime
 @Table(
     name = "products",
     uniqueConstraints = [UniqueConstraint(name = "uk_product_public_id", columnNames = ["public_id"])],
+    // 셀러센터 조회는 전부 "내 상품"으로 먼저 좁힌다
+    indexes = [Index(name = "ix_products_seller_id", columnList = "seller_id, id")],
 )
 class Product protected constructor(
     category: Category,
