@@ -41,14 +41,19 @@ services:
     image: apache/kafka:3.8.0
     ports:
       - "9092:9092"
+      - "29092:29092"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      # 리스너를 둘로 둔다 — 호스트에서 bootRun하는 앱은 localhost:9092로,
+      # 같은 compose 네트워크의 컨테이너(AI 서버)는 kafka:29092로 붙는다.
+      # 하나만 두면 컨테이너가 받은 localhost를 자기 자신으로 해석해 연결하지 못한다.
+      KAFKA_LISTENERS: HOST://0.0.0.0:9092,DOCKER://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: HOST://localhost:9092,DOCKER://kafka:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: HOST:PLAINTEXT,DOCKER:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     volumes:
@@ -58,6 +63,25 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  # AI 검수 서버. 레포가 분리돼 있어 이미지를 미리 빌드해 두고 띄운다.
+  #   cd ../ai && docker build -t aechak-ai:local .
+  # 이 레포 규칙대로 BE 앱은 여기 담지 않지만, AI 서버는 별 레포의 사이드카라
+  # 로컬에서 왕복을 돌려 보려면 같은 네트워크에 있어야 한다.
+  ai:
+    image: aechak-ai:local
+    profiles: ["ai"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      AECHAK_AI_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      AECHAK_AI_ANTHROPIC_API_KEY: ${AECHAK_AI_ANTHROPIC_API_KEY:-}
+      # 추적을 켜면 리뷰 본문과 상품 설명이 외부로 나간다. 레거시 변수까지 눌러 둔다.
+      LANGSMITH_TRACING: "false"
+      LANGCHAIN_TRACING_V2: "false"
+    ports:
+      - "8000:8000"
 
 volumes:
   mysql-data:
