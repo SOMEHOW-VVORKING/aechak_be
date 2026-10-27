@@ -40,6 +40,8 @@ class InspectionMetricsSettingsTest {
                 "window-hours",
                 "backlog-warn-count",
                 "backlog-warn-age-minutes",
+                "model-unverified-warn-count",
+                "model-unverified-warn-percent",
                 "max-window-days",
                 "snapshot-cache-seconds",
                 "log-interval-ms",

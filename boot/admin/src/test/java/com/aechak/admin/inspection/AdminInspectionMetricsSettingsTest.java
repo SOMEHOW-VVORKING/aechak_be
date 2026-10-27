@@ -91,6 +91,8 @@ class AdminInspectionMetricsSettingsTest {
                 "window-hours",
                 "backlog-warn-count",
                 "backlog-warn-age-minutes",
+                "model-unverified-warn-count",
+                "model-unverified-warn-percent",
                 "max-window-days",
                 "snapshot-cache-seconds")) {
             assertTrue(text.contains(key + ":"), "application.yml 에 inspection.metrics." + key + " 가 없다");

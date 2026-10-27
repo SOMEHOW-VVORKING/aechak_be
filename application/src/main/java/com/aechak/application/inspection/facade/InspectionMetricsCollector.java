@@ -33,6 +33,8 @@ public class InspectionMetricsCollector {
     private final double promotionBreakevenRate;
     private final long backlogWarnCount;
     private final long backlogWarnAgeMinutes;
+    private final long modelUnverifiedWarnCount;
+    private final long modelUnverifiedWarnPercent;
 
     public InspectionMetricsCollector(
             InspectionMetricsQueryPort metricsQueryPort,
@@ -40,11 +42,17 @@ public class InspectionMetricsCollector {
             // 그 리터럴 자체가 손익분기값의 또 한 자리 사본이 된다.
             @Value("${inspection.metrics.promotion-breakeven-rate}") double promotionBreakevenRate,
             @Value("${inspection.metrics.backlog-warn-count:50}") long backlogWarnCount,
-            @Value("${inspection.metrics.backlog-warn-age-minutes:1440}") long backlogWarnAgeMinutes) {
+            @Value("${inspection.metrics.backlog-warn-age-minutes:1440}") long backlogWarnAgeMinutes,
+            // 현 생산자에서 모델이 읽지 않은 통과는 0건이어야 한다. 그래서 임계가 낮다 —
+            // 여기서 재는 것은 양이 아니라 "0이 아니다"다.
+            @Value("${inspection.metrics.model-unverified-warn-count:3}") long modelUnverifiedWarnCount,
+            @Value("${inspection.metrics.model-unverified-warn-percent:1}") long modelUnverifiedWarnPercent) {
         this.metricsQueryPort = metricsQueryPort;
         this.promotionBreakevenRate = promotionBreakevenRate;
         this.backlogWarnCount = backlogWarnCount;
         this.backlogWarnAgeMinutes = backlogWarnAgeMinutes;
+        this.modelUnverifiedWarnCount = modelUnverifiedWarnCount;
+        this.modelUnverifiedWarnPercent = modelUnverifiedWarnPercent;
     }
 
     /**
@@ -65,6 +73,8 @@ public class InspectionMetricsCollector {
                 promotionBreakevenRate,
                 backlogWarnCount,
                 backlogWarnAgeMinutes,
+                modelUnverifiedWarnCount,
+                modelUnverifiedWarnPercent,
                 metricsQueryPort.funnelCounts(window),
                 metricsQueryPort.triageCounts(window),
                 metricsQueryPort.coverageCounts(window),

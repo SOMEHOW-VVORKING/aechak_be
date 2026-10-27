@@ -327,6 +327,57 @@ class AdminInspectionMetricsIntegrationTest extends InspectionMetricsTestBase {
                 .andExpect(jsonPath("$.data.alarms[?(@.code == 'BACKLOG_AGE')]").doesNotExist());
     }
 
+    /**
+     * 모델이 읽지 않은 통과는 경보로 올라간다.
+     *
+     * <p>런타임은 그 판정을 노출 게이트 분기에서 빼서 피해를 막는다. 막고 아무에게도 알리지
+     * 않으면 방어를 철회한 것과 운영상 구별되지 않는다 — 그 판정은 상품도 큐도 건드리지 않아
+     * 적체가 늘지 않고, 신규 상품에 그 판정만 계속 들어오면 로그 한 줄로 지나간다.
+     *
+     * <p>현 생산자는 이 모양을 보내지 않는다. 관점 중 하나라도 결과를 낸 것이 있을 때만 통과를
+     * 보내고 전부 미검사면 판정 실패로 내보낸다. 그래서 이 경보는 생산자 결함이 아니라 두 레포의
+     * 판정 계약이 갈라진 것을 알린다.
+     */
+    @Test
+    void 모델이_읽지_않은_통과가_임계를_넘으면_경보에_오른다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        modelUnverifiedPass(now);
+        modelUnverifiedPass(now);
+        modelUnverifiedPass(now);
+
+        mockMvc.perform(bearer(get(BASE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.coverage.modelUnverifiedCount").value(3))
+                .andExpect(jsonPath("$.data.coverage.modelUnverifiedBreached").value(true))
+                .andExpect(jsonPath("$.data.alarms[?(@.code == 'MODEL_UNVERIFIED')]")
+                        .exists())
+                .andExpect(jsonPath("$.data.needsAttention").value(true));
+    }
+
+    /** 임계 아래면 수치만 내려보낸다. 한 건에 울면 운영이 경보를 끄게 된다 */
+    @Test
+    void 모델이_읽지_않은_통과가_임계_아래면_경보에_없다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        modelUnverifiedPass(now);
+        modelUnverifiedPass(now);
+
+        mockMvc.perform(bearer(get(BASE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.coverage.modelUnverifiedCount").value(2))
+                .andExpect(jsonPath("$.data.coverage.modelUnverifiedBreached").value(false))
+                .andExpect(jsonPath("$.data.alarms[?(@.code == 'MODEL_UNVERIFIED')]")
+                        .doesNotExist());
+    }
+
+    /** 통과인데 모델 관점이 전부 레이트 리밋으로 죽은 건. 선별 기록도 없어 증거가 하나도 없다 */
+    private long modelUnverifiedPass(LocalDateTime settledAt) {
+        long id = bareReview(InspectionJudgment.PASS, settledAt);
+        finding(id, InspectionPerspectiveKind.RULE, PerspectiveOutcome.CLEAR, null);
+        finding(id, InspectionPerspectiveKind.DISPLAY_ADS, PerspectiveOutcome.UNCHECKED, "RATE_LIMITED");
+        finding(id, InspectionPerspectiveKind.CONDUCT_TRADE, PerspectiveOutcome.UNCHECKED, "RATE_LIMITED");
+        return id;
+    }
+
     /** 큐가 비어 있으면 임계를 넘지 않고 경보도 없다. */
     @Test
     void 큐가_비면_적체_지표가_0이고_경보가_없다() throws Exception {

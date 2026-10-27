@@ -110,7 +110,10 @@ public record AdminInspectionMetricsResponse(
             long verdictFailedCount,
             long modelUnverifiedCount,
             long triageSkippedPassCount,
-            Double unverifiedRate) {}
+            Double unverifiedRate,
+            long modelUnverifiedWarnCount,
+            long modelUnverifiedWarnPercent,
+            boolean modelUnverifiedBreached) {}
 
     public record Cost(
             long callCount,
@@ -237,7 +240,10 @@ public record AdminInspectionMetricsResponse(
                 coverage.verdictFailedCount(),
                 coverage.modelUnverifiedCount(),
                 coverage.triageSkippedPassCount(),
-                coverage.unverifiedRate());
+                coverage.unverifiedRate(),
+                coverage.modelUnverifiedWarnCount(),
+                coverage.modelUnverifiedWarnPercent(),
+                coverage.modelUnverifiedBreached());
     }
 
     static Cost costOf(InspectionMetricsResult.Cost cost) {

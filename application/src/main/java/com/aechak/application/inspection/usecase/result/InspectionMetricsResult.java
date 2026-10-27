@@ -156,7 +156,21 @@ public record InspectionMetricsResult(
     public record Judgment(
             long settledCount, long passCount, long flagCount, long unjudgedCount, long failedCount, Double passRate) {}
 
-    /** 누락률 — 아무도 내용을 보지 않은 채 닫힌 비율. */
+    /**
+     * 누락률 — 아무도 내용을 보지 않은 채 닫힌 비율.
+     *
+     * <p>{@code modelUnverifiedCount}에 임계를 둔다. 그 값은 <b>현 생산자에서 0이어야 한다</b> —
+     * AI 서버는 관점 중 하나라도 결과를 낸 것이 있을 때만 통과를 보내고 전부 미검사면 판정
+     * 실패로 내보낸다. 그래서 0이 아니면 두 레포의 판정 계약이 갈라졌다는 신호다.
+     *
+     * <p>그 상태를 런타임이 막기만 하면 아무도 모른다. 모델이 읽지 않은 통과는 상품도 큐도
+     * 건드리지 않으므로 적체가 늘지 않고, 신규 상품에 그 판정만 계속 들어오면 로그 한 줄로
+     * 지나간다. 임계 판정을 여기 두는 이유는 화면과 주기 로그가 같은 기준으로 말해야 하기
+     * 때문이고, 그것이 적체 임계와 같은 모양이다.
+     *
+     * <p>건수와 비율을 <b>함께</b> 본다. 건수만 보면 트래픽이 늘 때 정상 비율에서도 울고,
+     * 비율만 보면 창에 두 건 있고 한 건이 걸릴 때 50%로 운다.
+     */
     public record Coverage(
             long settledCount,
             long unverifiedCount,
@@ -164,9 +178,12 @@ public record InspectionMetricsResult(
             long verdictFailedCount,
             long modelUnverifiedCount,
             long triageSkippedPassCount,
-            Double unverifiedRate) {
+            Double unverifiedRate,
+            long modelUnverifiedWarnCount,
+            long modelUnverifiedWarnPercent) {
 
-        static Coverage of(InspectionCoverageCounts counts) {
+        static Coverage of(
+                InspectionCoverageCounts counts, long modelUnverifiedWarnCount, long modelUnverifiedWarnPercent) {
             long unverified = counts.unjudgedCount() + counts.verdictFailedCount() + counts.modelUnverifiedCount();
             return new Coverage(
                     counts.settledCount(),
@@ -175,7 +192,23 @@ public record InspectionMetricsResult(
                     counts.verdictFailedCount(),
                     counts.modelUnverifiedCount(),
                     counts.triageSkippedPassCount(),
-                    ratio(unverified, counts.settledCount()));
+                    ratio(unverified, counts.settledCount()),
+                    modelUnverifiedWarnCount,
+                    modelUnverifiedWarnPercent);
+        }
+
+        /** 모델이 읽지 않은 통과가 임계를 넘었는가. 분모가 0이면 분자도 0이라 경보도 없다 */
+        public boolean modelUnverifiedBreached() {
+            if (settledCount == 0) {
+                return false;
+            }
+            return modelUnverifiedCount >= modelUnverifiedWarnCount
+                    && modelUnverifiedCount * 100 >= settledCount * modelUnverifiedWarnPercent;
+        }
+
+        /** 경보 문장에 싣는 비율. 소수 한 자리까지만 — 더 정밀하게 적어도 읽는 쪽이 쓸 데가 없다 */
+        public double modelUnverifiedPercent() {
+            return settledCount == 0 ? 0 : modelUnverifiedCount * 100.0 / settledCount;
         }
     }
 
@@ -282,6 +315,8 @@ public record InspectionMetricsResult(
             double breakevenRate,
             long backlogWarnCount,
             long backlogWarnAgeMinutes,
+            long modelUnverifiedWarnCount,
+            long modelUnverifiedWarnPercent,
             InspectionFunnelCounts funnel,
             InspectionTriageCounts triage,
             InspectionCoverageCounts coverage,
@@ -302,7 +337,7 @@ public record InspectionMetricsResult(
                 List.of(),
                 funnelOf(funnel, triage, breakevenRate),
                 judgmentOf(funnel),
-                Coverage.of(coverage),
+                Coverage.of(coverage, modelUnverifiedWarnCount, modelUnverifiedWarnPercent),
                 Cost.of(cost, stageCosts, settled),
                 Backlog.of(backlog, measuredAt, backlogWarnCount, backlogWarnAgeMinutes));
 
@@ -363,6 +398,15 @@ public record InspectionMetricsResult(
                     "MISSING_SKIP_REASON",
                     "사유 없는 미검사 기록이 %d건이다 — 선별이 건너뛴 것과 호출이 죽은 것을 가를 수 없다"
                             .formatted(funnel.missingSkipReasonCount())));
+        }
+        // 생산자가 보내지 않아야 하는 판정이 들어오는 것을 운영 중에 감시한다. 런타임은 그 판정을
+        // 게이트 분기에서 빼서 피해를 막지만, 막고 아무에게도 알리지 않으면 방어를 철회한 것과
+        // 운영상 구별되지 않는다.
+        if (coverage.modelUnverifiedBreached()) {
+            found.add(new Alarm(
+                    "MODEL_UNVERIFIED",
+                    "모델이 읽지 않은 통과가 %d건(%.1f%%)이다 — 판정 계약이 갈라졌을 수 있다"
+                            .formatted(coverage.modelUnverifiedCount(), coverage.modelUnverifiedPercent())));
         }
         return List.copyOf(found);
     }
