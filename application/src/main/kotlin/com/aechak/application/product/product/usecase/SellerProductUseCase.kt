@@ -1,5 +1,6 @@
 package com.aechak.application.product.product.usecase
 
+import com.aechak.application.product.product.usecase.command.AppealProductInspectionCommand
 import com.aechak.application.product.product.usecase.command.ChangeOptionCombinationCommand
 import com.aechak.application.product.product.usecase.command.ChangeProductSaleStatusCommand
 import com.aechak.application.product.product.usecase.command.RegisterProductCommand
@@ -54,4 +55,12 @@ interface SellerProductUseCase {
         sellerId: Long,
         publicId: String,
     ): SellerProductInspectionResult
+
+    /**
+     * 내 상품의 검수 차단에 이의를 접수한다. 접수는 노출을 바꾸지 않는다.
+     *
+     * 조회와 같은 타입을 돌려준다. FE가 접수 뒤 조회를 다시 부르지 않아도 되고, 둘이 같은
+     * 사실(상품의 열린 검토 행 + 가장 최근 검수)을 보기 때문에 서로 어긋날 자리가 없다.
+     */
+    fun appealMyProductInspection(command: AppealProductInspectionCommand): SellerProductInspectionResult
 }

@@ -15,6 +15,8 @@ data class InspectionSnapshot(
     /** 검수 행 식별자. 읽은 뒤에 그것이 아직 최신인지 대조하는 데 쓴다 */
     val inspectionId: Long,
     val processingState: InspectionProcessingState,
+    /** 이 검수가 본 내용의 지문. 이의가 아직 그 내용을 가리키는지 가르는 축이다 */
+    val contentHash: String,
     val judgment: InspectionJudgment?,
     val reasonCode: String?,
     val reasonSummary: String?,
@@ -27,6 +29,7 @@ data class InspectionSnapshot(
             InspectionSnapshot(
                 inspectionId = inspection.id,
                 processingState = inspection.processingState,
+                contentHash = inspection.contentHash,
                 judgment = inspection.judgment,
                 reasonCode = inspection.reasonCode,
                 reasonSummary = inspection.reasonSummary,

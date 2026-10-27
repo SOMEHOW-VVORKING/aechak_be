@@ -58,3 +58,9 @@ server:
 # AI 검수. 섀도 단계에서는 요청만 보내고 노출 상태는 바꾸지 않는다.
 inspection:
   enabled: true
+  # 셀러 이의 제기 폭주 방지. 관리자 큐를 셀러 한 명이 혼자 채우면 사람이 보는 큐가 쓸모없어짐.
+  # max-open-per-seller는 최선 노력이다 — 잠그는 것이 상품 행이라 서로 다른 상품에 동시에 쏘면
+  # 같은 분모를 읽는다. 실제 상한은 그 셀러가 가진 차단된 상품 수다
+  appeal:
+    max-open-per-seller: 3
+    cooldown-hours: 24

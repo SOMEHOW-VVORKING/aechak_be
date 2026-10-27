@@ -13,6 +13,7 @@ import com.aechak.domain.product.option.repository.OptionGroupRepository
 import com.aechak.domain.product.product.QProduct
 import com.aechak.domain.seller.seller.QSeller
 import com.querydsl.core.types.Expression
+import com.querydsl.core.types.OrderSpecifier
 import com.querydsl.core.types.Projections
 import com.querydsl.jpa.JPAExpressions
 import com.querydsl.jpa.impl.JPAQuery
@@ -35,10 +36,12 @@ class ProductReviewQueueQueryAdapter(
 ) : ProductReviewQueueQueryPort {
     override fun findPage(
         status: ReviewQueueStatus?,
+        appealedOnly: Boolean,
         pageQuery: PageQuery,
     ): List<ProductReviewQueueRowView> =
         baseQuery(
             status,
+            appealedOnly,
             Projections.constructor(
                 ProductReviewQueueRowView::class.java,
                 product.publicId,
@@ -47,13 +50,32 @@ class ProductReviewQueueQueryAdapter(
                 item.status,
                 latestJudgment(),
                 item.blindedAt,
+                item.appealedAt,
             ),
-        ).orderBy(item.blindedAt.desc(), item.id.desc())
+        ).orderBy(*order(appealedOnly))
             .offset(pageQuery.page.toLong() * pageQuery.size)
             .limit(pageQuery.size.toLong())
             .fetch()
 
-    override fun count(status: ReviewQueueStatus?): Long = baseQuery(status, item.count()).fetchOne() ?: 0L
+    /**
+     * 정렬 축을 필터 축에 맞춘다.
+     *
+     * 전체 목록의 축은 `blinded_at`(행을 열었거나 다시 연 판정의 시각)이다. 그런데 이의로 새로
+     * 연 행은 그 칼럼을 **원 판정의 시각**으로 찍으므로, 이의 목록을 그 축으로 정렬하면 3주 전에
+     * 반려된 상품에 오늘 걸린 이의가 맨 아래로 간다 — 위에서부터 처리하는 관리자는 가장 묵은
+     * 이의부터 보고 새 이의는 목록이 길면 영구히 못 본다. 그 사이 그 행은 셀러 정원을 먹는다.
+     */
+    private fun order(appealedOnly: Boolean): Array<OrderSpecifier<*>> =
+        if (appealedOnly) {
+            arrayOf(item.appealedAt.desc(), item.id.desc())
+        } else {
+            arrayOf(item.blindedAt.desc(), item.id.desc())
+        }
+
+    override fun count(
+        status: ReviewQueueStatus?,
+        appealedOnly: Boolean,
+    ): Long = baseQuery(status, appealedOnly, item.count()).fetchOne() ?: 0L
 
     override fun findReviewTarget(productPublicId: String): ReviewTargetProductView? {
         val row =
@@ -94,8 +116,19 @@ class ProductReviewQueueQueryAdapter(
         )
     }
 
+    /**
+     * 이의 필터에 전용 인덱스를 두지 않는다.
+     *
+     * 그 경로는 status 등호 + appealed_at 널 아님 + **appealed_at 정렬**이다. 기존
+     * (status, blinded_at)은 등호만 받고 정렬은 받지 못해 이 경로는 언제나 파일소트다 —
+     * (status, appealed_at)을 만들면 둘을 함께 받는다. 그래도 지금 두지 않는 쪽을 고른 이유는
+     * 정렬 대상이 **열려 있고 이의가 걸린 행**뿐이고 그 수가 셀러별 동시 접수 상한에 묶여
+     * 작기 때문이다. 이 목록이 눈에 보이게 느려지면 그때 더한다 — 더할 때는 마이그레이션과
+     * 엔티티 선언을 함께 바꿔야 환경 간에 조회 계획이 갈리지 않는다.
+     */
     private fun <T> baseQuery(
         status: ReviewQueueStatus?,
+        appealedOnly: Boolean,
         select: Expression<T>,
     ): JPAQuery<T> =
         queryFactory
@@ -108,6 +141,7 @@ class ProductReviewQueueQueryAdapter(
             .where(
                 item.targetType.eq(InspectionTargetType.PRODUCT),
                 status?.let(item.status::eq),
+                item.appealedAt.isNotNull.takeIf { appealedOnly },
             )
 
     /** 상품의 가장 최근 검수 판정 */

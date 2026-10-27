@@ -11,6 +11,7 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import jakarta.persistence.Version
@@ -35,6 +36,9 @@ import java.time.LocalDateTime
             columnNames = ["target_type", "target_ref", "content_hash", "policy_version"],
         ),
     ],
+    // 운영 지표의 분모가 "창 안에 닫힌 검수"라 닫힌 시각으로 좁힌다. 마이그레이션과 같은 이름으로
+    // 선언해 ddl-auto 환경(테스트·로컬)과 Flyway 환경의 조회 계획이 갈리지 않게 한다.
+    indexes = [Index(name = "ix_content_inspections_settled", columnList = "settled_at")],
 )
 class ContentInspection protected constructor(
     @Enumerated(EnumType.STRING)

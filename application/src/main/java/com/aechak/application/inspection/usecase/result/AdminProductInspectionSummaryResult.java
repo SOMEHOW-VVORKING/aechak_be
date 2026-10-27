@@ -11,7 +11,8 @@ public record AdminProductInspectionSummaryResult(
         String sellerName,
         ReviewQueueStatus status,
         InspectionJudgment latestJudgment,
-        LocalDateTime blindedAt) {
+        LocalDateTime blindedAt,
+        LocalDateTime appealedAt) {
 
     public static AdminProductInspectionSummaryResult from(ProductReviewQueueRowView view) {
         return new AdminProductInspectionSummaryResult(
@@ -20,6 +21,7 @@ public record AdminProductInspectionSummaryResult(
                 view.getSellerName(),
                 view.getStatus(),
                 view.getLatestJudgment(),
-                view.getBlindedAt());
+                view.getBlindedAt(),
+                view.getAppealedAt());
     }
 }

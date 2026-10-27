@@ -405,7 +405,8 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
         tx.execute {
             decisions.forEach { decision ->
                 val item = ProductReviewQueueItem.openForProduct(productId, sellerUserId, "연어 건사료 2kg", LocalDateTime.now())
-                if (decision == ReviewQueueStatus.REJECTED) item.reject("치료 효능 표현을 빼 주세요.") else item.approve()
+                val now = LocalDateTime.now()
+                if (decision == ReviewQueueStatus.REJECTED) item.reject("치료 효능 표현을 빼 주세요.", now) else item.approve(now)
                 em.persist(item)
             }
         }
