@@ -361,6 +361,20 @@ class ProductService(
         userId: Long,
     ): Boolean = productLikeRepository.existsByProductIdAndUserId(productId, userId)
 
+    /**
+     * 검수 프롬프트에 넣을 카테고리 경로. 대분류부터 소분류 순으로 돌려준다.
+     *
+     * 판정이 카테고리에 따라 달라진다 — 사료의 효능 표현과 장난감의 효능 표현은 기준이 다르다.
+     * 그래서 이름 하나가 아니라 경로 전체를 보낸다.
+     */
+    fun categoryPathOf(categoryId: Long): List<String> {
+        val leaf = loadLeafCategory(categoryId)
+        return generateSequence(leaf) { it.parent }
+            .map { it.name }
+            .toList()
+            .reversed()
+    }
+
     private fun loadLeafCategory(categoryId: Long): Category {
         val category =
             categoryRepository.findActiveById(categoryId)

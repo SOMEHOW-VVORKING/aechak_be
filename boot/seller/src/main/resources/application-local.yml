@@ -37,3 +37,7 @@ aechak:
     aes-keys:
       1: ${PII_AES_KEY_V1:dxeyFW4YgkgYreLe9IX7laeZPHaP3Eada2M9yuBCA+Q=}
     hmac-key: ${PII_HMAC_KEY:Jtk5KHlAG6nnDtIBDhqoDXIs7FovvRs0kOckZP6cl7k=}
+
+# AI 검수. 섀도 단계에서는 요청만 보내고 노출 상태는 바꾸지 않는다.
+inspection:
+  enabled: true

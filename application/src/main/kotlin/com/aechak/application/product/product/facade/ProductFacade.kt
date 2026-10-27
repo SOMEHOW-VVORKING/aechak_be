@@ -3,6 +3,8 @@ package com.aechak.application.product.product.facade
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
+import com.aechak.application.inspection.service.InspectionRequestService
+import com.aechak.application.inspection.usecase.command.RequestProductInspectionCommand
 import com.aechak.application.product.like.service.ProductLikeStatusService
 import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.application.product.product.service.ProductService
@@ -32,6 +34,8 @@ import com.aechak.application.support.CursorPageResult
 import com.aechak.application.support.OffsetPageResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.error.ProductErrorCode
+import com.aechak.domain.product.option.ProductOptions
+import com.aechak.domain.product.version.ProductVersion
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -46,6 +50,7 @@ class ProductFacade(
     private val productLikeStatusService: ProductLikeStatusService,
     private val sellerUseCase: SellerUseCase,
     private val fileUseCase: FileUseCase,
+    private val inspectionRequestService: InspectionRequestService,
     transactionManager: PlatformTransactionManager,
 ) : ProductUseCase,
     SellerProductUseCase {
@@ -99,10 +104,23 @@ class ProductFacade(
         requireActiveSeller(command.sellerId)
         val options = command.toProductOptions()
         val stored = promoteNewImageKeys(command)
-        val version = tx.execute { productService.register(stored, options) }!!
+        // 검수 요청을 같은 트랜잭션에서 발행한다. 상품 저장이 롤백되면 요청도 함께 사라져야 한다.
+        val version =
+            tx.execute {
+                val saved = productService.register(stored, options)
+                requestInspection(stored.categoryId, stored.productName, stored.description, options, saved)
+                saved
+            }!!
         return ProductRegisterResult.of(version.product, version.versionNo)
     }
 
+    /**
+     * 수정은 아직 검수를 다시 타지 않는다.
+     *
+     * 지금은 섀도 단계라 노출 상태를 바꾸지 않으므로 우회할 대상이 없다. 다만 **노출 게이트를
+     * 켜기 전에 수정 재검수를 반드시 붙여야 한다** — 정상 문구로 등록한 뒤 위반 문구로 고치면
+     * 검수를 통째로 우회할 수 있고, 그러면 게이트가 장식이 된다.
+     */
     override fun updateProduct(command: UpdateProductCommand): ProductUpdateResult {
         requireActiveSeller(command.sellerId)
         val storedKeys = tx.execute { productService.validateAndGetCurrentImageKeys(command) }!!
@@ -164,6 +182,36 @@ class ProductFacade(
             throw BusinessException(ProductErrorCode.PRODUCT_SELLER_READ_FORBIDDEN)
         }
     }
+
+    /**
+     * 검수 요청을 발행한다. 호출부의 트랜잭션 안에서 돌아야 한다.
+     *
+     * 판정에 필요한 본문을 여기서 다 모아 보낸다. AI 서버가 우리를 되묻지 않게 하려는 것이고,
+     * 그래야 역방향 호출 인증과 보안그룹 인바운드가 필요 없어진다.
+     */
+    private fun requestInspection(
+        categoryId: Long,
+        productName: String,
+        description: String?,
+        options: ProductOptions,
+        version: ProductVersion,
+    ) {
+        inspectionRequestService.requestProduct(
+            RequestProductInspectionCommand(
+                productId = version.product.id,
+                productVersionNo = version.versionNo,
+                productName = productName,
+                description = description,
+                optionNames = optionNamesOf(options),
+                categoryPath = productService.categoryPathOf(categoryId),
+                imageUrls = listOfNotNull(fileUseCase.resolveMediaUrl(version.product.representativeImageKey)),
+            ),
+        )
+    }
+
+    /** 그룹명과 값 이름을 함께 넘긴다. 옵션 이름에도 금칙 표현이 들어온다 */
+    private fun optionNamesOf(options: ProductOptions): List<String> =
+        options.groups.flatMap { group -> listOf(group.name) + group.valueNames }
 
     private fun promoteNewImageKeys(command: RegisterProductCommand): RegisterProductCommand =
         command.copy(
