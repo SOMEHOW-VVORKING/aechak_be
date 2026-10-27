@@ -27,6 +27,7 @@ import com.aechak.application.order.seller.usecase.result.SellerOrderDetailResul
 import com.aechak.application.order.seller.usecase.result.SellerOrderMetricsResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderSummaryResult
 import com.aechak.application.product.product.usecase.SellerProductUseCase
+import com.aechak.application.product.product.usecase.command.AppealProductInspectionCommand
 import com.aechak.application.product.product.usecase.command.ChangeOptionCombinationCommand
 import com.aechak.application.product.product.usecase.command.ChangeProductSaleStatusCommand
 import com.aechak.application.product.product.usecase.command.RegisterProductCommand
@@ -263,6 +264,8 @@ class SellerDashboardFacadeTest {
             sellerId: Long,
             publicId: String,
         ): SellerProductOptionsResult = unused()
+
+        override fun appealMyProductInspection(command: AppealProductInspectionCommand): SellerProductInspectionResult = unused()
     }
 
     private companion object {
