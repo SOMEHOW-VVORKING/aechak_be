@@ -4,6 +4,7 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -597,7 +598,7 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
                     Claim.request(
                         order = order,
                         claimType = claimType,
-                        reasonCode = "DEFECT",
+                        reasonCode = ClaimReasonCode.DEFECTIVE,
                         reasonDetail = null,
                         items = order.items.map { ClaimItem.of(it, quantity = it.quantity, refundAmount = 25_000L) },
                         autoApproveDueAt = LocalDateTime.now().plusDays(2),
@@ -731,7 +732,7 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
                 Claim.request(
                     order = order,
                     claimType = ClaimType.CANCEL,
-                    reasonCode = "CHANGE_OF_MIND",
+                    reasonCode = ClaimReasonCode.CHANGE_OF_MIND,
                     reasonDetail = null,
                     items = listOf(ClaimItem.of(order.items.first(), 1, 25_000L)),
                     autoApproveDueAt = LocalDateTime.now().plusDays(2),
