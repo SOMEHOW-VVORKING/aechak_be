@@ -189,11 +189,11 @@ class InspectionFacade(
         }
 
         val judgment = checkNotNull(inspection.judgment) { "판정이 적히지 않은 검수를 반영하려 했다. id=${inspection.id}" }
+        // 판정 실패와 기한 만료는 증거 없는 통과와 같은 사실이라 같은 자리에 둔다
         val applicable =
             when (judgment) {
                 InspectionJudgment.FLAG -> true
                 InspectionJudgment.PASS -> modelVerified
-                // 판정 실패와 기한 만료. 증거 없는 통과와 같은 사실이라 같은 자리에 둔다
                 else -> false
             }
         if (!applicable) {
