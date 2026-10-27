@@ -62,6 +62,22 @@ class ContentInspectionMigrationTest : KafkaIntegrationTestBase() {
         assertTrue(duplicated, "누적되면 재전달마다 같은 위반이 쌓여 집계가 부풀려진다")
     }
 
+    /**
+     * 관점 열거에 값을 더할 때 마이그레이션을 따로 만들지 않아도 되는 근거를 테스트로 남긴다.
+     * perspective는 VARCHAR(30)이고 유일 제약은 (inspection_id, perspective) 쌍이라,
+     * 새 값은 길이에도 제약에도 걸리지 않고 검수 1건에 행 하나로 더 붙는다.
+     */
+    @Test
+    fun `새로 추가한 관점도 길이와 유일 제약을 통과한다`() {
+        val inspectionId = insertInspection(contentHash = "d".repeat(64))
+
+        insertFinding(inspectionId, "TRIAGE")
+        insertFinding(inspectionId, "DISPLAY_ADS")
+        val duplicated = runCatching { insertFinding(inspectionId, "TRIAGE") }.isFailure
+
+        assertTrue(duplicated, "관점 쌍에 유일 제약이 걸려 있어야 재전달이 선별 기록을 쌓지 않는다")
+    }
+
     private fun insertInspection(
         contentHash: String,
         policyVersion: String = "policy-v1",
