@@ -111,13 +111,19 @@ class ProductInspectionGateService(
      * 게이트 스위치를 보지 않는다 — 사람이 누르는 경로라서, 스위치가 꺼진 환경에서 null을
      * 돌려주면 이의가 조용히 아무것도 하지 않는다. 그 면제가 실제로 쓸모를 가지려면 자격을
      * 만드는 쪽(판정의 큐 등재·관리자 반려)도 함께 면제돼야 한다.
+     *
+     * 반려 상태와 관리자 결정 이력을 함께 본다. 반려는 AI가 내린 것일 수도 있어서 상태 하나로는
+     * 사람이 내린 반려를 가를 수 없다.
      */
-    override fun lockForAppeal(productId: Long): ProductAppealTarget? =
+    override fun lockForAppeal(
+        productId: Long,
+        isAdminRejected: () -> Boolean,
+    ): ProductAppealTarget? =
         productRepository.findByIdForUpdate(productId)?.let {
             ProductAppealTarget(
                 productName = it.name,
                 sellerId = it.sellerId,
-                adminRejected = it.inspectionStatus == InspectionStatus.REJECTED,
+                adminRejected = it.inspectionStatus == InspectionStatus.REJECTED && isAdminRejected(),
             )
         }
 

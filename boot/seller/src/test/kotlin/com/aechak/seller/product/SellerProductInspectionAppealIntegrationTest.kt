@@ -164,7 +164,7 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `관리자가 반려한 상품은 열린 행이 없어도 행을 새로 열어 받는다`() {
-        changeStatus(productId, InspectionStatus.REJECTED)
+        adminRejected(productId)
         val settledAt = settledInspection(InspectionJudgment.FLAG)
 
         mockMvc
@@ -304,7 +304,7 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
      */
     @Test
     fun `같은 상품에 동시 접수가 들어와도 열린 행과 이의는 하나다`() {
-        changeStatus(productId, InspectionStatus.REJECTED)
+        adminRejected(productId)
         settledInspection(InspectionJudgment.FLAG)
 
         val statuses = appealTwiceInParallel("첫 번째 사유입니다.", "두 번째 사유입니다.")
@@ -312,6 +312,39 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
         assertEquals(1, pendingCount(productId), "열린 행이 둘이면 관리자가 닫지 못한 행이 정원을 영구히 먹는다")
         assertEquals(1, statuses.count { it == 200 }, "접수는 한 건만 성공해야 한다. 받은 상태=$statuses")
         assertEquals(1, appealedCount(sellerUserId), "정원의 분모가 둘이면 상한이 한 번 누르는 것으로 깎인다")
+    }
+
+    /**
+     * 셀러 단위 상한은 **최선 노력**이다. 고치는 테스트가 아니라 계약을 적는 테스트다.
+     *
+     * 잠그는 것이 상품 행이라, 서로 다른 상품에 동시에 쏘면 N개 트랜잭션이 전부 같은 분모를
+     * 읽고 통과한다. 분모를 직렬화할 지점을 만드는 쪽은 비용이 더 크다 — 셀러 행을 쓰기 잠금으로
+     * 집는 것은 검수가 다른 바운디드 컨텍스트의 행을 잠그는 경로를 새로 만드는 일이고,
+     * 열린 이의를 (소유자, 상태) 범위로 잠그는 것은 판정 경로가 같은 구간에 INSERT 하는 것과
+     * 겹친다.
+     *
+     * 그래서 실질 상한은 **상품 단위**다. 상품마다 열린 이의는 하나고, 열린 행 하나에 접수할
+     * 수 있는 횟수에 상한이 있고, 기각 뒤에는 쿨다운이 걸린다. 한 셀러가 열 수 있는 이의는
+     * 그 셀러가 가진 차단된 상품 수를 넘지 못하고 그 상품들은 이미 관리자 큐에 행을 가진다.
+     * 셀러 단위 상한은 그 위의 2차 방어선이다.
+     */
+    @Test
+    fun `서로 다른 상품에 동시 접수하면 셀러 상한을 넘을 수 있다`() {
+        val second = anotherProductWithOpenReview()
+        val third = anotherProductWithOpenReview()
+        changeStatus(productId, InspectionStatus.REJECTED)
+        openReview(productId)
+        mockMvc.perform(appealRequest(publicId, "하나")).andExpect(status().isOk)
+
+        val statuses = appealInParallel(second to "둘", third to "셋")
+
+        assertEquals(
+            2,
+            statuses.count { it == 200 },
+            "분모가 직렬화되면 한 건은 상한에서 끊긴다. 끊기는 쪽으로 바뀌었다면 상한 직렬화를 넣은 것이고, " +
+                "그때 이 수트의 상품 단위 방어선이 아직 서 있는지 함께 봐야 한다. 받은 상태=$statuses",
+        )
+        assertEquals(3, appealedCount(sellerUserId), "상한 2에 세 건이 열린 것이 지금의 계약이다")
     }
 
     @Test
@@ -412,6 +445,22 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
             openReview(product.id)
             product.publicId
         }!!
+
+    /**
+     * 관리자가 반려해 그 행이 닫힌 상태를 만든다. 열린 행이 없는 접수의 유일한 자격이다.
+     *
+     * 노출 상태만 심으면 모자란다. 반려는 AI가 내린 것일 수도 있어서 자격은 관리자 결정 이력을
+     * 함께 보고, 결정 행이 없으면 AI가 반려한 상품에 관리자가 한 번도 보지 않은 이의가 붙는다.
+     * 이의를 걸지 않고 반려만 하므로 쿨다운의 분모에는 들어가지 않는다.
+     */
+    private fun adminRejected(target: Long) {
+        changeStatus(target, InspectionStatus.REJECTED)
+        tx.execute {
+            val row = openReview(target)
+            row.reject("효능 표현을 빼고 다시 등록해 주세요.", LocalDateTime.now())
+            reviewQueue.save(row)
+        }
+    }
 
     /** 이의를 한 번 접수했다 기각된 상태를 만든다. 쿨다운의 분모는 닫힌 시각이다 */
     private fun rejectAppeal(
@@ -523,16 +572,19 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
     private fun appealTwiceInParallel(
         first: String,
         second: String,
-    ): List<Int> {
+    ): List<Int> = appealInParallel(publicId to first, publicId to second)
+
+    /** 주어진 (상품, 사유) 짝을 한꺼번에 쏘고 응답 상태를 돌려준다 */
+    private fun appealInParallel(vararg requests: Pair<String, String>): List<Int> {
         val start = CountDownLatch(1)
-        val pool = Executors.newFixedThreadPool(2)
+        val pool = Executors.newFixedThreadPool(requests.size)
         try {
             val tasks =
-                listOf(first, second).map { reason ->
+                requests.map { (target, reason) ->
                     pool.submit<Int> {
                         start.await()
                         mockMvc
-                            .perform(appealRequest(publicId, reason))
+                            .perform(appealRequest(target, reason))
                             .andReturn()
                             .response
                             .status

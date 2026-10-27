@@ -109,7 +109,7 @@ class ProductReviewQueueService(
      * 두 번 누른 요청 둘이 서로의 커밋을 보지 못하고 같은 분모를 읽는다.
      */
     fun lockProductForAppeal(productId: Long): ProductAppealTarget =
-        productGate.lockForAppeal(productId)
+        productGate.lockForAppeal(productId) { isAdminRejected(productId) }
             ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
 
     /**

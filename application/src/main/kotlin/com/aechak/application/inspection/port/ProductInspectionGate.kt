@@ -42,6 +42,13 @@ interface ProductInspectionGate {
      *
      * 다른 셋과 달리 노출 게이트 스위치를 보지 않는다. 관리자 결정과 같은 사람 경로이고,
      * 스위치에 묶이면 스위치가 꺼진 환경에서 이의가 조용히 아무것도 하지 않는다.
+     *
+     * [isAdminRejected]도 상품 행을 잠근 뒤에 부름. 반려 상태 하나로는 AI 반려와 관리자
+     * 반려를 가를 수 없어서, 자격은 그 둘을 함께 본다. [applyJudgment]의 같은 람다와 같은
+     * 이유로 호출부 트랜잭션이 READ COMMITTED여야 뜻이 있음
      */
-    fun lockForAppeal(productId: Long): ProductAppealTarget?
+    fun lockForAppeal(
+        productId: Long,
+        isAdminRejected: () -> Boolean,
+    ): ProductAppealTarget?
 }
