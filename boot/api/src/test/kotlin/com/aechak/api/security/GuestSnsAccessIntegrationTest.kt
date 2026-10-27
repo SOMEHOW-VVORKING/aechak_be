@@ -8,7 +8,9 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
@@ -48,6 +50,29 @@ class GuestSnsAccessIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `같은 프로필 경로에 토큰을 붙이면 관계 필드가 보는 사람 기준으로 채워진다`() {
+        val publicId = onboardedUserPublicId()
+        val viewerId = createActiveUser()
+        mockMvc
+            .perform(
+                post("/api/v1/sns/users/$publicId/mute")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}"),
+            ).andExpect(status().isCreated)
+
+        mockMvc
+            .perform(
+                get("/api/v1/sns/users/$publicId")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}"),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.mutedByMe").value(true))
+
+        mockMvc
+            .perform(get("/api/v1/sns/users/$publicId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.mutedByMe").value(false))
+    }
+
+    @Test
     fun `토큰 없이 내 프로필을 부르면 401 20004다`() {
         mockMvc
             .perform(get("/api/v1/sns/me"))
@@ -56,12 +81,71 @@ class GuestSnsAccessIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `프로필 아래 경로는 토큰 없이 열리지 않는다`() {
+    fun `프로필 아래 경로인 팔로워와 팔로잉 목록은 토큰 없이 부르면 401 20004다`() {
         val publicId = onboardedUserPublicId()
 
         mockMvc
             .perform(get("/api/v1/sns/users/$publicId/followers"))
             .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        mockMvc
+            .perform(get("/api/v1/sns/users/$publicId/followings"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
+    fun `토큰 없이 팔로우하거나 언팔로우하면 401 20004다`() {
+        val publicId = onboardedUserPublicId()
+
+        mockMvc
+            .perform(post("/api/v1/sns/users/$publicId/follow"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        mockMvc
+            .perform(delete("/api/v1/sns/users/$publicId/follow"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
+    fun `토큰 없이 차단하거나 차단 해제하면 401 20004다`() {
+        val publicId = onboardedUserPublicId()
+
+        mockMvc
+            .perform(post("/api/v1/sns/users/$publicId/block"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        mockMvc
+            .perform(delete("/api/v1/sns/users/$publicId/block"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
+    fun `토큰 없이 뮤트하거나 뮤트 해제하면 401 20004다`() {
+        val publicId = onboardedUserPublicId()
+
+        mockMvc
+            .perform(post("/api/v1/sns/users/$publicId/mute"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        mockMvc
+            .perform(delete("/api/v1/sns/users/$publicId/mute"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
+    fun `토큰 없이 차단 목록과 뮤트 목록을 부르면 401 20004다`() {
+        mockMvc
+            .perform(get("/api/v1/sns/me/blocks"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        mockMvc
+            .perform(get("/api/v1/sns/me/mutes"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
     }
 
     @Test
