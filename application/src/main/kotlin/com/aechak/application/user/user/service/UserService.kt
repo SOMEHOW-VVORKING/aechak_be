@@ -26,6 +26,10 @@ class UserService(
         userRepository.findById(userId)
             ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
 
+    fun findById(userId: Long): User? = userRepository.findById(userId)
+
+    fun findByPublicId(publicId: String): User? = userRepository.findByPublicId(publicId)
+
     /** 작성자 표시용 배치 조회 — 없는 id는 결과에서 빠진다. */
     fun getAuthors(userIds: Collection<Long>): List<UserAuthorView> = userAuthorQueryPort.findAuthorsByIds(userIds)
 

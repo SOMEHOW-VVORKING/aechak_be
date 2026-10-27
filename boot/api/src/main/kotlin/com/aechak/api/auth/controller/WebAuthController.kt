@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.util.UriComponentsBuilder
 import java.net.URI
@@ -47,6 +48,7 @@ class WebAuthController(
      * state를 쿠키에도 심는다(브라우저 바인딩) — 콜백에서 이중 제출 대조해 로그인 CSRF를 막는다.
      */
     @GetMapping("/login/{provider}/redirect")
+    @ResponseStatus(HttpStatus.FOUND)
     fun redirectToProvider(
         @PathVariable provider: String,
         @RequestParam("return") returnUrl: String,
@@ -65,6 +67,7 @@ class WebAuthController(
      * 성공/실패 모두 (검증된) return으로 302, refresh는 Set-Cookie로만 전달.
      */
     @GetMapping("/callback/{provider}")
+    @ResponseStatus(HttpStatus.FOUND)
     fun callback(
         @PathVariable provider: String,
         @RequestParam(required = false) code: String?,
@@ -126,6 +129,7 @@ class WebAuthController(
 
     /** 로그아웃 — 서버 세션 폐기 + 쿠키 파기. 쿠키 없으면 이미 로그아웃 상태라 그대로 204(멱등). */
     @PostMapping("/web/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun logout(
         @CookieValue(RefreshCookieFactory.REFRESH_COOKIE, required = false) refreshToken: String?,
         request: HttpServletRequest,

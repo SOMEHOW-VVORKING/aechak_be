@@ -6,6 +6,7 @@ import com.aechak.application.product.product.port.SellerProductSort
 import com.aechak.application.product.product.port.SellerProductStockFilter
 import com.aechak.application.product.product.port.view.SellerProductOptionView
 import com.aechak.application.product.product.port.view.SellerProductOwnershipView
+import com.aechak.application.product.product.port.view.SellerProductStatusCountView
 import com.aechak.application.product.product.port.view.SellerProductView
 import com.aechak.domain.product.option.QOptionCombination
 import com.aechak.domain.product.product.enums.InspectionStatus
@@ -14,6 +15,8 @@ import com.querydsl.core.types.Expression
 import com.querydsl.core.types.OrderSpecifier
 import com.querydsl.core.types.Predicate
 import com.querydsl.core.types.Projections
+import com.querydsl.core.types.dsl.BooleanExpression
+import com.querydsl.core.types.dsl.CaseBuilder
 import com.querydsl.core.types.dsl.Expressions
 import com.querydsl.core.types.dsl.NumberExpression
 import com.querydsl.jpa.JPAExpressions
@@ -64,6 +67,33 @@ class SellerProductQueryAdapter(
             .where(optionCombination.product.id.eq(productId))
             .orderBy(optionCombination.id.asc())
             .fetch()
+
+    /**
+     * 상태별 상품 수를 조건부 합계로 한 번에 센다. 네 건수는 배타적이지 않다 —
+     * 품절 판정은 목록의 재고 필터와 같은 규칙(활성 조합 중 재고가 남은 것이 없음)을 쓴다.
+     * 두 화면이 같은 라벨에 다른 숫자를 띄우지 않으려면 규칙이 하나여야 한다.
+     */
+    override fun countStatuses(sellerId: Long): SellerProductStatusCountView =
+        queryFactory
+            .select(
+                Projections.constructor(
+                    SellerProductStatusCountView::class.java,
+                    countWhere(product.inspectionStatus.eq(InspectionStatus.PENDING)),
+                    countWhere(product.inspectionStatus.eq(InspectionStatus.REJECTED)),
+                    countWhere(product.saleStatus.eq(SaleStatus.SUSPENDED)),
+                    countWhere(hasActiveStock().not()),
+                ),
+            ).from(product)
+            .where(product.sellerId.eq(sellerId))
+            .fetchOne()!!
+
+    /** 상품이 없는 셀러에서는 집계가 NULL이다 — 0은 쿼리에서 못박고 투영은 값이 있다고만 전제한다 */
+    private fun countWhere(predicate: BooleanExpression): NumberExpression<Long> =
+        Expressions.numberTemplate(
+            Long::class.javaObjectType,
+            "coalesce(sum({0}), 0)",
+            CaseBuilder().`when`(predicate).then(1L).otherwise(0L),
+        )
 
     /** 목록·카운트가 공유하는 조인·필터 골격. 카테고리 조인은 필터와 카테고리명 조회에 쓴다 */
     private fun <T> baseQuery(
@@ -134,22 +164,23 @@ class SellerProductQueryAdapter(
     private fun createdBefore(toExclusive: LocalDateTime?): Predicate? = toExclusive?.let { product.createdAt.lt(it) }
 
     /** 재고 있음/소진 — 재고가 남은 활성 조합의 존재 여부로 판정 */
-    private fun stockFilter(filter: SellerProductStockFilter?): Predicate? {
-        if (filter == null) return null
-        val hasActiveStock =
-            JPAExpressions
-                .selectOne()
-                .from(optionCombination)
-                .where(
-                    optionCombination.product.eq(product),
-                    optionCombination.isActive.isTrue,
-                    optionCombination.stockQuantity.gt(0),
-                ).exists()
-        return when (filter) {
-            SellerProductStockFilter.IN_STOCK -> hasActiveStock
-            SellerProductStockFilter.SOLD_OUT -> hasActiveStock.not()
+    private fun stockFilter(filter: SellerProductStockFilter?): Predicate? =
+        when (filter) {
+            null -> null
+            SellerProductStockFilter.IN_STOCK -> hasActiveStock()
+            SellerProductStockFilter.SOLD_OUT -> hasActiveStock().not()
         }
-    }
+
+    /** 재고가 남은 활성 조합이 있는지 — 품절 판정의 유일한 출처 */
+    private fun hasActiveStock(): BooleanExpression =
+        JPAExpressions
+            .selectOne()
+            .from(optionCombination)
+            .where(
+                optionCombination.product.eq(product),
+                optionCombination.isActive.isTrue,
+                optionCombination.stockQuantity.gt(0),
+            ).exists()
 
     private fun orderBy(
         sort: SellerProductSort,

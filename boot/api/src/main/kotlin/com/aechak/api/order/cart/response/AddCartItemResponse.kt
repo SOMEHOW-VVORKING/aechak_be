@@ -1,13 +1,14 @@
 package com.aechak.api.order.cart.response
 
 import com.aechak.application.order.cart.usecase.result.AddCartItemResult
+import com.aechak.domain.order.cart.enums.CartItemStatus
 
 data class AddCartItemResponse(
     val cartItemId: Long,
     val productId: String,
     val optionCombinationId: Long,
     val quantity: Int,
-    val itemStatus: String,
+    val itemStatus: CartItemStatus,
 ) {
     companion object {
         fun from(result: AddCartItemResult): AddCartItemResponse =
@@ -16,7 +17,7 @@ data class AddCartItemResponse(
                 productId = result.productId,
                 optionCombinationId = result.optionCombinationId,
                 quantity = result.quantity,
-                itemStatus = result.itemStatus.name,
+                itemStatus = result.itemStatus,
             )
     }
 }

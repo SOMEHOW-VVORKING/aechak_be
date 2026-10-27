@@ -59,11 +59,13 @@ class Shipment protected constructor(
     var dispatchedAt: LocalDateTime? = null
         protected set
 
-    @Column(length = 50)
+    // 추적 갱신만 쓰는 두 컬럼 — 더티체킹 UPDATE에서 빼 둔다. 배송완료 전이도 같은 행을 다시 쓰는데,
+    // 거기에 실리면 전이가 읽은 시점의 옛 값(처음에는 null)으로 방금 반영된 추적 결과를 덮는다.
+    @Column(length = 50, updatable = false)
     var lastTrackingStatus: String? = null
         protected set
 
-    @Column
+    @Column(updatable = false)
     var lastSyncedAt: LocalDateTime? = null
         protected set
 
@@ -83,6 +85,16 @@ class Shipment protected constructor(
     }
 
     companion object {
+        /** last_tracking_status 컬럼 길이. 넘치는 문구를 그대로 담으면 저장에서 깨진다 */
+        const val MAX_LAST_TRACKING_STATUS_LENGTH = 50
+
+        /**
+         * 택배사가 준 상태 문구를 발송에 담을 모양으로 다듬는다. 자유 문자열이라 앞뒤 공백을 떼고
+         * 컬럼 길이를 넘는 부분을 자른다. 기록은 리포지토리의 원자 UPDATE가 한다 —
+         * 더티체킹으로 쓰면 배송완료 전이가 같은 행을 다시 쓸 때 서로의 컬럼을 지운다.
+         */
+        fun normalizeTrackingStatus(lastStatus: String): String = lastStatus.trim().take(MAX_LAST_TRACKING_STATUS_LENGTH)
+
         fun dispatch(
             courier: CourierMaster,
             order: Order,
