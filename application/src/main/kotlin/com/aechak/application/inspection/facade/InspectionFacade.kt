@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.Duration
@@ -65,8 +66,15 @@ class InspectionFacade(
      *
      * 적기 전에 검수 행을 잠근다. 일반 조회로 읽고 쓰면 확인과 쓰기 사이에 기한 정리나
      * 또 다른 판정이 끼어들어 늦게 온 판정이 최신 상태를 덮는다.
+     *
+     * 격리 수준을 READ COMMITTED로 낮춘다. 게이트 반영이 상품 행을 잠근 뒤에 최신 검수와
+     * 관리자 결정을 비잠금으로 읽는데, 기본 격리에서는 읽기 뷰가 이 트랜잭션의 첫 일관 읽기에서
+     * 고정되어 잠금을 받은 뒤에 읽어도 그 사이 커밋된 것이 보이지 않는다.
+     *
+     * 이 선언은 이 트랜잭션을 여는 쪽일 때만 효력이 있다. 바깥에서 먼저 열고 들어오면 합류하는
+     * 쪽의 격리 선언은 조용히 무시되므로, 운영 진입점도 같은 격리 수준을 선언해야 한다.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun applyVerdict(command: ApplyVerdictCommand) {
         val message = command.verdict
         val inspection = inspections.findByIdForUpdate(message.inspectionId)
@@ -202,14 +210,19 @@ class InspectionFacade(
     /**
      * 판정을 노출 상태와 관리자 검토 큐로 옮긴다.
      *
-     * 판정을 받지 못한 건과 판정 과정이 실패한 건은 이미 보이는 상품을 숨기지 않고 관리자 검토 큐에만 올린다.
-     * 모델이 보지 못한 것을 위반으로 다루면 멀쩡한 상품이 사라지고, 모델 장애가 그대로 매출 장애가 된다.
+     * 넘기는 것은 위반 판정과 증거 있는 통과뿐이다. 판정을 받지 못한 건, 판정 과정이 실패한
+     * 건, 모델이 그 내용을 읽은 적 없는 통과는 전부 "모델이 읽지 않았다"라는 한 가지 사실이라
+     * 같은 자리에 둔다 — 상품도 큐도 건드리지 않는다. 모델이 보지 못한 것을 위반으로 다루면
+     * 멀쩡한 상품이 사라져 모델 장애가 그대로 매출 장애가 되고, 사람이 풀 것도 확정할 것도
+     * 없는 행을 큐에 쌓으면 장애마다 운영자가 수백 건을 떠안는다.
+     *
+     * 증거 없는 통과를 그냥 승인해 버릴 수도 없다. 위반 판정으로 반려되어 열린 행이 있는
+     * 상품에 그 통과가 오면, 모델이 아무것도 읽지 못한 메시지가 상품을 되살리고 관리자가 볼
+     * 행까지 닫는다. 여기서 걸러 내면 반려와 열린 행이 그대로 남아 관리자의 오탐 해제와
+     * 셀러 쪽 창구가 살아 있다.
      *
      * 통과 판정에 노출을 되돌리는 경로를 둔 이유는 복구 수단이 필요하기 때문이다. 셀러가
      * 문구를 고쳐 다시 통과했을 때 되살아나지 않으면 한 번 걸린 상품을 영구히 되살릴 수 없다.
-     *
-     * 다만 되돌리는 것은 증거가 있는 통과뿐이다. 모델이 그 내용을 읽은 적 없는 통과까지
-     * 받아들이면 호출이 전부 죽은 뒤에 온 통과가 아무도 보지 않은 상품을 구매자 화면에 세운다.
      */
     private fun applyGate(
         inspection: ContentInspection,
@@ -220,15 +233,32 @@ class InspectionFacade(
 
         val latest = inspections.findLatestByTarget(InspectionTargetType.PRODUCT, inspection.targetRef)
         if (latest?.id != inspection.id) {
-            // 옛 내용의 판정이 늦게 와서 새 내용의 상태를 덮으면 고치기 전 문구의 통과로 큐가 닫힘
+            // 옛 내용의 판정이 늦게 와서 새 내용에 내린 판정을 덮지 않게 함
             log.info("최신 검수가 아니라 노출에 반영하지 않는다. inspectionId={} latestId={}", inspection.id, latest?.id)
             return
         }
+
         val judgment = checkNotNull(inspection.judgment) { "판정이 적히지 않은 검수를 반영하려 했다. id=${inspection.id}" }
+        // 판정 실패와 기한 만료는 증거 없는 통과와 같은 사실이라 같은 자리에 둔다
+        val applicable =
+            when (judgment) {
+                InspectionJudgment.FLAG -> true
+                InspectionJudgment.PASS -> modelVerified
+                else -> false
+            }
+        if (!applicable) {
+            log.info(
+                "모델이 읽은 적 없는 판정이라 상품과 큐를 건드리지 않는다. inspectionId={} judgment={}",
+                inspection.id,
+                judgment,
+            )
+            return
+        }
+
         reviewQueueService.applyJudgment(
             productId = inspection.targetRef,
+            inspectionId = inspection.id,
             judgment = judgment,
-            modelVerified = modelVerified,
             judgedAt = checkNotNull(inspection.settledAt),
         )
     }
@@ -240,8 +270,9 @@ class InspectionFacade(
      * 관점도 증거로 센다 — 여기서 보는 것은 무엇을 찾았는지가 아니라 읽었는지다.
      *
      * 선별이 일부러 건너뛴 건은 결과가 없어도 증거로 센다. 선별이 통과로 가른 것은 판단이고
-     * 장애가 아니다. 호출이 죽어 건너뛴 것과 가르는 축은 사유뿐이라, 사유가 규약이 된다.
-     * 모델 관점 행이 아예 없으면 무엇을 봤는지 알 길이 없으므로 증거로 세지 않는다.
+     * 장애가 아니라서, 그것까지 막으면 선별 계층의 비용 절감이 사라진다. 호출이 죽어 건너뛴
+     * 것과 가르는 축은 사유뿐이라 사유가 규약이 된다. 모델 관점 행이 아예 없으면 무엇을
+     * 봤는지 알 길이 없으므로 증거로 세지 않는다.
      */
     private fun modelVerified(message: ContentVerdictMessage): Boolean {
         val modelRows = message.perspectives.filter { it.perspective in MODEL_PERSPECTIVES }

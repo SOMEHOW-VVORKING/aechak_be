@@ -1,6 +1,7 @@
 package com.aechak.application.inspection.service
 
 import com.aechak.domain.inspection.enums.InspectionTargetType
+import com.aechak.domain.inspection.enums.ReviewQueueStatus
 import com.aechak.domain.inspection.repository.ContentInspectionRepository
 import com.aechak.domain.inspection.repository.ProductReviewQueueRepository
 import org.springframework.stereotype.Service
@@ -25,6 +26,10 @@ class InspectionQueryService(
 
     fun isAwaitingAdminReview(productId: Long): Boolean = reviewQueue.findPendingByProductId(productId) != null
 
-    /** 반려된 적이 없으면 null */
-    fun findLatestRejectReason(productId: Long): String? = reviewQueue.findRejectedByProductId(productId).firstOrNull()?.rejectReason
+    /** 가장 최근 관리자 결정이 반려일 때만 그 사유 */
+    fun findAdminRejectReason(productId: Long): String? =
+        reviewQueue
+            .findLatestAdminDecisionByProductId(productId)
+            ?.takeIf { it.status == ReviewQueueStatus.REJECTED }
+            ?.rejectReason
 }

@@ -13,15 +13,21 @@ import com.aechak.domain.inspection.enums.InspectionJudgment
  */
 interface ProductInspectionGate {
     /**
-     * 노출 게이트 스위치가 꺼졌거나 상품이 없으면 null
+     * 노출 게이트 스위치가 꺼졌거나 상품이 없으면 null.
+     * 잠근 뒤에 보니 최신 검수의 판정이 아니면 아무것도 하지 않고 null.
      *
-     * [modelVerified]는 통과 판정을 뒷받침하는 증거가 있는지다. 통과라고 말해 놓고 그 통과를
-     * 뒷받침하는 관점이 하나도 없는 판정은 받아들이면 아무도 보지 않은 상품이 노출된다.
+     * [isLatestJudgment]와 [isAdminRejected]는 둘 다 상품 행을 잠근 뒤에 부름. 잠그기 전에
+     * 읽으면 잠금을 기다리는 사이에 커밋된 새 검수와 관리자 결정을 못 봄.
+     *
+     * 둘 다 비잠금 조회라서 호출부 트랜잭션이 READ COMMITTED여야 뜻이 있음. 기본 격리에서는
+     * 읽기 뷰가 트랜잭션의 첫 일관 읽기에서 고정되어, 잠금을 받은 뒤에 읽어도 그 사이 커밋된
+     * 것이 보이지 않음
      */
     fun applyJudgment(
         productId: Long,
         judgment: InspectionJudgment,
-        modelVerified: Boolean,
+        isLatestJudgment: () -> Boolean,
+        isAdminRejected: () -> Boolean,
     ): ProductGateOutcome?
 
     fun approveByAdmin(productId: Long)

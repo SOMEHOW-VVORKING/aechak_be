@@ -10,4 +10,7 @@ interface ProductReviewQueueRepository {
 
     /** 관리자가 반려한 행들. 최근 것부터 */
     fun findRejectedByProductId(productId: Long): List<ProductReviewQueueItem>
+
+    /** 관리자가 승인하거나 반려한 행 중 가장 최근 것. 관리자가 결정한 적이 없으면 null */
+    fun findLatestAdminDecisionByProductId(productId: Long): ProductReviewQueueItem?
 }
