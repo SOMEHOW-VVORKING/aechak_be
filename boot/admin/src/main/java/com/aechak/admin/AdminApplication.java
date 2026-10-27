@@ -26,6 +26,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
             // 배송 정책 파사드의 택배사 검증 의존(CourierUseCase) — 어드민이 쓰는 기능은 아니지만
             // 그 파사드가 application.seller에 살아 패키지 단위 스캔으로는 가릴 수 없다. order BC 중 이 하위만 쓴다
             "com.aechak.application.order.shipment",
+            // 주문 배송 모니터링 — order BC 중 이 하위만 쓴다. BC를 통째로 넣으면 구매자측 주문서·장바구니
+            // 파사드와 그 리스너가 딸려와 어드민에 없는 빈(결제·카프카 배선)을 요구한다
+            "com.aechak.application.order.admin",
             // 상품 검수 큐의 노출 전이(ProductInspectionGate 구현). 검수 패키지 자체는 InspectionScanConfig가 스캔함
             "com.aechak.application.product.product.service",
             "com.aechak.infra.persistence", // 리포지토리·UserStatusReader 어댑터
