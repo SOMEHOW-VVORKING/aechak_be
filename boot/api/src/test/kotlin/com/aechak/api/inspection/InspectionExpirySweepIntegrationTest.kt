@@ -21,6 +21,8 @@ import com.aechak.message.inspection.ContentVerdictMessage
 import com.aechak.message.inspection.InspectionPerspective
 import com.aechak.message.inspection.InspectionVerdict
 import com.aechak.message.inspection.PerspectiveResult
+import com.aechak.message.inspection.Violation
+import com.aechak.message.inspection.ViolationCategory
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -441,6 +443,70 @@ class InspectionExpirySweepIntegrationTest : IntegrationTestBase() {
         assertEquals("UNJUDGED", storedJudgment(healthy.id), "한 건의 실패가 멀쩡한 건의 미판정 등재까지 롤백했다")
     }
 
+    /**
+     * 기한을 넘겨 닫은 뒤에 도착한 판정은 버려진다. 버린 사실이 남아야 한다.
+     *
+     * 기한 만료가 상품도 큐도 건드리지 않기로 한 결정의 직접 귀결이다. 10분 1초에 모델이
+     * 위반을 찾아내도 그 판정은 반영되지 않고, 같은 내용으로 다시 요청해도 같은 내용·같은
+     * 정책의 검수를 재사용하는 조회가 그 닫힌 행을 그대로 돌려줘서 다시 검수되지도 않는다.
+     * 그러면 "위반을 찾으면 반려"가 기한 경계 밖에서 조용히 무효가 된다.
+     *
+     * 되살리는 것은 이번 범위가 아니다. 지금 고정하는 것은 **무엇을 버렸는지가 남는다**까지다.
+     * 디버그로 흘리면 운영 로그 수준에서 사라져 장애가 몇 건을 삼켰는지 알 길이 없다.
+     */
+    @Test
+    fun `기한을 넘겨 닫은 뒤 도착한 위반 판정은 버린 사실을 경고로 남긴다`() {
+        val inspection = givenOverdue("l".repeat(64))
+        assertEquals(1, inspectionUseCase.expireOverdue())
+        facadeLogs.list.clear()
+
+        inspectionUseCase.applyVerdict(ApplyVerdictCommand(flagVerdictFor(inspection)))
+
+        assertEquals("UNJUDGED", storedJudgment(inspection.id), "닫힌 판정이 덮였다")
+        assertEquals(0, openReviewCount(), "기한 만료 건은 큐에 오르지 않는다는 결정이 깨졌다")
+        val dropped =
+            facadeLogs.list.filter { it.level == Level.WARN && it.formattedMessage.contains("기한을 넘겨 닫은 검수") }
+        assertEquals(
+            1,
+            dropped.size,
+            "버려진 판정이 경고로 남지 않았다 — 모델이 찾아낸 위반이 반영도 안 되고 흔적도 없다. " +
+                "로그=${facadeLogs.list.map { "${it.level}:${it.formattedMessage}" }}",
+        )
+        assertTrue(
+            dropped.single().formattedMessage.contains("inspectionId=${inspection.id}"),
+            "어느 검수의 판정을 버렸는지가 없으면 뒤쫓을 수 없다. 로그=${dropped.single().formattedMessage}",
+        )
+    }
+
+    /**
+     * 같은 판정이 두 번 와도 경고로 올리지 않는다.
+     *
+     * 카프카 재전달은 정상이고 멱등 가드가 그것을 받아 내는 자리다. 가드 전체를 경고로 올리면
+     * 재전달마다 경고가 서서 정말 버려진 판정이 그 안에 묻힌다.
+     */
+    @Test
+    fun `같은 판정이 두 번 와도 경고로 올리지 않는다`() {
+        val inspection = givenOverdue("m".repeat(64))
+        inspectionUseCase.applyVerdict(ApplyVerdictCommand(passVerdictFor(inspection)))
+        facadeLogs.list.clear()
+
+        inspectionUseCase.applyVerdict(ApplyVerdictCommand(passVerdictFor(inspection)))
+
+        assertTrue(
+            facadeLogs.list.none { it.level == Level.WARN },
+            "정상 재전달이 경고가 됐다. 로그=${facadeLogs.list.map { it.formattedMessage }}",
+        )
+    }
+
+    private fun openReviewCount(): Long =
+        tx.execute {
+            em
+                .createNativeQuery(
+                    "select count(*) from product_review_queue_items where target_id = :id and status = 'PENDING_REVIEW'",
+                ).setParameter("id", productId)
+                .singleResult as Long
+        }!!
+
     private fun capturedSql(): List<String> = captured.list.map { it.formattedMessage.lowercase() }
 
     /** 상품 등록·수정이 하는 일. 검수 행 INSERT 하나다 */
@@ -508,6 +574,26 @@ class InspectionExpirySweepIntegrationTest : IntegrationTestBase() {
             promptVersion = "inspection-v1+policy-v1",
             schemaVersion = ContentVerdictMessage.SCHEMA_VERSION,
             decidedAt = Instant.parse("2026-10-19T03:00:05Z"),
+        )
+
+    /** 위반 판정 한 건. 모델이 읽었다는 증거(관점 결과)를 실어 게이트가 버리지 않게 한다 */
+    private fun flagVerdictFor(inspection: ContentInspection): ContentVerdictMessage =
+        passVerdictFor(inspection).copy(
+            verdict = InspectionVerdict.FLAG,
+            perspectives = listOf(PerspectiveResult(InspectionPerspective.ALL, ContractOutcome.VIOLATION)),
+            violations =
+                listOf(
+                    Violation(
+                        category = ViolationCategory.MEDICAL_CLAIM,
+                        perspective = InspectionPerspective.ALL,
+                        spanStart = null,
+                        spanEnd = null,
+                        quote = "관절염 치료에 효과",
+                        suggestion = null,
+                        confidence = null,
+                    ),
+                ),
+            sellerNotice = "치료 효능 표현을 고쳐 주세요.",
         )
 
     /** 기한이 지난 미판정 검수 하나. 테스트가 10분을 기다릴 수는 없어 요청 시각을 과거로 민다 */

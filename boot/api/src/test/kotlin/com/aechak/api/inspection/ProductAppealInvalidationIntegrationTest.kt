@@ -4,6 +4,8 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.inspection.service.ProductReviewQueueService
 import com.aechak.application.inspection.usecase.InspectionUseCase
 import com.aechak.application.inspection.usecase.command.ApplyVerdictCommand
+import com.aechak.application.product.product.usecase.SellerProductUseCase
+import com.aechak.application.product.product.usecase.command.AppealProductInspectionCommand
 import com.aechak.domain.inspection.ContentInspection
 import com.aechak.domain.inspection.ProductReviewQueueItem
 import com.aechak.domain.inspection.enums.InspectionTargetType
@@ -59,8 +61,12 @@ class ProductAppealInvalidationIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var reviewQueueService: ProductReviewQueueService
 
+    @Autowired
+    private lateinit var sellerProductUseCase: SellerProductUseCase
+
     private var sellerUserId = 0L
     private var productId = 0L
+    private lateinit var productPublicId: String
 
     @BeforeEach
     fun seed() {
@@ -91,6 +97,7 @@ class ProductAppealInvalidationIntegrationTest : IntegrationTestBase() {
             em.persist(product)
             em.persist(ProductStats.create(product.id))
             productId = product.id
+            productPublicId = product.publicId
         }
     }
 
@@ -197,11 +204,22 @@ class ProductAppealInvalidationIntegrationTest : IntegrationTestBase() {
         assertFalse(row.appealCleared(), "지금 걸린 이의가 있는데 무효 표식이 함께 서면 안 된다")
     }
 
+    /**
+     * 접수는 **운영 진입점**으로 한다.
+     *
+     * 서비스를 테스트 트랜잭션에서 직접 부르면 그 트랜잭션의 격리 수준이 기본값이라,
+     * 파사드가 선언한 READ COMMITTED가 한 번도 태워지지 않는다. 그 선언이 떠받치는 것이
+     * 잠금 조회의 간극 회피와 잠금 뒤 비잠금 조회의 최신성 둘이라, 선언을 지우고도 이 수트가
+     * 초록이면 수트가 아무것도 지키지 않는 것이다.
+     */
     private fun appeal(reason: String) {
-        tx.execute {
-            val target = reviewQueueService.lockProductForAppeal(productId)
-            reviewQueueService.appealBySeller(productId, target, reason, LocalDateTime.now())
-        }
+        sellerProductUseCase.appealMyProductInspection(
+            AppealProductInspectionCommand(
+                sellerId = sellerUserId,
+                productPublicId = productPublicId,
+                reason = reason,
+            ),
+        )
     }
 
     private fun findPending(): ProductReviewQueueItem? =

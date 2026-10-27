@@ -4,6 +4,8 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.inspection.service.ProductReviewQueueService
 import com.aechak.application.inspection.usecase.InspectionUseCase
 import com.aechak.application.inspection.usecase.command.ApplyVerdictCommand
+import com.aechak.application.product.product.usecase.SellerProductUseCase
+import com.aechak.application.product.product.usecase.result.InspectionProgressStep
 import com.aechak.domain.inspection.ContentInspection
 import com.aechak.domain.inspection.enums.InspectionTargetType
 import com.aechak.domain.inspection.enums.ReviewQueueStatus
@@ -54,11 +56,16 @@ class InspectionGateDisabledIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var reviewQueueService: ProductReviewQueueService
 
+    @Autowired
+    private lateinit var sellerProductUseCase: SellerProductUseCase
+
     private var productId = 0L
+    private var sellerUserId = 0L
+    private lateinit var productPublicId: String
 
     @BeforeEach
     fun seed() {
-        val sellerUserId = createActiveUser()
+        sellerUserId = createActiveUser()
         tx.execute {
             em.persist(Seller.open(sellerUserId, "애착상회", 0L))
             val root = Category.create(null, Category.ROOT_DEPTH, "강아지", null, 1)
@@ -85,7 +92,30 @@ class InspectionGateDisabledIntegrationTest : IntegrationTestBase() {
             em.persist(product)
             em.persist(ProductStats.create(product.id))
             productId = product.id
+            productPublicId = product.publicId
         }
+    }
+
+    /**
+     * 꺼진 환경에서도 AI가 찾은 위반은 셀러 화면에서 반려로 보인다.
+     *
+     * 셀러 진행 단계를 상품의 노출 상태로 가르면 이 환경에서 위반 판정이 "승인"으로 보인다 —
+     * 스위치가 전이를 끄기 때문이다. 배포된 전 환경의 값이 꺼짐이라 그것이 곧 현재 동작이 된다.
+     * 그러면 셀러는 승인 화면을 보다가 이의를 넣는 순간 관리자 검토 중으로 바뀌는 것을 본다.
+     * 열린 행과 그 행을 연 판정으로 가르면 답이 스위치와 무관해진다.
+     */
+    @Test
+    fun `스위치가 꺼져도 위반으로 열린 행은 셀러에게 반려로 보인다`() {
+        applyVerdict(givenQueued(), InspectionVerdict.FLAG)
+
+        val seen = sellerProductUseCase.getMyProductInspection(sellerUserId, productPublicId)
+
+        assertEquals(
+            InspectionProgressStep.REJECTED,
+            seen.progressStep,
+            "AI가 위반을 찾았는데 셀러에게 승인으로 보이면 고칠 이유가 없는 화면이 된다",
+        )
+        assertEquals(InspectionStatus.APPROVED, seen.inspectionStatus, "노출 전이만 스위치를 본다")
     }
 
     @Test

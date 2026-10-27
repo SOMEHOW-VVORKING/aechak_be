@@ -50,6 +50,7 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
     private long sellerUserId;
     private long productId;
     private String publicId;
+    private LocalDateTime flagSettledAt;
 
     @BeforeEach
     void setUp() {
@@ -94,7 +95,29 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
                     "치료 효능 표현을 고쳐 주세요.",
                     LocalDateTime.now());
             em.persist(inspection);
+            flagSettledAt = inspection.getSettledAt();
         });
+    }
+
+    /**
+     * 모델이 답을 못 준 뒤에도 상세는 **그 행을 막고 있는 위반**의 사유를 돌려준다.
+     *
+     * 사유를 가장 최근 검수에서 읽으면 셀러가 고쳐 올린 재검수가 실패하거나 기한을 넘기는
+     * 순간 사유 셋이 전부 빈다. 정본 설계에서 이 행이 AI 반려를 푸는 유일한 자리라, 사유가
+     * 없으면 관리자는 승인·반려를 고를 근거를 화면에서 잃는다. 모델 장애 한 번이면 들어가는
+     * 상태다.
+     */
+    @Test
+    void 상세는_모델이_답을_못_준_뒤에도_막고_있는_위반의_사유를_돌려준다() throws Exception {
+        openReviewBlockedByFlag();
+        settleFailedInspection();
+
+        mockMvc.perform(bearer(get(BASE + "/" + publicId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.judgment").value("FAILED"))
+                .andExpect(jsonPath("$.data.reasonCode").value("MEDICAL_CLAIM"))
+                .andExpect(jsonPath("$.data.reasonSummary").value("관절염 치료에 효과"))
+                .andExpect(jsonPath("$.data.sellerNotice").value("치료 효능 표현을 고쳐 주세요."));
     }
 
     @Test
@@ -299,6 +322,22 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
         return tx.execute(txStatus -> em.createQuery("select p.publicId from Product p where p.id = :id", String.class)
                 .setParameter("id", target)
                 .getSingleResult());
+    }
+
+    /** 위반 판정이 연 행. 시각이 그 판정의 판정 시각이라야 막고 있는 판정을 되찾을 수 있다 */
+    private void openReviewBlockedByFlag() {
+        tx.executeWithoutResult(txStatus -> em.persist(
+                ProductReviewQueueItem.Companion.openForProduct(productId, sellerUserId, "연어 건사료 2kg", flagSettledAt)));
+    }
+
+    /** 셀러가 고쳐 올린 재검수가 판정 실패로 닫힌다. 상품도 큐도 건드리지 않는 판정이다 */
+    private void settleFailedInspection() {
+        tx.executeWithoutResult(txStatus -> {
+            ContentInspection later = ContentInspection.Companion.queue(
+                    InspectionTargetType.PRODUCT, productId, "b".repeat(64), "policy-v1", 2);
+            later.settle(InspectionJudgment.FAILED, "inspection-v1+policy-v1", null, null, null, LocalDateTime.now());
+            em.persist(later);
+        });
     }
 
     private void openReview() {
