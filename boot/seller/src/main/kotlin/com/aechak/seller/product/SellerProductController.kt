@@ -11,6 +11,7 @@ import com.aechak.seller.product.response.ProductRegisterResponse
 import com.aechak.seller.product.response.ProductSaleStatusChangeResponse
 import com.aechak.seller.product.response.ProductUpdateResponse
 import com.aechak.seller.product.response.SellerProductDetailResponse
+import com.aechak.seller.product.response.SellerProductInspectionResponse
 import com.aechak.seller.product.response.SellerProductListResponse
 import com.aechak.seller.product.response.SellerProductOptionsResponse
 import com.aechak.webcommon.response.ApiResponse
@@ -118,5 +119,19 @@ class SellerProductController(
     ): ResponseEntity<ApiResponse<SellerProductOptionsResponse>> =
         ResponseEntity.ok(
             ApiResponse.of(SellerProductOptionsResponse.from(sellerProductUseCase.getMyProductOptions(principal.userId, productId))),
+        )
+
+    /** 내 상품의 검수 결과 — 목록에서 반려 상태를 보고 사유를 확인할 때 부른다 */
+    @GetMapping("/{productId}/inspection")
+    fun getMyProductInspection(
+        @PathVariable productId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<SellerProductInspectionResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(
+                SellerProductInspectionResponse.from(
+                    sellerProductUseCase.getMyProductInspection(principal.userId, productId),
+                ),
+            ),
         )
 }

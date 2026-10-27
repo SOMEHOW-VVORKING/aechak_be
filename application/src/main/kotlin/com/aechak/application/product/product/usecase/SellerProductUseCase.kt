@@ -10,6 +10,7 @@ import com.aechak.application.product.product.usecase.result.ProductRegisterResu
 import com.aechak.application.product.product.usecase.result.ProductSaleStatusChangeResult
 import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.application.product.product.usecase.result.SellerProductDetailResult
+import com.aechak.application.product.product.usecase.result.SellerProductInspectionResult
 import com.aechak.application.product.product.usecase.result.SellerProductOptionsResult
 import com.aechak.application.product.product.usecase.result.SellerProductStatusCountsResult
 import com.aechak.application.product.product.usecase.result.SellerProductSummaryResult
@@ -47,4 +48,10 @@ interface SellerProductUseCase {
      * 식별자를 돌려주지 않으므로 소유권 판정 대상이 아니다. 이 계약을 HTTP로 직접 노출하지 않는다.
      */
     fun getMyProductStatusCounts(sellerId: Long): SellerProductStatusCountsResult
+
+    /** 내 상품의 검수 결과 — 반려 사유와 안내 문구. 검수를 타지 않은 상품은 검수 부분이 빈다 */
+    fun getMyProductInspection(
+        sellerId: Long,
+        publicId: String,
+    ): SellerProductInspectionResult
 }

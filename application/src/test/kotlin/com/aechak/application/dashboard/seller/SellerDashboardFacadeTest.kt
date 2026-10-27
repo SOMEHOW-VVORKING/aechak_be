@@ -37,6 +37,7 @@ import com.aechak.application.product.product.usecase.result.ProductRegisterResu
 import com.aechak.application.product.product.usecase.result.ProductSaleStatusChangeResult
 import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.application.product.product.usecase.result.SellerProductDetailResult
+import com.aechak.application.product.product.usecase.result.SellerProductInspectionResult
 import com.aechak.application.product.product.usecase.result.SellerProductOptionsResult
 import com.aechak.application.product.product.usecase.result.SellerProductStatusCountsResult
 import com.aechak.application.product.product.usecase.result.SellerProductSummaryResult
@@ -252,6 +253,11 @@ class SellerDashboardFacadeTest {
             sellerId: Long,
             publicId: String,
         ): SellerProductDetailResult = unused()
+
+        override fun getMyProductInspection(
+            sellerId: Long,
+            publicId: String,
+        ): SellerProductInspectionResult = unused()
 
         override fun getMyProductOptions(
             sellerId: Long,
