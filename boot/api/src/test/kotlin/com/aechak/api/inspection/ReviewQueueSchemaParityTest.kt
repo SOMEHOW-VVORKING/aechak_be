@@ -74,7 +74,7 @@ class ReviewQueueSchemaParityTest {
         const val APPEAL_MIGRATION = "V41__add_review_queue_appeal.sql"
 
         /** 검토 큐 테이블을 만드는 파일과 그 뒤 칼럼·인덱스를 더하는 파일 전부 */
-        val MIGRATIONS = listOf("V39__create_product_review_queue_items.sql", APPEAL_MIGRATION)
+        val MIGRATIONS = listOf("V40__create_product_review_queue_items.sql", APPEAL_MIGRATION)
 
         /** 이의 축이 쓰는 칼럼 전부. 엔티티 필드와 함께 늘어난다 */
         val APPEAL_COLUMNS =
