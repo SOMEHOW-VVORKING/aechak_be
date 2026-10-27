@@ -44,6 +44,8 @@ enum class ProductErrorCode(
     INSPECTION_APPEAL_LIMIT_EXCEEDED(40504, "동시에 제기할 수 있는 이의 건수를 넘었습니다.", 429),
     INSPECTION_APPEAL_COOLDOWN(40505, "기각된 이의는 일정 시간이 지난 뒤 다시 제기할 수 있습니다.", 429),
 
-    // 40506은 같은 스택의 지표 조회가 쓴다
     INSPECTION_APPEAL_ATTEMPTS_EXHAUSTED(40507, "이 상품에 제기할 수 있는 이의 횟수를 모두 사용했습니다.", 429),
+
+    // 검수 운영 지표
+    INSPECTION_METRICS_WINDOW_INVALID(40506, "지표 집계 창이 올바르지 않습니다.", 400),
 }

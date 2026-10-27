@@ -70,3 +70,23 @@ aechak:
     aes-keys:
       1: ${PII_AES_KEY_V1}
     hmac-key: ${PII_HMAC_KEY}
+
+# AI 검수 운영 지표. api 쪽 application.yml과 같은 값이어야 한다 — 한쪽만 고치면 화면과
+# 주기 로그가 다른 기준으로 경보한다. 주기 로그는 api가 찍고 어드민은 조회만 한다.
+inspection:
+  metrics:
+    window-hours: 24
+    # 손익분기 승급률. 정본은 AI 레포 측정 하네스이고, 레포 안의 사본은 InspectionTriageCostModel 하나다.
+    # 45.7%·88%는 폐기된 계산이다 — 낮은 값을 쓰면 아직 이득인 구간에서 "선별을 끄라"는 거짓 경보가 난다.
+    # 기본값이 없으므로 이 키를 지우면 부팅이 실패한다. api 쪽과 같은 값이어야 한다.
+    promotion-breakeven-rate: 0.620
+    # 모집단은 "AI 반려 + 관리자 반려 상품의 재검수 통과"다. 판정 실패·기한 만료·모델이 읽지
+    # 않은 통과는 큐에 오르지 않는다. api 쪽과 같은 값이어야 화면과 주기 로그가 같은 기준으로 경보한다.
+    backlog-warn-count: 50
+    backlog-warn-age-minutes: 1440
+    # 모델이 읽지 않은 통과의 임계. 현 생산자에서 0이어야 하는 값이라 "0이 아니다"에 가깝게 둔다.
+    # api 쪽과 같은 값이어야 한다.
+    model-unverified-warn-count: 3
+    model-unverified-warn-percent: 1
+    max-window-days: 92
+    snapshot-cache-seconds: 60
