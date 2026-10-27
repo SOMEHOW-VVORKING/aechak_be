@@ -12,6 +12,7 @@ import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.application.product.product.port.view.ProductImageView
 import com.aechak.application.product.product.port.view.ProductOptionsView
 import com.aechak.application.product.product.port.view.SellerProductOptionView
+import com.aechak.application.product.product.port.view.SellerProductStatusCountView
 import com.aechak.application.product.product.port.view.SellerProductView
 import com.aechak.application.product.product.support.ProductCursorCodec
 import com.aechak.application.product.product.usecase.command.ChangeOptionCombinationCommand
@@ -334,6 +335,9 @@ class ProductService(
         }
         return sellerProductQueryPort.findCombinations(ownership.id)
     }
+
+    /** 대시보드 상품 상태 요약 — 검수 대기·반려·판매 중지·품절 건수 */
+    fun getSellerStatusCounts(sellerId: Long): SellerProductStatusCountView = sellerProductQueryPort.countStatuses(sellerId)
 
     /** 노출 조건을 통과한 상세 조회 */
     fun getVisibleDetail(publicId: String): ProductCatalogDetailView =

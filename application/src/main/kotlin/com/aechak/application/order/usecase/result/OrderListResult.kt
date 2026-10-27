@@ -4,6 +4,7 @@ import com.aechak.application.order.port.view.OrderGroupView
 import com.aechak.application.order.port.view.OrderLineView
 import com.aechak.application.order.port.view.SellerOrderView
 import com.aechak.application.support.CursorPageResult
+import com.aechak.domain.order.order.enums.OrderStatus
 import java.time.LocalDateTime
 
 data class OrderListResult(
@@ -41,7 +42,7 @@ data class OrderGroupItemResult(
 data class SellerOrderItemResult(
     val orderId: String,
     val sellerName: String?,
-    val status: String,
+    val status: OrderStatus,
     val itemCount: Int,
     val representativeItem: OrderLineItemResult?,
 ) {
@@ -54,7 +55,7 @@ data class SellerOrderItemResult(
             SellerOrderItemResult(
                 orderId = view.orderPublicId,
                 sellerName = view.sellerName,
-                status = view.status.name,
+                status = view.status,
                 itemCount = lines.size,
                 representativeItem = lines.firstOrNull()?.let { OrderLineItemResult.of(it, resolveThumbnail(it.thumbnailKey)) },
             )

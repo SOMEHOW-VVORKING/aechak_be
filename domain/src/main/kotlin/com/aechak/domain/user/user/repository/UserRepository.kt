@@ -6,6 +6,8 @@ import com.aechak.domain.user.user.enums.UserRole
 interface UserRepository {
     fun findById(id: Long): User?
 
+    fun findByPublicId(publicId: String): User?
+
     fun save(user: User): User
 
     /** 적립금 잔액 캐시를 원자 증감한다. */

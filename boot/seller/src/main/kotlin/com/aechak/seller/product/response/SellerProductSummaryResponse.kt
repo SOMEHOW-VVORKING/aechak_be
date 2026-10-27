@@ -1,6 +1,8 @@
 package com.aechak.seller.product.response
 
 import com.aechak.application.product.product.usecase.result.SellerProductSummaryResult
+import com.aechak.domain.product.product.enums.InspectionStatus
+import com.aechak.domain.product.product.enums.SaleStatus
 import java.time.LocalDateTime
 
 data class SellerProductSummaryResponse(
@@ -11,8 +13,8 @@ data class SellerProductSummaryResponse(
     val regularPrice: Long,
     val discountPrice: Long?,
     val discountRate: Int?,
-    val saleStatus: String,
-    val inspectionStatus: String,
+    val saleStatus: SaleStatus,
+    val inspectionStatus: InspectionStatus,
     val totalStock: Long,
     val createdAt: LocalDateTime,
 ) {
@@ -26,8 +28,8 @@ data class SellerProductSummaryResponse(
                 regularPrice = result.regularPrice,
                 discountPrice = result.discountPrice,
                 discountRate = result.discountRate,
-                saleStatus = result.saleStatus.name,
-                inspectionStatus = result.inspectionStatus.name,
+                saleStatus = result.saleStatus,
+                inspectionStatus = result.inspectionStatus,
                 totalStock = result.totalStock,
                 createdAt = result.createdAt,
             )

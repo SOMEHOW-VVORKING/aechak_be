@@ -5,6 +5,11 @@ import com.aechak.application.order.usecase.result.OrderDeliveryAddressResult
 import com.aechak.application.order.usecase.result.OrderDetailResult
 import com.aechak.application.order.usecase.result.OrderPaymentResult
 import com.aechak.application.order.usecase.result.OrderShipmentResult
+import com.aechak.domain.order.claim.enums.ClaimStatus
+import com.aechak.domain.order.claim.enums.ClaimType
+import com.aechak.domain.order.claim.enums.RefundStatus
+import com.aechak.domain.order.order.enums.OrderStatus
+import io.swagger.v3.oas.annotations.media.Schema
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -13,7 +18,7 @@ data class OrderDetailResponse(
     val orderId: String,
     val orderGroupId: String,
     val orderedAt: OffsetDateTime,
-    val status: String,
+    val status: OrderStatus,
     val sellerName: String?,
     val items: List<OrderLineItemResponse>,
     val payment: OrderPaymentResponse,
@@ -90,6 +95,7 @@ data class OrderShipmentResponse(
     val trackingNumber: String,
     val dispatchedAt: OffsetDateTime?,
     val deliveredAt: OffsetDateTime?,
+    @field:Schema(description = "택배사가 준 마지막 추적 문구. 고정 어휘가 아니라 자유 문자열이다.")
     val lastTrackingStatus: String?,
 ) {
     companion object {
@@ -107,9 +113,9 @@ data class OrderShipmentResponse(
 
 data class OrderActiveClaimResponse(
     val claimPublicId: String,
-    val claimType: String,
-    val status: String,
-    val refundStatus: String?,
+    val claimType: ClaimType,
+    val status: ClaimStatus,
+    val refundStatus: RefundStatus?,
 ) {
     companion object {
         fun from(result: OrderActiveClaimResult): OrderActiveClaimResponse =

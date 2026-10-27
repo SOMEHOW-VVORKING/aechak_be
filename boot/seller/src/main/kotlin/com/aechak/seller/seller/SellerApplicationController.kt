@@ -6,12 +6,14 @@ import com.aechak.seller.seller.response.ApplicationResponse
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 /** 입점 신청(신청자 측) API — 전 EP ACTIVE 전용(UserStatusFilter). 대상은 항상 인증 주체의 신청서 1건이라 경로에 식별자가 없다. */
@@ -32,6 +34,7 @@ class SellerApplicationController(
 
     /** 신청 제출 — 유형별 필수 정보·서류 검증 후 심사 대기로 전환. 이후 수정·서류 잠금. */
     @PostMapping("/submit")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun submit(
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<Void> {

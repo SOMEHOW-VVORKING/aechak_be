@@ -26,6 +26,7 @@ import com.aechak.application.product.product.usecase.result.ProductSummaryResul
 import com.aechak.application.product.product.usecase.result.ProductUpdateResult
 import com.aechak.application.product.product.usecase.result.SellerProductDetailResult
 import com.aechak.application.product.product.usecase.result.SellerProductOptionsResult
+import com.aechak.application.product.product.usecase.result.SellerProductStatusCountsResult
 import com.aechak.application.product.product.usecase.result.SellerProductSummaryResult
 import com.aechak.application.product.stats.service.ProductStatsService
 import com.aechak.application.seller.usecase.SellerUseCase
@@ -163,6 +164,11 @@ class ProductFacade(
         requireProductReadableSeller(sellerId)
         return SellerProductOptionsResult.from(productService.getOwnedOptions(sellerId, publicId))
     }
+
+    /** 자격 게이트 없음 — 계약 KDoc대로 호출자(대시보드 조립)가 이미 통과시킨 sellerId만 들어온다. */
+    @Transactional(readOnly = true)
+    override fun getMyProductStatusCounts(sellerId: Long): SellerProductStatusCountsResult =
+        SellerProductStatusCountsResult.from(productService.getSellerStatusCounts(sellerId))
 
     private fun requireActiveSeller(sellerId: Long) {
         if (!sellerUseCase.isActiveSeller(sellerId)) {
