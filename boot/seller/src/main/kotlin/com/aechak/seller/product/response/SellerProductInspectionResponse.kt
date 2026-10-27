@@ -17,6 +17,13 @@ import java.time.LocalDateTime
  * [progressStep]: REQUESTED, AI_REVIEWING, ADMIN_REVIEWING, APPROVED, REJECTED.
  * [rejectReason]은 관리자가 적은 반려 사유이고 관리자가 반려한 상품일 때만 온다. AI가 반려했으면 비어 있고
  * 사유는 [reasonSummary]와 [sellerNotice]에 있다.
+ *
+ * [appealedAt]이 차 있으면 지금 걸린 것에 이의를 접수해 둔 상태다. 이의의 답은 따로 오지 않고
+ * [progressStep]으로 온다 — 접수 뒤에는 ADMIN_REVIEWING, 수용되면 APPROVED, 기각되면
+ * REJECTED와 [rejectReason]이다.
+ *
+ * [appealCleared]가 참이면 접수한 이의가 그 뒤 바뀐 내용 때문에 무효가 됐다는 뜻이고 재접수가
+ * 열려 있다. [appealedAt]이 빈 이유를 이것으로 가른다 — 없으면 "접수한 적 없음"과 구별되지 않는다.
  */
 data class SellerProductInspectionResponse(
     val productId: String,
@@ -28,6 +35,9 @@ data class SellerProductInspectionResponse(
     val reasonSummary: String?,
     val sellerNotice: String?,
     val rejectReason: String?,
+    val appealedAt: LocalDateTime?,
+    val appealReason: String?,
+    val appealCleared: Boolean,
     val requestedAt: LocalDateTime?,
     val settledAt: LocalDateTime?,
 ) {
@@ -43,6 +53,9 @@ data class SellerProductInspectionResponse(
                 reasonSummary = result.reasonSummary,
                 sellerNotice = result.sellerNotice,
                 rejectReason = result.rejectReason,
+                appealedAt = result.appealedAt,
+                appealReason = result.appealReason,
+                appealCleared = result.appealCleared,
                 requestedAt = result.requestedAt,
                 settledAt = result.settledAt,
             )

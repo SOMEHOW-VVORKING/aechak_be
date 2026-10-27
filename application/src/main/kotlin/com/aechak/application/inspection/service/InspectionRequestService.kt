@@ -45,10 +45,7 @@ class InspectionRequestService(
         if (!enabled) return null
         requireActiveTransaction()
 
-        val contentHash =
-            ContentHash.of(
-                listOf(command.productName, command.description) + command.optionNames,
-            )
+        val contentHash = productContentHash(command)
         val existing =
             inspections.findByTarget(
                 InspectionTargetType.PRODUCT,
@@ -90,6 +87,22 @@ class InspectionRequestService(
         )
         return saved
     }
+
+    /**
+     * 판정 대상 본문의 지문. **요청 발행 스위치를 보지 않는다.**
+     *
+     * 요청을 끈 환경에서도 지문이 필요하다. 셀러가 내용을 고치면 그 전 내용에 걸린 이의를
+     * 무효로 돌려야 하는데, 그 판단의 축이 이 지문이다. 요청 발행에서 지문을 함께 받아 쓰면
+     * 스위치를 끄는 순간 무효화까지 함께 꺼지고, 장애 때 요청을 끄는 것이 바로 그 스위치의
+     * 용도라서 셀러가 문구를 고쳐도 이의가 그대로 남는다.
+     *
+     * 한 자리에 두는 이유는 조성 때문이다. 어느 필드가 지문에 들어가는지가 두 곳에 있으면
+     * 무효화가 판정이 들고 올 지문과 다른 축에서 비교된다.
+     */
+    fun productContentHash(command: RequestProductInspectionCommand): String =
+        ContentHash.of(
+            listOf(command.productName, command.description) + command.optionNames,
+        )
 
     /** 리뷰 검수를 요청한다. 차단된 리뷰는 호출부가 아예 부르지 않는다 */
     fun requestReview(command: RequestReviewInspectionCommand): ContentInspection? {

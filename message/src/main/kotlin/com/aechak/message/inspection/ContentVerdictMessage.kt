@@ -6,6 +6,9 @@ import java.time.Instant
  * AI 서버가 돌려주는 판정 결과. BE가 발행하지 않고 받기만 하므로 IntegrationMessage가 아니다.
  *
  * 파이썬 쪽이 같은 모양을 미러하고, 직렬화 표본을 양쪽이 공유해 왕복 테스트로 고정한다.
+ * 그 표본의 **정본은 이 레포**다(`contract` 테스트 리소스). AI 레포가 같은 이름의 사본을 들고
+ * 자기 수트에 태우므로, 이쪽 표본을 고치면 그쪽 사본도 같은 바이트로 맞춰야 한다 — 두 레포를
+ * 묶는 CI 잡이 없어서, 사본이 뒤처지면 양쪽이 같은 파일 이름에 대해 반대되는 단언을 들고 녹색이다.
  * 엔벨로프의 payload는 객체가 아니라 JSON 문자열이라는 점이 미러링에서 가장 자주 틀리는 자리다.
  */
 data class ContentVerdictMessage(
@@ -28,8 +31,47 @@ data class ContentVerdictMessage(
     val schemaVersion: Int,
     val decidedAt: Instant,
 ) {
+    /**
+     * 모델이 이 내용을 실제로 읽었다고 볼 수 있는 판정인가.
+     *
+     * 노출 게이트가 통과 판정으로 상품을 되살릴지 가르는 술어다. 계약 클래스에 둔 이유는
+     * **계약 표본과 이 술어가 서로 묶여 있어야 하기 때문**이다. 둘이 떨어져 있던 동안 같은
+     * 레포 안에서 표본은 "모델 관점 행 없이 통과"를 선별의 정상 경로로 적고 게이트는 그것을
+     * 증거 없는 통과로 다뤘고, 양쪽 수트가 모두 녹색이라 CI 로는 영원히 안 잡혔다.
+     *
+     * 모델 관점 행 가운데 하나라도 결과를 낸 것이 있으면 참이다 — 위반을 낸 관점도 증거로
+     * 센다. 여기서 보는 것은 무엇을 찾았는지가 아니라 읽었는지다.
+     *
+     * 선별이 통과로 가른 건은 예외로 받는다. 그것은 판단이고 장애가 아니다. 다만 건너뛴
+     * 관점마다 사유가 적혀 있어야 하고(사유가 없으면 호출이 죽어 못 본 것과 구분되지 않는다)
+     * 모델 관점 행이 아예 없으면 무엇을 봤는지 알 길이 없어 증거로 세지 않는다.
+     */
+    fun hasModelEvidence(): Boolean {
+        val modelRows = perspectives.filter { it.perspective in MODEL_PERSPECTIVES }
+        if (modelRows.any { it.outcome != PerspectiveOutcome.UNCHECKED }) return true
+
+        val triageCleared =
+            perspectives.any {
+                it.perspective == InspectionPerspective.TRIAGE && it.outcome == PerspectiveOutcome.CLEAR
+            }
+        return triageCleared &&
+            modelRows.isNotEmpty() &&
+            modelRows.all { it.skipReason == TRIAGE_SKIP_REASON }
+    }
+
     companion object {
         const val SCHEMA_VERSION = 1
+
+        /** 모델이 내용을 읽고 결과를 내는 관점. RULE과 TRIAGE는 모델 판정이 아니라 제외한다 */
+        val MODEL_PERSPECTIVES =
+            setOf(
+                InspectionPerspective.ALL,
+                InspectionPerspective.DISPLAY_ADS,
+                InspectionPerspective.CONDUCT_TRADE,
+            )
+
+        /** 선별이 모델 호출을 일부러 건너뛸 때 그 관점 행에 적히는 사유. AI 서버와 맞춰 둔 값이다 */
+        const val TRIAGE_SKIP_REASON = "TRIAGE_CLEAR"
     }
 }
 
@@ -75,6 +117,6 @@ data class CallUsage(
     val outputTokens: Int,
     val costMicroUsd: Long,
     val latencyMs: Int,
-    /** SUCCESS, TIMEOUT, RATE_LIMITED, BUDGET_EXHAUSTED, REFUSED, SCHEMA_INVALID, ERROR */
+    /** SUCCESS, TIMEOUT, RATE_LIMITED, BUDGET_EXHAUSTED, REFUSED, SCHEMA_INVALID, TRUNCATED, ERROR */
     val outcome: String,
 )

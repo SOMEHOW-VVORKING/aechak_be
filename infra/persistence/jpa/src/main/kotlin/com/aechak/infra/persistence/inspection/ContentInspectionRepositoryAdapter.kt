@@ -38,6 +38,17 @@ interface ContentInspectionJpaRepository : JpaRepository<ContentInspection, Long
         targetRef: Long,
     ): ContentInspection?
 
+    fun findFirstByTargetTypeAndTargetRefAndSettledAtIsNotNullOrderByIdDesc(
+        targetType: InspectionTargetType,
+        targetRef: Long,
+    ): ContentInspection?
+
+    fun findFirstByTargetTypeAndTargetRefAndSettledAtOrderByIdDesc(
+        targetType: InspectionTargetType,
+        targetRef: Long,
+        settledAt: LocalDateTime,
+    ): ContentInspection?
+
     /**
      * 판정을 적기 전에 행을 잠그되, 남이 들고 있으면 기다리지 않고 비운다.
      *
@@ -109,6 +120,17 @@ class ContentInspectionRepositoryAdapter(
         targetType: InspectionTargetType,
         targetRef: Long,
     ): ContentInspection? = jpaRepository.findFirstByTargetTypeAndTargetRefOrderByIdDesc(targetType, targetRef)
+
+    override fun findLatestSettledByTarget(
+        targetType: InspectionTargetType,
+        targetRef: Long,
+    ): ContentInspection? = jpaRepository.findFirstByTargetTypeAndTargetRefAndSettledAtIsNotNullOrderByIdDesc(targetType, targetRef)
+
+    override fun findLatestByTargetAndSettledAt(
+        targetType: InspectionTargetType,
+        targetRef: Long,
+        settledAt: LocalDateTime,
+    ): ContentInspection? = jpaRepository.findFirstByTargetTypeAndTargetRefAndSettledAtOrderByIdDesc(targetType, targetRef, settledAt)
 
     override fun findByIdForUpdateSkipLocked(id: Long): ContentInspection? = jpaRepository.findByIdForUpdateSkipLocked(id)
 

@@ -196,7 +196,7 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
         rejectedByAdmin("효능 표현을 빼고 다시 등록해 주세요.")
         tx.execute {
             val review = openReview()
-            review.approve()
+            review.approve(LocalDateTime.now())
             reviewQueue.save(review)
         }
         changeStatus(InspectionStatus.REJECTED)
@@ -228,7 +228,7 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
         )
         tx.execute {
             val review = openReview()
-            review.reject("효능 표현을 빼고 다시 등록해 주세요.")
+            review.reject("효능 표현을 빼고 다시 등록해 주세요.", LocalDateTime.now())
             reviewQueue.save(review)
         }
 
@@ -243,7 +243,7 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
     fun `반려된 적이 있어도 지금 반려 상태가 아니면 반려 사유를 싣지 않는다`() {
         tx.execute {
             val review = openReview()
-            review.reject("효능 표현을 빼고 다시 등록해 주세요.")
+            review.reject("효능 표현을 빼고 다시 등록해 주세요.", LocalDateTime.now())
             reviewQueue.save(review)
         }
 
@@ -314,7 +314,7 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
     private fun rejectedByAdmin(reason: String) {
         tx.execute {
             val review = openReview()
-            review.reject(reason)
+            review.reject(reason, LocalDateTime.now())
             reviewQueue.save(review)
         }
     }
