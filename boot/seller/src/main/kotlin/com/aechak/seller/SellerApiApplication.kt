@@ -42,6 +42,9 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.infra.s3", // FileStorage 어댑터
         "com.aechak.infra.redis", // 인증 코드 저장소
         "com.aechak.infra.client.sms", // SmsSender 어댑터
+        // 검수 요청 발행. 아웃박스에 적고 커밋 직후 보내는 쪽만 조립한다.
+        // consumer·outbox 패키지는 넣지 않는다 — 판정 수신과 재발행 스윕은 api가 소유한다.
+        "com.aechak.infra.kafka.publisher",
     ],
     excludeFilters = [
         // @ComponentScan을 직접 선언하면 @SpringBootApplication의 메타 필터가 가려진다 — 기본 두 개를 복원한다.

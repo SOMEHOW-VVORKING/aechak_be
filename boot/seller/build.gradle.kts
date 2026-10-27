@@ -1,5 +1,7 @@
 // 셀러센터 실행 모듈이자 조립 지점. api와 같은 층위 — 셀러 웹이 쓰는 것만 조립한다.
-// kafka·social-client가 없는 이유: 셀러 EP가 스캔하는 패키지(application.{seller,user,file})가 두 포트를 쓰지 않는다.
+// social-client가 없는 이유: 셀러 EP가 스캔하는 패키지가 소셜 토큰 검증 포트를 쓰지 않는다.
+// kafka는 상품 등록·수정이 검수 요청을 발행하면서 들어왔다. 발행 쪽(publisher)만 조립하고
+// 컨슈머는 조립하지 않는다 — 판정 수신은 api가 소유한다.
 plugins { id("aechak.spring-boot-app") }
 dependencies {
     implementation(project(":web-common"))
@@ -10,6 +12,9 @@ dependencies {
     implementation(project(":sms-client"))              // application.user 스캔이 전화 인증(SmsSender)을 포함
     implementation(project(":redis"))                   // 인증 코드 저장소 어댑터
     implementation(project(":s3-client"))               // 서류 승격 어댑터
+    implementation(project(":kafka"))                   // 검수 요청 발행 — 아웃박스 경유(MessagePublisher 어댑터)
+    implementation(project(":message"))                 // 검수 요청 메시지 계약
+    implementation(libs.jackson.databind)               // 엔벨로프 매퍼(tools.jackson) 타입을 조립에서 지목
     implementation(kotlin("reflect"))
     implementation(libs.spring.boot.starter.web)
     implementation(libs.jackson.module.kotlin)
