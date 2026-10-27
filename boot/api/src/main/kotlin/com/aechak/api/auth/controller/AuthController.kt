@@ -11,10 +11,12 @@ import com.aechak.application.auth.usecase.SocialLoginUseCase
 import com.aechak.application.auth.usecase.TokenRefreshUseCase
 import com.aechak.webcommon.response.ApiResponse
 import jakarta.validation.Valid
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -43,6 +45,7 @@ class AuthController(
         ResponseEntity.ok(ApiResponse.of(TokenPairResponse.from(tokenRefreshUseCase.refresh(request.refreshToken))))
 
     @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun logout(
         @Valid @RequestBody request: LogoutRequest,
     ): ResponseEntity<Void> {

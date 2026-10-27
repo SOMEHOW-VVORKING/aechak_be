@@ -101,10 +101,12 @@ class OrderFacade(
     @Transactional(readOnly = true)
     override fun findAutoConfirmTargetIds(query: AutoConfirmScanQuery): List<Long> = orderConfirmService.findAutoConfirmTargetIds(query)
 
-    /** 수동 확정과 같은 트랜잭션 구성·격리 수준을 쓴다 — 적립 실패는 확정까지 되돌린다. */
+    /** 수동 확정과 같은 트랜잭션 구성·격리 수준을 쓴다 — 적립·정산 원장 실패는 확정까지 되돌린다. */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun autoConfirmPurchase(command: AutoConfirmPurchaseCommand) {
-        earnPurchaseReward(orderConfirmService.autoConfirmPurchase(command))
+        val confirmed = orderConfirmService.autoConfirmPurchase(command)
+        earnPurchaseReward(confirmed)
+        createSettlementLedger(confirmed)
     }
 
     @Transactional(readOnly = true)
@@ -141,7 +143,11 @@ class OrderFacade(
         )
     }
 
-    /** 정산 원장은 품목당 1행 — 확정 트랜잭션 안에서 만들어 확정과 원장이 함께 살거나 함께 죽는다 */
+    /**
+     * 수동·자동 확정이 함께 타는 원장 경로 — 원장은 품목당 1행이고, 순차 재실행은 멱등키 선조회가, 동시 확정은
+     * 전이 선점과 멱등키 UNIQUE가 막아 두 경로가 겹쳐도 행이 늘지 않는다.
+     * 확정 트랜잭션 안에서 만들어 확정과 원장이 함께 살거나 함께 죽는다.
+     */
     private fun createSettlementLedger(confirmed: OrderConfirmService.ConfirmedPurchase) {
         settlementUseCase.createLedgerOnConfirm(
             CreateSettlementLedgerCommand(

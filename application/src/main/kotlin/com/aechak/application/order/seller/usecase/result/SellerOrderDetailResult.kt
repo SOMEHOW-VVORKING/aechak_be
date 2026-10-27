@@ -1,6 +1,7 @@
 package com.aechak.application.order.seller.usecase.result
 
 import com.aechak.application.order.seller.port.view.SellerOrderLineView
+import com.aechak.domain.order.order.enums.OrderItemStatus
 
 /** 셀러 주문 상세 — 주문 단위 값은 목록 행과 같고 품목이 더 붙는다. */
 data class SellerOrderDetailResult(
@@ -17,7 +18,7 @@ data class SellerOrderLineResult(
     val quantity: Int,
     val unitPrice: Long,
     val discountAllocatedAmount: Long,
-    val itemStatus: String,
+    val itemStatus: OrderItemStatus,
 ) {
     companion object {
         fun of(
@@ -33,7 +34,7 @@ data class SellerOrderLineResult(
                 quantity = view.quantity,
                 unitPrice = view.unitPrice,
                 discountAllocatedAmount = view.discountAllocatedAmount,
-                itemStatus = view.itemStatus.name,
+                itemStatus = view.itemStatus,
             )
     }
 }
