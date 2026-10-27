@@ -107,7 +107,7 @@ class InspectionFacade(
             now = LocalDateTime.now(),
         )
         inspections.save(inspection)
-        applyGate(inspection, modelVerified = modelVerified(message))
+        applyGate(inspection)
 
         log.info(
             "판정 적용. inspectionId={} target={}:{} verdict={} violations={} unchecked={}",
@@ -144,8 +144,6 @@ class InspectionFacade(
                     skipReason = "WAIT_LIMIT_EXCEEDED",
                 ),
             )
-            // 미판정도 관리자 검토 큐로 보냄. 안 보내면 등록 직후 상품이 PENDING에 남음
-            applyGate(inspection, modelVerified = false)
         }
         log.warn("기한이 지난 검수를 미판정으로 닫았다. count={} cutoff={}", overdue.size, cutoff)
         return overdue.size
@@ -154,58 +152,32 @@ class InspectionFacade(
     /**
      * 판정을 노출 상태와 관리자 검토 큐로 옮긴다.
      *
-     * 판정을 받지 못한 건과 판정 과정이 실패한 건은 이미 보이는 상품을 숨기지 않고 관리자 검토 큐에만 올린다.
-     * 모델이 보지 못한 것을 위반으로 다루면 멀쩡한 상품이 사라지고, 모델 장애가 그대로 매출 장애가 된다.
+     * 판정을 받지 못한 건과 판정 과정이 실패한 건은 건드리지 않는다. 모델이 보지 못한 것을
+     * 위반으로 다루면 멀쩡한 상품이 사라지고, 모델 장애가 그대로 매출 장애가 된다.
      *
      * 통과 판정에 노출을 되돌리는 경로를 둔 이유는 복구 수단이 필요하기 때문이다. 셀러가
      * 문구를 고쳐 다시 통과했을 때 되살아나지 않으면 한 번 걸린 상품을 영구히 되살릴 수 없다.
-     *
-     * 다만 되돌리는 것은 증거가 있는 통과뿐이다. 모델이 그 내용을 읽은 적 없는 통과까지
-     * 받아들이면 호출이 전부 죽은 뒤에 온 통과가 아무도 보지 않은 상품을 구매자 화면에 세운다.
      */
-    private fun applyGate(
-        inspection: ContentInspection,
-        modelVerified: Boolean,
-    ) {
+    private fun applyGate(inspection: ContentInspection) {
         // 리뷰는 규칙 기반 마스킹이 이미 돌고 있어 이번 범위가 아니다.
         if (inspection.targetType != InspectionTargetType.PRODUCT) return
 
         val latest = inspections.findLatestByTarget(InspectionTargetType.PRODUCT, inspection.targetRef)
         if (latest?.id != inspection.id) {
-            // 옛 내용의 판정이 늦게 와서 새 내용의 상태를 덮으면 고치기 전 문구의 통과로 큐가 닫힘
+            // 옛 내용의 판정이 늦게 와서 새 내용에 내린 판정을 덮지 않게 함
             log.info("최신 검수가 아니라 노출에 반영하지 않는다. inspectionId={} latestId={}", inspection.id, latest?.id)
             return
         }
-        val judgment = checkNotNull(inspection.judgment) { "판정이 적히지 않은 검수를 반영하려 했다. id=${inspection.id}" }
-        reviewQueueService.applyJudgment(
-            productId = inspection.targetRef,
-            judgment = judgment,
-            modelVerified = modelVerified,
-            judgedAt = checkNotNull(inspection.settledAt),
-        )
-    }
 
-    /**
-     * 통과 판정을 뒷받침하는 증거가 있는지 가른다.
-     *
-     * 모델 관점 가운데 하나라도 결과를 낸 것이 있으면 모델이 그 내용을 읽었다. 위반을 낸
-     * 관점도 증거로 센다 — 여기서 보는 것은 무엇을 찾았는지가 아니라 읽었는지다.
-     *
-     * 선별이 일부러 건너뛴 건은 결과가 없어도 증거로 센다. 선별이 통과로 가른 것은 판단이고
-     * 장애가 아니다. 호출이 죽어 건너뛴 것과 가르는 축은 사유뿐이라, 사유가 규약이 된다.
-     * 모델 관점 행이 아예 없으면 무엇을 봤는지 알 길이 없으므로 증거로 세지 않는다.
-     */
-    private fun modelVerified(message: ContentVerdictMessage): Boolean {
-        val modelRows = message.perspectives.filter { it.perspective in MODEL_PERSPECTIVES }
-        if (modelRows.any { it.outcome != ContractOutcome.UNCHECKED }) return true
-
-        val triageCleared =
-            message.perspectives.any {
-                it.perspective == InspectionPerspective.TRIAGE && it.outcome == ContractOutcome.CLEAR
+        when (val judgment = inspection.judgment) {
+            InspectionJudgment.FLAG, InspectionJudgment.PASS -> {
+                reviewQueueService.applyJudgment(inspection.targetRef, judgment, checkNotNull(inspection.settledAt))
             }
-        return triageCleared &&
-            modelRows.isNotEmpty() &&
-            modelRows.all { it.skipReason == TRIAGE_SKIP_REASON }
+
+            else -> {
+                Unit
+            }
+        }
     }
 
     /**
@@ -311,16 +283,5 @@ class InspectionFacade(
 
     companion object {
         private const val REASON_SUMMARY_MAX = 500
-
-        /** 모델이 내용을 읽고 결과를 내는 관점. RULE과 TRIAGE는 모델 판정이 아니라 제외한다 */
-        private val MODEL_PERSPECTIVES =
-            setOf(
-                InspectionPerspective.ALL,
-                InspectionPerspective.DISPLAY_ADS,
-                InspectionPerspective.CONDUCT_TRADE,
-            )
-
-        // 선별이 모델 호출을 일부러 건너뛸 때 쓰는 사유. AI 서버와 맞춰 둔 값이다
-        private const val TRIAGE_SKIP_REASON = "TRIAGE_CLEAR"
     }
 }

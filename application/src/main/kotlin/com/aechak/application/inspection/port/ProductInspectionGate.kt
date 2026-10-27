@@ -13,15 +13,13 @@ import com.aechak.domain.inspection.enums.InspectionJudgment
  */
 interface ProductInspectionGate {
     /**
-     * 노출 게이트 스위치가 꺼졌거나 상품이 없으면 null
-     *
-     * [modelVerified]는 통과 판정을 뒷받침하는 증거가 있는지다. 통과라고 말해 놓고 그 통과를
-     * 뒷받침하는 관점이 하나도 없는 판정은 받아들이면 아무도 보지 않은 상품이 노출된다.
+     * 노출 게이트 스위치가 꺼졌거나 상품이 없으면 null.
+     * [isAdminRejected]는 상품 행을 잠근 뒤에 부름. 잠그기 전에 읽으면 그 사이 끝난 관리자 결정을 못 봄
      */
     fun applyJudgment(
         productId: Long,
         judgment: InspectionJudgment,
-        modelVerified: Boolean,
+        isAdminRejected: () -> Boolean,
     ): ProductGateOutcome?
 
     fun approveByAdmin(productId: Long)
