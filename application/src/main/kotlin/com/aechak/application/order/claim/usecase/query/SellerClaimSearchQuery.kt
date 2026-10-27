@@ -1,6 +1,7 @@
 package com.aechak.application.order.claim.usecase.query
 
 import com.aechak.application.order.claim.port.SellerClaimCondition
+import com.aechak.application.order.claim.port.SellerClaimPendingStage
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
@@ -10,6 +11,10 @@ import java.time.LocalDate
  * 셀러 클레임 목록 조회 입력. 상태 필터는 서버의 축 어휘를 그대로 받는다 —
  * 화면의 단일 표시 상태로 접는 일은 프론트 몫이므로 서버가 그 어휘를 알 필요가 없다.
  * 비어 있는 필터는 그 축으로 걸지 않는다는 뜻이다.
+ *
+ * 처리 대기 단계(pendingStages)는 대시보드 처리 대기 집계와 같은 판정을 쓰는 축이다 —
+ * 대시보드 카드에서 목록으로 넘어온 셀러가 그 카드와 같은 건만 보려면 상태 축으로는 모자란다
+ * (회수 중 한 상태에 송장 등록 대기와 완료 처리 대기가 함께 들어 있다).
  *
  * [한계] 축별 목록은 AND로 묶인다. 화면 표시 상태 하나는 축 조건의 AND로 전부 표현되지만
  * (예: 승인됨 = status APPROVED + refundStatus NONE·REQUESTED, 환불 완료 = refundStatus DONE),
@@ -21,6 +26,7 @@ data class SellerClaimSearchQuery(
     val claimTypes: List<ClaimType> = emptyList(),
     val statuses: List<ClaimStatus> = emptyList(),
     val refundStatuses: List<RefundStatus> = emptyList(),
+    val pendingStages: List<SellerClaimPendingStage> = emptyList(),
     val requestedFrom: LocalDate? = null,
     val requestedTo: LocalDate? = null,
     val page: Int = 0,
@@ -41,6 +47,7 @@ data class SellerClaimSearchQuery(
             claimTypes = claimTypes,
             statuses = statuses,
             refundStatuses = refundStatuses,
+            pendingStages = pendingStages,
             requestedFrom = requestedFrom?.atStartOfDay(),
             requestedToExclusive = requestedTo?.plusDays(1)?.atStartOfDay(),
             offset = page.toLong() * size,

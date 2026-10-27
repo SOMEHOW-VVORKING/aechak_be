@@ -37,6 +37,7 @@ include(
     "jpa-persistence",
     "pg-client",          // kafka는 어댑터 코드가 생길 때 하위 모듈 추가
     "social-client",
+    "tracking-client",                       // 택배사 추적 조회 어댑터 — 현재는 목 구현만
     "redis",                // 소셜 로그인(ACC-01): id_token 검증 / refresh token 저장
     "s3-client",                             // 오브젝트 스토리지 어댑터
     "ses-client",                            // 이메일 발송 어댑터(SES) — 문의 통지
@@ -51,6 +52,7 @@ project(":batch").projectDir = file("boot/batch")
 project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
 project(":pg-client").projectDir = file("infra/client/pg-client")
 project(":social-client").projectDir = file("infra/client/social-client")
+project(":tracking-client").projectDir = file("infra/client/tracking-client")
 project(":s3-client").projectDir = file("infra/client/s3-client")
 project(":ses-client").projectDir = file("infra/client/ses-client")
 project(":sms-client").projectDir = file("infra/client/sms-client")

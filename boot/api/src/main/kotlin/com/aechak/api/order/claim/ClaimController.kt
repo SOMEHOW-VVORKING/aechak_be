@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -25,6 +26,7 @@ class ClaimController(
     private val claimUseCase: ClaimUseCase,
 ) {
     @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
     fun requestClaim(
         @PathVariable orderPublicId: String,
         @Valid @RequestBody request: RequestClaimRequest,
@@ -44,6 +46,7 @@ class ClaimController(
         )
 
     @DeleteMapping("/{claimPublicId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun withdrawClaim(
         @PathVariable orderPublicId: String,
         @PathVariable claimPublicId: String,

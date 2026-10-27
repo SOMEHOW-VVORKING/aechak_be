@@ -1,6 +1,9 @@
 package com.aechak.seller.product.response
 
 import com.aechak.application.product.product.usecase.result.SellerProductInspectionResult
+import com.aechak.domain.inspection.enums.InspectionJudgment
+import com.aechak.domain.inspection.enums.InspectionProcessingState
+import com.aechak.domain.product.product.enums.InspectionStatus
 import java.time.LocalDateTime
 
 /**
@@ -12,9 +15,9 @@ import java.time.LocalDateTime
  */
 data class SellerProductInspectionResponse(
     val productId: String,
-    val inspectionStatus: String,
-    val processingState: String?,
-    val judgment: String?,
+    val inspectionStatus: InspectionStatus,
+    val processingState: InspectionProcessingState?,
+    val judgment: InspectionJudgment?,
     val reasonCode: String?,
     val reasonSummary: String?,
     val sellerNotice: String?,
@@ -25,9 +28,9 @@ data class SellerProductInspectionResponse(
         fun from(result: SellerProductInspectionResult): SellerProductInspectionResponse =
             SellerProductInspectionResponse(
                 productId = result.productId,
-                inspectionStatus = result.inspectionStatus.name,
-                processingState = result.processingState?.name,
-                judgment = result.judgment?.name,
+                inspectionStatus = result.inspectionStatus,
+                processingState = result.processingState,
+                judgment = result.judgment,
                 reasonCode = result.reasonCode,
                 reasonSummary = result.reasonSummary,
                 sellerNotice = result.sellerNotice,

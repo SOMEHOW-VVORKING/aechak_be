@@ -2,13 +2,15 @@ package com.aechak.seller.order.response
 
 import com.aechak.application.order.seller.usecase.result.SellerOrderDetailResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderLineResult
+import com.aechak.domain.order.order.enums.OrderItemStatus
+import com.aechak.domain.order.order.enums.OrderStatus
 import java.time.LocalDateTime
 
 /** 주문 단위 필드는 목록 행과 같고 items가 더 붙는다 — 화면이 목록 행을 그대로 상세로 확장한다. */
 data class SellerOrderDetailResponse(
     val orderId: String,
     val orderGroupId: String,
-    val status: String,
+    val status: OrderStatus,
     val orderedAt: LocalDateTime,
     val buyerNickname: String,
     val recipientName: String,
@@ -65,7 +67,7 @@ data class SellerOrderLineResponse(
     val quantity: Int,
     val unitPrice: Long,
     val discountAllocatedAmount: Long,
-    val itemStatus: String,
+    val itemStatus: OrderItemStatus,
 ) {
     companion object {
         fun from(result: SellerOrderLineResult): SellerOrderLineResponse =

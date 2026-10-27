@@ -1,6 +1,7 @@
 package com.aechak.application.order.claim.port
 
 import com.aechak.application.order.claim.port.view.SellerClaimItemView
+import com.aechak.application.order.claim.port.view.SellerClaimPendingMetricsView
 import com.aechak.application.order.claim.port.view.SellerClaimTypeCountView
 import com.aechak.application.order.claim.port.view.SellerClaimView
 
@@ -11,9 +12,16 @@ interface SellerClaimQueryPort {
 
     /**
      * 유형별 건수. **유형 필터는 적용하지 않는다** — 화면의 유형 탭 배지가 지금 선택된 탭과
-     * 무관하게 모든 탭의 건수를 보여야 한다. 상태·기간 필터는 그대로 반영한다.
+     * 무관하게 모든 탭의 건수를 보여야 한다. 상태·단계·기간 필터는 그대로 반영한다.
      */
     fun countByClaimType(condition: SellerClaimCondition): List<SellerClaimTypeCountView>
+
+    /**
+     * 셀러 처리 대기 건수 — 단계별 조건부 합계 하나로 받는다. 단계 판정은 목록의 단계 필터
+     * (SellerClaimCondition.pendingStages)와 같은 식을 쓴다 — 대시보드와 목록이 같은 라벨에
+     * 다른 숫자를 띄우지 않으려면 판정이 한 곳이어야 한다.
+     */
+    fun countPendingMetrics(condition: SellerClaimMetricsCondition): SellerClaimPendingMetricsView
 
     /** 셀러 범위 단건 — 타 셀러 클레임은 없는 것으로 본다. */
     fun findOne(
