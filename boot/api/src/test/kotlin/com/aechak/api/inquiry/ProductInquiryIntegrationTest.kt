@@ -119,6 +119,31 @@ class ProductInquiryIntegrationTest : IntegrationTestBase() {
         assertEquals(0L, tx.execute { countInquiries() })
     }
 
+    // 제목·본문 규칙은 ProductInquiry가 소유하고 전용 코드를 던진다. 요청 DTO에 같은 제약을
+    // 거울로 두면 어노테이션이 먼저 걸려 90001이 나가고 OpenAPI가 약속한 코드가 거짓이 된다
+    // (30-boot §3-1). 그 거울이 다시 생기면 이 네 단언이 깨진다.
+    @Test
+    fun `제목과 본문의 공백·길이 위반은 도메인 에러코드로 거절된다`() {
+        ask(title = "   ")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(120101))
+
+        ask(title = "가".repeat(ProductInquiry.TITLE_MAX + 1))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(120102))
+
+        ask(content = "   ")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(120103))
+
+        ask(content = "가".repeat(ProductInquiry.CONTENT_MAX + 1))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(120104))
+
+        // 네 번 모두 거절됐으므로 아무것도 저장되지 않는다.
+        assertEquals(0L, tx.execute { countInquiries() })
+    }
+
     @Test
     fun `상품 목록에서 남의 비밀글은 제목과 본문이 가려지고 답변도 내려가지 않는다`() {
         val publicId = askSecretByOtherBuyerAndAnswer()

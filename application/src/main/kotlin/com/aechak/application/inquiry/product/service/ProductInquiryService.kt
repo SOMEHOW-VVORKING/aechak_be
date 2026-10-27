@@ -115,7 +115,8 @@ class ProductInquiryService(
         now: LocalDateTime,
     ): SellerProductInquiryMetricsView = productInquiryQueryPort.countSellerMetrics(sellerId, now)
 
+    /** 상태를 바꾸기 전의 조회는 잠가서 읽는다 — 답변과 철회가 같은 RECEIVED를 보고 둘 다 성공하면 안 된다. */
     private fun load(publicId: String): ProductInquiry =
-        productInquiryRepository.findByPublicId(publicId)
+        productInquiryRepository.findByPublicIdForUpdate(publicId)
             ?: throw BusinessException(InquiryErrorCode.PRODUCT_INQUIRY_NOT_FOUND)
 }
