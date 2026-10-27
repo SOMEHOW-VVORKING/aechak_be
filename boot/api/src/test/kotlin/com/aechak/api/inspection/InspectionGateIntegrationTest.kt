@@ -27,8 +27,12 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.TestPropertySource
 import java.time.Instant
 import java.time.LocalDateTime
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import com.aechak.message.inspection.InspectionTargetType as ContractTargetType
 import com.aechak.message.inspection.PerspectiveOutcome as ContractOutcome
@@ -44,6 +48,10 @@ import com.aechak.message.inspection.PerspectiveOutcome as ContractOutcome
  *
  * 위반 판정은 상품을 바로 반려하고 관리자 검토 큐에 올린다. 관리자는 그 행에서 오탐을 풀거나
  * 반려를 확정한다. 관리자가 반려한 상품은 고친 내용이 통과해도 관리자가 다시 본다.
+ *
+ * 되돌리는 것은 **증거가 있는 통과**뿐이다. 모델이 그 내용을 읽은 적 없는 통과는 판정 실패와
+ * 같은 자리에 두고 상품도 큐도 건드리지 않는다. 선별이 일부러 건너뛴 통과는 장애가 아니라
+ * 판단이라서 정당한 통과로 남긴다 — 그쪽까지 막으면 선별 계층의 비용 절감이 사라진다.
  */
 @TestPropertySource(properties = ["inspection.gate-enabled=true"])
 class InspectionGateIntegrationTest : IntegrationTestBase() {
@@ -181,6 +189,82 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `증거 없는 통과는 AI 반려를 풀지 않고 열린 행도 닫지 않는다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
+
+        applyVerdict(
+            givenQueued(hash = "b".repeat(64)),
+            InspectionVerdict.PASS,
+            perspectives =
+                listOf(
+                    PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.UNCHECKED, "RATE_LIMITED"),
+                    PerspectiveResult(InspectionPerspective.CONDUCT_TRADE, ContractOutcome.UNCHECKED, "RATE_LIMITED"),
+                ),
+        )
+
+        assertEquals(
+            InspectionStatus.REJECTED,
+            storedStatus(),
+            "모델이 찾아 반려한 상품을, 모델이 아무것도 읽지 못한 통과가 되살리면 안 된다",
+        )
+        assertFalse(listedByBuyer())
+        assertEquals(
+            listOf(ReviewQueueStatus.PENDING_REVIEW),
+            queueStatuses(),
+            "그 통과로 행까지 닫으면 관리자가 오탐을 풀 기회도 함께 사라진다",
+        )
+    }
+
+    @Test
+    fun `관점 행이 아예 없는 통과도 AI 반려를 풀지 않는다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
+
+        applyVerdict(givenQueued(hash = "b".repeat(64)), InspectionVerdict.PASS, perspectives = emptyList())
+
+        assertEquals(InspectionStatus.REJECTED, storedStatus(), "관점 행이 비면 모델이 무엇을 봤는지 알 길이 없다")
+        assertEquals(listOf(ReviewQueueStatus.PENDING_REVIEW), queueStatuses())
+    }
+
+    @Test
+    fun `선별이 건너뛴 통과는 AI 반려를 풀어 노출을 되돌린다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
+
+        applyVerdict(
+            givenQueued(hash = "b".repeat(64)),
+            InspectionVerdict.PASS,
+            perspectives =
+                listOf(
+                    PerspectiveResult(InspectionPerspective.TRIAGE, ContractOutcome.CLEAR),
+                    PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.UNCHECKED, TRIAGE_CLEAR),
+                    PerspectiveResult(InspectionPerspective.CONDUCT_TRADE, ContractOutcome.UNCHECKED, TRIAGE_CLEAR),
+                ),
+        )
+
+        assertEquals(
+            InspectionStatus.APPROVED,
+            storedStatus(),
+            "선별이 일부러 건너뛴 통과까지 막으면 선별 계층의 비용 절감이 사라진다",
+        )
+        assertTrue(listedByBuyer())
+        assertEquals(listOf(ReviewQueueStatus.SUPERSEDED), queueStatuses())
+    }
+
+    @Test
+    fun `증거 없는 통과는 열린 행의 대기 시각을 밀지 않는다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
+        val opened = openedAt()
+
+        applyVerdict(
+            givenQueued(hash = "b".repeat(64)),
+            InspectionVerdict.PASS,
+            perspectives =
+                listOf(PerspectiveResult(InspectionPerspective.ALL, ContractOutcome.UNCHECKED, "BUDGET_EXHAUSTED")),
+        )
+
+        assertEquals(opened, openedAt(), "모델이 읽지 않은 판정으로 대기 시각을 밀면 적체가 얼마나 묵었는지가 리셋된다")
+    }
+
+    @Test
     fun `옛 내용의 판정이 늦게 오면 상품과 큐에 반영하지 않는다`() {
         val older = givenQueued(hash = "a".repeat(64))
         val newer = givenQueued(hash = "b".repeat(64))
@@ -190,6 +274,61 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
 
         assertEquals(InspectionStatus.REJECTED, storedStatus(), "고치기 전 문구의 통과가 고친 뒤 문구의 위반을 덮으면 안 된다")
         assertEquals(listOf(ReviewQueueStatus.PENDING_REVIEW), queueStatuses())
+    }
+
+    /**
+     * 최신 검수 확인과 상태 전이 사이에 셀러 수정이 끼어들 수 있다.
+     *
+     * 최신 확인이 상품 행 잠금보다 먼저 돌아서, 확인을 지난 뒤 잠금을 기다리는 사이에 셀러
+     * 수정과 새 검수가 커밋된다. 검수 행의 낙관적 락은 서로 다른 검수 행 사이를 지키지 않고,
+     * 상품은 잠금을 받은 뒤에 읽으므로 상품 쪽 버전도 이것을 잡지 못한다.
+     *
+     * 여기서는 셀러가 상품 행을 쥔 채 판정 적용이 그 잠금을 기다리게 만든 뒤, 기다리는 동안
+     * 새 검수를 커밋한다. 잠근 뒤에 최신 검수를 다시 보지 않으면 옛 내용의 통과가 새 내용의
+     * 상품을 노출시킨다.
+     */
+    @Test
+    fun `최신 확인 직후 셀러가 고쳐도 옛 판정이 새 내용을 승인하지 않는다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
+        val stale = givenQueued(hash = "b".repeat(64))
+        val productLocked = CountDownLatch(1)
+        val verdictStarted = CountDownLatch(1)
+        val sellerFailure = AtomicReference<Throwable?>(null)
+        val seller =
+            Thread {
+                runCatching {
+                    tx.execute {
+                        em
+                            .createNativeQuery("select id from products where id = :id for update")
+                            .setParameter("id", productId)
+                            .singleResult
+                        productLocked.countDown()
+                        // 판정 적용이 최신 확인을 지나 상품 행 잠금을 기다리기 시작할 틈을 준다.
+                        // 그쪽이 막혀 있는 동안에는 래치를 내려 줄 수 없어 시간으로 센다.
+                        assertTrue(verdictStarted.await(5, TimeUnit.SECONDS), "판정 적용이 시작하지 못했다")
+                        Thread.sleep(LOCK_REACH_MILLIS)
+                        givenQueued(hash = "c".repeat(64))
+                    }
+                }.onFailure(sellerFailure::set)
+            }
+        seller.start()
+        assertTrue(productLocked.await(5, TimeUnit.SECONDS), "셀러가 상품 행을 잠그지 못했다")
+
+        verdictStarted.countDown()
+        applyVerdict(stale, InspectionVerdict.PASS)
+
+        seller.join()
+        assertNull(sellerFailure.get())
+        assertEquals(
+            InspectionStatus.REJECTED,
+            storedStatus(),
+            "잠금을 기다리는 사이에 셀러가 고쳤다. 옛 내용의 통과로 새 내용을 노출하면 안 된다",
+        )
+        assertEquals(
+            listOf(ReviewQueueStatus.PENDING_REVIEW),
+            queueStatuses(),
+            "관리자가 볼 행까지 닫히면 새 내용을 아무도 보지 않는다",
+        )
     }
 
     private fun listedByBuyer(): Boolean = productUseCase.getProducts(ProductSearchQuery(), null).items.any { it.productId == publicId }
@@ -205,7 +344,29 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
     private fun applyVerdict(
         inspection: ContentInspection,
         verdict: InspectionVerdict,
-    ) = inspectionUseCase.applyVerdict(ApplyVerdictCommand(verdictFor(inspection, verdict)))
+        perspectives: List<PerspectiveResult> = defaultPerspectives(verdict),
+    ) = inspectionUseCase.applyVerdict(ApplyVerdictCommand(verdictFor(inspection, verdict, perspectives)))
+
+    /**
+     * 판정과 어긋나지 않는 관점 행을 만든다.
+     *
+     * 통과 판정에 위반 관점을 실으면 메시지 자체가 부정합해져서, 증거를 보는 분기가
+     * 우연히 통과한다. 그래서 판정마다 그 판정을 뒷받침하는 결과를 기본값으로 둔다.
+     */
+    private fun defaultPerspectives(verdict: InspectionVerdict): List<PerspectiveResult> =
+        when (verdict) {
+            InspectionVerdict.FLAG -> {
+                listOf(PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.VIOLATION))
+            }
+
+            InspectionVerdict.PASS -> {
+                listOf(PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.CLEAR))
+            }
+
+            InspectionVerdict.FAILED -> {
+                listOf(PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.UNCHECKED, "CALL_FAILED"))
+            }
+        }
 
     private fun queueStatuses(): List<ReviewQueueStatus> =
         tx.execute {
@@ -215,6 +376,18 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
                     ReviewQueueStatus::class.java,
                 ).setParameter("id", productId)
                 .resultList
+        }!!
+
+    /** 열린 검토 행이 언제 열렸는지. 갱신되면 적체 나이가 리셋된다 */
+    private fun openedAt(): LocalDateTime =
+        tx.execute {
+            em
+                .createQuery(
+                    "select q.blindedAt from ProductReviewQueueItem q where q.targetId = :id and q.status = :status",
+                    LocalDateTime::class.java,
+                ).setParameter("id", productId)
+                .setParameter("status", ReviewQueueStatus.PENDING_REVIEW)
+                .singleResult
         }!!
 
     private fun changeStatus(status: InspectionStatus) {
@@ -269,6 +442,7 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
     private fun verdictFor(
         inspection: ContentInspection,
         verdict: InspectionVerdict,
+        perspectives: List<PerspectiveResult>,
     ): ContentVerdictMessage =
         ContentVerdictMessage(
             inspectionId = inspection.id,
@@ -276,8 +450,7 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
             targetRef = inspection.targetRef,
             contentHash = inspection.contentHash,
             verdict = verdict,
-            perspectives =
-                listOf(PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.VIOLATION)),
+            perspectives = perspectives,
             violations =
                 if (verdict == InspectionVerdict.FLAG) {
                     listOf(
@@ -303,5 +476,11 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
 
     companion object {
         private const val POLICY_VERSION = "policy-v1"
+
+        // 선별이 모델 호출을 일부러 건너뛸 때 쓰는 사유. AI 서버와 맞춰 둔 값이다
+        private const val TRIAGE_CLEAR = "TRIAGE_CLEAR"
+
+        /** 판정 적용이 상품 행 잠금까지 도달할 시간. 막혀 있는 쪽은 래치를 내려 줄 수 없다 */
+        private const val LOCK_REACH_MILLIS = 1_500L
     }
 }
