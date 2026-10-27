@@ -20,6 +20,7 @@ import com.aechak.message.inspection.InspectionVerdict
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.time.LocalDateTime
@@ -52,8 +53,15 @@ class InspectionFacade(
      *
      * 적기 전에 검수 행을 잠근다. 일반 조회로 읽고 쓰면 확인과 쓰기 사이에 기한 정리나
      * 또 다른 판정이 끼어들어 늦게 온 판정이 최신 상태를 덮는다.
+     *
+     * 격리 수준을 READ COMMITTED로 낮춘다. 게이트 반영이 상품 행을 잠근 뒤에 최신 검수와
+     * 관리자 결정을 비잠금으로 읽는데, 기본 격리에서는 읽기 뷰가 이 트랜잭션의 첫 일관 읽기에서
+     * 고정되어 잠금을 받은 뒤에 읽어도 그 사이 커밋된 것이 보이지 않는다.
+     *
+     * 이 선언은 이 트랜잭션을 여는 쪽일 때만 효력이 있다. 바깥에서 먼저 열고 들어오면 합류하는
+     * 쪽의 격리 선언은 조용히 무시되므로, 운영 진입점도 같은 격리 수준을 선언해야 한다.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun applyVerdict(command: ApplyVerdictCommand) {
         val message = command.verdict
         val inspection = inspections.findByIdForUpdate(message.inspectionId)
@@ -197,7 +205,12 @@ class InspectionFacade(
             return
         }
 
-        reviewQueueService.applyJudgment(inspection.targetRef, judgment, checkNotNull(inspection.settledAt))
+        reviewQueueService.applyJudgment(
+            productId = inspection.targetRef,
+            inspectionId = inspection.id,
+            judgment = judgment,
+            judgedAt = checkNotNull(inspection.settledAt),
+        )
     }
 
     /**

@@ -40,10 +40,15 @@ class ProductInspectionGateService(
      * FLAG -> REJECTED
      * PASS, 관리자가 반려한 REJECTED -> 상태 유지. 사람이 내린 반려를 판정이 풀지 않음
      * PASS, 그 밖 -> APPROVED
+     *
+     * 상품 행을 잠근 뒤에 그 판정이 아직 최신 검수의 것인지 다시 본다. 잠그기 전 확인만으로는
+     * 잠금을 기다리는 사이에 커밋된 셀러 수정과 새 검수를 못 봐서, 옛 내용의 판정이 새 내용의
+     * 상품에 적용된다.
      */
     override fun applyJudgment(
         productId: Long,
         judgment: InspectionJudgment,
+        isLatestJudgment: () -> Boolean,
         isAdminRejected: () -> Boolean,
     ): ProductGateOutcome? {
         if (!gateEnabled) return null
@@ -52,6 +57,12 @@ class ProductInspectionGateService(
         if (product == null) {
             // 판정이 도착하기 전에 상품이 사라질 수 있다. 판정 자체를 적는 것을 막을 일은 아니다.
             log.info("판정을 반영할 상품이 없다. productId={}", productId)
+            return null
+        }
+
+        if (!isLatestJudgment()) {
+            // 잠금을 기다리는 사이에 셀러가 고쳐 새 검수가 올라갔다.
+            log.info("잠근 뒤 보니 최신 검수가 아니다. 반영하지 않는다. productId={}", productId)
             return null
         }
 

@@ -26,6 +26,7 @@ class ProductReviewQueueService(
     private val reviewQueue: ProductReviewQueueRepository,
     private val reviewQueueQuery: ProductReviewQueueQueryPort,
     private val productGate: ProductInspectionGate,
+    private val inspectionQuery: InspectionQueryService,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -33,13 +34,24 @@ class ProductReviewQueueService(
      * 관리자가 봐야 함, 열린 행 없음 -> 새 행을 엶
      * 관리자가 봐야 함, 열린 행 있음 -> 그 행의 시각과 상품명만 갱신함
      * 관리자가 안 봐도 됨, 열린 행 있음 -> SUPERSEDED로 닫음
+     *
+     * [inspectionId]는 이 판정을 실은 검수다. 상품 행을 잠근 뒤에 그것이 아직 그 상품의 최신
+     * 검수인지 다시 보는 데 쓴다. 내용 지문으로 대조하지 않는 이유는 내용이 과거 값으로
+     * 되돌아오면 같은 지문의 검수가 둘 있을 수 있기 때문이다.
      */
     fun applyJudgment(
         productId: Long,
+        inspectionId: Long,
         judgment: InspectionJudgment,
         judgedAt: LocalDateTime,
     ) {
-        val outcome = productGate.applyJudgment(productId, judgment) { isAdminRejected(productId) } ?: return
+        val outcome =
+            productGate.applyJudgment(
+                productId,
+                judgment,
+                { isLatestJudgment(productId, inspectionId) },
+                { isAdminRejected(productId) },
+            ) ?: return
         val pending = reviewQueue.findPendingByProductId(productId)
 
         when {
@@ -92,6 +104,11 @@ class ProductReviewQueueService(
     fun getReviewTarget(productPublicId: String): ReviewTargetProductView =
         reviewQueueQuery.findReviewTarget(productPublicId)
             ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+
+    private fun isLatestJudgment(
+        productId: Long,
+        inspectionId: Long,
+    ): Boolean = inspectionQuery.findLatestProductInspection(productId)?.inspectionId == inspectionId
 
     private fun isAdminRejected(productId: Long): Boolean =
         reviewQueue.findLatestAdminDecisionByProductId(productId)?.status == ReviewQueueStatus.REJECTED

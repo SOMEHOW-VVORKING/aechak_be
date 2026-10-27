@@ -27,8 +27,12 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.context.TestPropertySource
 import java.time.Instant
 import java.time.LocalDateTime
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import com.aechak.message.inspection.InspectionTargetType as ContractTargetType
 import com.aechak.message.inspection.PerspectiveOutcome as ContractOutcome
@@ -272,6 +276,61 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
         assertEquals(listOf(ReviewQueueStatus.PENDING_REVIEW), queueStatuses())
     }
 
+    /**
+     * 최신 검수 확인과 상태 전이 사이에 셀러 수정이 끼어들 수 있다.
+     *
+     * 최신 확인이 상품 행 잠금보다 먼저 돌아서, 확인을 지난 뒤 잠금을 기다리는 사이에 셀러
+     * 수정과 새 검수가 커밋된다. 검수 행의 낙관적 락은 서로 다른 검수 행 사이를 지키지 않고,
+     * 상품은 잠금을 받은 뒤에 읽으므로 상품 쪽 버전도 이것을 잡지 못한다.
+     *
+     * 여기서는 셀러가 상품 행을 쥔 채 판정 적용이 그 잠금을 기다리게 만든 뒤, 기다리는 동안
+     * 새 검수를 커밋한다. 잠근 뒤에 최신 검수를 다시 보지 않으면 옛 내용의 통과가 새 내용의
+     * 상품을 노출시킨다.
+     */
+    @Test
+    fun `최신 확인 직후 셀러가 고쳐도 옛 판정이 새 내용을 승인하지 않는다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
+        val stale = givenQueued(hash = "b".repeat(64))
+        val productLocked = CountDownLatch(1)
+        val verdictStarted = CountDownLatch(1)
+        val sellerFailure = AtomicReference<Throwable?>(null)
+        val seller =
+            Thread {
+                runCatching {
+                    tx.execute {
+                        em
+                            .createNativeQuery("select id from products where id = :id for update")
+                            .setParameter("id", productId)
+                            .singleResult
+                        productLocked.countDown()
+                        // 판정 적용이 최신 확인을 지나 상품 행 잠금을 기다리기 시작할 틈을 준다.
+                        // 그쪽이 막혀 있는 동안에는 래치를 내려 줄 수 없어 시간으로 센다.
+                        assertTrue(verdictStarted.await(5, TimeUnit.SECONDS), "판정 적용이 시작하지 못했다")
+                        Thread.sleep(LOCK_REACH_MILLIS)
+                        givenQueued(hash = "c".repeat(64))
+                    }
+                }.onFailure(sellerFailure::set)
+            }
+        seller.start()
+        assertTrue(productLocked.await(5, TimeUnit.SECONDS), "셀러가 상품 행을 잠그지 못했다")
+
+        verdictStarted.countDown()
+        applyVerdict(stale, InspectionVerdict.PASS)
+
+        seller.join()
+        assertNull(sellerFailure.get())
+        assertEquals(
+            InspectionStatus.REJECTED,
+            storedStatus(),
+            "잠금을 기다리는 사이에 셀러가 고쳤다. 옛 내용의 통과로 새 내용을 노출하면 안 된다",
+        )
+        assertEquals(
+            listOf(ReviewQueueStatus.PENDING_REVIEW),
+            queueStatuses(),
+            "관리자가 볼 행까지 닫히면 새 내용을 아무도 보지 않는다",
+        )
+    }
+
     private fun listedByBuyer(): Boolean = productUseCase.getProducts(ProductSearchQuery(), null).items.any { it.productId == publicId }
 
     private fun storedStatus(): InspectionStatus =
@@ -420,5 +479,8 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
 
         // 선별이 모델 호출을 일부러 건너뛸 때 쓰는 사유. AI 서버와 맞춰 둔 값이다
         private const val TRIAGE_CLEAR = "TRIAGE_CLEAR"
+
+        /** 판정 적용이 상품 행 잠금까지 도달할 시간. 막혀 있는 쪽은 래치를 내려 줄 수 없다 */
+        private const val LOCK_REACH_MILLIS = 1_500L
     }
 }
