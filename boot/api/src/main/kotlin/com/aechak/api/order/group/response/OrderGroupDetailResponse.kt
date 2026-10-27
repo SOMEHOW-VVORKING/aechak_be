@@ -2,12 +2,14 @@ package com.aechak.api.order.group.response
 
 import com.aechak.api.order.response.OrderLineItemResponse
 import com.aechak.application.order.usecase.result.OrderGroupDetailResult
+import com.aechak.domain.order.group.enums.OrderGroupStatus
+import com.aechak.domain.order.order.enums.OrderStatus
 import java.time.OffsetDateTime
 import java.time.ZoneId
 
 data class OrderGroupDetailResponse(
     val orderGroupId: String,
-    val status: String,
+    val status: OrderGroupStatus,
     val totalProductAmount: Long,
     val totalShippingFee: Long,
     val usedPoint: Long,
@@ -40,7 +42,7 @@ data class OrderGroupDetailResponse(
 
     data class SellerOrderResponse(
         val orderId: String,
-        val status: String,
+        val status: OrderStatus,
         val sellerName: String?,
         val sellerShippingFee: Long,
         val items: List<OrderLineItemResponse>,
@@ -49,7 +51,7 @@ data class OrderGroupDetailResponse(
             fun from(order: OrderGroupDetailResult.SellerOrderResult): SellerOrderResponse =
                 SellerOrderResponse(
                     orderId = order.orderId,
-                    status = order.status.name,
+                    status = order.status,
                     sellerName = order.sellerName,
                     sellerShippingFee = order.sellerShippingFee,
                     items = order.items.map(OrderLineItemResponse::from),
@@ -61,7 +63,7 @@ data class OrderGroupDetailResponse(
         fun from(result: OrderGroupDetailResult): OrderGroupDetailResponse =
             OrderGroupDetailResponse(
                 orderGroupId = result.orderGroupId,
-                status = result.status.name,
+                status = result.status,
                 totalProductAmount = result.totalProductAmount,
                 totalShippingFee = result.totalShippingFee,
                 usedPoint = result.usedPoint,

@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -29,6 +30,7 @@ class CartController(
     private val cartUseCase: CartUseCase,
 ) {
     @PostMapping("/items")
+    @ResponseStatus(HttpStatus.CREATED)
     fun addCartItem(
         @Valid @RequestBody request: AddCartItemRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,

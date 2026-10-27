@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -51,6 +52,7 @@ class SellerClaimController(
 
     /** 승인은 상태만 바꾼다 — 환불 집행은 별도 경로다. */
     @PostMapping("/{claimPublicId}/approve")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun approve(
         @PathVariable claimPublicId: String,
         @Valid @RequestBody(required = false) request: ApproveClaimRequest?,
@@ -62,6 +64,7 @@ class SellerClaimController(
     }
 
     @PostMapping("/{claimPublicId}/reject")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun reject(
         @PathVariable claimPublicId: String,
         @Valid @RequestBody(required = false) request: RejectClaimRequest?,
@@ -74,6 +77,7 @@ class SellerClaimController(
 
     /** 운영 메모는 내부용이라 구매자 응답에 나가지 않는다. */
     @PatchMapping("/{claimPublicId}/memo")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun updateMemo(
         @PathVariable claimPublicId: String,
         @Valid @RequestBody(required = false) request: UpdateClaimMemoRequest?,
@@ -86,6 +90,7 @@ class SellerClaimController(
 
     /** 회수 송장 등록 — 등록만으로 승인이 끝나지 않는다. */
     @PostMapping("/{claimPublicId}/collection")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun startCollection(
         @PathVariable claimPublicId: String,
         @Valid @RequestBody request: StartClaimCollectionRequest,
@@ -97,6 +102,7 @@ class SellerClaimController(
 
     /** 회수 완료 — 반품 환불은 이 뒤에만 집행된다. */
     @PostMapping("/{claimPublicId}/collection/complete")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun completeCollection(
         @PathVariable claimPublicId: String,
         @AuthenticationPrincipal principal: AuthPrincipal,
@@ -108,6 +114,7 @@ class SellerClaimController(
     }
 
     @PostMapping("/{claimPublicId}/reship")
+    @ResponseStatus(HttpStatus.CREATED)
     fun reship(
         @PathVariable claimPublicId: String,
         @Valid @RequestBody request: ReshipClaimRequest,

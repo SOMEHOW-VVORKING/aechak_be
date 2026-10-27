@@ -3,6 +3,9 @@ package com.aechak.application.order.seller.usecase.result
 import com.aechak.application.order.seller.port.view.SellerOrderClaimView
 import com.aechak.application.order.seller.port.view.SellerOrderShipmentView
 import com.aechak.application.order.seller.port.view.SellerOrderSummaryView
+import com.aechak.domain.order.claim.enums.ClaimStatus
+import com.aechak.domain.order.claim.enums.ClaimType
+import com.aechak.domain.order.order.enums.OrderStatus
 import java.time.LocalDateTime
 
 /**
@@ -12,7 +15,7 @@ import java.time.LocalDateTime
 data class SellerOrderSummaryResult(
     val orderId: String,
     val orderGroupId: String,
-    val status: String,
+    val status: OrderStatus,
     val orderedAt: LocalDateTime,
     val buyerNickname: String,
     val recipientName: String,
@@ -41,7 +44,7 @@ data class SellerOrderSummaryResult(
             SellerOrderSummaryResult(
                 orderId = view.orderPublicId,
                 orderGroupId = view.orderGroupPublicId,
-                status = view.status.name,
+                status = view.status,
                 orderedAt = view.orderedAt,
                 buyerNickname = buyerNickname,
                 recipientName = decryptPii(view.receiverNameEnc),
@@ -85,15 +88,15 @@ data class SellerOrderShipmentResult(
 
 data class SellerOrderClaimResult(
     val claimId: String,
-    val claimType: String,
-    val status: String,
+    val claimType: ClaimType,
+    val status: ClaimStatus,
 ) {
     companion object {
         fun from(view: SellerOrderClaimView): SellerOrderClaimResult =
             SellerOrderClaimResult(
                 claimId = view.claimPublicId,
-                claimType = view.claimType.name,
-                status = view.status.name,
+                claimType = view.claimType,
+                status = view.status,
             )
     }
 }

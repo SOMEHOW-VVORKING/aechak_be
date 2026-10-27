@@ -3,6 +3,7 @@ package com.aechak.seller.product.request
 import com.aechak.application.product.product.usecase.command.UpdateProductCommand
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.ProductImage
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
@@ -27,6 +28,7 @@ data class ProductUpdateRequest(
 ) {
     /** 여기서 거르지 않으면 길이 초과 키가 컬럼을 넘겨 저장 단계에서 500이 됨. */
     @get:AssertTrue(message = "이미지 키는 비울 수 없고 ${ProductImage.STORAGE_KEY_MAX}자 이하여야 합니다.")
+    @get:Schema(hidden = true)
     val imageKeysWellFormed: Boolean
         get() =
             (additionalImageKeys.orEmpty() + detailImageKeys.orEmpty())
@@ -34,6 +36,7 @@ data class ProductUpdateRequest(
 
     /** 한 종류 안에서 키가 겹치면 뒤엣것만 살아남아 보낸 것보다 이미지가 조용히 줄어듦. */
     @get:AssertTrue(message = "같은 이미지 키를 한 종류 안에 두 번 넣을 수 없습니다.")
+    @get:Schema(hidden = true)
     val imageKeysDistinct: Boolean
         get() = additionalImageKeys.orEmpty().hasNoDuplicate() && detailImageKeys.orEmpty().hasNoDuplicate()
 
