@@ -105,6 +105,9 @@ class V45UserSanctionsMigrationIntegrationTest {
         assertThat(columnsOf(legacyUrl, "users").getValue("status").type)
             .describedAs("V45 적용 뒤 users.status 타입")
             .isEqualTo("varchar(30)")
+        assertThat(query(legacyUrl, "SELECT status FROM users") { it.getString(1) })
+            .describedAs("타입 변환이 기존 값을 그대로 보존해야 한다")
+            .containsExactly("ACTIVE")
 
         execute(legacyUrl, listOf("UPDATE users SET status = 'BANNED'"))
 
