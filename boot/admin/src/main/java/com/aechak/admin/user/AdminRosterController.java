@@ -8,6 +8,7 @@ import com.aechak.webcommon.response.ApiResponse;
 import com.aechak.websecurity.authentication.AuthPrincipal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 관리자 명부 API — 자격(role=ADMIN)은 모듈 게이트(SecurityConfig)가 보증한다. */
@@ -39,6 +41,7 @@ public class AdminRosterController {
 
     /** 승격 — 승격된 계정은 api에서 다시 로그인해야 ADMIN 토큰을 받는다. */
     @PostMapping
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     public ResponseEntity<Void> promote(
             @Valid @RequestBody PromoteAdminRequest request, @AuthenticationPrincipal AuthPrincipal principal) {
         adminUserRoleUseCase.promote(principal.getUserId(), request.userId());
@@ -47,6 +50,7 @@ public class AdminRosterController {
 
     /** 강등 — 이미 발급된 토큰은 만료까지 ADMIN으로 통과한다. */
     @DeleteMapping("/{userId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     public ResponseEntity<Void> demote(@PathVariable long userId, @AuthenticationPrincipal AuthPrincipal principal) {
         adminUserRoleUseCase.demote(principal.getUserId(), userId);
         return ResponseEntity.noContent().build();

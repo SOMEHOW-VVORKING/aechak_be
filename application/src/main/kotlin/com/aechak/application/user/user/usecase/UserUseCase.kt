@@ -5,6 +5,7 @@ import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
 import com.aechak.application.user.user.usecase.query.UserSearchQuery
 import com.aechak.application.user.user.usecase.result.UserAuthorResult
 import com.aechak.application.user.user.usecase.result.UserMeResult
+import com.aechak.application.user.user.usecase.result.UserPublicProfileResult
 import com.aechak.application.user.user.usecase.result.UserSummaryResult
 
 /**
@@ -51,6 +52,12 @@ interface UserUseCase {
 
     /** 작성자 표시용 배치 조회 */
     fun getAuthors(userIds: Collection<Long>): Map<Long, UserAuthorResult>
+
+    /** publicId로 공개 프로필 조회 — 없는 사용자면 null. */
+    fun findPublicProfile(publicId: String): UserPublicProfileResult?
+
+    /** id로 공개 프로필 조회 — 없는 사용자면 null. */
+    fun findPublicProfileById(userId: Long): UserPublicProfileResult?
 
     /**
      * 소셜 가입 — 프로필(닉네임) 없는 PENDING_ONBOARDING 계정을 만든다(닉네임은 온보딩에서).

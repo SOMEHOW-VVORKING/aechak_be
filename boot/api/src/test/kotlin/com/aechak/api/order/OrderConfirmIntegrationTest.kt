@@ -6,6 +6,7 @@ import com.aechak.application.user.point.usecase.PointUseCase
 import com.aechak.application.user.point.usecase.command.EarnPurchaseRewardCommand
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -460,7 +461,7 @@ class OrderConfirmIntegrationTest : IntegrationTestBase() {
             Claim.request(
                 claimType = ClaimType.CANCEL,
                 order = order,
-                reasonCode = "CHANGE_OF_MIND",
+                reasonCode = ClaimReasonCode.CHANGE_OF_MIND,
                 reasonDetail = null,
                 items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 10_000L)),
                 autoApproveDueAt = LocalDateTime.now().plusDays(2),

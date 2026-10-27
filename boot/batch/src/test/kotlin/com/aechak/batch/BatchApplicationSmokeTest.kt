@@ -2,17 +2,21 @@ package com.aechak.batch
 
 import com.aechak.application.order.claim.usecase.ClaimAutoApproveUseCase
 import com.aechak.application.order.claim.usecase.ClaimRefundUseCase
+import com.aechak.application.order.delivery.port.ShipmentTrackingPort
 import com.aechak.application.order.delivery.usecase.OrderDeliveryUseCase
+import com.aechak.application.order.delivery.usecase.ShipmentTrackingUseCase
 import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.payment.port.PaymentReconciliationSourcePort
 import com.aechak.application.payment.reconciliation.usecase.PaymentReconciliationUseCase
+import com.aechak.application.settlement.seller.usecase.SellerSettlementUseCase
 import com.aechak.application.settlement.usecase.SettlementPayoutUseCase
 import com.aechak.application.settlement.usecase.SettlementUseCase
 import com.aechak.batch.order.ClaimAutoApproveSchedule
 import com.aechak.batch.order.ClaimRefundSchedule
 import com.aechak.batch.order.OrderDeliverySchedule
 import com.aechak.batch.order.OrderExpirySchedule
+import com.aechak.batch.order.ShipmentTrackingSchedule
 import com.aechak.batch.payment.PaymentReconciliationSchedule
 import com.aechak.batch.settlement.SettlementExecutionSchedule
 import com.aechak.batch.support.BatchIntegrationTestBase
@@ -50,12 +54,36 @@ class BatchApplicationSmokeTest : BatchIntegrationTestBase() {
     }
 
     @Test
+    fun `셀러센터 전용 정산 조회는 배치에 조립되지 않는다`() {
+        // 구매확정 원장 생성 때문에 settlement BC를 스캔하는데, 셀러 조회 파사드는 셀러 자격(application.seller)을
+        // 요구한다 — 제외 필터가 지워지면 배치가 쓰지도 않는 의존 때문에 부팅에서 깨진다
+        val names = context.getBeanNamesForType(SellerSettlementUseCase::class.java)
+
+        assertTrue(names.isEmpty(), "셀러 전용 정산 조회가 배치에 조립됐다 (${names.joinToString()})")
+    }
+
+    @Test
     fun `배송 전이 유스케이스는 조립되고 배치 스케줄은 설정으로 꺼져 있다`() {
         context.getBean(OrderDeliveryUseCase::class.java)
 
         assertTrue(
             context.getBeansOfType(OrderDeliverySchedule::class.java).isEmpty(),
             "order.delivery.enabled 기본값이 켜지면 dev 배포 전에 주문이 자동 전이된다",
+        )
+    }
+
+    @Test
+    fun `추적 갱신 유스케이스는 조립되고 배치와 목 어댑터는 둘 다 설정으로 꺼져 있다`() {
+        // 포트는 선택 주입이라 어댑터 없이도 파사드가 떠야 한다 — 그 자리가 깨지면 셀러센터·api 부팅까지 같이 깨진다
+        context.getBean(ShipmentTrackingUseCase::class.java)
+
+        assertTrue(
+            context.getBeansOfType(ShipmentTrackingSchedule::class.java).isEmpty(),
+            "order.delivery.tracking.enabled 기본값이 켜지면 가짜 추적 상태가 DB에 쌓인다",
+        )
+        assertTrue(
+            context.getBeansOfType(ShipmentTrackingPort::class.java).isEmpty(),
+            "목 추적 어댑터 기본값이 켜지면 표식이 붙은 가짜 상태가 화면까지 올라간다",
         )
     }
 

@@ -13,11 +13,14 @@ import com.aechak.application.order.claim.usecase.command.ReshipClaimCommand
 import com.aechak.application.order.claim.usecase.command.StartClaimCollectionCommand
 import com.aechak.application.order.claim.usecase.command.UpdateClaimMemoCommand
 import com.aechak.application.order.claim.usecase.command.WithdrawClaimCommand
+import com.aechak.application.order.claim.usecase.query.SellerClaimMetricsQuery
 import com.aechak.application.order.claim.usecase.query.SellerClaimSearchQuery
 import com.aechak.application.order.claim.usecase.result.ClaimListResult
+import com.aechak.application.order.claim.usecase.result.ClaimReasonCatalogResult
 import com.aechak.application.order.claim.usecase.result.RequestClaimResult
 import com.aechak.application.order.claim.usecase.result.ReshipClaimResult
 import com.aechak.application.order.claim.usecase.result.SellerClaimDetailResult
+import com.aechak.application.order.claim.usecase.result.SellerClaimMetricsResult
 import com.aechak.application.order.claim.usecase.result.SellerClaimPageResult
 import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.common.error.BusinessException
@@ -44,6 +47,9 @@ class ClaimFacade(
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun requestClaim(command: RequestClaimCommand): RequestClaimResult = claimService.requestClaim(command)
+
+    /** 고정 어휘라 DB를 보지 않아 트랜잭션이 없다. */
+    override fun getClaimReasons(): ClaimReasonCatalogResult = ClaimReasonCatalogResult.of()
 
     @Transactional(readOnly = true)
     override fun getClaims(
@@ -104,6 +110,10 @@ class ClaimFacade(
         requireActiveSeller(command.sellerId)
         return claimCollectionService.reship(command)
     }
+
+    /** 자격 게이트 없음 — 계약 KDoc대로 호출자(대시보드 조립)가 이미 통과시킨 sellerId만 들어온다. */
+    @Transactional(readOnly = true)
+    override fun getClaimMetrics(query: SellerClaimMetricsQuery): SellerClaimMetricsResult = sellerClaimQueryService.countMetrics(query)
 
     private fun requireActiveSeller(sellerId: Long) {
         if (!sellerUseCase.isActiveSeller(sellerId)) {

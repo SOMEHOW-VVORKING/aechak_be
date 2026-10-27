@@ -71,7 +71,7 @@ class ReviewQueueSchemaParityTest {
             .use { it.readBytes().toString(Charsets.UTF_8) }
 
     private companion object {
-        const val APPEAL_MIGRATION = "V41__add_review_queue_appeal.sql"
+        const val APPEAL_MIGRATION = "V44__add_review_queue_appeal.sql"
 
         /** 검토 큐 테이블을 만드는 파일과 그 뒤 칼럼·인덱스를 더하는 파일 전부 */
         val MIGRATIONS = listOf("V40__create_product_review_queue_items.sql", APPEAL_MIGRATION)
