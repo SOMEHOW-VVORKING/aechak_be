@@ -1,0 +1,30 @@
+package com.aechak.domain.audit.auditlog.enums
+
+/**
+ * 운영 조치가 가리키는 대상의 종류.
+ *
+ * 종류마다 **식별자 종류를 선언**한다. 규칙은 하나다 — 어드민 API가 그 대상을 가리키는 데 쓰는
+ * 식별자를 그대로 적는다. 상품은 어드민 경로가 공개 ULID로 가리키니 ULID이고, 입점 신청과 관리자는
+ * 내부 id로 가리키니 내부 id다.
+ *
+ * 공개 식별자로 통일하지 않은 이유는 **실패 행**이다. 공개 식별자는 애그리거트를 읽어야 나오고,
+ * 거부된 시도는 바로 그 읽기나 그 다음 검증에서 끊긴다 — 통일하면 "누가 무엇을 하려다 거부당했나"의
+ * 대상 칸이 비는 행이 생긴다. 요청이 들고 온 식별자는 조치가 실패해도 이미 손에 있다.
+ * 감사 조회는 어드민 모듈 게이트(role=ADMIN) 뒤에만 있고, 그 게이트는 이미 같은 숫자 id를
+ * 신청 상세·관리자 명부 응답으로 내주고 있어 새로 열리는 노출면이 없다.
+ *
+ * 선언을 두는 값은 [AdminAuditLog][com.aechak.domain.audit.auditlog.AdminAuditLog]가 기록 시점에
+ * 대조한다. 입점 신청에 publicId가 생겨 어드민 경로가 그걸로 바뀌면 여기 한 줄을 바꾸고,
+ * 그 뒤로 숫자를 적으려는 경로는 그 대조에서 막힌다.
+ *
+ * 기록 경로가 아직 없는 대상 종류는 선언하지 않는다. 값만 있고 쓰는 곳이 없는 열거는
+ * 화면 필터에서 "조치가 한 번도 없었다"와 "아직 기록하지 않는다"를 구별할 수 없게 만든다.
+ */
+enum class AdminAuditTargetType(
+    val idKind: AdminAuditTargetIdKind,
+    val label: String,
+) {
+    SELLER_APPLICATION(AdminAuditTargetIdKind.INTERNAL_ID, "입점 신청"),
+    ADMIN_USER(AdminAuditTargetIdKind.INTERNAL_ID, "관리자"),
+    PRODUCT(AdminAuditTargetIdKind.PUBLIC_ULID, "상품"),
+}
