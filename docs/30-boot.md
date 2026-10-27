@@ -252,7 +252,9 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 ```
 boot/admin/src/main/java/com/aechak/admin/
 ├── AdminApplication.java
+├── audit/           # 감사 로그 조회 컨트롤러 + 기록 인터셉터·@AdminAudited/@AdminAuditExempt
 ├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config} · InspectionScanConfig
+├── inspection/      # 검수 운영 지표 컨트롤러 + response
 ├── product/         # 상품 검수 큐 컨트롤러 + request/response
 ├── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
 ├── seller/          # 입점 심사 컨트롤러 + request/response
@@ -269,5 +271,18 @@ boot/admin/src/main/java/com/aechak/admin/
 - **관리자 명부의 저장값은 `users.role`이고, 기동 부트스트랩(`admin.bootstrap.enabled`/`user-ids`)이 기동마다 설정 명부를 멱등 승격한다.** 최초 관리자를 만드는 경로이자 관리자가 0명이 된 상태의 유일한 복구 경로라 "최초 1회"가 아니라 기동마다 돈다. 명부에 적힌 계정이 없거나 비활성이면 경고 로그만 남기고 부팅을 계속한다 — 어드민이 뜨지 않으면 명부를 고칠 수단도 사라진다. 두 경우 모두 에러 코드가 붙은 비즈니스 예외로 분류돼 경고 로그에 남고(비활성은 409), 이미 관리자인 계정은 멱등 건너뜀으로 처리한다. 부트스트랩이 admin에 사는 이유는 이 모듈만 ECS 태스크가 1대로 고정이고(api는 오토스케일) `users` 쓰기 배선이 이미 조립돼 있어서다.
   - 토큰의 `role` 클레임은 로그인 시점 스냅샷이다 — 승격 직후 ADMIN 토큰을 받으려면 api에서 다시 로그인해야 하고, 강등해도 발급돼 있던 토큰은 만료까지 ADMIN으로 통과한다.
   - 명부를 손으로 바꾸는 경로는 `/admin/admins`(목록·승격·강등)다. 자기 역할 변경은 403(30014), 관리자가 0명이 되는 강등은 409(30013), 활성 상태가 아닌 계정의 승격은 409(30017)로 막는다.
+- **운영자 조치는 감사 로그에 남는다(SCRUM-318).** 기록은 쓰기 핸들러에 붙은 `@AdminAudited`를 보고
+  `AdminAuditInterceptor`가 핸들러가 끝난 뒤 쓴다. 유스케이스마다 기록 호출을 흩뿌리지 않는 이유는
+  그 방식이 빠뜨리기 쉽고 **빠뜨린 것이 보이지 않기** 때문이다 — 쓰기 핸들러에 `@AdminAudited`나
+  `@AdminAuditExempt`(이유 필수) 중 하나가 없으면 `AdminAuditCoverageTest`가 빌드를 끊는다.
+  - 인터셉터가 스스로 아는 것은 봉투(운영자·시각·조치·결과·IP·추적 id)까지다. 사유와 기록 시점의
+    대상 이름은 요청 본문·애그리거트에만 있으므로 그걸 아는 자리가 `AdminAuditContextHolder`로 올린다.
+  - 거부당한 시도도 남는다(결과 FAILURE + HTTP 상태). 다만 **모듈 게이트가 끊은 401·403은 남지 않는다** —
+    Security 필터 구간에서 끝나 DispatcherServlet에 닿지 않는다.
+  - **기록 실패는 조치를 되돌리지 않는다.** 쓰기는 REQUIRES_NEW로 자기 트랜잭션에서 커밋하고,
+    실패는 파사드가 삼켜 ERROR 로그로만 남긴다. 반대로 했다면 감사 테이블 사고 한 번이 모든 운영 조치를 멈춘다.
+  - **수정·삭제 경로를 만들지 않는다.** 도메인 포트는 `append`만 열고 컨트롤러에 쓰기 핸들러가 없다.
+  - `X-Trace-Id` 필터를 WebConfig가 등록한다(시큐리티 체인보다 앞). 이 모듈의 로그 패턴은 전부터
+    `%X{traceId}`를 쓰는데 등록이 빠져 있었고, 감사 행의 추적 id도 같은 값이다.
 - DB 마이그레이션은 api 단일 소유 그대로 — admin은 접속만 한다.
 - 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.
