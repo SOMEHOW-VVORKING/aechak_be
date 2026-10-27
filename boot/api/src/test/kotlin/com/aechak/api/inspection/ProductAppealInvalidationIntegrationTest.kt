@@ -205,6 +205,35 @@ class ProductAppealInvalidationIntegrationTest : IntegrationTestBase() {
     }
 
     /**
+     * 본문을 건드리지 않은 수정은 접수한 이의를 지우지 않는다 — **모델이 답을 못 준 뒤에 접수했어도** 그렇다.
+     *
+     * 이의 지문의 뜻이 "접수한 시점에 셀러가 들고 있던 본문"이다. 무효화는 그 지문을 지금 본문과
+     * 대조하므로, 지문을 "지금 그 행을 막고 있는 판정"에서 읽으면 둘이 어긋난다 — 행은 아직 A를
+     * 막고 있는데 셀러가 들고 있는 본문은 B여서, 본문을 하나도 바꾸지 않은 수정(가격 변경)이
+     * 이의를 지운다. 셀러는 자기가 한 일이 없는데 접수가 사라지고, 재접수는 행이 든 시도 횟수를
+     * 깎아 가격 몇 번 고치는 것으로 예산이 바닥난다.
+     *
+     * 모델이 답을 못 준 구간을 일부러 만든다. 그 구간이 행이 막는 본문과 셀러가 든 본문이
+     * 갈라지는 유일한 자리다.
+     */
+    @Test
+    fun `모델이 답을 못 준 뒤 접수한 이의는 본문을 건드리지 않은 수정에 지워지지 않는다`() {
+        applyVerdict(givenQueued(OLD_CONTENT), InspectionVerdict.FLAG)
+        applyVerdict(givenQueued(NEW_CONTENT), InspectionVerdict.FAILED)
+        appeal("성분 설명입니다.")
+
+        // 상품 수정이 넘기는 값과 같다. 본문이 그대로이므로 지금 본문의 지문도 그대로다.
+        tx.execute { reviewQueueService.invalidateAppealOnContentChange(productId, NEW_CONTENT) }
+
+        val row = assertNotNull(findPending())
+        assertNotNull(
+            row.appealedAt,
+            "본문을 바꾸지 않은 수정이 이의를 지웠다 — 셀러가 한 일이 없는데 접수가 사라지고 시도 예산만 깎인다",
+        )
+        assertEquals(NEW_CONTENT, row.appealedContentHash, "이의 지문은 접수 시점에 셀러가 들고 있던 본문이어야 한다")
+    }
+
+    /**
      * 접수는 **운영 진입점**으로 한다.
      *
      * 서비스를 테스트 트랜잭션에서 직접 부르면 그 트랜잭션의 격리 수준이 기본값이라,

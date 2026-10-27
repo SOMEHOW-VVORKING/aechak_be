@@ -26,10 +26,15 @@ class InspectionQueryService(
             ?.let(InspectionSnapshot::from)
 
     /**
-     * 상품의 가장 최근 **판정이 적힌** 검수. 열린 검토 행을 지금 막고 있는 판정이다.
+     * 상품의 가장 최근 **판정이 적힌** 검수.
      *
-     * 이의 접수가 이것을 쓴다. 미판정 검수까지 세는 쪽을 쓰면 접수한 이의가 아직 아무것도 막지
-     * 않은 내용의 지문을 달고, 그 내용의 판정이 왔을 때 무효가 되지 않는다.
+     * 이의가 검토 행을 새로 열 때(관리자 반려 뒤) 그 행의 시각을 여기서 읽는다. 그 칼럼의 뜻이
+     * "행을 열었거나 다시 연 판정의 시각"이라서 미판정 검수의 것을 쓸 수 없고, 접수 시각으로
+     * 채우면 관리자 목록의 정렬 기준이 경로마다 갈린다.
+     *
+     * **이것이 "지금 그 행을 막고 있는 판정"은 아니다.** 위반 뒤에 판정 실패가 하나 오면
+     * 가장 최근 판정된 검수는 그 실패이지만 막고 있는 것은 여전히 그 위반이다. 그쪽은
+     * [findBlockingProductInspection]이다.
      */
     fun findLatestSettledProductInspection(productId: Long): InspectionSnapshot? =
         inspections
