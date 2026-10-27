@@ -262,13 +262,21 @@ class ProductFacade(
         return inspectionResultOf(product)
     }
 
-    private fun inspectionResultOf(product: Product): SellerProductInspectionResult =
-        SellerProductInspectionResult.of(
+    private fun inspectionResultOf(product: Product): SellerProductInspectionResult {
+        val openReview = inspectionQueryService.findOpenProductReview(product.id)
+        return SellerProductInspectionResult.of(
             product = product,
             snapshot = inspectionQueryService.findLatestProductInspection(product.id),
-            openReview = inspectionQueryService.findOpenProductReview(product.id),
+            openReview = openReview,
+            // 사유는 지금 그 행을 막고 있는 판정에서 읽는다. 가장 최근 검수에서 읽으면 모델이
+            // 답을 못 준 뒤에 반려만 남고 고칠 곳을 알려 주는 문구가 사라진다.
+            blocking =
+                openReview?.let {
+                    inspectionQueryService.findBlockingProductInspection(product.id, it.blindedAt)
+                },
             adminRejectReason = inspectionQueryService.findAdminRejectReason(product.id),
         )
+    }
 
     private fun requireActiveSeller(sellerId: Long) {
         if (!sellerUseCase.isActiveSeller(sellerId)) {

@@ -123,9 +123,14 @@ class ProductReviewQueueService(
      * 행을 또 열거나 이미 닫힌 행에 이의를 적는다. 닫힌 것이 보이면 열린 행 없음으로 떨어져
      * 자격(관리자 반려)을 다시 보게 되는 것이 올바른 답임.
      *
-     * 지문은 **지금 그 행을 막고 있는 판정**에서 읽음. 판정 여부를 보지 않고 최신 검수를 쓰면,
-     * 셀러가 내용을 고쳐 재검수가 아직 미판정인 사이에 접수한 이의가 그 고친 내용의 지문을 달고
-     * 그 내용의 판정이 와도 무효가 되지 않음 — 관리자가 읽는 사유와 걸린 내용이 어긋남.
+     * 지문은 **지금 그 행을 막고 있는 판정**에서 읽음. 열린 행이 있으면 그 행의 시각으로 그
+     * 판정을 되찾는다 — 관리자·셀러 화면이 사유를 읽는 자리와 같은 출처라야, 셀러가 이의를 건
+     * 대상과 화면이 보여 준 사유가 같은 것을 가리킨다. 판정 여부만 보고 최신 검수를 쓰면 모델이
+     * 답을 못 준 사이에 접수한 이의가 아무것도 막지 않는 내용의 지문을 달고, 그 내용의 판정이
+     * 와도 무효가 되지 않음.
+     *
+     * 되찾지 못하면(행이 없거나 그 시각에 대응하는 검수가 없으면) 가장 최근 판정된 검수로 떨어짐.
+     * 행을 새로 여는 길에는 기댈 행이 없어 그쪽이 유일한 기준임.
      *
      * [target]은 [lockProductForAppeal]이 돌려준 것이어야 함. 잠금을 쥔 채 받은 값이라야
      * 자격 판단과 쓰기가 같은 상태를 본다.
@@ -136,10 +141,11 @@ class ProductReviewQueueService(
         reason: String,
         now: LocalDateTime,
     ): ProductReviewQueueItem {
-        val blocking = inspectionQuery.findLatestSettledProductInspection(productId)
-        val item =
-            reviewQueue.findPendingByProductIdForUpdate(productId)
-                ?: openForAppeal(productId, target, blocking?.settledAt ?: now)
+        val pending = reviewQueue.findPendingByProductIdForUpdate(productId)
+        val blocking =
+            pending?.let { inspectionQuery.findBlockingProductInspection(productId, it.blindedAt) }
+                ?: inspectionQuery.findLatestSettledProductInspection(productId)
+        val item = pending ?: openForAppeal(productId, target, blocking?.settledAt ?: now)
 
         if (item.appealedAt != null) throw BusinessException(ProductErrorCode.INSPECTION_APPEAL_ALREADY_SUBMITTED)
         item.appeal(reason, now, blocking?.contentHash)
