@@ -10,6 +10,7 @@ import com.aechak.webcommon.response.ApiResponse;
 import com.aechak.websecurity.authentication.AuthPrincipal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 셀러 입점 심사 API — 자격(role=ADMIN)은 모듈 게이트(SecurityConfig)가 보증한다. */
@@ -48,6 +50,7 @@ public class AdminSellerApplicationController {
 
     /** 승인 — 한 트랜잭션으로 셀러 개점 + 정산계좌 이관(VERIFIED). 처리 불가 상태·동시 충돌은 409(10101). */
     @PostMapping("/{applicationId}/approve")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     public ResponseEntity<Void> approve(
             @PathVariable long applicationId, @AuthenticationPrincipal AuthPrincipal principal) {
         adminSellerReviewUseCase.approve(principal.getUserId(), applicationId);
@@ -56,6 +59,7 @@ public class AdminSellerApplicationController {
 
     /** 반려 — 사유 필수(10102). 신청자는 수정 후 재제출한다. */
     @PostMapping("/{applicationId}/reject")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     public ResponseEntity<Void> reject(
             @PathVariable long applicationId,
             @Valid @RequestBody RejectApplicationRequest request,

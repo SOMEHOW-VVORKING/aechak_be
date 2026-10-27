@@ -335,6 +335,22 @@ class SellerProductRegisterIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(90001))
     }
 
+    /** imageKeysWellFormed는 요청이 스스로를 검사하는 프로퍼티라 문서에서 숨겼다 — 실어 보내도 검증을 뒤집지 못해야 한다. */
+    @Test
+    fun `내부 검증 프로퍼티를 본문에 실어도 이미지 키 길이 검증은 그대로 걸린다`() {
+        val body =
+            productJson(detailImageKeys = listOf("x".repeat(1025)))
+                .replaceFirst(
+                    "{",
+                    """{
+                  "imageKeysWellFormed": true,""",
+                )
+        mockMvc
+            .perform(registerRequest(token, body))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+    }
+
     @Test
     fun `중분류를 지정하면 40100을 반환한다`() {
         mockMvc
