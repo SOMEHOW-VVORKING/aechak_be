@@ -17,6 +17,7 @@ import com.aechak.application.product.product.usecase.query.SellerProductSearchQ
 import com.aechak.application.product.product.usecase.result.OptionCombinationChangeResult
 import com.aechak.application.product.product.usecase.result.ProductCurationResult
 import com.aechak.application.product.product.usecase.result.ProductOptionsResult
+import com.aechak.application.product.product.usecase.result.ProductRefResult
 import com.aechak.application.product.product.usecase.result.ProductRegisterResult
 import com.aechak.application.product.product.usecase.result.ProductResult
 import com.aechak.application.product.product.usecase.result.ProductSaleStatusChangeResult
@@ -94,6 +95,10 @@ class ProductFacade(
 
     @Transactional(readOnly = true)
     override fun getVisibleProductId(publicId: String): Long = productService.getVisibleProductId(publicId)
+
+    @Transactional(readOnly = true)
+    override fun getVisibleProductRef(publicId: String): ProductRefResult =
+        ProductRefResult.from(productService.getVisibleProductRef(publicId))
 
     override fun registerProduct(command: RegisterProductCommand): ProductRegisterResult {
         requireActiveSeller(command.sellerId)
