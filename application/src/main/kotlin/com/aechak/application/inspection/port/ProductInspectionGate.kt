@@ -9,12 +9,15 @@ import com.aechak.domain.inspection.enums.InspectionJudgment
  * 그것이 어떤 상태 전이인지는 상품 쪽이 정한다. 대상이 늘어도 판정 적용부는 그대로 두고
  * 구현만 늘린다.
  *
- * 세 메서드 모두 상품 행을 잠금. 호출부는 같은 트랜잭션에서 검토 큐를 고쳐야 상품마다 열린 행이 하나로 유지됨.
+ * 네 메서드 모두 상품 행을 잠금. 호출부는 같은 트랜잭션에서 검토 큐를 고쳐야 상품마다 열린 행이 하나로 유지됨.
  */
 interface ProductInspectionGate {
     /**
-     * 노출 게이트 스위치가 꺼졌거나 상품이 없으면 null.
-     * 잠근 뒤에 보니 최신 검수의 판정이 아니면 아무것도 하지 않고 null.
+     * 상품이 없으면 null. 잠근 뒤에 보니 최신 검수의 판정이 아니어도 아무것도 하지 않고 null
+     *
+     * 노출 게이트 스위치는 **상태 전이만** 끈다. 돌려주는 판단(관리자가 봐야 하는가)은 끄지
+     * 않는다 — 큐 등재가 스위치에 묶이면 꺼진 환경에 열린 행이 영구히 없고, 그러면 관리자
+     * 결정과 셀러 이의가 둘 다 자격을 얻지 못한다.
      *
      * [isLatestJudgment]와 [isAdminRejected]는 둘 다 상품 행을 잠근 뒤에 부름. 잠그기 전에
      * 읽으면 잠금을 기다리는 사이에 커밋된 새 검수와 관리자 결정을 못 봄.
@@ -33,4 +36,19 @@ interface ProductInspectionGate {
     fun approveByAdmin(productId: Long)
 
     fun rejectByAdmin(productId: Long)
+
+    /**
+     * 이의 접수가 쓰는 잠금. 상태를 바꾸지 않고 상품 행만 잠근다. 상품이 없으면 null
+     *
+     * 다른 셋과 달리 노출 게이트 스위치를 보지 않는다. 관리자 결정과 같은 사람 경로이고,
+     * 스위치에 묶이면 스위치가 꺼진 환경에서 이의가 조용히 아무것도 하지 않는다.
+     *
+     * [isAdminRejected]도 상품 행을 잠근 뒤에 부름. 반려 상태 하나로는 AI 반려와 관리자
+     * 반려를 가를 수 없어서, 자격은 그 둘을 함께 본다. [applyJudgment]의 같은 람다와 같은
+     * 이유로 호출부 트랜잭션이 READ COMMITTED여야 뜻이 있음
+     */
+    fun lockForAppeal(
+        productId: Long,
+        isAdminRejected: () -> Boolean,
+    ): ProductAppealTarget?
 }

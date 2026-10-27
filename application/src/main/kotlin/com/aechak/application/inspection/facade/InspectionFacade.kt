@@ -55,10 +55,15 @@ class InspectionFacade(
     /** 후보 조회. 호출부에 트랜잭션이 있으면 합류한다 — 그 스냅샷으로 후보를 고른다 */
     private val scanTx = TransactionTemplate(transactionManager)
 
-    /** 후보 한 건의 처리 경계. 바깥 트랜잭션에 합류하지 않는다 */
+    /**
+     * 후보 한 건의 처리 경계. 바깥 트랜잭션에 합류하지 않는다.
+     *
+     * 격리 수준은 판정 적용과 같은 이유로 READ COMMITTED다([applyVerdict]).
+     */
     private val rowTx =
         TransactionTemplate(transactionManager).apply {
             propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
+            isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
         }
 
     /**
@@ -67,9 +72,17 @@ class InspectionFacade(
      * 적기 전에 검수 행을 잠근다. 일반 조회로 읽고 쓰면 확인과 쓰기 사이에 기한 정리나
      * 또 다른 판정이 끼어들어 늦게 온 판정이 최신 상태를 덮는다.
      *
-     * 격리 수준을 READ COMMITTED로 낮춘다. 게이트 반영이 상품 행을 잠근 뒤에 최신 검수와
-     * 관리자 결정을 비잠금으로 읽는데, 기본 격리에서는 읽기 뷰가 이 트랜잭션의 첫 일관 읽기에서
-     * 고정되어 잠금을 받은 뒤에 읽어도 그 사이 커밋된 것이 보이지 않는다.
+     * **READ COMMITTED로 돈다.** 이 경로는 열린 검토 행을 잠금 조회하고 없으면 행을 여는데,
+     * REPEATABLE READ에서 그 조회는 열린 행이 없을 때 비유일 인덱스의 **간극**을 잠근다.
+     * 새 상품의 target_id는 언제나 그 인덱스의 꼬리 간극에 떨어지고 그 간극이 곧 다음 INSERT
+     * 자리라서, 처음 큐에 오르는 상품 둘이 서로의 INSERT를 기다려 교착한다 — 판정 소비자는
+     * 동시성 여럿으로 돌고 기한 정리도 후보마다 같은 경로를 탄다. READ COMMITTED에서는 잠금
+     * 조회가 간극을 잠그지 않고, 매 구문이 최신 커밋을 읽어 잠금 조회의 목적("먼저 커밋한
+     * 쪽이 넣은 행을 본다")도 함께 지켜진다.
+     *
+     * 같은 선언이 떠받치는 것이 하나 더 있다. 게이트 반영이 상품 행을 잠근 뒤에 최신 검수와
+     * 관리자 결정을 **비잠금**으로 읽는데, 기본 격리에서는 읽기 뷰가 이 트랜잭션의 첫 일관
+     * 읽기에서 고정되어 잠금을 받은 뒤에 읽어도 그 사이 커밋된 것이 보이지 않는다.
      *
      * 이 선언은 이 트랜잭션을 여는 쪽일 때만 효력이 있다. 바깥에서 먼저 열고 들어오면 합류하는
      * 쪽의 격리 선언은 조용히 무시되므로, 운영 진입점도 같은 격리 수준을 선언해야 한다.
@@ -286,6 +299,7 @@ class InspectionFacade(
             inspectionId = inspection.id,
             judgment = judgment,
             judgedAt = checkNotNull(inspection.settledAt),
+            contentHash = inspection.contentHash,
         )
     }
 

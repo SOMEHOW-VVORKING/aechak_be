@@ -36,4 +36,14 @@ enum class ProductErrorCode(
 
     // 검수 큐
     PRODUCT_INSPECTION_NOT_PENDING(40500, "관리자 확인을 기다리는 상품 검수가 없습니다.", 409),
+
+    // 셀러 이의 제기
+    INSPECTION_APPEAL_REASON_REQUIRED(40501, "이의 제기 사유를 입력해 주세요.", 400),
+    INSPECTION_APPEAL_NOT_ALLOWED(40502, "이의를 제기할 수 있는 상태가 아닙니다.", 409),
+    INSPECTION_APPEAL_ALREADY_SUBMITTED(40503, "이미 이의를 제기했습니다. 상품을 고치면 다시 제기할 수 있습니다.", 409),
+    INSPECTION_APPEAL_LIMIT_EXCEEDED(40504, "동시에 제기할 수 있는 이의 건수를 넘었습니다.", 429),
+    INSPECTION_APPEAL_COOLDOWN(40505, "기각된 이의는 일정 시간이 지난 뒤 다시 제기할 수 있습니다.", 429),
+
+    // 40506은 같은 스택의 지표 조회가 쓴다
+    INSPECTION_APPEAL_ATTEMPTS_EXHAUSTED(40507, "이 상품에 제기할 수 있는 이의 횟수를 모두 사용했습니다.", 429),
 }

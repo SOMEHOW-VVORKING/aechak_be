@@ -8,7 +8,8 @@ import com.aechak.domain.product.product.enums.InspectionStatus;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/** 검수 필드(processingState부터 settledAt까지)는 상품이 한 번도 검수를 타지 않았으면 null임 */
+/** 검수 필드(processingState부터 settledAt까지)는 상품이 한 번도 검수를 타지 않았으면 null임.
+ * appealReason은 셀러가 적은 문장이고 열린 행에 이의가 걸렸을 때만 옴 */
 public record AdminProductInspectionDetailResponse(
         String productId,
         String productName,
@@ -19,6 +20,8 @@ public record AdminProductInspectionDetailResponse(
         List<String> optionNames,
         InspectionStatus inspectionStatus,
         boolean awaitingAdminReview,
+        LocalDateTime appealedAt,
+        String appealReason,
         InspectionProcessingState processingState,
         InspectionJudgment judgment,
         String reasonCode,
@@ -39,6 +42,8 @@ public record AdminProductInspectionDetailResponse(
                 result.optionNames(),
                 result.inspectionStatus(),
                 result.awaitingAdminReview(),
+                result.appealedAt(),
+                result.appealReason(),
                 result.processingState(),
                 result.judgment(),
                 result.reasonCode(),
