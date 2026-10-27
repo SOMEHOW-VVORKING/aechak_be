@@ -19,6 +19,13 @@ enum class ReviewErrorCode(
     REVIEW_TOO_MANY_IMAGES(110009, "리뷰 사진은 최대 5장까지 첨부할 수 있습니다.", 400),
     REVIEW_ITEM_NOT_REVIEWABLE(110010, "취소·반품한 주문 품목은 리뷰를 작성할 수 없습니다.", 400),
 
+    REVIEW_SELLER_ACCESS_DENIED(110011, "탈퇴하거나 정지된 셀러는 리뷰를 조회·관리할 수 없습니다.", 403),
+
     // 리뷰 신고
     INVALID_REVIEW_REPORT_STATUS_TRANSITION(110100, "허용되지 않는 리뷰 신고 처리 상태 전이입니다.", 400),
+
+    // 셀러 답글
+    REVIEW_REPLY_NOT_FOUND(110200, "답글을 찾을 수 없습니다.", 404),
+    REVIEW_REPLY_ALREADY_EXISTS(110201, "이미 답글을 등록한 리뷰입니다.", 409),
+    INVALID_REVIEW_REPLY_CONTENT(110202, "답글은 1~500자여야 합니다.", 400),
 }
