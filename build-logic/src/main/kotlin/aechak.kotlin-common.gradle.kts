@@ -26,7 +26,14 @@ kotlin {
     }
 }
 
-tasks.withType<Test>().configureEach { useJUnitPlatform() }
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
+
+    // 테스트 JVM 힙. 기본값으로는 CI 에서 OutOfMemoryError 가 난다 — 스프링 테스트 컨텍스트가
+    // 여럿 캐시되고 그 각각이 임베디드 카프카를 들고 있어서, 한 JVM 에 브로커 셋이 동시에 산다.
+    // 러너(ubuntu-latest)의 물리 메모리 안에서 넉넉한 값으로 둔다.
+    maxHeapSize = "2g"
+}
 
 dependencies {
     "testImplementation"(kotlin("test"))              // 카탈로그 불필요 — 버전이 kotlin 플러그인을 따라감
