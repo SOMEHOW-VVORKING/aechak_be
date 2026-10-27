@@ -3,6 +3,7 @@ package com.aechak.infra.persistence.sns.visibility
 import com.aechak.application.sns.port.SnsVisibilityQueryPort
 import com.aechak.application.sns.port.view.SnsPairStateView
 import com.aechak.domain.sns.block.QBlock
+import com.aechak.domain.sns.follow.QFollow
 import com.aechak.domain.sns.mute.QMute
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.slf4j.LoggerFactory
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Repository
 
 private val block = QBlock.block
 private val mute = QMute.mute
+private val follow = QFollow.follow
 
 // shortcut: 목록 쿼리는 이 집합을 NOT IN 파라미터로 받는다.
 // 한 사용자의 집합이 1,000명을 넘거나 목록 응답 시간이 나빠지면 sns_blocks, sns_mutes에 대한 NOT EXISTS 서브쿼리로 바꾼다.
@@ -20,7 +22,6 @@ class SnsVisibilityQueryAdapter(
 ) : SnsVisibilityQueryPort {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    // 팔로우는 sns_follows가 생기기 전까지 false
     override fun findPairState(
         viewerId: Long,
         targetId: Long,
@@ -41,11 +42,17 @@ class SnsVisibilityQueryAdapter(
                 .from(mute)
                 .where(mute.muterId.eq(viewerId), mute.mutedId.eq(targetId))
                 .fetchFirst() != null
+        val following =
+            queryFactory
+                .selectOne()
+                .from(follow)
+                .where(follow.followerId.eq(viewerId), follow.followeeId.eq(targetId))
+                .fetchFirst() != null
         return SnsPairStateView(
             blockedByMe = viewerId in blockers,
             blockedByTarget = targetId in blockers,
             mutedByMe = muted,
-            following = false,
+            following = following,
         )
     }
 
