@@ -159,6 +159,36 @@ class ProductReviewQueueService(
             OpenAppealState(alreadyAppealed = it.appealedAt != null, attemptCount = it.appealAttemptCount)
         }
 
+    /**
+     * 내용이 바뀌면 열린 행의 이의를 비운다. 판정을 기다리지 않는다.
+     *
+     * 판정 쪽에도 같은 무효화가 있지만([ProductReviewQueueItem.refresh]) 그 길은 판정이
+     * 큐까지 닿을 때만 열린다. 판정이 실패하거나 기한을 넘기거나 모델이 읽은 적 없는 통과로
+     * 오면 상품도 큐도 건드리지 않으므로 비울 기회가 없고, 그러면 셀러가 적은 사유는 이미
+     * 없어진 내용을 가리키는데 재접수는 중복으로 막혀 셀러가 할 수 있는 것이 없어진다.
+     *
+     * 열린 행 조회를 **비잠금으로 먼저** 한다. 행이 없을 때 곧장 잠금 조회로 들어가면
+     * (대상 종류, 대상 id, 상태) 비유일 인덱스의 꼬리 간극을 잠그고, 그 간극이 곧 판정 경로의
+     * 첫 큐 등재 INSERT 자리다. 이 경로의 트랜잭션은 셀러 상품 수정이라 길어서, 수정 한 번이
+     * 그 사이의 첫 등재를 세운다. 이의가 걸린 행은 셀러가 이미 본 행이라 비잠금 스냅샷에도
+     * 보이므로 거를 수 있다.
+     *
+     * 트랜잭션 애너테이션이 없다. 상품 행 잠금을 쥔 호출부 트랜잭션에서 돌아야 잠금 순서가
+     * 상품 행 -> 큐 행으로 다른 경로와 같아진다.
+     */
+    fun invalidateAppealOnContentChange(
+        productId: Long,
+        contentHash: String,
+    ) {
+        val open = reviewQueue.findPendingByProductId(productId) ?: return
+        if (open.appealedAt == null || open.appealedContentHash == contentHash) return
+
+        val locked = reviewQueue.findPendingByProductIdForUpdate(productId) ?: return
+        locked.clearAppealForContentChange()
+        reviewQueue.save(locked)
+        log.info("내용이 바뀌어 이의를 무효로 돌렸다. productId={} itemId={}", productId, locked.id)
+    }
+
     /** 셀러별 열린 이의 건수. 폭주 상한의 분모임 */
     fun countOpenAppeals(sellerId: Long): Long = reviewQueue.countOpenAppealsByOwner(sellerId)
 

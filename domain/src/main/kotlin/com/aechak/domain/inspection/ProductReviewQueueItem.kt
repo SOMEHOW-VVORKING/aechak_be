@@ -139,6 +139,10 @@ class ProductReviewQueueItem protected constructor(
      *
      * 비울 때 [appealAttemptCount]는 건드리지 않음. 그것이 "이의가 있었고 무효가 됐다"는
      * 흔적이고 동시에 되돌이를 끊는 분모임.
+     *
+     * **이 메서드가 무효화의 유일한 자리는 아님.** 판정 실패·기한 만료·모델이 읽지 않은 통과는
+     * 상품도 큐도 건드리지 않아서 여기까지 오지 않음. 그래서 내용이 바뀌는 자리에서도
+     * 비워야 함([clearAppealForContentChange]).
      */
     fun refresh(
         targetName: String?,
@@ -150,6 +154,21 @@ class ProductReviewQueueItem protected constructor(
         this.blindedAt = blindedAt
         if (appealedAt == null || appealedContentHash == contentHash) return
 
+        appealReason = null
+        appealedAt = null
+    }
+
+    /**
+     * 내용이 바뀌어 이의를 무효로 돌림. 판정을 기다리지 않는 자리에서 부름.
+     *
+     * [refresh]를 재사용하지 않는 이유가 [blindedAt]임. 그것이 관리자 목록의 정렬 키라서,
+     * 셀러 수정이 그 값을 밀면 수정 한 번이 곧 큐 정렬 조작이 됨. 상품명도 여기서는 손대지
+     * 않음 — 바뀐 이름은 다음 판정이 가져옴.
+     *
+     * [appealAttemptCount]는 그대로 둠. 되돌이를 끊는 분모이고 무효화의 흔적임.
+     */
+    fun clearAppealForContentChange() {
+        requirePending()
         appealReason = null
         appealedAt = null
     }
