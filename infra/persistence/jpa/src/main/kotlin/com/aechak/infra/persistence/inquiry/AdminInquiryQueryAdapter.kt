@@ -14,6 +14,7 @@ import com.querydsl.core.types.Projections
 import com.querydsl.jpa.impl.JPAQuery
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.springframework.stereotype.Repository
+import java.time.LocalDateTime
 
 private val inquiry = QInquiry.inquiry
 
@@ -37,7 +38,8 @@ class AdminInquiryQueryAdapter(
 
     override fun findPreviousByUserId(
         userId: Long,
-        excludedInquiryId: Long,
+        beforeCreatedAt: LocalDateTime,
+        beforeInquiryId: Long,
         limit: Int,
     ): List<PreviousInquiryView> =
         queryFactory
@@ -50,7 +52,7 @@ class AdminInquiryQueryAdapter(
                     inquiry.createdAt,
                 ),
             ).from(inquiry)
-            .where(inquiry.userId.eq(userId), inquiry.id.ne(excludedInquiryId))
+            .where(inquiry.userId.eq(userId), beforeAnchor(beforeCreatedAt, beforeInquiryId))
             .orderBy(inquiry.createdAt.desc(), inquiry.id.desc())
             .limit(limit.toLong())
             .fetch()
@@ -91,6 +93,18 @@ class AdminInquiryQueryAdapter(
         keyword?.let {
             inquiry.content.containsIgnoreCase(it).or(inquiry.replyEmail.containsIgnoreCase(it))
         }
+
+    /**
+     * (created_at, id) 복합 키의 이전 지점 — 기준 행보다 앞선 접수만 남긴다.
+     * id만으로 자기 행을 빼면 "나중에 들어온 문의"가 과거 이력에 섞여 상한을 차지한다.
+     */
+    private fun beforeAnchor(
+        beforeCreatedAt: LocalDateTime,
+        beforeInquiryId: Long,
+    ): Predicate =
+        inquiry.createdAt
+            .lt(beforeCreatedAt)
+            .or(inquiry.createdAt.eq(beforeCreatedAt).and(inquiry.id.lt(beforeInquiryId)))
 
     /** (created_at, id) 복합 키의 다음 지점 — 동시각 행을 건너뛰지 않으려면 id 비교가 함께 필요하다. */
     private fun afterAnchor(anchor: AdminInquiryAnchor?): Predicate? =

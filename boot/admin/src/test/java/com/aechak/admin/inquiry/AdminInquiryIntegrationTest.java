@@ -2,6 +2,7 @@ package com.aechak.admin.inquiry;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -16,8 +17,16 @@ import com.aechak.domain.inquiry.inquiry.enums.InquiryType;
 import com.aechak.domain.user.user.User;
 import com.aechak.domain.user.user.enums.UserRole;
 import com.aechak.domain.user.user.enums.UserStatus;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Base64;
+import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +34,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.web.FilterChainProxy;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
@@ -382,10 +392,132 @@ class AdminInquiryIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void 동시_답변_두_건은_한쪽만_성공하고_답변이_덮어써지지_않는다() throws Exception {
+        long inquiryId = seedInquiry(buyerId, InquiryType.ORDER_PAYMENT, "결제 문의", BASE_TIME);
+        long otherAdminId = createOnboardedUser("다른운영자", UserRole.ADMIN);
+
+        ConcurrentLinkedQueue<Integer> statuses = inParallel(
+                () -> mockMvc.perform(bearer(answerRequest(inquiryId, "먼저 쓴 답변"), adminToken)),
+                () -> mockMvc.perform(bearer(answerRequest(inquiryId, "나중에 쓴 답변"), mintAccessToken(otherAdminId))));
+
+        assertThat(statuses.stream().sorted().toList())
+                .as("한쪽은 답변 등록, 다른 쪽은 이미 답변됨(409)이어야 한다")
+                .isEqualTo(List.of(200, 409));
+        Inquiry saved = reload(inquiryId);
+        assertThat(saved.getStatus()).isEqualTo(InquiryStatus.DONE);
+        // 이긴 쪽의 답변과 답변자가 짝이 맞아야 한다 — 뒤섞이면 한 요청의 답변에 다른 요청의 답변자가 붙은 것이다
+        assertThat(saved.getAnswer()).isIn("먼저 쓴 답변", "나중에 쓴 답변");
+        assertThat(saved.getAnsweredByAdminId())
+                .isEqualTo(saved.getAnswer().equals("먼저 쓴 답변") ? adminId : otherAdminId);
+        assertThat(saved.getResolvedAt()).isNotNull();
+    }
+
+    @Test
+    void 답변과_상태_전이가_동시에_와도_답변이_지워지지_않는다() throws Exception {
+        long inquiryId = seedInquiry(buyerId, InquiryType.ORDER_PAYMENT, "결제 문의", BASE_TIME);
+        long otherAdminId = createOnboardedUser("다른운영자", UserRole.ADMIN);
+
+        inParallel(
+                () -> mockMvc.perform(bearer(answerRequest(inquiryId, "처리했습니다."), adminToken)),
+                () -> mockMvc.perform(
+                        bearer(statusRequest(inquiryId, InquiryStatus.IN_PROGRESS), mintAccessToken(otherAdminId))));
+
+        // 전이가 먼저 커밋되면 답변이 그 뒤에 얹히고, 답변이 먼저면 전이가 409로 막힌다 — 어느 순서든 답변은 남는다
+        Inquiry saved = reload(inquiryId);
+        assertThat(saved.getStatus()).isEqualTo(InquiryStatus.DONE);
+        assertThat(saved.getAnswer()).isEqualTo("처리했습니다.");
+        assertThat(saved.getAnsweredByAdminId()).isEqualTo(adminId);
+        assertThat(saved.getResolvedAt()).isNotNull();
+    }
+
+    @Test
+    void 과거_문의는_이_문의보다_먼저_접수된_것만_준다() throws Exception {
+        long earlier = seedInquiry(buyerId, InquiryType.ACCOUNT, "먼저 낸 문의", BASE_TIME.minusDays(1));
+        long target = seedInquiry(buyerId, InquiryType.ORDER_PAYMENT, "기준 문의", BASE_TIME);
+        seedInquiry(buyerId, InquiryType.SERVICE_ETC, "나중에 낸 문의", BASE_TIME.plusDays(1));
+
+        mockMvc.perform(bearer(get(BASE + "/" + target), adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.previousInquiries.length()").value(1))
+                .andExpect(jsonPath("$.data.previousInquiries[0].inquiryId").value(earlier));
+    }
+
+    @Test
+    void 과거_문의는_나중_문의에_밀리지_않고_앞선_것부터_상한만큼_채운다() throws Exception {
+        long[] earlier = new long[6];
+        for (int i = 0; i < earlier.length; i++) {
+            earlier[i] = seedInquiry(buyerId, InquiryType.ACCOUNT, "앞선 문의 " + i, BASE_TIME.minusDays(10 - i));
+        }
+        long target = seedInquiry(buyerId, InquiryType.ORDER_PAYMENT, "기준 문의", BASE_TIME);
+        for (int i = 0; i < 3; i++) {
+            seedInquiry(buyerId, InquiryType.SERVICE_ETC, "나중 문의 " + i, BASE_TIME.plusDays(i + 1));
+        }
+
+        // 최신순 상한 5건 = 앞선 6건 중 뒤쪽 5건. 나중 문의가 한 자리도 차지하면 안 된다
+        mockMvc.perform(bearer(get(BASE + "/" + target), adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.previousInquiries.length()").value(5))
+                .andExpect(jsonPath("$.data.previousInquiries[0].inquiryId").value(earlier[5]))
+                .andExpect(jsonPath("$.data.previousInquiries[4].inquiryId").value(earlier[1]));
+    }
+
+    @Test
+    void 접수_시각이_같은_과거_문의는_id로_갈린다() throws Exception {
+        long sameTimeEarlier = seedInquiry(buyerId, InquiryType.ACCOUNT, "동시각 앞 문의", BASE_TIME);
+        long target = seedInquiry(buyerId, InquiryType.ORDER_PAYMENT, "기준 문의", BASE_TIME);
+        seedInquiry(buyerId, InquiryType.SERVICE_ETC, "동시각 뒤 문의", BASE_TIME);
+
+        mockMvc.perform(bearer(get(BASE + "/" + target), adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.previousInquiries.length()").value(1))
+                .andExpect(jsonPath("$.data.previousInquiries[0].inquiryId").value(sameTimeEarlier));
+    }
+
+    @Test
+    void DB_범위를_넘는_시각을_실은_커서도_400_90002_를_반환한다() throws Exception {
+        String crafted = Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(("ai:" + Long.MAX_VALUE + ":1").getBytes(StandardCharsets.UTF_8));
+
+        mockMvc.perform(bearer(get(BASE).param("cursor", crafted), adminToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value(90002));
+    }
+
+    @Test
     void 없는_문의의_답변_등록은_404_120005_를_반환한다() throws Exception {
         mockMvc.perform(bearer(answerRequest(999999L, "답변"), adminToken))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.errorCode").value(120005));
+    }
+
+    /** 두 요청을 같은 순간에 출발시키고 각 응답 상태코드를 모은다 — 잠금 없이 겹치는 경로를 드러낸다. */
+    private ConcurrentLinkedQueue<Integer> inParallel(Call first, Call second) throws Exception {
+        ConcurrentLinkedQueue<Integer> statuses = new ConcurrentLinkedQueue<>();
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(2);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        for (Call call : List.of(first, second)) {
+            pool.submit(() -> {
+                try {
+                    start.await();
+                    statuses.add(call.perform().andReturn().getResponse().getStatus());
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        start.countDown();
+        assertTrue(done.await(20, TimeUnit.SECONDS), "동시 요청이 시간 안에 끝나야 한다");
+        pool.shutdown();
+        return statuses;
+    }
+
+    @FunctionalInterface
+    private interface Call {
+        ResultActions perform() throws Exception;
     }
 
     /** 첫 페이지를 size만큼 받아 nextCursor를 꺼낸다 — 커서 형식을 테스트가 알지 않게 서버가 준 값만 쓴다. */

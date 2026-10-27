@@ -32,7 +32,18 @@ public class AdminInquiryService {
     private final AdminInquiryQueryPort adminInquiryQueryPort;
 
     public Inquiry getById(long inquiryId) {
-        Inquiry inquiry = inquiryRepository.findById(inquiryId);
+        return found(inquiryRepository.findById(inquiryId));
+    }
+
+    /**
+     * 쓰기 경로 전용 조회 — 행을 잠가 읽는다. 잠그지 않으면 두 운영자가 같은 RECEIVED 문의를 함께 읽고
+     * 각자 판정을 통과해, 늦게 커밋한 쪽이 앞선 답변·답변자·완료시각을 덮어쓴다(상태 전이는 답변을 null로 되돌린다).
+     */
+    public Inquiry getByIdForUpdate(long inquiryId) {
+        return found(inquiryRepository.findByIdForUpdate(inquiryId));
+    }
+
+    private Inquiry found(Inquiry inquiry) {
         if (inquiry == null) {
             throw new BusinessException(InquiryErrorCode.INQUIRY_NOT_FOUND, null, null);
         }
@@ -60,21 +71,25 @@ public class AdminInquiryService {
                 last -> AdminInquiryCursorCodec.encode(last.getCreatedAt(), last.getInquiryId()));
     }
 
-    /** 같은 작성자의 과거 문의 — 자기 행은 빼고 최신순 최대 {@value #PREVIOUS_INQUIRY_LIMIT}건. */
+    /**
+     * 같은 작성자가 이 문의보다 <b>먼저</b> 접수한 문의 — 최신순 최대 {@value #PREVIOUS_INQUIRY_LIMIT}건.
+     * 기준을 "자기 행 제외"가 아니라 "접수 시점 이전"으로 둔다 — 제외만 하면 나중에 들어온 문의가
+     * 과거 이력 자리를 차지해, 정작 앞선 문의가 상한에 밀려 안 보인다.
+     */
     public List<PreviousInquiryView> previousInquiriesOf(Inquiry inquiry) {
         return adminInquiryQueryPort.findPreviousByUserId(
-                inquiry.getUserId(), inquiry.getId(), PREVIOUS_INQUIRY_LIMIT);
+                inquiry.getUserId(), inquiry.getCreatedAt(), inquiry.getId(), PREVIOUS_INQUIRY_LIMIT);
     }
 
     /** 답변 등록 — 전이·답변자 기록은 애그리거트가 판정한다. 반환한 애그리거트가 이벤트를 들고 있다. */
     public Inquiry registerAnswer(AnswerInquiryCommand command, LocalDateTime answeredAt) {
-        Inquiry inquiry = getById(command.inquiryId());
+        Inquiry inquiry = getByIdForUpdate(command.inquiryId());
         inquiry.registerAnswer(command.adminId(), command.answer(), answeredAt);
         return inquiry;
     }
 
     public Inquiry changeStatus(ChangeInquiryStatusCommand command) {
-        Inquiry inquiry = getById(command.inquiryId());
+        Inquiry inquiry = getByIdForUpdate(command.inquiryId());
         inquiry.changeStatus(command.adminId(), command.targetStatus());
         return inquiry;
     }

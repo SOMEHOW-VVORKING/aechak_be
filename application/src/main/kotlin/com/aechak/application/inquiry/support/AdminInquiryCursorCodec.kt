@@ -20,6 +20,12 @@ object AdminInquiryCursorCodec {
     // DB DATETIME(6) 정밀도에 맞춰 마이크로초로 보존한다 — 밀리초로 깎으면 동시각 행을 건너뛴다.
     private val CURSOR_EPOCH: LocalDateTime = LocalDateTime.of(1970, 1, 1, 0, 0)
 
+    // MySQL DATETIME의 상한. 양수 검사만 하면 Long.MAX_VALUE 마이크로초도 통과하는데(LocalDateTime은 294247년까지 멀쩡하다)
+    // 그 시각을 조회로 흘려보내면 MySQL이 ERROR 1525(Incorrect DATETIME value)로 끊어 400이 아니라 500이 된다.
+    // 위조 커서는 코덱에서 거절하는 게 계약이다 — 범위를 여기서 좁힌다.
+    private val CURSOR_MAX: LocalDateTime = LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999_999_000)
+    private val MAX_MICROS: Long = ChronoUnit.MICROS.between(CURSOR_EPOCH, CURSOR_MAX)
+
     @JvmStatic
     fun encode(
         lastCreatedAt: LocalDateTime,
@@ -50,10 +56,13 @@ object AdminInquiryCursorCodec {
             invalidCursor()
         }
         return AdminInquiryAnchor(
-            lastCreatedAt = CURSOR_EPOCH.plus(fields[1].toPositiveLongOrInvalid(), ChronoUnit.MICROS),
+            lastCreatedAt = CURSOR_EPOCH.plus(fields[1].toMicrosOrInvalid(), ChronoUnit.MICROS),
             lastInquiryId = fields[2].toPositiveLongOrInvalid(),
         )
     }
+
+    /** 시각 필드는 양수인 것으로 끝나지 않는다 — DB가 담을 수 있는 범위까지 좁혀야 조회로 새지 않는다. */
+    private fun String.toMicrosOrInvalid(): Long = toLongOrNull()?.takeIf { it in 1..MAX_MICROS } ?: invalidCursor()
 
     private fun String.toPositiveLongOrInvalid(): Long = toLongOrNull()?.takeIf { it > 0 } ?: invalidCursor()
 
