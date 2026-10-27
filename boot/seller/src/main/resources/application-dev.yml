@@ -6,6 +6,12 @@ spring:
     url: ${SPRING_DATASOURCE_URL}           # RDS - 필수, 미존재 시 부팅 실패(fail-fast)
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
+    hikari:
+      # RDS 가 db.t4g.micro 라 max_connections 가 약 60 이다. 보트 넷이 각자 기본 10 을 잡고
+      # 롤링 배포에서 구형·신형 태스크가 겹치면 두 배가 되어 1040(Too many connections)이 난다.
+      # 셀러센터는 동시 사용자가 적다
+      maximum-pool-size: 4
+      minimum-idle: 1
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST}       # ElastiCache
