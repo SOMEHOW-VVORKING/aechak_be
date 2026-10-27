@@ -47,6 +47,13 @@ interface UserJpaRepository : JpaRepository<User, Long> {
 
     fun findByPublicId(publicId: String): User?
 
+    // 동시 제재·해제가 같은 회원 행을 두고 경쟁하면 마지막 커밋이 앞선 상태를 덮는다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.id = :id")
+    fun findByIdWithLock(
+        @Param("id") id: Long,
+    ): User?
+
     @Modifying
     @Query(
         "update User u " +
@@ -93,6 +100,8 @@ class UserRepositoryAdapter(
     private val jpaRepository: UserJpaRepository,
 ) : UserRepository {
     override fun findById(id: Long): User? = jpaRepository.findByIdOrNull(id)
+
+    override fun findByIdForUpdate(id: Long): User? = jpaRepository.findByIdWithLock(id)
 
     override fun findByPublicId(publicId: String): User? = jpaRepository.findByPublicId(publicId)
 

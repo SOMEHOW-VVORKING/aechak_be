@@ -30,7 +30,7 @@ class AdminMemberFacade(
             fetched = adminMemberService.findMemberPage(query).map { MemberSummaryResult.from(it, at) },
             size = query.size,
             totalCount = adminMemberService.countMembers(query),
-            encodeCursor = { MemberCursorCodec.encode(query.statusFilter, it.userId) },
+            encodeCursor = { MemberCursorCodec.encode(query, it.userId) },
         )
     }
 

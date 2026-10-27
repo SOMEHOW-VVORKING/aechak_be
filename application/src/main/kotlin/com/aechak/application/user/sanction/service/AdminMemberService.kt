@@ -19,6 +19,7 @@ import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserRole
 import com.aechak.domain.user.user.repository.UserRepository
 import org.springframework.stereotype.Service
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 /** 어드민 회원 관리 비즈니스 로직 보관함 — Facade에서만 호출된다. 전역 자원 접근이라 소유권 검증이 없다. */
@@ -107,8 +108,9 @@ class AdminMemberService(
         if (adminId == targetUserId) {
             throw BusinessException(UserErrorCode.SELF_SANCTION_NOT_ALLOWED)
         }
+        // 행을 잠그고 읽는다 — 두 운영자가 동시에 제재·해제하면 뒤 커밋이 앞 상태를 덮는다
         val target =
-            userRepository.findById(targetUserId)
+            userRepository.findByIdForUpdate(targetUserId)
                 ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
         // 관리자를 제재하면 운영 권한을 가진 계정이 차단 상태로 남는다. 강등을 먼저 하게 끊는다
         if (target.role == UserRole.ADMIN) {
@@ -119,8 +121,8 @@ class AdminMemberService(
 
     private fun toCondition(query: MemberSearchQuery): MemberPageCondition {
         val decoded = query.cursor?.let(MemberCursorCodec::decode)
-        // 필터를 바꾼 채 옛 커서를 보내면 두 집합이 한 목록에 섞인다 — 처음부터 다시 받는다
-        if (decoded != null && decoded.filter != query.statusFilter) {
+        // 상태·검색어·가입일 중 하나라도 바꾼 채 옛 커서를 보내면 두 집합이 섞이거나 사이 구간이 빠진다
+        if (decoded != null && decoded.filterDigest != MemberCursorCodec.digestOf(query)) {
             throw BusinessException(CommonErrorCode.INVALID_CURSOR)
         }
         return MemberPageCondition(
@@ -128,8 +130,13 @@ class AdminMemberService(
             nicknameKeyword = query.keyword,
             userIdKeyword = query.keyword?.toLongOrNull(),
             joinedFrom = query.joinedFrom?.atStartOfDay(),
-            // 반열림 구간 — 입력한 날짜의 하루치가 빠지지 않게 다음 날 0시를 상한으로 쓴다
-            joinedToExclusive = query.joinedTo?.plusDays(1)?.atStartOfDay(),
+            // 반열림 구간 — 입력한 날짜의 하루치가 빠지지 않게 다음 날 0시를 상한으로 쓴다.
+            // LocalDate.MAX는 다음 날이 없고 상한으로서 의미도 없어(모든 행이 그 이하) 조건에서 뺀다
+            joinedToExclusive =
+                query.joinedTo
+                    ?.takeIf { it < LocalDate.MAX }
+                    ?.plusDays(1)
+                    ?.atStartOfDay(),
             lastUserId = decoded?.lastUserId,
             limit = CursorPageSize.fetchLimit(query.size),
         )
