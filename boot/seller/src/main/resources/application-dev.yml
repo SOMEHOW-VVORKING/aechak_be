@@ -13,6 +13,18 @@ spring:
   jpa:
     hibernate:
       ddl-auto: none                        # 스키마 writer는 api 하나 — seller가 같이 update하면 경합한다
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS}   # 필수 — 없으면 검수 요청이 발행되지 않는다
+    # api와 같은 값으로 맞춘다. 생산자만 쓰고 소비자 설정은 두지 않는다.
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
 
 api:
   cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}       # 셀러센터 웹 오리진 (쉼표 구분)
@@ -36,3 +48,7 @@ sms:
 
 server:
   forward-headers-strategy: framework   # LB가 TLS를 종료해도 원 요청 스킴 기준으로 동작
+
+# AI 검수. 섀도 단계에서는 요청만 보내고 노출 상태는 바꾸지 않는다.
+inspection:
+  enabled: true

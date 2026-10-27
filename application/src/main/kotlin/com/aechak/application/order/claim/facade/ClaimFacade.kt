@@ -16,6 +16,7 @@ import com.aechak.application.order.claim.usecase.command.WithdrawClaimCommand
 import com.aechak.application.order.claim.usecase.query.SellerClaimMetricsQuery
 import com.aechak.application.order.claim.usecase.query.SellerClaimSearchQuery
 import com.aechak.application.order.claim.usecase.result.ClaimListResult
+import com.aechak.application.order.claim.usecase.result.ClaimReasonCatalogResult
 import com.aechak.application.order.claim.usecase.result.RequestClaimResult
 import com.aechak.application.order.claim.usecase.result.ReshipClaimResult
 import com.aechak.application.order.claim.usecase.result.SellerClaimDetailResult
@@ -46,6 +47,9 @@ class ClaimFacade(
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun requestClaim(command: RequestClaimCommand): RequestClaimResult = claimService.requestClaim(command)
+
+    /** 고정 어휘라 DB를 보지 않아 트랜잭션이 없다. */
+    override fun getClaimReasons(): ClaimReasonCatalogResult = ClaimReasonCatalogResult.of()
 
     @Transactional(readOnly = true)
     override fun getClaims(

@@ -14,6 +14,18 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # api와 같은 값으로 맞춘다. 생산자만 쓰고 소비자 설정은 두지 않는다.
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
 
 api:
   # 셀러센터 웹 dev 오리진
@@ -25,3 +37,7 @@ aechak:
     aes-keys:
       1: ${PII_AES_KEY_V1:dxeyFW4YgkgYreLe9IX7laeZPHaP3Eada2M9yuBCA+Q=}
     hmac-key: ${PII_HMAC_KEY:Jtk5KHlAG6nnDtIBDhqoDXIs7FovvRs0kOckZP6cl7k=}
+
+# AI 검수. 섀도 단계에서는 요청만 보내고 노출 상태는 바꾸지 않는다.
+inspection:
+  enabled: true
