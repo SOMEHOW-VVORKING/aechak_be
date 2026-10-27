@@ -112,6 +112,46 @@ class AdminClaimQueryIntegrationTest extends AdminClaimIntegrationTestBase {
     }
 
     @Test
+    void 재발송으로_종결된_교환은_작업_목록에서_빠진다() throws Exception {
+        var open = seedClaim();
+        var settled = seedClaim(ClaimType.EXCHANGE);
+        completeExchange(settled.claimPublicId());
+
+        // 교환은 환불이 없어 종결돼도 status=APPROVED·refundStatus=NONE이다 — 두 축만 보면 끝난 건이 큐에 영구히 남는다
+        mockMvc.perform(bearer(get(BASE), adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].claimPublicId").value(open.claimPublicId()));
+
+        mockMvc.perform(bearer(get(BASE + "?openOnly=false"), adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(2));
+
+        mockMvc.perform(bearer(get(BASE + "?status=APPROVED&openOnly=false"), adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].claimPublicId").value(settled.claimPublicId()))
+                .andExpect(jsonPath("$.data.items[0].interventionAllowed").value(false));
+    }
+
+    @Test
+    void 검색어의_LIKE_와일드카드는_글자로_본다() throws Exception {
+        seedClaim(ClaimType.CANCEL, 41L, "멍냥펫샵", seedBuyer("코코맘"));
+        var literal = seedClaim(ClaimType.CANCEL, 42L, "100%정직상회", seedBuyer("나비아빠"));
+
+        // %를 이스케이프하지 않으면 와일드카드로 해석돼 셀러명이 있는 전 건이 걸린다
+        mockMvc.perform(bearer(get(BASE).param("sellerKeyword", "%"), adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].claimPublicId").value(literal.claimPublicId()));
+
+        // _는 한 글자 와일드카드다 — 이스케이프하지 않으면 닉네임이 있는 전 건이 걸린다
+        mockMvc.perform(bearer(get(BASE).param("buyerKeyword", "_"), adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(0));
+    }
+
+    @Test
     void 셀러명과_구매자_닉네임으로_검색한다() throws Exception {
         var target = seedClaim(ClaimType.CANCEL, 31L, "멍냥펫샵", seedBuyer("코코맘"));
         seedClaim(ClaimType.CANCEL, 32L, "야옹상점", seedBuyer("나비아빠"));

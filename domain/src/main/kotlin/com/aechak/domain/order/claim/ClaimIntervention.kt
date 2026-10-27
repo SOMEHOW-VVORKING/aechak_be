@@ -32,7 +32,7 @@ import java.time.LocalDateTime
 @Table(
     name = "claim_interventions",
     uniqueConstraints = [
-        UniqueConstraint(name = "uk_claim_interventions_claim_id", columnNames = ["claim_id"]),
+        UniqueConstraint(name = ClaimIntervention.UK_CLAIM_ID, columnNames = ["claim_id"]),
     ],
     indexes = [
         Index(name = "ix_claim_interventions_admin", columnList = "admin_id, id"),
@@ -100,6 +100,9 @@ class ClaimIntervention protected constructor(
     val internalMemo: String? = internalMemo?.trim()?.takeIf { it.isNotEmpty() }?.take(INTERNAL_MEMO_MAX_LENGTH)
 
     companion object {
+        /** 겹친 개입을 DB에서 막는 제약 — 위반을 업무 예외로 옮기는 어댑터가 이름으로 식별한다. */
+        const val UK_CLAIM_ID = "uk_claim_interventions_claim_id"
+
         const val REASON_DETAIL_MAX_LENGTH = 500
 
         const val INTERNAL_MEMO_MAX_LENGTH = 300

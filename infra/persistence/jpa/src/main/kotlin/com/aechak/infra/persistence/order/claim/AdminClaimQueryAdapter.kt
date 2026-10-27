@@ -10,6 +10,7 @@ import com.aechak.domain.order.claim.QClaim
 import com.aechak.domain.order.claim.QClaimIntervention
 import com.aechak.domain.order.claim.QClaimItem
 import com.aechak.domain.order.claim.enums.ClaimStatus
+import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
 import com.aechak.domain.order.group.QOrderGroup
 import com.aechak.domain.order.order.QOrder
@@ -20,6 +21,7 @@ import com.aechak.domain.user.user.QUserProfile
 import com.querydsl.core.types.Expression
 import com.querydsl.core.types.Predicate
 import com.querydsl.core.types.Projections
+import com.querydsl.core.types.dsl.BooleanExpression
 import com.querydsl.jpa.impl.JPAQuery
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.springframework.stereotype.Repository
@@ -186,13 +188,14 @@ class AdminClaimQueryAdapter(
 
     private fun orderPublicIdEq(orderPublicId: String?): Predicate? = orderPublicId?.let { order.publicId.eq(it) }
 
+    // contains는 Querydsl이 상수의 %·_를 이스케이프해 글자로 넘긴다(JPQLTemplates: like {%1%} escape '!')
     private fun sellerNameContains(keyword: String?): Predicate? = keyword?.let { order.sellerNameSnapshot.contains(it) }
 
     private fun buyerNicknameContains(keyword: String?): Predicate? = keyword?.let { userProfile.nickname.contains(it) }
 
     /**
      * 운영자가 지금 개입할 수 있는 건으로 좁힌다. 상태 집합은 전이표에서 뽑은 것을 그대로 쓰고
-     * 환불 축은 여기서 더한다 — 애그리거트 판정(Claim.isAdminOverridable)과 같은 두 축이어야
+     * 환불·교환 종결 축은 여기서 더한다 — 애그리거트 판정(Claim.isAdminOverridable)과 같은 세 축이어야
      * 목록이 개입 가능으로 보여 준 건을 실행 경로가 거절하지 않는다.
      */
     private fun openOnly(openOnly: Boolean): Predicate? =
@@ -202,7 +205,15 @@ class AdminClaimQueryAdapter(
             claim.status
                 .`in`(ClaimStatus.ADMIN_OVERRIDABLE)
                 .and(claim.refundStatus.isNull.or(claim.refundStatus.eq(RefundStatus.NONE)))
+                .and(exchangeSettled().not())
         }
+
+    /** Claim.isExchangeSettled와 같은 조건 — 교환은 재발송으로 끝나도 상태가 APPROVED에 머문다. */
+    private fun exchangeSettled(): BooleanExpression =
+        claim.claimType
+            .eq(ClaimType.EXCHANGE)
+            .and(claim.status.eq(ClaimStatus.APPROVED))
+            .and(claim.resolvedAt.isNotNull)
 
     /** 키셋 부등호는 정렬 방향을 따라간다 — 뒤집히면 이미 본 구간을 다시 읽거나 건너뛴다. */
     private fun cursorAfter(condition: AdminClaimCondition): Predicate? =

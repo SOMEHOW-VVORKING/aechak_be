@@ -235,7 +235,7 @@ class ClaimInterventionTest {
     }
 
     @Test
-    fun `클레임 불가 판정은 부담 주체를 남기지 않는다`() {
+    fun `클레임 불가 판정은 부담 주체를 명시해도 남기지 않는다`() {
         val claim = collectionClaim(ClaimType.RETURN)
 
         val intervention =
@@ -244,13 +244,45 @@ class ClaimInterventionTest {
                 faultDecision = ClaimFaultDecision.CLAIM_DISMISSED,
                 reason = ClaimInterventionReason.BUYER_ABUSE,
                 reasonDetail = null,
-                returnCostBearer = null,
+                // 명시값을 준다 — 생략한 입력만 보면 판정 기본값이 null인 덕에 통과하고, 덮어쓰기 구멍은 지나간다
+                returnCostBearer = ReturnCostBearer.BUYER,
                 internalMemo = null,
             )
 
         assertNull(claim.returnCostBearer, "성립하지 않은 클레임에 반품비 부담 주체가 생기면 정산이 없는 반품비를 청구한다")
-        assertNull(intervention.returnCostBearer)
+        assertNull(intervention.returnCostBearer, "기록이 claimAccepted=false와 부담 주체를 함께 들면 판정이 모순된다")
         assertFalse(intervention.faultDecision.claimAccepted)
+    }
+
+    @Test
+    fun `재발송으로 종결된 교환은 개입할 수 없다`() {
+        val settled = settledExchangeClaim()
+
+        assertFalse(
+            settled.isAdminOverridable(),
+            "교환은 환불이 없어 종결돼도 상태가 APPROVED에 머문다 — 상태·환불 두 축만 보면 끝난 건이 작업 목록에 남는다",
+        )
+        assertTrue(settled.isExchangeSettled())
+        val resolvedAt = settled.resolvedAt
+
+        assertEquals(OrderErrorCode.CLAIM_NOT_OVERRIDABLE, assertFailsWith<BusinessException> { intervene(settled) }.errorCode)
+        assertEquals(ClaimStatus.APPROVED, settled.status)
+        assertEquals(resolvedAt, settled.resolvedAt, "개입이 종결 시각을 덮으면 재발송이 언제 끝났는지가 사라진다")
+    }
+
+    @Test
+    fun `재발송 전 교환은 개입할 수 있다`() {
+        val collected = collectionClaim(ClaimType.EXCHANGE).apply { approveBySeller(ReturnCostBearer.SELLER) }
+        collected.startCollection()
+        collected.completeCollection()
+
+        assertFalse(collected.isExchangeSettled(), "회수만 끝난 교환은 아직 재발송이 남아 열린 분쟁이다")
+        assertTrue(collected.isAdminOverridable())
+
+        val intervention = intervene(collected)
+
+        assertEquals(ClaimStatus.ADMIN_OVERRIDDEN, collected.status)
+        assertEquals(ClaimStatus.APPROVED, intervention.previousStatus)
     }
 
     @Test
@@ -300,6 +332,15 @@ class ClaimInterventionTest {
             returnCostBearer = null,
             internalMemo = null,
         )
+
+    /** 재발송까지 끝난 교환 — 상태는 APPROVED, 환불 축은 NONE에 그대로 머물고 종결 시각만 찍힌다. */
+    private fun settledExchangeClaim(): Claim {
+        val claim = collectionClaim(ClaimType.EXCHANGE).apply { approveBySeller(ReturnCostBearer.SELLER) }
+        claim.startCollection()
+        claim.completeCollection()
+        claim.completeExchange()
+        return claim
+    }
 
     private fun collectionClaim(claimType: ClaimType): Claim {
         val order = order(OrderStatus.DELIVERED)

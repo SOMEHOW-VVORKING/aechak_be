@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.aechak.admin.support.AdminClaimIntegrationTestBase;
 import com.aechak.domain.order.claim.Claim;
 import com.aechak.domain.order.claim.ClaimItem;
+import com.aechak.domain.order.claim.enums.ClaimFaultDecision;
+import com.aechak.domain.order.claim.enums.ClaimInterventionReason;
 import com.aechak.domain.order.claim.enums.ClaimReasonCode;
 import com.aechak.domain.order.claim.enums.ClaimStatus;
 import com.aechak.domain.order.claim.enums.ClaimType;
@@ -144,6 +146,42 @@ class AdminClaimInterventionIntegrationTest extends AdminClaimIntegrationTestBas
                 .isEqualTo(1);
     }
 
+    /**
+     * 겹친 두 개입은 둘 다 같은 클레임 상태를 읽어 상태 판정을 통과한다. 기록을 먼저 심고 클레임 행은
+     * 그대로 둬 그 순간을 그대로 만든다 — 늦은 쪽이 기록 UNIQUE에 걸릴 때 500이 아니라 409가 나가야 한다.
+     */
+    @Test
+    void 겹친_개입은_기록_UNIQUE가_막고_409로_나간다() throws Exception {
+        var seeded = seedClaim(ClaimType.RETURN);
+        rejectBySeller(seeded.claimPublicId(), "확인되지 않습니다");
+        seedCompetingInterventionRecord(seeded.claimPublicId());
+
+        mockMvc.perform(intervention(seeded.claimPublicId(), sellerFaultBody(), adminToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(50414));
+
+        Claim claim = readClaim(seeded.claimPublicId());
+        assertThat(claim.getStatus()).as("기록이 막힌 요청의 클레임 변경까지 함께 되돌아가야 한다").isEqualTo(ClaimStatus.REJECTED);
+        assertThat(claim.getAdminReason()).isNull();
+        assertThat(countInterventions(seeded.claimId())).isEqualTo(1);
+    }
+
+    /** 클레임 행은 건드리지 않고 개입 기록 1행만 심는다 — 분리한 복사본으로 뒤집어 그 기록만 꺼낸다. */
+    private void seedCompetingInterventionRecord(String claimPublicId) {
+        tx.executeWithoutResult(status -> {
+            Claim detached = loadClaim(claimPublicId);
+            em.detach(detached);
+            em.persist(detached.overrideByAdmin(
+                    9_999L,
+                    ClaimFaultDecision.SELLER_FAULT,
+                    ClaimInterventionReason.SELLER_UNRESPONSIVE,
+                    null,
+                    null,
+                    null));
+            em.flush();
+        });
+    }
+
     @Test
     void 뒤집으려는_품목을_다른_클레임이_이미_붙잡고_있으면_거절한다() throws Exception {
         var seeded = seedClaim(ClaimType.RETURN);
@@ -158,6 +196,27 @@ class AdminClaimInterventionIntegrationTest extends AdminClaimIntegrationTestBas
         assertThat(readClaim(seeded.claimPublicId()).getStatus()).isEqualTo(ClaimStatus.REJECTED);
         assertThat(countInterventions(seeded.claimId())).isZero();
         assertThat(followUpId).isPositive();
+    }
+
+    @Test
+    void 재발송으로_종결된_교환은_개입할_수_없고_종결_시각도_그대로다() throws Exception {
+        var seeded = seedClaim(ClaimType.EXCHANGE);
+        completeExchange(seeded.claimPublicId());
+        LocalDateTime reshippedAt = readClaim(seeded.claimPublicId()).getResolvedAt();
+
+        mockMvc.perform(intervention(seeded.claimPublicId(), sellerFaultBody(), adminToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(50414));
+
+        Claim claim = readClaim(seeded.claimPublicId());
+        assertThat(claim.getStatus()).isEqualTo(ClaimStatus.APPROVED);
+        assertThat(claim.getResolvedAt())
+                .as("개입이 종결 시각을 덮으면 재발송이 언제 끝났는지가 사라진다")
+                .isEqualTo(reshippedAt);
+        assertThat(claim.getReturnCostBearer())
+                .as("셀러가 승인하며 정한 부담 주체를 끝난 건에서 바꾸면 정산 근거가 흔들린다")
+                .isEqualTo(ReturnCostBearer.SELLER);
+        assertThat(countInterventions(seeded.claimId())).isZero();
     }
 
     @Test
@@ -179,20 +238,24 @@ class AdminClaimInterventionIntegrationTest extends AdminClaimIntegrationTestBas
     }
 
     @Test
-    void 클레임_불가_판정은_부담_주체를_남기지_않는다() throws Exception {
+    void 클레임_불가_판정은_부담_주체를_명시해도_남기지_않는다() throws Exception {
         var seeded = seedClaim(ClaimType.RETURN);
 
+        // 부담 주체를 명시한다 — 생략한 입력만 보면 판정 기본값이 비어 있는 덕에 통과하고 덮어쓰기 구멍을 지나간다
         mockMvc.perform(intervention(
                         seeded.claimPublicId(),
                         """
-                        {"faultDecision":"CLAIM_DISMISSED","reason":"BUYER_ABUSE"}
+                        {"faultDecision":"CLAIM_DISMISSED","reason":"BUYER_ABUSE","returnCostBearer":"BUYER"}
                         """,
                         adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.intervention.claimAccepted").value(false))
-                .andExpect(jsonPath("$.data.returnCostBearer").doesNotExist());
+                .andExpect(jsonPath("$.data.returnCostBearer").doesNotExist())
+                .andExpect(jsonPath("$.data.intervention.returnCostBearer").doesNotExist());
 
-        assertThat(readClaim(seeded.claimPublicId()).getReturnCostBearer()).isNull();
+        assertThat(readClaim(seeded.claimPublicId()).getReturnCostBearer())
+                .as("성립하지 않은 클레임에 부담 주체가 남으면 정산 없는 반품비를 청구한다")
+                .isNull();
     }
 
     @Test

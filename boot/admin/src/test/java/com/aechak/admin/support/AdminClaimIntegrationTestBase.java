@@ -158,6 +158,20 @@ public abstract class AdminClaimIntegrationTestBase extends IntegrationTestBase 
         tx.executeWithoutResult(status -> loadClaim(claimPublicId).withdrawByBuyer());
     }
 
+    /**
+     * 교환을 재발송까지 끝낸다 — 환불이 없는 유형이라 종결돼도 상태는 APPROVED, 환불 축은 NONE에 머물고
+     * 종결 시각만 찍힌다. 상태·환불 두 축만 보는 판정이 이 건을 "열린 분쟁"으로 읽는지 보는 데 쓴다.
+     */
+    protected void completeExchange(String claimPublicId) {
+        tx.executeWithoutResult(status -> {
+            Claim claim = loadClaim(claimPublicId);
+            claim.approveBySeller(ReturnCostBearer.SELLER);
+            claim.startCollection();
+            claim.completeCollection();
+            claim.completeExchange();
+        });
+    }
+
     /** 환불 집행을 선점만 해 둔다 — 돈이 움직이기 시작한 건을 만든다. */
     protected void markRefundRequested(String claimPublicId) {
         tx.executeWithoutResult(status -> loadClaim(claimPublicId).markRefundRequested());

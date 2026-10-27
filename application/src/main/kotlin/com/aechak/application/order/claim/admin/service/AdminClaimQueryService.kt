@@ -103,15 +103,20 @@ class AdminClaimQueryService(
 
     /**
      * 지금 개입할 수 있는 건인지. 상태 집합은 전이표에서 뽑은 것(ClaimStatus.ADMIN_OVERRIDABLE)을,
-     * 환불 축은 애그리거트 판정(Claim.isAdminOverridable)과 같은 조건을 쓴다 — 읽기 모델에는
-     * 애그리거트가 없어 두 축을 여기서 다시 조합한다.
+     * 환불·교환 종결 축은 애그리거트 판정(Claim.isAdminOverridable)과 같은 조건을 쓴다 —
+     * 읽기 모델에는 애그리거트가 없어 세 축을 여기서 다시 조합한다.
      *
      * 셀러 거부(REJECTED)를 뒤집을 때 대상 품목이 이미 다른 클레임에 잡혀 있으면 실행 경로가 거절하는데,
      * 그 판정은 품목 단위 질의라 목록에서는 보지 않는다 — 목록의 이 값은 "열려 있다"까지다.
      */
     private fun interventionAllowed(view: AdminClaimView): Boolean =
         view.status in ClaimStatus.ADMIN_OVERRIDABLE &&
-            (view.refundStatus == null || view.refundStatus == RefundStatus.NONE)
+            (view.refundStatus == null || view.refundStatus == RefundStatus.NONE) &&
+            !exchangeSettled(view)
+
+    /** Claim.isExchangeSettled와 같은 조건 — 교환은 종결돼도 상태·환불 축이 움직이지 않는다. */
+    private fun exchangeSettled(view: AdminClaimView): Boolean =
+        view.claimType == ClaimType.EXCHANGE && view.status == ClaimStatus.APPROVED && view.resolvedAt != null
 
     /** 환불 예정액 = 저장된 품목 환불액 합 + 배송비 환불액. 셀러 목록과 같은 계산 경로다. */
     private fun refundAmountOf(
