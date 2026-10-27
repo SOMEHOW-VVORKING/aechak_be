@@ -2,6 +2,8 @@ package com.aechak.domain.order.claim
 
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
+import com.aechak.domain.order.claim.enums.ClaimFaultDecision
+import com.aechak.domain.order.claim.enums.ClaimInterventionReason
 import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimSettlementStatus
 import com.aechak.domain.order.claim.enums.ClaimStatus
@@ -173,6 +175,69 @@ class Claim protected constructor(
         transitionTo(ClaimStatus.WITHDRAWN)
         resolvedAt = LocalDateTime.now()
     }
+
+    /**
+     * 운영자 개입 — 셀러 처리를 덮고 분쟁을 종결하며, 그 사실을 담은 개입 기록을 함께 낸다.
+     * 셀러가 거부한 건도 이 경로로 뒤집힌다.
+     *
+     * 기록을 반환값으로 묶은 이유: 뒤집기와 기록이 따로면 "개입했는데 기록이 없다"가 호출 순서
+     * 실수 하나로 생기고, 그 클레임은 운영자가 종결시켰다는 상태값만 남아 분쟁 근거가 되지 못한다.
+     *
+     * **돈은 움직이지 않는다.** 환불이 한 번이라도 움직인 건은 [isAdminOverridable]이 받지 않고,
+     * 종결 상태(ADMIN_OVERRIDDEN)는 환불 집행 스캔 조건(APPROVED + RefundStatus.NONE)에서 벗어나
+     * 뒤집은 뒤에도 집행이 걸리지 않는다. 결제 취소·환불액 재계산은 이 경로의 관심사가 아니다.
+     *
+     * 정하는 것은 반품비 부담 주체다 — 운영자가 명시하지 않으면 판정의 기본값을 쓰고,
+     * 취소 클레임은 반품 발송이 없어 셀러 승인 경로와 같이 비워 둔다.
+     */
+    fun overrideByAdmin(
+        adminId: Long,
+        faultDecision: ClaimFaultDecision,
+        reason: ClaimInterventionReason,
+        reasonDetail: String?,
+        returnCostBearer: ReturnCostBearer?,
+        internalMemo: String?,
+    ): ClaimIntervention {
+        if (!reason.isSelectableFor(faultDecision)) {
+            throw BusinessException(OrderErrorCode.CLAIM_INTERVENTION_REASON_NOT_SELECTABLE)
+        }
+        if (reason.requiresDetail() && reasonDetail.isNullOrBlank()) {
+            throw BusinessException(OrderErrorCode.CLAIM_INTERVENTION_REASON_DETAIL_REQUIRED)
+        }
+        if (!isAdminOverridable()) {
+            throw BusinessException(OrderErrorCode.CLAIM_NOT_OVERRIDABLE)
+        }
+        val previousStatus = status
+        val previousSellerApprovalStatus = sellerApprovalStatus
+        val previousResolvedAt = resolvedAt
+        transitionTo(ClaimStatus.ADMIN_OVERRIDDEN)
+        // 구조화된 판정은 개입 기록(claim_interventions)이 들고, 이 칼럼은 그 기록에서 뜬 사람이 읽는 문장이다
+        adminReason = reasonDetail?.trim()?.takeIf { it.isNotEmpty() }?.take(REASON_MAX_LENGTH) ?: reason.label
+        this.returnCostBearer =
+            if (claimType == ClaimType.CANCEL) null else returnCostBearer ?: faultDecision.defaultReturnCostBearer
+        resolvedAt = LocalDateTime.now()
+        return ClaimIntervention.record(
+            claim = this,
+            adminId = adminId,
+            faultDecision = faultDecision,
+            reason = reason,
+            reasonDetail = reasonDetail,
+            previousStatus = previousStatus,
+            previousSellerApprovalStatus = previousSellerApprovalStatus,
+            previousResolvedAt = previousResolvedAt,
+            internalMemo = internalMemo,
+        )
+    }
+
+    /**
+     * 운영자가 개입할 수 있는지 — 상태 전이가 열려 있고 환불이 아직 한 번도 움직이지 않은 건만.
+     *
+     * 환불 축을 따로 보는 이유: 개입은 돈을 건드리지 않으므로, 이미 집행됐거나(DONE) 집행 중이거나
+     * (REQUESTED) 실패로 멈춘(REFUND_FAILED) 건을 종결시키면 돌려줄 돈이 남은 채로 분쟁이 닫힌다.
+     * 환불 실패 건의 운영 경로는 개입이 아니라 재집행([retryRefund])이다.
+     */
+    fun isAdminOverridable(): Boolean =
+        status in ClaimStatus.ADMIN_OVERRIDABLE && (refundStatus == null || refundStatus == RefundStatus.NONE)
 
     /**
      * 셀러 운영 메모 덮어쓰기. 공백만 보내면 삭제로 본다.
