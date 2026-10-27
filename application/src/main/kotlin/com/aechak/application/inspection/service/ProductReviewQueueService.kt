@@ -36,20 +36,28 @@ class ProductReviewQueueService(
      * 관리자가 봐야 함, 열린 행 있음 -> 그 행의 시각과 상품명만 갱신함
      * 관리자가 안 봐도 됨, 열린 행 있음 -> SUPERSEDED로 닫음
      *
-     * [modelVerified]가 false인 통과는 관리자가 봐야 하는 쪽으로 간다. 증거 없는 통과로 열린
-     * 행을 닫으면 사람이 봐야 할 상품이 조용히 큐에서 사라진다.
+     * [inspectionId]는 이 판정을 실은 검수다. 상품 행을 잠근 뒤에 그것이 아직 그 상품의 최신
+     * 검수인지 다시 보는 데 쓴다. 내용 지문으로 대조하지 않는 이유는 내용이 과거 값으로
+     * 되돌아오면 같은 지문의 검수가 둘 있을 수 있기 때문이다.
      *
-     * 큐 등재는 노출 게이트 스위치를 보지 않는다. 상품이 없을 때만 null이 와서 돌아간다 —
-     * 스위치가 등재까지 끄면 꺼진 환경에 사람이 볼 목록이 영구히 비고 이의 자격도 안 열린다.
+     * 큐 등재는 노출 게이트 스위치를 보지 않는다. 상품이 없거나 최신 판정이 아닐 때만 null이
+     * 와서 돌아간다 — 스위치가 등재까지 끄면 꺼진 환경에 사람이 볼 목록이 영구히 비고 이의
+     * 자격도 안 열린다.
      */
     fun applyJudgment(
         productId: Long,
+        inspectionId: Long,
         judgment: InspectionJudgment,
-        modelVerified: Boolean,
         judgedAt: LocalDateTime,
         contentHash: String?,
     ) {
-        val outcome = productGate.applyJudgment(productId, judgment, modelVerified) ?: return
+        val outcome =
+            productGate.applyJudgment(
+                productId,
+                judgment,
+                { isLatestJudgment(productId, inspectionId) },
+                { isAdminRejected(productId) },
+            ) ?: return
         val pending = reviewQueue.findPendingByProductIdForUpdate(productId)
 
         when {
@@ -160,8 +168,9 @@ class ProductReviewQueueService(
     /**
      * 열린 행이 없는 접수는 행을 새로 엶. 자격은 관리자 반려뿐임.
      *
-     * 상품의 PENDING은 "첫 판정 대기"와 "사람 확인 대기"를 겸하고 둘을 가르는 것이 열린 행이라,
-     * 노출 상태만 보고 받으면 등록 직후 모든 상품이 이의를 받게 됨.
+     * AI 반려는 같은 트랜잭션에서 행을 열기 때문에 이 길로 오지 않음. 여기로 오는 것은
+     * 관리자가 반려해 그 행이 이미 닫힌 경우임. 노출 상태만 보고 받으면 AI가 반려한 상품이
+     * 열린 행 없이도 새 행을 얻어, 관리자가 한 번도 보지 않은 반려에 이의가 붙음.
      *
      * 새 행의 시각은 가장 최근 검수의 판정 시각임. 그 칼럼의 뜻이 "행을 열었거나 다시 연
      * 판정의 시각"이라서, 접수 시각으로 채우면 관리자 목록의 정렬 기준이 경로마다 갈림.
@@ -192,6 +201,14 @@ class ProductReviewQueueService(
     fun getReviewTarget(productPublicId: String): ReviewTargetProductView =
         reviewQueueQuery.findReviewTarget(productPublicId)
             ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+
+    private fun isLatestJudgment(
+        productId: Long,
+        inspectionId: Long,
+    ): Boolean = inspectionQuery.findLatestProductInspection(productId)?.inspectionId == inspectionId
+
+    private fun isAdminRejected(productId: Long): Boolean =
+        reviewQueue.findLatestAdminDecisionByProductId(productId)?.status == ReviewQueueStatus.REJECTED
 
     // 상품 전이를 먼저 했어도 여기서 던지면 트랜잭션이 함께 롤백됨
     private fun getPending(productId: Long): ProductReviewQueueItem =

@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import tools.jackson.databind.ObjectMapper
 
@@ -34,8 +35,20 @@ class ContentVerdictConsumer(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    /**
+     * 격리 수준을 여기서 선언한다.
+     *
+     * 트랜잭션을 여는 쪽이 이 메서드다. 판정 적용에도 같은 선언이 있지만 그쪽은 전파 REQUIRED로
+     * 합류하는 자리라서, 합류하는 쪽의 격리 선언은 예외도 없이 조용히 무시된다. 바깥을 기본
+     * 격리로 두면 판정 적용이 기대하는 것 둘이 운영에서만 성립하지 않는다 — 상품 행을 잠근 뒤에
+     * 도는 비잠금 조회가 최신 커밋을 읽는 것, 그리고 잠금 조회가 비유일 인덱스의 간극을 쥐지
+     * 않는 것이다.
+     *
+     * 트랜잭션을 가르지 않는 이유는 위에 적은 멱등 표시다. 표시와 적용이 함께 커밋돼야 하고,
+     * 갈라 두면 적용이 실패했는데 표시만 남아 판정이 영구히 사라진다.
+     */
     @KafkaListener(topics = [Topics.VERDICT], groupId = GROUP, concurrency = CONCURRENCY)
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     fun onMessage(value: String) {
         val envelope = objectMapper.readValue(value, Envelope::class.java)
         if (envelope.eventType != EVENT_TYPE) {

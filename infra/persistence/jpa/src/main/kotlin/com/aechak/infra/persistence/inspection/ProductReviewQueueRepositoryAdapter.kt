@@ -52,6 +52,12 @@ interface ProductReviewQueueJpaRepository : JpaRepository<ProductReviewQueueItem
         targetId: Long,
         status: ReviewQueueStatus,
     ): ProductReviewQueueItem?
+
+    fun findFirstByTargetTypeAndTargetIdAndStatusInOrderByIdDesc(
+        targetType: InspectionTargetType,
+        targetId: Long,
+        statuses: Collection<ReviewQueueStatus>,
+    ): ProductReviewQueueItem?
 }
 
 @Repository
@@ -97,4 +103,11 @@ class ProductReviewQueueRepositoryAdapter(
                 productId,
                 ReviewQueueStatus.REJECTED,
             )?.resolvedAt
+
+    override fun findLatestAdminDecisionByProductId(productId: Long): ProductReviewQueueItem? =
+        jpaRepository.findFirstByTargetTypeAndTargetIdAndStatusInOrderByIdDesc(
+            InspectionTargetType.PRODUCT,
+            productId,
+            listOf(ReviewQueueStatus.APPROVED, ReviewQueueStatus.REJECTED),
+        )
 }

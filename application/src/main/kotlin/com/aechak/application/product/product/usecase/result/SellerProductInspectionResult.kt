@@ -32,7 +32,7 @@ data class SellerProductInspectionResult(
     val reasonCode: String?,
     val reasonSummary: String?,
     val sellerNotice: String?,
-    /** [inspectionStatus]가 REJECTED일 때만 채움 */
+    /** 관리자가 반려한 상품일 때만 채움. AI가 반려했으면 null이고 사유는 [reasonSummary]와 [sellerNotice]에 있음 */
     val rejectReason: String?,
     /** 이의를 접수한 시각. null이면 지금 걸린 것에 이의가 없다 */
     val appealedAt: LocalDateTime?,
@@ -54,18 +54,18 @@ data class SellerProductInspectionResult(
             product: Product,
             snapshot: InspectionSnapshot?,
             openReview: OpenProductReviewSnapshot?,
-            latestRejectReason: String?,
+            adminRejectReason: String?,
         ): SellerProductInspectionResult =
             SellerProductInspectionResult(
                 productId = product.publicId,
                 inspectionStatus = product.inspectionStatus,
-                progressStep = progressStepOf(product.inspectionStatus, snapshot?.processingState, openReview != null),
+                progressStep = progressStepOf(product.inspectionStatus, snapshot, openReview),
                 processingState = snapshot?.processingState,
                 judgment = snapshot?.judgment,
                 reasonCode = snapshot?.reasonCode,
                 reasonSummary = snapshot?.reasonSummary,
                 sellerNotice = snapshot?.sellerNotice,
-                rejectReason = latestRejectReason.takeIf { product.inspectionStatus == InspectionStatus.REJECTED },
+                rejectReason = adminRejectReason.takeIf { product.inspectionStatus == InspectionStatus.REJECTED },
                 appealedAt = openReview?.appealedAt,
                 appealReason = openReview?.appealReason,
                 appealCleared = openReview?.appealCleared == true,
@@ -73,16 +73,19 @@ data class SellerProductInspectionResult(
                 settledAt = snapshot?.settledAt,
             )
 
-        /** 진행 중인 검수, 관리자 검토 큐, 상품 상태 순으로 봄. FE는 큐를 볼 수 없어 여기서 계산함 */
+        /**
+         * 진행 중인 검수, 관리자 검토 큐, 상품 상태 순으로 봄. FE는 큐를 볼 수 없어 여기서 계산함.
+         * 위반 판정으로 열린 행은 AI 반려라 셀러에게 반려로 보임. 관리자 확인은 관리자가 반려한 상품을 고쳐 통과했을 때뿐임
+         */
         private fun progressStepOf(
             inspectionStatus: InspectionStatus,
-            processingState: InspectionProcessingState?,
-            awaitingAdminReview: Boolean,
+            snapshot: InspectionSnapshot?,
+            openReview: OpenProductReviewSnapshot?,
         ): InspectionProgressStep =
             when {
-                processingState == InspectionProcessingState.QUEUED -> InspectionProgressStep.REQUESTED
-                processingState == InspectionProcessingState.IN_FLIGHT -> InspectionProgressStep.AI_REVIEWING
-                awaitingAdminReview -> InspectionProgressStep.ADMIN_REVIEWING
+                snapshot?.processingState == InspectionProcessingState.QUEUED -> InspectionProgressStep.REQUESTED
+                snapshot?.processingState == InspectionProcessingState.IN_FLIGHT -> InspectionProgressStep.AI_REVIEWING
+                openReview != null && snapshot?.judgment == InspectionJudgment.PASS -> InspectionProgressStep.ADMIN_REVIEWING
                 inspectionStatus == InspectionStatus.APPROVED -> InspectionProgressStep.APPROVED
                 inspectionStatus == InspectionStatus.REJECTED -> InspectionProgressStep.REJECTED
                 else -> InspectionProgressStep.REQUESTED
