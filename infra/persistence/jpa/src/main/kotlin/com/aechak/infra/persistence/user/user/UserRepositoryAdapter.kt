@@ -43,6 +43,8 @@ interface UserJpaRepository : JpaRepository<User, Long> {
 
     fun findByPhoneHmac(phoneHmac: ByteArray): User?
 
+    fun findByPublicId(publicId: String): User?
+
     @Modifying
     @Query(
         "update User u " +
@@ -89,6 +91,8 @@ class UserRepositoryAdapter(
     private val jpaRepository: UserJpaRepository,
 ) : UserRepository {
     override fun findById(id: Long): User? = jpaRepository.findByIdOrNull(id)
+
+    override fun findByPublicId(publicId: String): User? = jpaRepository.findByPublicId(publicId)
 
     override fun save(user: User): User = jpaRepository.save(user)
 

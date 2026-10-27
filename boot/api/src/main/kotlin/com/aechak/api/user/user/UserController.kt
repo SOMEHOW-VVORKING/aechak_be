@@ -15,6 +15,7 @@ import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 /**
@@ -81,6 +83,7 @@ class UserController(
 
     /** 약관 동의 제출 — 온보딩 전용(PENDING). */
     @PostMapping("/me/consents")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun submitConsents(
         @Valid @RequestBody request: SubmitConsentsRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
@@ -100,6 +103,7 @@ class UserController(
 
     /** 회원 탈퇴 */
     @DeleteMapping("/me")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun withdraw(
         @AuthenticationPrincipal principal: AuthPrincipal,
         request: HttpServletRequest,

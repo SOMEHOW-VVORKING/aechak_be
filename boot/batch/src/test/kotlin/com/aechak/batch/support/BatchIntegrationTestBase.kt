@@ -3,6 +3,7 @@ package com.aechak.batch.support
 import com.aechak.api.support.DatabaseCleaner
 import com.aechak.api.support.FakePaymentGateway
 import com.aechak.api.support.IntegrationTestConfig
+import com.aechak.api.support.SettlementFeePolicyFixture
 import jakarta.persistence.EntityManager
 import jakarta.persistence.PersistenceContext
 import org.junit.jupiter.api.BeforeEach
@@ -40,6 +41,18 @@ abstract class BatchIntegrationTestBase {
     fun resetState() {
         cleaner.truncateAll()
         paymentGateway.clear()
+    }
+
+    /**
+     * 구매확정을 태우는 배치가 요구하는 전역 수수료율 정책 1행을 심는다.
+     * 배치는 Flyway를 들지 않고 매 테스트 전에 테이블을 비우므로 요율 행이 남아 있지 않다 —
+     * 확정이 정산 원장을 만들 때 요율 정책을 찾지 못하면 그 건의 확정 자체가 되돌아간다.
+     */
+    protected fun seedGlobalSettlementFeePolicy() {
+        tx.execute {
+            em.persist(SettlementFeePolicyFixture.global())
+            em.flush()
+        }
     }
 
     companion object {

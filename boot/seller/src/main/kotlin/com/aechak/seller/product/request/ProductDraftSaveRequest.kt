@@ -4,6 +4,7 @@ import com.aechak.application.product.draft.usecase.command.SaveProductDraftComm
 import com.aechak.domain.product.draft.ProductDraft
 import com.aechak.domain.product.option.OptionValue
 import com.aechak.seller.product.support.ProductDraftPayload
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.Size
@@ -38,10 +39,12 @@ data class ProductDraftSaveRequest(
     val optionCombinations: List<ProductDraftPayload.OptionCombinationItem>? = null,
 ) {
     @get:AssertTrue(message = "이미지 키는 ${ProductDraft.IMAGE_KEY_MAX}자 이하여야 합니다.")
+    @get:Schema(hidden = true)
     val imageKeysWellFormed: Boolean
         get() = (additionalImageKeys.orEmpty() + detailImageKeys.orEmpty()).all { it.length <= ProductDraft.IMAGE_KEY_MAX }
 
     @get:AssertTrue(message = "옵션값은 ${OptionValue.NAME_MAX}자 이하여야 합니다.")
+    @get:Schema(hidden = true)
     val optionValuesWellFormed: Boolean
         get() =
             (optionGroups.orEmpty().flatMap { it.values } + optionCombinations.orEmpty().flatMap { it.optionValues })

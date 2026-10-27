@@ -20,7 +20,7 @@ application/src/main/kotlin/com/aechak/application/
     │   ├── command/             # 쓰기 입력 (계약의 일부)
     │   ├── query/               # 복잡 조회 입력
     │   └── result/              # 출력 (Result — 유스케이스 최종 출력 DTO)
-    ├── port/                    # (복잡 조회를 위임할 때만) 조회 포트 계약
+    ├── port/                    # 조회 포트 계약(복잡 조회 위임) · 외부 시스템 포트(PG·택배사 추적 등)
     │   ├── {대상}QueryPort.kt   # 읽기 전용 포트 인터페이스 — 구현은 infra/persistence
     │   └── view/                # 포트가 돌려주는 읽기 모델 (View, §4-1)
     ├── facade/                  # UseCase 구현 — 외부에서 import 금지
@@ -31,6 +31,19 @@ application/src/main/kotlin/com/aechak/application/
     └── error/                   # 에러코드 enum — 애그리거트가 없는 컨텍스트(auth·file)만 갖는다.
                                  #   도메인 BC의 enum은 domain 소유 (05 §0-4)
 ```
+
+### 1-1. BC가 아닌 조립 패키지
+
+> 화면 하나가 여러 BC의 읽기를 모아야 하고 **어느 BC도 그 화면의 주인이 아닐 때**만 쓴다.
+
+- 선례: `application/dashboard/seller` — 셀러센터 첫 화면이 주문·클레임·정산·상품 네 BC의 집계를 한 응답으로 묻는다.
+- 규칙은 셋이다.
+  1. 애그리거트도 리포지토리 포트도 갖지 않는다. 다른 BC의 **UseCase만** 주입받아 Result를 조립한다.
+     집계 쿼리는 각 BC가 자기 테이블만 읽어 수행한다 — 조립 패키지가 조회 포트를 직접 들면 BC 경계를 넘는다.
+  2. 소비하는 실행 모듈 하나만 스캔한다. BC 패키지에 끼워 넣으면 그 패키지를 스캔하는 다른 실행 모듈이
+     쓰지 않는 진입점까지 조립해야 해 부팅이 깨진다.
+  3. 에러코드를 새로 만들지 않는다 — 판정의 주인이 되는 BC의 코드를 쓴다(자격 게이트는 seller BC).
+- 조립을 컨트롤러에 두지 않는 이유는 §2 Controller 규칙과 같다. 여러 UseCase 호출을 엮는 것은 변환이 아니라 조율이다.
 
 ## 2. UseCase / Facade / Service 역할 계약
 
@@ -121,6 +134,17 @@ override fun confirmPayment(command: ConfirmPaymentCommand): PaymentResult {
 
 - 후속 작업이 비동기여도 되면(알림 등) 트랜잭션 분리 대신 §3의 AFTER_COMMIT 리스너를 쓴다.
 - 이 규칙의 대상 아님: `@TransactionalEventListener`(리스너 위치가 정상), Spring Batch Step/chunk 트랜잭션(framework 관리).
+
+### 2-2. 어댑터가 일부 실행 모듈에만 있는 외부 포트
+
+- 외부 시스템 포트의 구현이 특정 실행 모듈에만 조립되는 경우가 있다 — 택배사 추적 어댑터는 배치에만 등재돼 있고,
+  구현이 목뿐인 동안 설정으로 꺼져 있어 **어느 모듈에도 빈이 없을 수 있다.**
+- 그 포트를 쓰는 Facade는 **nullable 생성자 파라미터로 선택 주입**한다(Kotlin의 nullable 파라미터 = Spring의 선택 의존).
+  필수 주입이면 그 Facade가 사는 패키지를 스캔하는 **모든** 실행 모듈이 어댑터를 들고 있어야 하고, 루트 패키지를 스캔하는
+  api가 먼저 부팅에서 깨진다. 이 때문에 포트를 요구하는 유스케이스는 같은 BC의 다른 Facade와 입구를 나눠 둔다 —
+  배송완료 전이(OrderDeliveryFacade)와 추적 갱신(ShipmentTrackingFacade)이 그렇게 갈려 있다.
+- 포트가 없을 때의 동작은 **유스케이스 결과로 드러낸다** — 조용히 성공으로 접지 않는다(추적 갱신은 어댑터 부재를
+  결과 enum으로 돌려주고, 호출한 배치가 경고를 남기고 회차를 끊는다).
 
 ## 3. 이벤트 리스너 — 수신자 위치
 
@@ -245,6 +269,19 @@ data class ProductCatalogView(
 
 > 둘 다 예전엔 `result`였으나 패키지 이름을 클래스 접미사(`View`)에 맞춰 `port/view`로 분리했다.
 > 폴더 이름만으로 읽기 모델과 결과 DTO가 갈린다.
+
+### 4-2. 조회 포트 구현의 user 테이블 읽기 조인
+
+> 다른 BC는 사용자 표시 정보(닉네임, 프로필 이미지)를 user BC의 `UserUseCase.getAuthors`로 따로 받아 Facade에서 붙인다(리뷰 목록, 셀러 주문 목록).
+> SNS 관계 목록만 예외로 조회 포트 구현이 user 테이블을 직접 조인한다.
+
+- `SnsUserListQueryPort` 구현이 `sns_follows`, `sns_blocks`, `sns_mutes`를 `users`, `user_profiles`와 id 값 동등 조건으로
+  조인해 publicId, 닉네임, 프로필 이미지 key를 읽는다.
+- 두 단계 조회(`UserUseCase`로 표시 정보를 따로 붙이기)로는 닉네임 검색 결과를 페이지 크기만큼 채울 수 없어서
+  keyset 페이지, 탈퇴 사용자 제외(프로필 행이 없으면 INNER JOIN에서 빠진다), 검색을 한 쿼리로 끝낸다.
+- 읽기 전용 조회 포트 구현에서만 쓴다. 도메인 리포지토리와 쓰기 경로는 user 테이블을 읽지 않는다.
+- JPA 연관과 FK는 두지 않고 user 테이블에 쓰지 않는다.
+- 서비스를 나눌 때는 SNS 쪽 닉네임 사본으로 바꾼다.
 
 ## 5. 리포지토리 위치 — A-1 결정(L2)
 

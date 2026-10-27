@@ -7,6 +7,7 @@ dependencies {
     implementation(project(":pii"))                     // PII 암호화 엔진·키 조립 — 주문 파사드가 경유
     implementation(project(":pg-client"))               // 포트원 어댑터·대사 소스
     implementation(project(":s3-client"))               // FileStorage 어댑터 — 장바구니 파사드가 요구
+    implementation(project(":tracking-client"))         // 택배사 추적 어댑터 — 현재는 목뿐이고 기본 꺼짐
     implementation(kotlin("reflect"))                   // Spring(Data)의 Kotlin 리플렉션 지원에 런타임 필수
     implementation(libs.spring.boot.starter)
     implementation(libs.spring.boot.starter.data.jpa)   // JPA 자동 구성 — persistence 모듈의 리포지토리 활성화

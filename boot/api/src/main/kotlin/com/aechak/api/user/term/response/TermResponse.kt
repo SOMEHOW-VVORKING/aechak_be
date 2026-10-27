@@ -2,11 +2,13 @@ package com.aechak.api.user.term.response
 
 import com.aechak.application.user.term.usecase.result.TermResult
 import com.aechak.domain.user.term.enums.TermType
+import com.fasterxml.jackson.annotation.JsonProperty
 import java.time.LocalDateTime
 
 data class TermResponse(
     val termId: Long,
     val type: TermType,
+    @get:JsonProperty("isRequired")
     val isRequired: Boolean,
     val version: String,
     val title: String,

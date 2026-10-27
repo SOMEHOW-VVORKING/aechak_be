@@ -4,6 +4,7 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
@@ -110,19 +111,22 @@ class SellerClaimQueryIntegrationTest : IntegrationTestBase() {
     @Test
     fun `구매자가 적어 보낸 사유 코드와 상세가 목록과 상세 양쪽에 내려온다`() {
         // 셀러는 이 사유를 읽고 반품비를 누가 부담할지 정한다. 응답 조립이 위치 인자 프로젝션이라
-        // 필드 순서가 뒤틀리면 조용히 다른 값이 실리므로, 두 필드를 여기서 못박는다.
+        // 필드 순서가 뒤틀리면 조용히 다른 값이 실리므로, 세 필드를 여기서 못박는다.
+        // 화면 문구(reasonLabel)는 서버 enum이 정본이라 셀러센터가 코드-문구 표를 들고 있지 않아도 된다.
         val seeded = seedClaim()
 
         mockMvc
             .perform(get("/api/v1/sellers/me/claims").bearer(token))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.claims[0].reasonCode").value("CHANGE_OF_MIND"))
+            .andExpect(jsonPath("$.data.claims[0].reasonLabel").value("단순 변심"))
             .andExpect(jsonPath("$.data.claims[0].reasonDetail").value("사이즈를 잘못 골랐어요"))
 
         mockMvc
             .perform(get("/api/v1/sellers/me/claims/${seeded.claimPublicId}").bearer(token))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.claim.reasonCode").value("CHANGE_OF_MIND"))
+            .andExpect(jsonPath("$.data.claim.reasonLabel").value("단순 변심"))
             .andExpect(jsonPath("$.data.claim.reasonDetail").value("사이즈를 잘못 골랐어요"))
     }
 
@@ -222,6 +226,97 @@ class SellerClaimQueryIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.counts.CANCEL").value(0))
             .andExpect(jsonPath("$.data.counts.RETURN").value(0))
             .andExpect(jsonPath("$.data.counts.EXCHANGE").value(1))
+    }
+
+    /**
+     * 대시보드 처리 대기 카드가 세는 집합을 목록도 같은 판정으로 걸 수 있어야 한다 —
+     * 회수 중(COLLECTING) 한 상태에 송장 등록 대기와 완료 처리 대기가 함께 들어 있어 상태 축으로는 갈리지 않는다.
+     */
+    @Test
+    fun `처리 대기 단계 필터는 회수 중 한 상태를 송장 등록 대기와 완료 처리 대기로 가른다`() {
+        val requested = seedClaim()
+        val invoicePending = seedClaim(claimType = ClaimType.RETURN).also { approveToCollecting(it) }
+        val completionPending =
+            seedClaim(claimType = ClaimType.EXCHANGE).also { approveToCollecting(it) }.also { startCollection(it) }
+        val reshipPending =
+            seedClaim(claimType = ClaimType.EXCHANGE)
+                .also { approveToCollecting(it) }
+                .also { startCollection(it) }
+                .also { completeCollection(it) }
+        // 회수가 끝난 반품은 환불이 뒤를 이어 셀러가 할 일이 없다 — 어느 단계에도 들어가지 않는다
+        seedClaim(claimType = ClaimType.RETURN)
+            .also { approveToCollecting(it) }
+            .also { startCollection(it) }
+            .also { completeCollection(it) }
+
+        assertSingle("DECISION_PENDING", requested)
+        assertSingle("COLLECTION_INVOICE_PENDING", invoicePending)
+        assertSingle("COLLECTION_COMPLETION_PENDING", completionPending)
+        assertSingle("RESHIP_PENDING", reshipPending)
+
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims?status=COLLECTING").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.totalCount").value(2))
+    }
+
+    @Test
+    fun `유형별 건수는 단계 필터를 반영한다`() {
+        seedClaim(claimType = ClaimType.RETURN).also { approveToCollecting(it) }
+        seedClaim(claimType = ClaimType.RETURN).also { approveToCollecting(it) }
+        seedClaim(claimType = ClaimType.EXCHANGE).also { approveToCollecting(it) }.also { startCollection(it) }
+
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims?pendingStage=COLLECTION_INVOICE_PENDING").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.counts.CANCEL").value(0))
+            .andExpect(jsonPath("$.data.counts.RETURN").value(2))
+            .andExpect(jsonPath("$.data.counts.EXCHANGE").value(0))
+
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims?pendingStage=COLLECTION_COMPLETION_PENDING").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.counts.RETURN").value(0))
+            .andExpect(jsonPath("$.data.counts.EXCHANGE").value(1))
+    }
+
+    /** 단계 축은 다른 축과 AND로 묶인다 — OR로 바뀌면 한 축만 맞아도 걸려 카드에서 넘어온 목록이 부풀어 오른다. */
+    @Test
+    fun `단계 필터는 상태 필터와 AND로 묶인다`() {
+        seedClaim(claimType = ClaimType.RETURN).also { approveToCollecting(it) }
+
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims?pendingStage=COLLECTION_INVOICE_PENDING&status=COLLECTING").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.totalCount").value(1))
+            .andExpect(jsonPath("$.data.counts.RETURN").value(1))
+
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims?pendingStage=COLLECTION_INVOICE_PENDING&status=APPROVED").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.totalCount").value(0))
+            .andExpect(jsonPath("$.data.counts.RETURN").value(0))
+    }
+
+    @Test
+    fun `단계는 여러 개를 함께 걸 수 있고 모르는 값은 400이다`() {
+        seedClaim(claimType = ClaimType.RETURN).also { approveToCollecting(it) }
+        seedClaim(claimType = ClaimType.EXCHANGE).also { approveToCollecting(it) }.also { startCollection(it) }
+        seedClaim()
+
+        mockMvc
+            .perform(
+                get(
+                    "/api/v1/sellers/me/claims?pendingStage=COLLECTION_INVOICE_PENDING" +
+                        "&pendingStage=COLLECTION_COMPLETION_PENDING",
+                ).bearer(token),
+            ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.totalCount").value(2))
+
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims?pendingStage=NOPE").bearer(token))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
     }
 
     @Test
@@ -510,6 +605,38 @@ class SellerClaimQueryIntegrationTest : IntegrationTestBase() {
         )
     }
 
+    private fun assertSingle(
+        pendingStage: String,
+        expected: SeededClaim,
+    ) {
+        mockMvc
+            .perform(get("/api/v1/sellers/me/claims?pendingStage=$pendingStage").bearer(token))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.totalCount").value(1))
+            .andExpect(jsonPath("$.data.claims[0].claimPublicId").value(expected.claimPublicId))
+    }
+
+    /** 셀러 승인 직후 반품·교환의 자리 — 상태는 회수 중이고 회수 시작 시각이 아직 비어 있다. */
+    private fun approveToCollecting(seeded: SeededClaim) {
+        updateClaim(
+            seeded.claimPublicId,
+            "c.status = :status, c.sellerApprovalStatus = :approval, c.approvedAt = :at",
+            mapOf(
+                "status" to ClaimStatus.COLLECTING,
+                "approval" to SellerApprovalStatus.APPROVED,
+                "at" to LocalDateTime.now().plusMinutes(1),
+            ),
+        )
+    }
+
+    private fun startCollection(seeded: SeededClaim) {
+        updateClaim(seeded.claimPublicId, "c.collectionStartedAt = :at", mapOf("at" to LocalDateTime.now().plusMinutes(2)))
+    }
+
+    private fun completeCollection(seeded: SeededClaim) {
+        updateClaim(seeded.claimPublicId, "c.status = :status", mapOf("status" to ClaimStatus.APPROVED))
+    }
+
     private fun markRefunded(seeded: SeededClaim) {
         updateClaim(
             seeded.claimPublicId,
@@ -617,7 +744,7 @@ class SellerClaimQueryIntegrationTest : IntegrationTestBase() {
                     Claim.request(
                         order = order,
                         claimType = ClaimType.CANCEL,
-                        reasonCode = "CHANGE_OF_MIND",
+                        reasonCode = ClaimReasonCode.CHANGE_OF_MIND,
                         reasonDetail = "사이즈를 잘못 골랐어요",
                         items = targets.map { ClaimItem.of(it, quantity = it.quantity, refundAmount = itemRefundAmount) },
                         autoApproveDueAt = LocalDateTime.now().plusDays(2),

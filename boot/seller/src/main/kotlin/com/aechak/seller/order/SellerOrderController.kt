@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -29,6 +30,7 @@ class SellerOrderController(
 ) {
     /** 발주 확인 — 결제완료 주문을 상품 준비중으로 전이한다. */
     @PostMapping("/{orderPublicId}/accept")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun accept(
         @PathVariable orderPublicId: String,
         @AuthenticationPrincipal principal: AuthPrincipal,
@@ -41,6 +43,7 @@ class SellerOrderController(
 
     /** 배송완료 — 배송중 주문을 배송완료로 전이하고 구매확정 기한을 부여한다. */
     @PostMapping("/{orderPublicId}/delivery-complete")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun completeDelivery(
         @PathVariable orderPublicId: String,
         @AuthenticationPrincipal principal: AuthPrincipal,
@@ -53,6 +56,7 @@ class SellerOrderController(
 
     /** 송장 등록 — 발송을 확정하고 주문을 배송중으로 전이한다. */
     @PostMapping("/{orderPublicId}/shipment")
+    @ResponseStatus(HttpStatus.CREATED)
     fun registerShipment(
         @PathVariable orderPublicId: String,
         @Valid @RequestBody request: ShipmentRegisterRequest,

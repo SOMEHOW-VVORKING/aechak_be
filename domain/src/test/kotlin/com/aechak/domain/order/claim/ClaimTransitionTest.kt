@@ -1,6 +1,7 @@
 package com.aechak.domain.order.claim
 
 import com.aechak.common.error.BusinessException
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
@@ -296,7 +297,7 @@ class ClaimTransitionTest {
         return Claim.request(
             order = order,
             claimType = claimType,
-            reasonCode = "DEFECT",
+            reasonCode = ClaimReasonCode.DEFECTIVE,
             reasonDetail = null,
             items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 10_000L)),
             autoApproveDueAt = DUE_AT,
@@ -308,7 +309,7 @@ class ClaimTransitionTest {
         return Claim.request(
             order = order,
             claimType = ClaimType.CANCEL,
-            reasonCode = "CHANGE_OF_MIND",
+            reasonCode = ClaimReasonCode.CHANGE_OF_MIND,
             reasonDetail = null,
             items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 10_000L)),
             autoApproveDueAt = autoApproveDueAt,

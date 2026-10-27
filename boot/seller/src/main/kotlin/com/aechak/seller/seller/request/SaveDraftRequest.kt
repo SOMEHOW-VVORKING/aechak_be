@@ -4,6 +4,7 @@ import com.aechak.application.seller.usecase.command.SaveDraftCommand
 import com.aechak.domain.seller.application.enums.BusinessType
 import com.aechak.domain.seller.application.enums.DocumentType
 import com.aechak.seller.seller.request.validation.BusinessRegNo
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.NotBlank
@@ -33,6 +34,7 @@ data class SaveDraftRequest(
 ) {
     /** 서류 부분 upsert — 같은 종류를 한 요청에 두 번 실으면 형식 위반이다. */
     @get:AssertTrue(message = "같은 종류의 서류는 한 번만 등록할 수 있습니다.")
+    @get:Schema(hidden = true)
     val documentTypesUnique: Boolean
         get() = documents.map { it.documentType }.toSet().size == documents.size
 

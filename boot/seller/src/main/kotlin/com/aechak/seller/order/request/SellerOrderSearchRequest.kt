@@ -4,6 +4,7 @@ import com.aechak.application.order.seller.port.SellerOrderStatusFilter
 import com.aechak.application.order.seller.usecase.query.SellerOrderSearchQuery
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.PositiveOrZero
 import jakarta.validation.constraints.Size
 import org.hibernate.validator.constraints.Range
@@ -15,6 +16,10 @@ import java.time.format.DateTimeParseException
  * status는 응답 상태값(enum 이름)이 아니라 화면 세그먼트 어휘를 받는다 — 한 세그먼트가 상태 여러 개를 묶는다.
  */
 data class SellerOrderSearchRequest(
+    @field:Schema(
+        allowableValues = ["all", "new", "awaiting-dispatch", "shipping", "delivered", "cancelled"],
+        defaultValue = "all",
+    )
     val status: String = SellerOrderStatusFilter.ALL.code,
     @field:Size(max = SellerOrderSearchQuery.KEYWORD_MAX, message = "keyword는 최대 {max}자입니다.")
     val keyword: String? = null,
