@@ -23,6 +23,9 @@ class SellerDashboardSummaryResultTest {
         assertNull(result.metrics.cancelRequests.previousValue)
         assertNull(result.metrics.returnRequests.previousValue)
         assertNull(result.metrics.exchangeRequests.previousValue)
+        assertNull(result.metrics.collectionInvoicePending.previousValue)
+        assertNull(result.metrics.collectionCompletionPending.previousValue)
+        assertNull(result.metrics.reshipPending.previousValue)
     }
 
     @Test
@@ -35,6 +38,15 @@ class SellerDashboardSummaryResultTest {
         assertEquals(2L to 1L, result.metrics.cancelRequests.value to result.metrics.cancelRequests.previousValue)
         assertEquals(3L to 2L, result.metrics.returnRequests.value to result.metrics.returnRequests.previousValue)
         assertEquals(0L to 7L, result.metrics.exchangeRequests.value to result.metrics.exchangeRequests.previousValue)
+        assertEquals(
+            4L to 3L,
+            result.metrics.collectionInvoicePending.value to result.metrics.collectionInvoicePending.previousValue,
+        )
+        assertEquals(
+            6L to 5L,
+            result.metrics.collectionCompletionPending.value to result.metrics.collectionCompletionPending.previousValue,
+        )
+        assertEquals(8L to 11L, result.metrics.reshipPending.value to result.metrics.reshipPending.previousValue)
     }
 
     @Test
@@ -46,6 +58,8 @@ class SellerDashboardSummaryResultTest {
         assertNull(result.metrics.unansweredInquiries.previousValue)
         assertTrue(result.metrics.newOrders.supported)
         assertTrue(result.metrics.cancelRequests.supported)
+        assertTrue(result.metrics.collectionInvoicePending.supported)
+        assertTrue(result.metrics.reshipPending.supported)
     }
 
     @Test
@@ -62,9 +76,28 @@ class SellerDashboardSummaryResultTest {
             orders = SellerOrderMetricsResult(newOrders = 12L, awaitingShipment = 5L, shippingDelayed = 1L),
             previousOrders =
                 if (previous) SellerOrderMetricsResult(newOrders = 9L, awaitingShipment = 4L, shippingDelayed = 0L) else null,
-            claims = SellerClaimMetricsResult(cancelRequests = 2L, returnRequests = 3L, exchangeRequests = 0L),
+            claims =
+                SellerClaimMetricsResult(
+                    cancelRequests = 2L,
+                    returnRequests = 3L,
+                    exchangeRequests = 0L,
+                    collectionInvoicePending = 4L,
+                    collectionCompletionPending = 6L,
+                    reshipPending = 8L,
+                ),
             previousClaims =
-                if (previous) SellerClaimMetricsResult(cancelRequests = 1L, returnRequests = 2L, exchangeRequests = 7L) else null,
+                if (previous) {
+                    SellerClaimMetricsResult(
+                        cancelRequests = 1L,
+                        returnRequests = 2L,
+                        exchangeRequests = 7L,
+                        collectionInvoicePending = 3L,
+                        collectionCompletionPending = 5L,
+                        reshipPending = 11L,
+                    )
+                } else {
+                    null
+                },
             settlement = SellerSettlementSummaryResult(totalAmount = 0L, pendingAmount = 0L, onHoldAmount = 0L),
             productStatuses =
                 SellerProductStatusCountsResult(awaitingInspection = 0L, rejected = 0L, suspended = 0L, soldOut = 0L),

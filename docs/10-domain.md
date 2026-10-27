@@ -95,6 +95,15 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
 엔티티 로드만으로는 둘 다 성공한다. 기대 상태를 조건으로 건 UPDATE가 선점 심판이고, 애그리거트 메서드는
 선점한 전이를 반영한다(전이 규칙과 이력 기록이 살아 있어야 하므로 메서드를 지우지 않는다).
 
+**한 행에 쓰기 경로가 둘이면 컬럼 주인을 매핑으로 못박는다**: 더티체킹 UPDATE는 변경된 컬럼만 쓰지 않고
+행 전체를 자기 스냅샷으로 다시 쓴다. 그래서 같은 행에 서로 다른 컬럼을 쓰는 경로가 둘 있으면, 먼저 읽고
+나중에 플러시한 쪽이 그 사이 커밋된 상대의 컬럼을 **읽은 시점의 옛 값(흔히 null)으로 되돌린다.** 잠금으로
+막으려면 두 경로가 모두 잠가야 하는데, 선점 심판이 조건부 UPDATE인 전이 경로에 행 잠금을 끼우면 두 요청이
+심판에 닿지 못해 선점 자체가 사라진다. 그래서 주인이 하나뿐인 컬럼은 `@Column(updatable = false)`로
+더티체킹 UPDATE에서 빼고, 그 주인만 리포지토리의 원자 UPDATE로 짚어 쓴다 — 발송의 추적 상태·조회 시각이
+그렇게 갈려 있다(배송완료 시각은 전이가, 추적 두 컬럼은 추적 갱신이 쓴다).
+기록이 엔티티 메서드가 아니므로 다듬기 규칙은 애그리거트에 순수 함수로 남긴다(컬럼 길이·공백 정리).
+
 **같은 종료 상태라도 게이트가 다르면 메서드를 나눈다**: 주문의 즉시취소는 결제완료·준비중까지만 열리지만,
 클레임 승인에 따른 취소는 발송 대기 건까지 열려야 한다. 한 메서드로 묶으면 즉시취소 금지가 승인 경로까지 막는다.
 전이 가능 여부는 enum이, 그 전이를 누가 일으킬 수 있는지는 메서드가 가른다.
@@ -179,7 +188,7 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
    common에 두지 않는 이유: common은 무의존 모듈이라 jakarta.persistence 반입 불가(05 문서).
 2. **publicId(ULID)**: 내부 bigint id의 열거(enumeration) 노출이 치명적인 애그리거트는
    `@Column(nullable=false, updatable=false, length=26) val publicId: String = Ulid.generate()` + UNIQUE.
-   생성기는 `support/Ulid` 파사드(ulid-creator 위임 — 엔티티가 라이브러리를 직접 부르지 않는다). 현재 적용: Product·OrderGroup(주문번호 역할)·Order·Claim.
+   생성기는 `support/Ulid` 파사드(ulid-creator 위임 — 엔티티가 라이브러리를 직접 부르지 않는다). 현재 적용: Product·OrderGroup(주문번호 역할)·Order·Claim·User.
    외부 API·URL에는 publicId만 노출하고 내부 id는 응답에 싣지 않는다.
    - 채번은 필드 초기화식(생성 시점 신원 확보 — DDD identity-at-creation). 엔티티를 도메인 밖에서
      new로 재구성해 detached merge하면 재채번되므로 **재구성 merge 금지, 항상 load 후 수정**.

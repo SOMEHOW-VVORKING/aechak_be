@@ -4,6 +4,8 @@ import com.aechak.api.support.HandlerStatuses
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.api.support.OpenApiDocContract
 import com.aechak.api.support.OpenApiSpec
+import com.aechak.application.dashboard.seller.usecase.result.SellerDashboardSummaryResult
+import com.aechak.application.order.claim.port.SellerClaimPendingStage
 import com.aechak.application.order.seller.port.SellerOrderStatusFilter
 import com.aechak.application.settlement.port.SellerSettlementStatus
 import com.aechak.domain.order.claim.enums.ClaimReasonCode
@@ -25,6 +27,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import tools.jackson.databind.ObjectMapper
 import java.nio.file.Path
+import kotlin.reflect.full.declaredMemberProperties
 
 /** 셀러 보트의 생성 문서와 실제 응답이 어긋나지 않는지 본다. */
 class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
@@ -131,6 +134,18 @@ class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
         assertEquals(names<ClaimType>(), spec.allowedValues("SellerClaimSearchRequest", "claimType"))
         assertEquals(names<ClaimStatus>(), spec.allowedValues("SellerClaimSearchRequest", "status"))
         assertEquals(names<RefundStatus>(), spec.allowedValues("SellerClaimSearchRequest", "refundStatus"))
+        assertEquals(names<SellerClaimPendingStage>(), spec.allowedValues("SellerClaimSearchRequest", "pendingStage"))
+    }
+
+    /**
+     * 집계 결과에 지표를 더하고 응답 DTO에 옮기는 것을 잊으면 화면이 그 숫자를 영원히 못 받는다.
+     * JVM 필드가 아니라 선언 프로퍼티를 센다 — 상수나 companion이 들어오면 JSON 계약이 그대로인데도 필드 수가 달라진다.
+     */
+    @Test
+    fun `대시보드 지표 문서가 집계 결과의 지표를 하나도 빠뜨리지 않는다`() {
+        val computed = SellerDashboardSummaryResult.Metrics::class.declaredMemberProperties.map { it.name }.toSet()
+
+        assertEquals(computed, spec.schemas.getValue("MetricsResponse").keys, "서버가 세는 지표와 문서에 오른 지표가 다르다")
     }
 
     @Test

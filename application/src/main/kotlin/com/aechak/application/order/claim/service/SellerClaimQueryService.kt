@@ -1,6 +1,7 @@
 package com.aechak.application.order.claim.service
 
 import com.aechak.application.order.claim.port.SellerClaimCondition
+import com.aechak.application.order.claim.port.SellerClaimMetricsCondition
 import com.aechak.application.order.claim.port.SellerClaimQueryPort
 import com.aechak.application.order.claim.port.view.SellerClaimItemView
 import com.aechak.application.order.claim.port.view.SellerClaimView
@@ -13,7 +14,6 @@ import com.aechak.application.order.claim.usecase.result.SellerClaimSummaryResul
 import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.application.support.OffsetPageResult
 import com.aechak.common.error.BusinessException
-import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.order.Order
@@ -96,22 +96,17 @@ class SellerClaimQueryService(
     }
 
     /**
-     * 셀러 미응답 클레임의 유형별 건수. 목록 배지와 같은 집계 쿼리를 쓴다 —
-     * 대시보드와 클레임 탭의 숫자가 같은 규칙에서 나와야 두 화면이 어긋나지 않는다.
-     * 페이징 축은 건수 집계가 쓰지 않아 0으로 둔다.
+     * 셀러 처리 대기 클레임 건수. 요청 상태만 세면 승인 직후부터 회수가 끝날 때까지 셀러가 할 일이
+     * 남은 건이 전부 빠진다 — 반품·교환은 승인하면 회수 중으로 넘어가고, 교환은 회수가 끝나도 재발송이 남는다.
+     * 단계 판정은 목록의 단계 필터와 같은 식을 쓰는 집계 포트가 들고 있다.
      */
     fun countMetrics(query: SellerClaimMetricsQuery): SellerClaimMetricsResult =
         SellerClaimMetricsResult.from(
-            sellerClaimQueryPort.countByClaimType(
-                SellerClaimCondition(
+            sellerClaimQueryPort.countPendingMetrics(
+                SellerClaimMetricsCondition(
                     sellerId = query.sellerId,
-                    claimTypes = emptyList(),
-                    statuses = listOf(ClaimStatus.CLAIM_REQUESTED),
-                    refundStatuses = emptyList(),
                     requestedFrom = query.requestedFrom,
                     requestedToExclusive = query.requestedToExclusive,
-                    offset = 0L,
-                    limit = 0,
                 ),
             ),
         )
