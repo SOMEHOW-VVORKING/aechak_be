@@ -21,6 +21,22 @@ boot/api/src/main/kotlin/com/aechak/api/
     └── order/
 ```
 
+### 1-1. 계정 상태 게이트 (UserStatusFilter)
+
+JWT에 상태를 박지 않고 매 요청 `users.status`를 프로젝션 조회한다 — 정지·탈퇴·제재가 재로그인 없이 즉시 반영된다.
+판정 메커니즘은 web-security의 필터가, **어느 경로를 어떻게 막을지는 각 실행 모듈의 SecurityConfig가** 소유한다.
+
+| 유효 상태 | 처리 |
+|---|---|
+| ACTIVE | 통과 |
+| RESTRICTED | 제한 경로의 쓰기만 403(20013). 로그인·조회·주문은 통과 |
+| PENDING_ONBOARDING | 온보딩 허용 경로 외 403(20006) |
+| SUSPENDED · BANNED · WITHDRAWN · 유저 없음 | 403(20005) |
+
+- **유효 상태**는 저장값이 아니다 — 기간이 지난 임시 정지는 ACTIVE로 본다(`UserStatus.effective`). 이 판정은 `UserStatusReader` 포트가 책임지므로 호출부(필터·토큰 회전)가 반복하지 않는다.
+- RESTRICTED의 제한 경로는 api의 `restrictedWritePathPrefixes` — 리뷰·SNS·문의 등 커뮤니티성 쓰기다. 주문·결제는 넣지 않는다: 이용 제한은 거래를 끊는 제재가 아니고, 거래를 끊어야 하는 제재는 임시/영구 정지다.
+- 게이트는 필터 하나가 아니다. 소셜 로그인(`SocialLoginService`)과 refresh 회전(`TokenService`)도 같은 상태를 보고 SUSPENDED·BANNED·WITHDRAWN을 끊는다 — 필터만 막으면 토큰 수명이 연장된다.
+
 ## 2. Controller 규칙
 
 ```kotlin
@@ -255,6 +271,7 @@ boot/admin/src/main/java/com/aechak/admin/
 ├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config}
 ├── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
 ├── seller/          # 입점 심사 컨트롤러 + request/response
+├── member/          # 일반 회원 조회·제재 컨트롤러 + request/response
 └── user/            # 관리자 명부 컨트롤러 + request/response
 ```
 
@@ -267,5 +284,12 @@ boot/admin/src/main/java/com/aechak/admin/
 - **관리자 명부의 저장값은 `users.role`이고, 기동 부트스트랩(`admin.bootstrap.enabled`/`user-ids`)이 기동마다 설정 명부를 멱등 승격한다.** 최초 관리자를 만드는 경로이자 관리자가 0명이 된 상태의 유일한 복구 경로라 "최초 1회"가 아니라 기동마다 돈다. 명부에 적힌 계정이 없거나 비활성이면 경고 로그만 남기고 부팅을 계속한다 — 어드민이 뜨지 않으면 명부를 고칠 수단도 사라진다. 두 경우 모두 에러 코드가 붙은 비즈니스 예외로 분류돼 경고 로그에 남고(비활성은 409), 이미 관리자인 계정은 멱등 건너뜀으로 처리한다. 부트스트랩이 admin에 사는 이유는 이 모듈만 ECS 태스크가 1대로 고정이고(api는 오토스케일) `users` 쓰기 배선이 이미 조립돼 있어서다.
   - 토큰의 `role` 클레임은 로그인 시점 스냅샷이다 — 승격 직후 ADMIN 토큰을 받으려면 api에서 다시 로그인해야 하고, 강등해도 발급돼 있던 토큰은 만료까지 ADMIN으로 통과한다.
   - 명부를 손으로 바꾸는 경로는 `/admin/admins`(목록·승격·강등)다. 자기 역할 변경은 403(30014), 관리자가 0명이 되는 강등은 409(30013), 활성 상태가 아닌 계정의 승격은 409(30017)로 막는다.
+- **일반 회원 조회·제재 경로는 `/admin/members`다** — 목록(상태 필터·닉네임/회원ID 검색·가입일 범위·커서 페이징), 상세(제재 이력 포함), 제재(`POST .../sanctions`), 해제(`POST .../sanctions/release`).
+  - 목록·상세는 `users.role = GENERAL`만 본다. 관리자 계정은 명부 경로가 따로 있어 여기서는 조회도 404(30000), 제재도 409(30021)로 막는다 — 운영 권한을 가진 계정이 차단 상태로 남지 않게 강등을 먼저 하게 한다. 자기 자신 제재는 403(30020).
+  - 제재는 `users.status` 단일 축으로 표현한다(RESTRICTED·SUSPENDED·BANNED). 접근 판정의 단일 지점이 매 요청 한 컬럼만 읽고 끝나야 하고, 제재 상태끼리는 배타적이라 축을 둘로 나누면 모순 조합이 생긴다.
+  - **탈퇴(WITHDRAWN, 본인 의사)와 영구 정지(BANNED, 운영 조치)는 합치지 않는다.** 차단 효과가 같아도 한 값으로 묶으면 사후에 가릴 수 없다. 운영자의 탈퇴 처리는 WITHDRAWN으로 가고, 운영 조치였다는 사실은 제재 이력(`user_sanctions`)이 남긴다.
+  - 영구 정지는 종단 상태다 — 추가 제재(409/30018)도 해제(409/30019)도 받지 않는다. 탈퇴한 계정도 제재 대상이 아니다(409/30003).
+  - 제재 이력은 추가 전용이다. 해제도 UPDATE가 아니라 `action=RELEASE` 행 추가로 남기고, 사유는 자유 문자열이 아니라 고정 어휘(`SanctionReasonCode`) + 상세로 받는다 — 신고 사유와 같은 결정이다.
+  - **임시 정지 만료는 조회 시점 판정이다**(`UserStatus.effective`). 저장값(SUSPENDED + `sanction_until`)은 "7일 정지를 걸었다"는 사실 기록으로 남고, 인가 게이트와 어드민 조회가 같은 함수로 유효 상태를 계산한다. 상태를 되돌리는 배치는 두지 않았다 — 판정이 한 곳이면 운영자가 본 상태와 실제 접근 권한이 갈리지 않는다.
 - DB 마이그레이션은 api 단일 소유 그대로 — admin은 접속만 한다.
 - 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.

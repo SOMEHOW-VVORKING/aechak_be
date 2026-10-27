@@ -20,7 +20,7 @@ domain/src/main/kotlin/com/aechak/domain/
 │   │   └── repository/         # A-1 결정(L2) — 포트 인터페이스 (구현은 infra/persistence)
 │   ├── cart/ · group/ · stock/ · shipment/ · claim/   # 위성 애그리거트(군) — 동일 내부 구조
 │   └── error/                  # error만 BC 레벨 — 대역(50000번대)은 BC 소유, 100번대 구분이 애그리거트 (05 §0-4)
-├── user/ ...                   # 동일 구조 반복 (user/·social/·pet/·term/·privacy/·report/·point/·address/)
+├── user/ ...                   # 동일 구조 반복 (user/·social/·pet/·term/·privacy/·report/·sanction/·point/·address/)
 └── support/
     └── AggregateRoot.kt        # 이벤트 수집 베이스 (아래 §3)
 ```
