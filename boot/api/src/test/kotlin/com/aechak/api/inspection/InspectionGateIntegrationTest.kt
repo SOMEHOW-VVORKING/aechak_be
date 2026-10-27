@@ -44,6 +44,10 @@ import com.aechak.message.inspection.PerspectiveOutcome as ContractOutcome
  *
  * 위반 판정은 상품을 바로 반려하고 관리자 검토 큐에 올린다. 관리자는 그 행에서 오탐을 풀거나
  * 반려를 확정한다. 관리자가 반려한 상품은 고친 내용이 통과해도 관리자가 다시 본다.
+ *
+ * 되돌리는 것은 **증거가 있는 통과**뿐이다. 모델이 그 내용을 읽은 적 없는 통과는 판정 실패와
+ * 같은 자리에 두고 상품도 큐도 건드리지 않는다. 선별이 일부러 건너뛴 통과는 장애가 아니라
+ * 판단이라서 정당한 통과로 남긴다 — 그쪽까지 막으면 선별 계층의 비용 절감이 사라진다.
  */
 @TestPropertySource(properties = ["inspection.gate-enabled=true"])
 class InspectionGateIntegrationTest : IntegrationTestBase() {
@@ -181,6 +185,82 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `증거 없는 통과는 AI 반려를 풀지 않고 열린 행도 닫지 않는다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
+
+        applyVerdict(
+            givenQueued(hash = "b".repeat(64)),
+            InspectionVerdict.PASS,
+            perspectives =
+                listOf(
+                    PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.UNCHECKED, "RATE_LIMITED"),
+                    PerspectiveResult(InspectionPerspective.CONDUCT_TRADE, ContractOutcome.UNCHECKED, "RATE_LIMITED"),
+                ),
+        )
+
+        assertEquals(
+            InspectionStatus.REJECTED,
+            storedStatus(),
+            "모델이 찾아 반려한 상품을, 모델이 아무것도 읽지 못한 통과가 되살리면 안 된다",
+        )
+        assertFalse(listedByBuyer())
+        assertEquals(
+            listOf(ReviewQueueStatus.PENDING_REVIEW),
+            queueStatuses(),
+            "그 통과로 행까지 닫으면 관리자가 오탐을 풀 기회도 함께 사라진다",
+        )
+    }
+
+    @Test
+    fun `관점 행이 아예 없는 통과도 AI 반려를 풀지 않는다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
+
+        applyVerdict(givenQueued(hash = "b".repeat(64)), InspectionVerdict.PASS, perspectives = emptyList())
+
+        assertEquals(InspectionStatus.REJECTED, storedStatus(), "관점 행이 비면 모델이 무엇을 봤는지 알 길이 없다")
+        assertEquals(listOf(ReviewQueueStatus.PENDING_REVIEW), queueStatuses())
+    }
+
+    @Test
+    fun `선별이 건너뛴 통과는 AI 반려를 풀어 노출을 되돌린다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
+
+        applyVerdict(
+            givenQueued(hash = "b".repeat(64)),
+            InspectionVerdict.PASS,
+            perspectives =
+                listOf(
+                    PerspectiveResult(InspectionPerspective.TRIAGE, ContractOutcome.CLEAR),
+                    PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.UNCHECKED, TRIAGE_CLEAR),
+                    PerspectiveResult(InspectionPerspective.CONDUCT_TRADE, ContractOutcome.UNCHECKED, TRIAGE_CLEAR),
+                ),
+        )
+
+        assertEquals(
+            InspectionStatus.APPROVED,
+            storedStatus(),
+            "선별이 일부러 건너뛴 통과까지 막으면 선별 계층의 비용 절감이 사라진다",
+        )
+        assertTrue(listedByBuyer())
+        assertEquals(listOf(ReviewQueueStatus.SUPERSEDED), queueStatuses())
+    }
+
+    @Test
+    fun `증거 없는 통과는 열린 행의 대기 시각을 밀지 않는다`() {
+        applyVerdict(givenQueued(hash = "a".repeat(64)), InspectionVerdict.FLAG)
+        val opened = openedAt()
+
+        applyVerdict(
+            givenQueued(hash = "b".repeat(64)),
+            InspectionVerdict.PASS,
+            perspectives =
+                listOf(PerspectiveResult(InspectionPerspective.ALL, ContractOutcome.UNCHECKED, "BUDGET_EXHAUSTED")),
+        )
+
+        assertEquals(opened, openedAt(), "모델이 읽지 않은 판정으로 대기 시각을 밀면 적체가 얼마나 묵었는지가 리셋된다")
+    }
+
+    @Test
     fun `옛 내용의 판정이 늦게 오면 상품과 큐에 반영하지 않는다`() {
         val older = givenQueued(hash = "a".repeat(64))
         val newer = givenQueued(hash = "b".repeat(64))
@@ -237,6 +317,18 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
                     ReviewQueueStatus::class.java,
                 ).setParameter("id", productId)
                 .resultList
+        }!!
+
+    /** 열린 검토 행이 언제 열렸는지. 갱신되면 적체 나이가 리셋된다 */
+    private fun openedAt(): LocalDateTime =
+        tx.execute {
+            em
+                .createQuery(
+                    "select q.blindedAt from ProductReviewQueueItem q where q.targetId = :id and q.status = :status",
+                    LocalDateTime::class.java,
+                ).setParameter("id", productId)
+                .setParameter("status", ReviewQueueStatus.PENDING_REVIEW)
+                .singleResult
         }!!
 
     private fun changeStatus(status: InspectionStatus) {
@@ -325,5 +417,8 @@ class InspectionGateIntegrationTest : IntegrationTestBase() {
 
     companion object {
         private const val POLICY_VERSION = "policy-v1"
+
+        // 선별이 모델 호출을 일부러 건너뛸 때 쓰는 사유. AI 서버와 맞춰 둔 값이다
+        private const val TRIAGE_CLEAR = "TRIAGE_CLEAR"
     }
 }
