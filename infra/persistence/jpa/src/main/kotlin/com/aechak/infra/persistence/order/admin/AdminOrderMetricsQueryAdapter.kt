@@ -37,7 +37,10 @@ class AdminOrderMetricsQueryAdapter(
                     countWhere(awaitingDispatchPredicate(order)),
                     countWhere(order.status.eq(OrderStatus.SHIPPING)),
                     countWhere(delayedPredicate(order, condition.deadlines)),
-                    sumOf(order.sellerShippingFee.subtract(order.allocatedCouponDiscount)),
+                    sumWhere(
+                        order.status.`in`(condition.amountStatuses),
+                        order.sellerShippingFee.subtract(order.allocatedCouponDiscount),
+                    ),
                 ),
             ).from(order)
             .where(*filters(condition))
@@ -48,7 +51,7 @@ class AdminOrderMetricsQueryAdapter(
             .select(sumOf(orderItem.unitPriceSnapshot.multiply(orderItem.quantity)))
             .from(order)
             .join(order._items, orderItem)
-            .where(*filters(condition))
+            .where(*filters(condition), order.status.`in`(condition.amountStatuses))
             .fetchOne() ?: 0L
 
     private fun filters(condition: AdminOrderMetricsCondition): Array<Predicate?> =
@@ -60,13 +63,19 @@ class AdminOrderMetricsQueryAdapter(
         )
 
     /** 주문이 하나도 없는 조회 범위에서는 집계가 NULL이다 — 0은 쿼리에서 못박는다 */
-    private fun countWhere(predicate: BooleanExpression): NumberExpression<Long> =
+    private fun countWhere(predicate: BooleanExpression): NumberExpression<Long> = sumWhere(predicate, Expressions.asNumber(1L))
+
+    /** 건수 카드와 한 쿼리를 쓰므로 금액 모수는 WHERE가 아니라 CASE로 좁힌다 */
+    private fun sumWhere(
+        predicate: BooleanExpression,
+        value: NumberExpression<Long>,
+    ): NumberExpression<Long> =
         sumOf(
             Expressions
                 .cases()
                 .`when`(predicate)
-                .then(1L)
-                .otherwise(0L),
+                .then(value)
+                .otherwise(Expressions.asNumber(0L)),
         )
 
     private fun sumOf(value: NumberExpression<Long>): NumberExpression<Long> =

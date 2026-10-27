@@ -17,6 +17,7 @@ import com.aechak.domain.product.product.Product;
 import com.aechak.domain.product.version.ProductVersion;
 import com.aechak.domain.seller.seller.Seller;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -114,8 +115,24 @@ abstract class OrderMonitoringTestBase extends IntegrationTestBase {
             LocalDateTime orderedAt,
             int quantity,
             long unitPrice) {
+        return seedOrder(sellerId, sellerName, target, orderedAt, quantity, unitPrice, 1, 0L);
+    }
+
+    /**
+     * 품목 수와 안분 쿠폰할인까지 지정한다 — 금액 합이 품목 조인으로 복제되는지, 쿠폰할인이 주문당
+     * 한 번만 빠지는지는 품목이 둘 이상이고 할인이 0이 아니어야 드러난다.
+     */
+    protected SeededOrder seedOrder(
+            long sellerId,
+            String sellerName,
+            OrderStatus target,
+            LocalDateTime orderedAt,
+            int quantity,
+            long unitPrice,
+            int itemCount,
+            long couponDiscount) {
         SeededOrder seeded = tx.execute(txStatus -> {
-            long productAmount = unitPrice * quantity;
+            long productAmount = unitPrice * quantity * itemCount;
             OrderGroup group = OrderGroup.Companion.create(
                     buyerId,
                     1L,
@@ -128,15 +145,19 @@ abstract class OrderMonitoringTestBase extends IntegrationTestBase {
             em.persist(group);
 
             boolean other = sellerId == otherSellerUserId;
-            OrderItem item = OrderItem.Companion.of(
-                    other ? otherProductId : productId,
-                    1L,
-                    "기본",
-                    quantity,
-                    unitPrice,
-                    0L,
-                    other ? otherProductVersionId : productVersionId);
-            Order order = Order.Companion.create(group, sellerId, sellerName, 0L, 3_000L, 3_000L, null, List.of(item));
+            List<OrderItem> items = new ArrayList<>();
+            for (int i = 0; i < itemCount; i++) {
+                items.add(OrderItem.Companion.of(
+                        other ? otherProductId : productId,
+                        1L,
+                        "기본",
+                        quantity,
+                        unitPrice,
+                        0L,
+                        other ? otherProductVersionId : productVersionId));
+            }
+            Order order =
+                    Order.Companion.create(group, sellerId, sellerName, couponDiscount, 3_000L, 3_000L, null, items);
             em.persist(order);
             em.flush();
 

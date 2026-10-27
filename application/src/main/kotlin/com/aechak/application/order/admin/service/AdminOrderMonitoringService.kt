@@ -99,6 +99,7 @@ class AdminOrderMonitoringService(
         val condition =
             AdminOrderMetricsCondition(
                 countedStatuses = MONITORED_STATUSES,
+                amountStatuses = PAYMENT_EFFECTIVE_STATUSES,
                 sellerId = query.sellerId,
                 orderedFrom = query.orderedFrom?.atStartOfDay(),
                 orderedToExclusive = query.orderedTo?.let(::nextDayStart),
@@ -124,5 +125,15 @@ class AdminOrderMonitoringService(
 
     private companion object {
         private val MONITORED_STATUSES = OrderStatus.entries.toSet() - OrderStatus.PENDING_PAYMENT
+
+        /**
+         * 결제액 합의 모수 — 취소 주문을 뺀다.
+         *
+         * 결제 창이 만료된 미결제 주문은 결제대기가 아니라 취소로 남는다(만료 배치가 그렇게 전이시킨다).
+         * 취소를 넣으면 돈이 한 번도 움직이지 않은 주문의 주문금액이 "조회 범위 결제액"에 쌓이고,
+         * 미결제 주문이 많은 기간일수록 카드가 더 크게 거짓말한다. 결제 후 전액취소도 환불로 되돌아간
+         * 건이라 같이 뺀다. 건수 카드 셋은 취소를 술어에서 이미 배제하므로 이 집합과 무관하다.
+         */
+        private val PAYMENT_EFFECTIVE_STATUSES = MONITORED_STATUSES - OrderStatus.CANCELLED
     }
 }

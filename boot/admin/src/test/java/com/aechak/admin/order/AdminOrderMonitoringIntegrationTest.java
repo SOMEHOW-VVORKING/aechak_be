@@ -255,6 +255,82 @@ class AdminOrderMonitoringIntegrationTest extends OrderMonitoringTestBase {
         assertEquals(405_000, metrics.get("totalPaymentAmount").asLong(), "조회 범위 결제액은 상품금액 + 배송비 - 쿠폰할인");
     }
 
+    /**
+     * 결제 창이 만료된 미결제 주문은 결제대기가 아니라 취소로 남는다(만료 배치가 그 전이를 낸다).
+     * 결제액 모수에 취소를 넣으면 돈이 한 번도 움직이지 않은 주문의 주문금액이 카드에 쌓이고,
+     * 미결제 주문을 반복 생성·만료하는 것만으로 "조회 범위 결제액"이 계속 커진다.
+     */
+    @Test
+    void 미결제_만료로_취소된_주문은_결제액에_들어가지_않는다() throws Exception {
+        seedOrder(sellerUserId, "멍멍마켓", OrderStatus.PAID, LocalDateTime.now().minusHours(1));
+        seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.CANCELLED, LocalDateTime.now().minusHours(2));
+        seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.CANCELLED, LocalDateTime.now().minusHours(3));
+
+        mockMvc.perform(bearer(get(BASE + "/metrics")))
+                .andExpect(status().isOk())
+                // 결제된 한 건만 — 39,000 × 2 + 배송비 3,000
+                .andExpect(jsonPath("$.data.totalPaymentAmount").value(81_000))
+                .andExpect(jsonPath("$.data.awaitingDispatchCount").value(1))
+                .andExpect(jsonPath("$.data.shippingCount").value(0))
+                .andExpect(jsonPath("$.data.delayedCount").value(0));
+    }
+
+    /**
+     * 지연 판정은 "발송 전 상태 AND 발송 기한 초과 OR 배송중 AND 배송 기한 초과"라 OR를 품는다.
+     * 다른 필터와 AND로 묶일 때 괄호가 풀리면 셀러·상태로 좁혀도 남의 주문이 섞여 들어온다.
+     */
+    @Test
+    void 지연_필터는_셀러와_상태_필터와_함께_걸린다() throws Exception {
+        var minePreparing = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.PREPARING, LocalDateTime.now().minusDays(4));
+        seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.SHIPPING, LocalDateTime.now().minusDays(9));
+        seedOrder(
+                otherSellerUserId,
+                "냥이상점",
+                OrderStatus.PREPARING,
+                LocalDateTime.now().minusDays(4));
+        seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.PREPARING, LocalDateTime.now().minusHours(2));
+
+        mockMvc.perform(bearer(get(BASE).param("delayedOnly", "true")))
+                .andExpect(jsonPath("$.data.items.length()").value(3));
+
+        mockMvc.perform(bearer(get(BASE).param("delayedOnly", "true").param("sellerId", String.valueOf(sellerUserId))))
+                .andExpect(jsonPath("$.data.items.length()").value(2));
+
+        mockMvc.perform(bearer(get(BASE).param("delayedOnly", "true").param("status", "PREPARING")))
+                .andExpect(jsonPath("$.data.items.length()").value(2));
+
+        mockMvc.perform(bearer(get(BASE)
+                        .param("delayedOnly", "true")
+                        .param("status", "PREPARING")
+                        .param("sellerId", String.valueOf(sellerUserId))))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].orderId").value(minePreparing.publicId()));
+    }
+
+    /**
+     * 쿠폰할인은 주문당 한 번 빠지고 배송비도 주문당 하나다. 금액 집계가 품목 조인 한 쿼리로 묶이면
+     * 둘 다 품목 수만큼 복제돼 행의 payableAmount와 카드의 결제액이 어긋난다.
+     */
+    @Test
+    void 금액은_품목이_여러_개여도_배송비와_쿠폰할인을_한_번만_센다() throws Exception {
+        seedOrder(sellerUserId, "멍멍마켓", OrderStatus.PAID, LocalDateTime.now().minusHours(1), 2, 39_000L, 2, 5_000L);
+
+        // 상품금액 39,000 × 2개 × 품목 2줄 = 156,000, + 배송비 3,000 - 쿠폰할인 5,000
+        mockMvc.perform(bearer(get(BASE)))
+                .andExpect(jsonPath("$.data.items[0].itemCount").value(2))
+                .andExpect(jsonPath("$.data.items[0].totalProductAmount").value(156_000))
+                .andExpect(jsonPath("$.data.items[0].allocatedCouponDiscount").value(5_000))
+                .andExpect(jsonPath("$.data.items[0].payableAmount").value(154_000));
+
+        mockMvc.perform(bearer(get(BASE + "/metrics")))
+                .andExpect(jsonPath("$.data.totalPaymentAmount").value(154_000));
+    }
+
     /** 카드는 상태로 좁히지 않는다 — 좁히면 카드 넷 중 셋이 0이 되어 축으로서 쓸모가 없다. */
     @Test
     void 카드는_셀러와_기간으로만_좁힌다() throws Exception {
