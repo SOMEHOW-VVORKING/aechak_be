@@ -94,6 +94,28 @@ class ProductAppealInvalidationIntegrationTest : IntegrationTestBase() {
         }
     }
 
+    /**
+     * AI가 반려한 상품의 이의는 **그때 열린 행에** 붙는다.
+     *
+     * 자격을 여는 신호가 둘(열린 행 / 관리자 반려)인데 AI 반려에는 관리자 결정 이력이 없다.
+     * 그래서 이 경로가 열린 행 쪽으로 들어오는 것이 셀러의 유일한 탈출 경로이고, 상태를 손으로
+     * 심지 않고 판정 수신 경로로 지어 그것을 확인한다. 행을 새로 열어 버리면 상품마다 열린 행이
+     * 둘이 되어 관리자가 닫는 것이 하나뿐이고 남은 행이 셀러 정원을 영구히 먹는다.
+     */
+    @Test
+    fun `AI가 반려한 상품은 열린 행에 바로 이의를 붙인다`() {
+        applyVerdict(givenQueued(OLD_CONTENT), InspectionVerdict.FLAG)
+        val opened = assertNotNull(findPending(), "위반 판정이 행을 열지 않으면 그 뒤가 전부 성립하지 않는다")
+
+        appeal("치료 효능이 아니라 성분 설명입니다.")
+
+        val row = assertNotNull(findPending())
+        assertEquals(opened.id, row.id, "행을 새로 열면 상품마다 열린 행이 둘이 되어 하나가 영구히 남는다")
+        assertNotNull(row.appealedAt)
+        assertEquals(1, row.appealAttemptCount)
+        assertEquals(opened.blindedAt, row.blindedAt, "접수가 정렬 키를 밀면 이의 폭주가 곧 큐 정렬 조작이 된다")
+    }
+
     @Test
     fun `정책 버전이 올라 같은 내용을 다시 봐도 접수된 이의는 남는다`() {
         applyVerdict(givenQueued(OLD_CONTENT), InspectionVerdict.FLAG)
@@ -106,6 +128,7 @@ class ProductAppealInvalidationIntegrationTest : IntegrationTestBase() {
         assertEquals("치료 효능이 아니라 성분 설명입니다.", row.appealReason)
     }
 
+    /** 기한 만료는 상품도 큐도 건드리지 않는다. 이의를 비울 자리에 아예 닿지 않는 것이 지금의 근거다 */
     @Test
     fun `재검수가 기한을 넘겨도 접수된 이의는 남는다`() {
         applyVerdict(givenQueued(OLD_CONTENT), InspectionVerdict.FLAG)
