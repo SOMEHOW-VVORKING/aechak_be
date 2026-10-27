@@ -3,9 +3,11 @@ package com.aechak.application.order.seller.usecase
 import com.aechak.application.order.seller.usecase.command.AcceptOrderCommand
 import com.aechak.application.order.seller.usecase.command.CompleteDeliveryCommand
 import com.aechak.application.order.seller.usecase.command.RegisterShipmentCommand
+import com.aechak.application.order.seller.usecase.query.SellerOrderMetricsQuery
 import com.aechak.application.order.seller.usecase.query.SellerOrderSearchQuery
 import com.aechak.application.order.seller.usecase.result.RegisterShipmentResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderDetailResult
+import com.aechak.application.order.seller.usecase.result.SellerOrderMetricsResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderSummaryResult
 import com.aechak.application.support.OffsetPageResult
 
@@ -31,4 +33,12 @@ interface SellerOrderUseCase {
         sellerId: Long,
         orderPublicId: String,
     ): SellerOrderDetailResult
+
+    /**
+     * 대시보드용 주문 지표 집계 — 신규 주문·발송 대기·발송 지연을 쿼리 한 번으로 센다.
+     *
+     * 전제 — 셀러 자격 게이트는 호출자가 통과시킨다. 집계는 넘겨받은 sellerId 범위만 읽고
+     * 식별자를 돌려주지 않으므로 소유권 판정 대상이 아니다. 이 계약을 HTTP로 직접 노출하지 않는다.
+     */
+    fun getOrderMetrics(query: SellerOrderMetricsQuery): SellerOrderMetricsResult
 }

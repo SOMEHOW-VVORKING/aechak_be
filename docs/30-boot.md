@@ -119,6 +119,37 @@ boot가 domain을 참조하게 된다.** `application`이 domain을 `api`로 걸
 - 참조가 늘어 boot가 도메인 엔티티를 여럿 열게 되면 **제약 상수 전용 모듈을 분리한다.**
   그때까지는 위 규칙을 따른다.
 
+### 3-2. 생성 문서(OpenAPI)와 실제 응답을 벌어지지 않게 두기
+
+문서는 springdoc이 **자기 ObjectMapper로** 만들고 응답은 컨테이너의 ObjectMapper가 만든다. 둘은 같은
+매퍼가 아니다 — 컨테이너 쪽에는 jackson-module-kotlin이 붙어 있고 문서 쪽에는 붙지 않는다. 또 문서
+생성기는 핸들러 본문을 읽지 못하므로 애노테이션이 없으면 성공 코드를 200으로 가정한다. 그래서 아래
+다섯은 코드만 읽어서는 어긋난 것이 보이지 않고, 문서를 믿는 클라이언트에서만 터진다.
+
+| 상황 | 두는 것 |
+| --- | --- |
+| `is`로 시작하는 Boolean 프로퍼티 | 게터에 `@get:JsonProperty("isXxx")`. 없으면 응답은 `isXxx`인데 문서는 `xxx`로 적힌다 |
+| 한 실행 모듈 안에서 단순 이름이 겹치는 DTO(중첩 클래스 포함) | 한쪽에 `@Schema(name = "...")`. 문서는 단순 이름으로 스키마를 등록해서 겹치면 한 벌만 남고 나머지가 사라진다 |
+| 요청이 스스로를 검사하는 계산 프로퍼티(`@get:AssertTrue`) | `@get:Schema(hidden = true)`. 클라이언트가 채워 보낼 값이 아니다 |
+| 상태·종류를 내리는 필드 | 문자열 대신 **enum 타입 그대로** 선언한다(`.name` 변환을 두지 않는다). 와이어 어휘가 enum 이름이 아니면(화면용 소문자 세그먼트 등) `@field:Schema(allowableValues = [...])`로 못박고, 그 목록이 서버가 실제로 받는 값과 같은지는 계약 테스트가 지킨다 |
+
+`lastTrackingStatus`처럼 외부(택배사)가 준 자유 문자열은 허용값이 없다 — 억지로 enum을 만들지 말고
+`@field:Schema(description = ...)`로 자유 문자열임을 적는다.
+
+**성공 상태코드는 핸들러에 `@ResponseStatus`로 명시한다.** 문서 생성기는 애노테이션이 없으면 성공 코드를
+200으로 가정한다 — `ResponseEntity.noContent()`로 204를 돌려줘도 문서에는 200으로 적힌다. 반환형만으로는
+가릴 수 없다(본문 없는 핸들러 중에도 201·302·200이 섞여 있다). 200이 아닌 코드를 돌려주는 핸들러는
+`ResponseEntity`가 세우는 코드와 **같은 값**을 애노테이션으로 함께 적는다 — 둘이 같으니 어느 쪽이 이기든
+응답은 바뀌지 않고, 문서만 실제를 따라온다. 본문을 돌려주지 않는 핸들러는 코드를 **반드시** 명시한다(계약
+테스트가 누락을 잡는다).
+
+구매자·셀러 실행 모듈의 계약 테스트(`OpenApiContractIntegrationTest`)가 `/v3/api-docs`를 받아 그 보트의
+요청·응답 DTO와 핸들러를 전수로 검사하고, 받은 스펙을 `build/openapi/`에 남긴다 — 문서를 다시 보려고 앱을
+따로 띄울 필요가 없다. 어드민에는 아직 이 테스트가 없어 위 규칙을 사람이 지켜야 한다.
+
+성공 코드 검사가 보는 것은 "핸들러가 선언한 코드와 문서가 같은지"다. 선언이 핸들러가 실제로 세우는 코드와
+같은지는 본문을 읽어야 알 수 있어, 그쪽은 통합 테스트의 상태코드 단언이 지킨다.
+
 ## 4. Consumer 동거 구역 (결정: api 내 consumer 패키지 — 승격 조건은 A-3)
 
 ```kotlin
@@ -144,9 +175,10 @@ class OrderMessageConsumer(private val someUseCase: SomeUseCase) {
 - 라우팅은 **호스트 분리**(`seller-api.<도메인>`) 전제 — `api.base-path`(/api/v1)와 경로는 api 시절 그대로라 FE 경로 수정이 없다.
 - **선별 스캔**: 루트(com.aechak) 스캔은 auth·kafka 등 api 전용 조립까지 요구해 부팅이 깨진다.
   스캔 목록은 `SellerApiApplication` 소유 — application 패키지를 추가로 쓰면 그 패키지가 요구하는 infra 어댑터·config 조립도 함께 늘린다.
-- **셀러센터 전용 주문 유스케이스는 `application.order.seller` 하위에 둔다.** BC 패키지 전체(`application.order`)를 스캔하면
-  구매자 주문서·장바구니 파사드가 딸려와 배송지·적립금 조립까지 요구한다. 뒤집어, batch는 `application.order`를 스캔하므로
-  이 하위 패키지를 excludeFilters로 뺀다 — 셀러 자격(`application.seller`)을 배치가 끌고 오지 않게 한다.
+- **셀러센터 전용 유스케이스는 BC 패키지의 `seller` 하위에 둔다**(`application.order.seller`, `application.settlement.seller`).
+  BC 패키지 전체를 스캔하면 셀러센터가 안 쓰는 파사드가 딸려온다 — `application.order`는 구매자 주문서·장바구니가 배송지·적립금
+  조립까지 요구하고, `application.settlement`는 구매확정 원장 생성과 계좌 이관이 딸려온다. 뒤집어, batch는 두 BC 패키지를
+  스캔하므로 이 하위 패키지들을 excludeFilters로 뺀다 — 셀러 자격(`application.seller`)을 배치가 끌고 오지 않게 한다.
 - **셀러와 배치가 같은 전이를 일으키는 로직은 `application.order.{하위}` 를 따로 파고 양쪽 스캔에 넣는다**(`application.order.delivery`).
   `application.order.seller` 에 두면 batch의 제외 필터에 걸려 배치가 쓸 수 없고, 복제해 두면 전이 순서·이력 기록이 갈린다.
 - **Flyway 미탑재**: 스키마 관리는 api가 유일 소유자. seller 단독 배포 시 새 마이그레이션은 api 선배포가 전제.
@@ -164,6 +196,7 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 ├── payment/                     # PaymentReconciliationSchedule — 결제 대사(매일 04:30 KST, 빠진 날 따라잡기)
 ├── order/                       # OrderExpirySchedule — 주문서 TTL 만료와 재고·적립금 복원(매분, 기본 꺼짐)
 │                               # OrderDeliverySchedule — 집화 지연 경고·배송완료 자동 전이(매일 03:00 KST, 기본 꺼짐)
+│                               # ShipmentTrackingSchedule — 택배사 추적 상태 갱신(6시간마다, 기본 꺼짐, 상태 전이 없음)
 │                               # OrderAutoConfirmSchedule — 구매확정 자동화(매일 02:00 KST, 사전 안내 기록 포함, 기본 꺼짐)
 │                               # ClaimRefundSchedule — 승인된 취소 클레임의 환불 집행(매분, 기본 꺼짐)
 │                               # ClaimAutoApproveSchedule — 셀러 미응답 클레임의 자동승인과 환불(매시, 기본 꺼짐)
@@ -201,6 +234,15 @@ boot/batch/src/main/kotlin/com/aechak/batch/
   경합 자체는 건마다 결제 결과를 먼저 확정한 뒤(외부 조회이므로 트랜잭션 밖) 그래도 결제대기로 남은 건만 취소하는 순서로 줄인다.
 - **배송 배치는 `order.delivery.enabled`로 꺼 둘 수 있고 기본값이 false다.** 켜면 송장 등록 시각만 보고 주문을 배송완료로 넘기므로,
   택배사 추적 연동 없이 켜면 실제로 도착하지 않은 주문에 구매확정 기한이 시작된다.
+- **추적 갱신 배치는 `order.delivery.tracking.enabled`로 꺼 둘 수 있고 기본값이 false다.** 지금 조립할 수 있는 추적 어댑터는
+  외부를 부르지 않는 목뿐이라, 켜면 `[모의]` 표식이 붙은 가짜 상태가 발송에 쌓여 구매자·셀러 주문 조회에 그대로 뜬다.
+  목 어댑터 자체도 기본 꺼짐이고 운영 프로파일에서는 켜도 조립되지 않는다 — 스위치가 둘로 갈려 있어 하나만 켜도 가짜 값이 들어가지 않는다.
+  이 배치는 추적 문구와 조회 시각만 쓰고 **상태 전이는 일으키지 않는다** — 전이의 주인은 배송완료 배치와 셀러 수동 처리다.
+  어댑터가 없는 환경에서 켜면 부팅은 되고 회차가 첫 건에서 경고를 남기고 끊는다(조용히 도는 대신 로그로 드러난다).
+- **추적이 실제 택배사 값으로 채워지면 배송 배치의 판정을 바꿀 수 있다.** 지금 집화 지연 경고와 배송완료 자동 전이는 송장 등록
+  시각만 보므로, 실제로 도착하지 않은 주문도 기한이 지나면 배송완료가 된다(그 배치가 기본 꺼짐인 이유다). 실제 추적 어댑터가
+  붙은 뒤에는 발송에 쌓인 최근 추적 상태와 조회 시각을 판정 재료로 삼아 "택배사가 배달완료로 보고한 건만 전이"로 좁힐 수 있다.
+  두 작업은 별개다 — 추적 경로를 세운 작업에서 배송 배치의 판정 로직은 건드리지 않았다.
 - dev 배포 라인은 api·seller·admin과 같은 모양으로 깔려 있다(SCRUM-251) — 전용 ECR(`aechak-batch`)·로그그룹·taskdef·ECS 서비스와
   SSM 경로 `/aechak/dev/batch/`, `deploy-dev-batch.yml`. **ALB 뒤에 두지 않는다**(수신 포트·헬스체크 엔드포인트가 없다).
   **ECS 태스크는 1대 고정** — 여러 대면 같은 스케줄 회차가 동시에 돈다. 포트원 시크릿 2개는 수기 등재 대상이다.

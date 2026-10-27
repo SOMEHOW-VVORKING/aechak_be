@@ -1,6 +1,7 @@
 package com.aechak.api.product.response
 
 import com.aechak.application.product.product.usecase.result.ProductSummaryResult
+import com.aechak.domain.product.product.enums.SaleStatus
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.math.BigDecimal
 
@@ -12,13 +13,14 @@ data class ProductSummaryResponse(
     val regularPrice: Long,
     val discountPrice: Long?,
     val discountRate: Int?,
-    val saleStatus: String,
+    val saleStatus: SaleStatus,
     val averageRating: BigDecimal?,
     val reviewCount: Int,
     @get:JsonProperty("isViewable")
     val isViewable: Boolean,
     @get:JsonProperty("isPurchasable")
     val isPurchasable: Boolean,
+    @get:JsonProperty("isLiked")
     val isLiked: Boolean,
 ) {
     companion object {
@@ -31,7 +33,7 @@ data class ProductSummaryResponse(
                 regularPrice = result.regularPrice,
                 discountPrice = result.discountPrice,
                 discountRate = result.discountRate,
-                saleStatus = result.saleStatus.name,
+                saleStatus = result.saleStatus,
                 averageRating = result.averageRating,
                 reviewCount = result.reviewCount,
                 isViewable = result.isViewable,
