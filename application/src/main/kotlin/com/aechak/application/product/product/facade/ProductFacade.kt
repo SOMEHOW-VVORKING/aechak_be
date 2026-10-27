@@ -9,7 +9,6 @@ import com.aechak.application.inspection.service.InspectionRequestService
 import com.aechak.application.inspection.usecase.command.RequestProductInspectionCommand
 import com.aechak.application.product.like.service.ProductLikeStatusService
 import com.aechak.application.product.product.port.view.ProductCatalogView
-import com.aechak.application.product.product.service.ProductInspectionGateService
 import com.aechak.application.product.product.service.ProductService
 import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.product.product.usecase.SellerProductUseCase
@@ -58,7 +57,6 @@ class ProductFacade(
     private val inspectionRequestService: InspectionRequestService,
     private val inspectionQueryService: InspectionQueryService,
     private val inspectionAppealService: InspectionAppealService,
-    private val productInspectionGateService: ProductInspectionGateService,
     transactionManager: PlatformTransactionManager,
 ) : ProductUseCase,
     SellerProductUseCase {
@@ -116,18 +114,15 @@ class ProductFacade(
         val version =
             tx.execute {
                 val saved = productService.register(stored, options)
-                val requested =
-                    requestInspection(
-                        productId = saved.product.id,
-                        versionNo = saved.versionNo,
-                        categoryId = stored.categoryId,
-                        productName = stored.productName,
-                        description = stored.description,
-                        optionNames = optionNamesOf(options),
-                        representativeImageKey = saved.product.representativeImageKey,
-                    )
-                // 요청이 나가지 않았으면 판정도 오지 않으므로 숨기지 않음. 숨기면 영영 PENDING에 남음
-                if (requested) productInspectionGateService.holdUntilInspected(saved.product)
+                requestInspection(
+                    productId = saved.product.id,
+                    versionNo = saved.versionNo,
+                    categoryId = stored.categoryId,
+                    productName = stored.productName,
+                    description = stored.description,
+                    optionNames = optionNamesOf(options),
+                    representativeImageKey = saved.product.representativeImageKey,
+                )
                 saved
             }!!
         return ProductRegisterResult.of(version.product, version.versionNo)
@@ -153,15 +148,20 @@ class ProductFacade(
                 // 버전이 남지 않았다는 것은 수정 가능한 필드가 하나도 달라지지 않았다는 뜻이다.
                 // 판정 대상 본문도 그대로이므로 요청하지 않는다.
                 updated.versionNo?.let { versionNo ->
-                    requestInspection(
-                        productId = updated.product.id,
-                        versionNo = versionNo,
-                        categoryId = stored.categoryId,
-                        productName = stored.productName,
-                        description = stored.description,
-                        optionNames = productService.optionNamesOf(updated.product.id),
-                        representativeImageKey = updated.product.representativeImageKey,
-                    )
+                    val contentHash =
+                        requestInspection(
+                            productId = updated.product.id,
+                            versionNo = versionNo,
+                            categoryId = stored.categoryId,
+                            productName = stored.productName,
+                            description = stored.description,
+                            optionNames = productService.optionNamesOf(updated.product.id),
+                            representativeImageKey = updated.product.representativeImageKey,
+                        )
+                    // 내용이 바뀌면 그 전 내용에 걸린 이의는 지금 걸린 것을 가리키지 않는다.
+                    // 판정이 와서 비워 주기를 기다릴 수 없다 — 판정이 실패하거나 기한을 넘기면
+                    // 그 판정은 검토 큐에 닿지 않아 비울 기회가 아예 없다.
+                    contentHash?.let { inspectionAppealService.invalidateOnContentChange(updated.product.id, it) }
                 }
                 updated
             }!!
@@ -237,7 +237,7 @@ class ProductFacade(
             product = product,
             snapshot = inspectionQueryService.findLatestProductInspection(product.id),
             openReview = inspectionQueryService.findOpenProductReview(product.id),
-            latestRejectReason = inspectionQueryService.findLatestRejectReason(product.id),
+            adminRejectReason = inspectionQueryService.findAdminRejectReason(product.id),
         )
 
     private fun requireActiveSeller(sellerId: Long) {
@@ -259,7 +259,9 @@ class ProductFacade(
      * 판정에 필요한 본문을 여기서 다 모아 보낸다. AI 서버가 우리를 되묻지 않게 하려는 것이고,
      * 그래야 역방향 호출 인증과 보안그룹 인바운드가 필요 없어진다.
      *
-     * @return 요청 발행 스위치가 꺼져 있으면 false
+     * 돌려주는 것은 그 검수가 가리키는 **내용 지문**이다. 요청 발행 스위치가 꺼져 있으면 null.
+     * 지문을 여기서 받아 쓰는 이유는 한 수정에서 두 번 계산하지 않기 위함이고, 같은 값이라야
+     * 이의 무효화가 판정이 들고 올 지문과 같은 축에서 비교된다.
      */
     private fun requestInspection(
         productId: Long,
@@ -269,18 +271,19 @@ class ProductFacade(
         description: String?,
         optionNames: List<String>,
         representativeImageKey: String?,
-    ): Boolean =
-        inspectionRequestService.requestProduct(
-            RequestProductInspectionCommand(
-                productId = productId,
-                productVersionNo = versionNo,
-                productName = productName,
-                description = description,
-                optionNames = optionNames,
-                categoryPath = productService.categoryPathOf(categoryId),
-                imageUrls = listOfNotNull(fileUseCase.resolveMediaUrl(representativeImageKey)),
-            ),
-        ) != null
+    ): String? =
+        inspectionRequestService
+            .requestProduct(
+                RequestProductInspectionCommand(
+                    productId = productId,
+                    productVersionNo = versionNo,
+                    productName = productName,
+                    description = description,
+                    optionNames = optionNames,
+                    categoryPath = productService.categoryPathOf(categoryId),
+                    imageUrls = listOfNotNull(fileUseCase.resolveMediaUrl(representativeImageKey)),
+                ),
+            )?.contentHash
 
     /** 그룹명과 값 이름을 함께 넘긴다. 옵션 이름에도 금칙 표현이 들어온다 */
     private fun optionNamesOf(options: ProductOptions): List<String> =

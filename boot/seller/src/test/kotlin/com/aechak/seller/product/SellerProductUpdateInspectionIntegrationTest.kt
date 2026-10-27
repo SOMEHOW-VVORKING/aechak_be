@@ -7,9 +7,10 @@ import com.aechak.application.messaging.MessagePublisher
 import com.aechak.application.product.product.usecase.SellerProductUseCase
 import com.aechak.application.product.product.usecase.command.RegisterProductCommand
 import com.aechak.application.product.product.usecase.command.UpdateProductCommand
+import com.aechak.domain.inspection.ProductReviewQueueItem
+import com.aechak.domain.inspection.enums.ReviewQueueStatus
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
-import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.message.IntegrationMessage
 import com.aechak.message.inspection.ProductInspectionRequestedMessage
@@ -20,7 +21,10 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
 import org.springframework.test.context.TestPropertySource
+import java.time.LocalDateTime
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -32,12 +36,14 @@ import kotlin.test.assertTrue
  * 함께 지키는 것이 하나 더 있다. 수정 경로의 내용 해시가 등록 경로와 같은 필드 집합으로
  * 계산되어야 한다. 어긋나면 본문이 하나도 바뀌지 않은 상품도 매번 모델을 다시 불러 과금된다.
  *
+ * 수정이 접수된 이의를 무효로 돌리는 것도 여기서 본다. 그 무효화의 자리가 수정 경로인 이유는
+ * 판정을 기다릴 수 없기 때문이다 — 판정이 실패하거나 기한을 넘기면 그 판정은 검토 큐에 닿지
+ * 않아서 비울 기회가 아예 없다.
+ *
  * 발행 포트를 기록용으로 바꿔 끼운다. 실제 발행은 아웃박스 테이블에 적는데 그 테이블은
  * 마이그레이션으로만 생겨서, 스키마를 코드로 만드는 이 컨텍스트에는 없다.
- *
- * 노출 게이트도 켠다. 등록 직후 숨기는 것은 요청이 실제로 나갈 때만이라 두 스위치가 함께 켜진 컨텍스트에서만 보인다.
  */
-@TestPropertySource(properties = ["inspection.enabled=true", "inspection.gate-enabled=true"])
+@TestPropertySource(properties = ["inspection.enabled=true"])
 class SellerProductUpdateInspectionIntegrationTest : IntegrationTestBase() {
     @TestConfiguration
     class RecordingPublisherConfig {
@@ -132,17 +138,6 @@ class SellerProductUpdateInspectionIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `게이트가 켜져 있으면 등록한 상품을 첫 판정까지 숨긴다`() {
-        val publicId = register()
-
-        assertEquals(
-            InspectionStatus.PENDING,
-            storedInspectionStatus(publicId),
-            "판정 전에 노출하면 위반 문구가 AI 판정이 올 때까지 구매자에게 보인다",
-        )
-    }
-
-    @Test
     fun `아무것도 달라지지 않은 수정은 검수를 요청하지 않는다`() {
         val publicId = register()
 
@@ -150,6 +145,80 @@ class SellerProductUpdateInspectionIntegrationTest : IntegrationTestBase() {
 
         assertEquals(1, publisher.productRequests().size, "버전을 남기지 않는 수정은 재검수 대상이 아니다")
     }
+
+    /**
+     * 판정이 오지 않아도 내용이 바뀌면 이의는 무효가 된다.
+     *
+     * 접수 사유는 지금 걸려 있는 것에 대고 쓴 문장이다. 셀러가 내용을 고치면 그 문장이 가리키는
+     * 것이 없어지는데, 판정 쪽에서만 비우면 그 판정이 안 오는 경우를 덮지 못한다 — 모델이
+     * 죽거나 기한을 넘기면 상품도 큐도 건드리지 않으므로 비울 자리가 없다. 그러면 관리자는
+     * "셀러는 A에 억울하다 했는데 지금 걸린 것은 B"를 읽고, 셀러는 재접수가 중복으로 막혀
+     * 할 수 있는 것이 없고, 그 행이 셀러 정원도 계속 먹는다.
+     */
+    @Test
+    fun `판정이 오지 않아도 내용을 고치면 접수한 이의가 무효가 된다`() {
+        val publicId = register()
+        val blindedAt = blockedWithAppeal(publicId)
+
+        update(publicId, productName = "연어 건사료 2kg 리뉴얼")
+
+        val row = assertNotNull(findPending(publicId), "행은 열려 있어야 한다. 무효가 되는 것은 이의뿐이다")
+        assertNull(row.appealedAt, "고친 뒤의 사유는 지금 걸린 것을 가리키지 않는다")
+        assertNull(row.appealReason)
+        assertTrue(row.appealCleared(), "무효가 됐다는 사실이 남지 않으면 접수 실패와 구별되지 않는다")
+        assertEquals(blindedAt, row.blindedAt, "관리자 목록의 정렬 키를 셀러 수정이 밀면 수정 한 번이 큐 정렬 조작이 된다")
+    }
+
+    /** 판정 대상 본문이 그대로면 셀러가 적은 사유도 그대로 가리킨다. 지우면 가격 한 번 고치는 것이 이의를 날린다 */
+    @Test
+    fun `내용이 그대로인 수정은 접수한 이의를 건드리지 않는다`() {
+        val publicId = register()
+        blockedWithAppeal(publicId)
+
+        update(publicId, regularPrice = 19900L)
+
+        assertNotNull(findPending(publicId)!!.appealedAt, "본문이 바뀌지 않았으면 이의는 지금 걸린 것을 그대로 가리킨다")
+    }
+
+    /**
+     * AI가 반려해 열린 행이 생기고 셀러가 거기에 이의를 접수한 상태를 심는다.
+     *
+     * 판정 적용이 실제로 만드는 조합이다 — 위반 판정은 상품을 반려하고 같은 트랜잭션에서 행을
+     * 연다. 이 모듈에는 판정 수신 경로가 없어서 그 결과 상태를 심는다. 이의 지문은 발행된
+     * 검수 요청에서 읽는다. 접수 경로가 쓰는 것과 같은 값이어야 비교가 성립한다.
+     */
+    private fun blockedWithAppeal(publicId: String): LocalDateTime {
+        val blindedAt = LocalDateTime.now().minusDays(1).withNano(0)
+        val blockingHash = publisher.productRequests().last().contentHash
+        tx.execute {
+            val product =
+                em
+                    .createQuery("select p from Product p where p.publicId = :pid", Product::class.java)
+                    .setParameter("pid", publicId)
+                    .singleResult
+            product.rejectByInspection()
+            val row = ProductReviewQueueItem.openForProduct(product.id, sellerUserId, "연어 건사료 2kg", blindedAt)
+            row.appeal("성분 설명입니다.", LocalDateTime.now(), blockingHash)
+            em.persist(row)
+        }
+        return blindedAt
+    }
+
+    /** 열린 행. 둘 이상이면 바로 깨뜨린다 — 조용히 하나만 고르면 중복이 보이지 않는다 */
+    private fun findPending(publicId: String): ProductReviewQueueItem? =
+        tx.execute {
+            val rows =
+                em
+                    .createQuery(
+                        "select i from ProductReviewQueueItem i, Product p " +
+                            "where p.publicId = :pid and i.targetId = p.id and i.status = :st",
+                        ProductReviewQueueItem::class.java,
+                    ).setParameter("pid", publicId)
+                    .setParameter("st", ReviewQueueStatus.PENDING_REVIEW)
+                    .resultList
+            assertTrue(rows.size <= 1, "상품마다 열린 행은 하나여야 한다. 실제=${rows.size}")
+            rows.firstOrNull()
+        }
 
     private fun register(): String =
         sellerProductUseCase
@@ -214,14 +283,6 @@ class SellerProductUpdateInspectionIntegrationTest : IntegrationTestBase() {
                 .setParameter("pid", publicId)
                 .singleResult
                 .representativeImageKey!!
-        }!!
-
-    private fun storedInspectionStatus(publicId: String): InspectionStatus =
-        tx.execute {
-            em
-                .createQuery("select p.inspectionStatus from Product p where p.publicId = :pid", InspectionStatus::class.java)
-                .setParameter("pid", publicId)
-                .singleResult
         }!!
 
     private fun inspectionCount(): Int =

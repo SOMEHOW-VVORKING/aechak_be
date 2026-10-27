@@ -44,14 +44,16 @@ import kotlin.test.assertTrue
  * — 그러지 않으면 "접수 뒤 수정"을 상한만큼 반복한 셀러가 영구히 이의 불가가 되고, 차단의
  * 유일한 탈출 경로가 이의라 다른 차단 상품까지 함께 묶인다.
  *
- * 자격을 여는 신호는 판정값이 아니라 **열린 검토 행**이다. 상품의 PENDING은 "첫 판정 대기"와
- * "사람 확인 대기"를 겸하고, 둘을 가르는 것이 그 행이다. 판정값이나 상태만 보면 등록 직후
- * 모든 상품이 이의를 받는다.
+ * 자격을 여는 신호는 둘이다 — **열린 검토 행**이 있거나, **관리자가 반려**했거나다. 노출 상태
+ * 하나로는 가를 수 없다. 반려는 AI가 내린 것일 수도 있고, AI 반려는 같은 트랜잭션에서 행을
+ * 열기 때문에 열린 행 쪽으로 들어온다. 행이 없는 반려는 관리자가 결정하고 그 행을 닫은 것뿐이다.
  *
  * 노출 게이트 스위치를 켜지 않고 돈다(테스트 기본값은 꺼짐). 다만 여기서 심는 상태는 손으로
  * 만든 것이고, **그 상태가 스위치 꺼진 환경에서 실제로 생기는지**는 이 수트가 보지 못한다 —
  * 그 증명은 판정 수신 경로로 행을 만드는 api 쪽 수트에 있다. 여기서 보는 것은 심어 둔 상태에서
- * 접수가 어떻게 동작하는가다.
+ * 접수가 어떻게 동작하는가다. 심는 조합은 판정 경로가 실제로 만드는 것과 같다 — AI가 반려한
+ * 상품은 반려 상태와 열린 행을 함께 가지고, 관리자가 반려한 상품은 반려 상태와 닫힌 결정 행을
+ * 가진다.
  *
  * 열린 행 수는 세어서 단언한다. 조회 헬퍼가 조용히 하나만 골라 주면 행이 둘로 갈라진 것이
  * 보이지 않는데, 그것이 이 기능에서 실제로 났던 결함 모양이다.
@@ -113,7 +115,7 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `접수하면 열린 행에 이의가 붙고 상품 노출은 바뀌지 않는다`() {
-        changeStatus(productId, InspectionStatus.PENDING)
+        changeStatus(productId, InspectionStatus.REJECTED)
         settledInspection(InspectionJudgment.FLAG)
         openReview(productId)
 
@@ -125,17 +127,17 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.appealedAt").exists())
             .andExpect(jsonPath("$.data.appealReason").value("치료 효능이 아니라 성분 설명입니다."))
             // 접수는 노출을 바꾸지 않는다. 바꾸면 이의가 곧 반려 해제 수단이 된다
-            .andExpect(jsonPath("$.data.inspectionStatus").value("PENDING"))
+            .andExpect(jsonPath("$.data.inspectionStatus").value("REJECTED"))
 
         val row = assertNotNull(findPending(productId), "열린 행이 그대로 열려 있어야 한다")
         assertNotNull(row.appealedAt)
         assertEquals("치료 효능이 아니라 성분 설명입니다.", row.appealReason)
-        assertEquals(InspectionStatus.PENDING, statusOf(productId), "접수가 노출 상태를 건드리면 안 된다")
+        assertEquals(InspectionStatus.REJECTED, statusOf(productId), "접수가 노출 상태를 건드리면 안 된다")
     }
 
     @Test
     fun `접수는 관리자 큐의 정렬 키를 밀지 않는다`() {
-        changeStatus(productId, InspectionStatus.PENDING)
+        changeStatus(productId, InspectionStatus.REJECTED)
         val blindedAt = LocalDateTime.now().minusDays(3).withNano(0)
         openReview(productId, blindedAt)
 
@@ -147,7 +149,7 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `같은 행에 두 번째 이의는 거부된다`() {
-        changeStatus(productId, InspectionStatus.PENDING)
+        changeStatus(productId, InspectionStatus.REJECTED)
         openReview(productId)
 
         mockMvc.perform(appealRequest(publicId, "첫 번째 사유입니다.")).andExpect(status().isOk)
@@ -162,7 +164,7 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `관리자가 반려한 상품은 열린 행이 없어도 행을 새로 열어 받는다`() {
-        changeStatus(productId, InspectionStatus.REJECTED)
+        adminRejected(productId)
         val settledAt = settledInspection(InspectionJudgment.FLAG)
 
         mockMvc
@@ -177,11 +179,12 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
         assertEquals(InspectionStatus.REJECTED, statusOf(productId), "접수가 반려를 풀면 안 된다")
     }
 
+    /**
+     * 자격의 축은 노출 상태가 아니다. 상태만 보면 반려가 아닌 상품 전부가 거부되는 것이 맞아
+     * 보이지만, 반대쪽에서 AI가 반려한 상품이 열린 행 없이도 통과해 버린다.
+     */
     @Test
-    fun `첫 판정을 기다리는 상품은 이의를 받지 않는다`() {
-        // 상품의 PENDING은 "첫 판정 대기"와 "사람 확인 대기"를 겸한다. 열린 행이 둘을 가른다
-        changeStatus(productId, InspectionStatus.PENDING)
-
+    fun `열린 행도 없고 관리자 반려도 아닌 상품은 이의를 받지 않는다`() {
         mockMvc
             .perform(appealRequest(publicId, "억울합니다."))
             .andExpect(status().isConflict)
@@ -191,16 +194,8 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `통과한 상품은 이의를 받지 않는다`() {
-        mockMvc
-            .perform(appealRequest(publicId, "억울합니다."))
-            .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.errorCode").value(40502))
-    }
-
-    @Test
     fun `사유가 비면 거부된다`() {
-        changeStatus(productId, InspectionStatus.PENDING)
+        changeStatus(productId, InspectionStatus.REJECTED)
         openReview(productId)
 
         mockMvc
@@ -211,7 +206,7 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `사유를 아예 보내지 않아도 형식 오류가 아니라 사유 필수로 답한다`() {
-        changeStatus(productId, InspectionStatus.PENDING)
+        changeStatus(productId, InspectionStatus.REJECTED)
         openReview(productId)
 
         mockMvc
@@ -228,7 +223,7 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
     fun `셀러별 열린 이의 상한을 넘기면 거부된다`() {
         val second = anotherProductWithOpenReview()
         val third = anotherProductWithOpenReview()
-        changeStatus(productId, InspectionStatus.PENDING)
+        changeStatus(productId, InspectionStatus.REJECTED)
         openReview(productId)
 
         mockMvc.perform(appealRequest(second, "하나")).andExpect(status().isOk)
@@ -244,7 +239,7 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
     fun `고친 내용이 통과해 닫힌 이의는 셀러 정원을 먹지 않는다`() {
         val second = anotherProductWithOpenReview()
         val third = anotherProductWithOpenReview()
-        changeStatus(productId, InspectionStatus.PENDING)
+        changeStatus(productId, InspectionStatus.REJECTED)
         openReview(productId)
 
         mockMvc.perform(appealRequest(second, "하나")).andExpect(status().isOk)
@@ -309,7 +304,7 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
      */
     @Test
     fun `같은 상품에 동시 접수가 들어와도 열린 행과 이의는 하나다`() {
-        changeStatus(productId, InspectionStatus.REJECTED)
+        adminRejected(productId)
         settledInspection(InspectionJudgment.FLAG)
 
         val statuses = appealTwiceInParallel("첫 번째 사유입니다.", "두 번째 사유입니다.")
@@ -319,9 +314,42 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
         assertEquals(1, appealedCount(sellerUserId), "정원의 분모가 둘이면 상한이 한 번 누르는 것으로 깎인다")
     }
 
+    /**
+     * 셀러 단위 상한은 **최선 노력**이다. 고치는 테스트가 아니라 계약을 적는 테스트다.
+     *
+     * 잠그는 것이 상품 행이라, 서로 다른 상품에 동시에 쏘면 N개 트랜잭션이 전부 같은 분모를
+     * 읽고 통과한다. 분모를 직렬화할 지점을 만드는 쪽은 비용이 더 크다 — 셀러 행을 쓰기 잠금으로
+     * 집는 것은 검수가 다른 바운디드 컨텍스트의 행을 잠그는 경로를 새로 만드는 일이고,
+     * 열린 이의를 (소유자, 상태) 범위로 잠그는 것은 판정 경로가 같은 구간에 INSERT 하는 것과
+     * 겹친다.
+     *
+     * 그래서 실질 상한은 **상품 단위**다. 상품마다 열린 이의는 하나고, 열린 행 하나에 접수할
+     * 수 있는 횟수에 상한이 있고, 기각 뒤에는 쿨다운이 걸린다. 한 셀러가 열 수 있는 이의는
+     * 그 셀러가 가진 차단된 상품 수를 넘지 못하고 그 상품들은 이미 관리자 큐에 행을 가진다.
+     * 셀러 단위 상한은 그 위의 2차 방어선이다.
+     */
+    @Test
+    fun `서로 다른 상품에 동시 접수하면 셀러 상한을 넘을 수 있다`() {
+        val second = anotherProductWithOpenReview()
+        val third = anotherProductWithOpenReview()
+        changeStatus(productId, InspectionStatus.REJECTED)
+        openReview(productId)
+        mockMvc.perform(appealRequest(publicId, "하나")).andExpect(status().isOk)
+
+        val statuses = appealInParallel(second to "둘", third to "셋")
+
+        assertEquals(
+            2,
+            statuses.count { it == 200 },
+            "분모가 직렬화되면 한 건은 상한에서 끊긴다. 끊기는 쪽으로 바뀌었다면 상한 직렬화를 넣은 것이고, " +
+                "그때 이 수트의 상품 단위 방어선이 아직 서 있는지 함께 봐야 한다. 받은 상태=$statuses",
+        )
+        assertEquals(3, appealedCount(sellerUserId), "상한 2에 세 건이 열린 것이 지금의 계약이다")
+    }
+
     @Test
     fun `새 판정이 와 행이 갱신되면 이의가 비워져 다시 제기할 수 있다`() {
-        changeStatus(productId, InspectionStatus.PENDING)
+        changeStatus(productId, InspectionStatus.REJECTED)
         openReview(productId)
         mockMvc.perform(appealRequest(publicId, "성분 설명입니다.")).andExpect(status().isOk)
 
@@ -353,7 +381,7 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
      */
     @Test
     fun `무효화를 반복해도 상품당 접수 횟수 상한에서 끊긴다`() {
-        changeStatus(productId, InspectionStatus.PENDING)
+        changeStatus(productId, InspectionStatus.REJECTED)
         openReview(productId)
 
         repeat(MAX_ATTEMPTS_PER_ITEM) { round ->
@@ -417,6 +445,22 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
             openReview(product.id)
             product.publicId
         }!!
+
+    /**
+     * 관리자가 반려해 그 행이 닫힌 상태를 만든다. 열린 행이 없는 접수의 유일한 자격이다.
+     *
+     * 노출 상태만 심으면 모자란다. 반려는 AI가 내린 것일 수도 있어서 자격은 관리자 결정 이력을
+     * 함께 보고, 결정 행이 없으면 AI가 반려한 상품에 관리자가 한 번도 보지 않은 이의가 붙는다.
+     * 이의를 걸지 않고 반려만 하므로 쿨다운의 분모에는 들어가지 않는다.
+     */
+    private fun adminRejected(target: Long) {
+        changeStatus(target, InspectionStatus.REJECTED)
+        tx.execute {
+            val row = openReview(target)
+            row.reject("효능 표현을 빼고 다시 등록해 주세요.", LocalDateTime.now())
+            reviewQueue.save(row)
+        }
+    }
 
     /** 이의를 한 번 접수했다 기각된 상태를 만든다. 쿨다운의 분모는 닫힌 시각이다 */
     private fun rejectAppeal(
@@ -528,16 +572,19 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
     private fun appealTwiceInParallel(
         first: String,
         second: String,
-    ): List<Int> {
+    ): List<Int> = appealInParallel(publicId to first, publicId to second)
+
+    /** 주어진 (상품, 사유) 짝을 한꺼번에 쏘고 응답 상태를 돌려준다 */
+    private fun appealInParallel(vararg requests: Pair<String, String>): List<Int> {
         val start = CountDownLatch(1)
-        val pool = Executors.newFixedThreadPool(2)
+        val pool = Executors.newFixedThreadPool(requests.size)
         try {
             val tasks =
-                listOf(first, second).map { reason ->
+                requests.map { (target, reason) ->
                     pool.submit<Int> {
                         start.await()
                         mockMvc
-                            .perform(appealRequest(publicId, reason))
+                            .perform(appealRequest(target, reason))
                             .andReturn()
                             .response
                             .status

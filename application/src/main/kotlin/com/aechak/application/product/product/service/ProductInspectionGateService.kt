@@ -19,9 +19,8 @@ import org.springframework.stereotype.Component
  * 호출부의 트랜잭션 안에서 돌아야 한다. 판정 적용과 노출 변경이 갈라지면 판정은 적혔는데
  * 상품은 그대로인 상태가 남는다.
  *
- * 쓰기이므로 잠금 조회로 읽는다. 판정 적용이 검수 행을 먼저 잠그고 여기서 상품 행을 잠근다.
- * 기한 정리는 검수 행을 잠그지 않고 커밋 때 갱신하므로, 같은 검수에 판정이 동시에 오면 교착이 날 수 있음.
- * MySQL이 한쪽을 되돌리고, 판정은 재전달로 정리는 다음 주기로 다시 돎.
+ * 쓰기이므로 잠금 조회로 읽는다. 판정 적용이 검수 행을 먼저 잠그고 여기서 상품 행을 잠그는데,
+ * 반대 순서로 두 자원을 잡는 경로가 없어 교착이 생기지 않는다.
  */
 @Component
 class ProductInspectionGateService(
@@ -41,13 +40,13 @@ class ProductInspectionGateService(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * PENDING, 증거 있는 PASS -> APPROVED
-     * APPROVED, FLAG -> PENDING. 관리자가 볼 때까지 숨김
-     * 그 밖의 조합 -> 상태 유지. 미판정, 실패는 이미 보이는 상품을 숨기지 않고 REJECTED는 관리자만 풂
+     * FLAG -> REJECTED
+     * PASS, 관리자가 반려한 REJECTED -> 상태 유지. 사람이 내린 반려를 판정이 풀지 않음
+     * PASS, 그 밖 -> APPROVED
      *
-     * 증거 없는 통과는 승인으로 올리지 않는다. 미판정·판정 실패와 같은 사실이기 때문이다.
-     * 같은 이유로 이미 보이는 상품을 내리지도 않고 큐에만 올린다 — 모델이 보지 못한 것으로
-     * 노출을 끊으면 모델 장애가 곧 매출 장애가 된다.
+     * 상품 행을 잠근 뒤에 그 판정이 아직 최신 검수의 것인지 다시 본다. 잠그기 전 확인만으로는
+     * 잠금을 기다리는 사이에 커밋된 셀러 수정과 새 검수를 못 봐서, 옛 내용의 판정이 새 내용의
+     * 상품에 적용된다.
      *
      * **스위치가 끄는 것은 위의 상태 전이뿐이고 돌려주는 판단은 끄지 않는다.** 스위치 뒤에서
      * null을 돌려주면 큐 등재까지 함께 꺼지고, 그러면 꺼진 환경에는 열린 행이 한 건도 없어
@@ -57,7 +56,8 @@ class ProductInspectionGateService(
     override fun applyJudgment(
         productId: Long,
         judgment: InspectionJudgment,
-        modelVerified: Boolean,
+        isLatestJudgment: () -> Boolean,
+        isAdminRejected: () -> Boolean,
     ): ProductGateOutcome? {
         val product = productRepository.findByIdForUpdate(productId)
         if (product == null) {
@@ -66,12 +66,20 @@ class ProductInspectionGateService(
             return null
         }
 
-        val approved = judgment == InspectionJudgment.PASS && modelVerified
+        if (!isLatestJudgment()) {
+            // 잠금을 기다리는 사이에 셀러가 고쳐 새 검수가 올라갔다.
+            log.info("잠근 뒤 보니 최신 검수가 아니다. 반영하지 않는다. productId={}", productId)
+            return null
+        }
+
         val before = product.inspectionStatus
+        val keepsAdminRejection =
+            judgment == InspectionJudgment.PASS && before == InspectionStatus.REJECTED && isAdminRejected()
+
         if (gateEnabled) {
             when {
-                before == InspectionStatus.PENDING && approved -> product.approveInspection()
-                before == InspectionStatus.APPROVED && judgment == InspectionJudgment.FLAG -> product.holdInspection()
+                judgment == InspectionJudgment.FLAG -> product.rejectByInspection()
+                judgment == InspectionJudgment.PASS && !keepsAdminRejection -> product.approveByInspection()
             }
             saveIfChanged(product, before)
         }
@@ -79,21 +87,21 @@ class ProductInspectionGateService(
         return ProductGateOutcome(
             productName = product.name,
             sellerId = product.sellerId,
-            needsAdminReview = !approved || before == InspectionStatus.REJECTED,
+            needsAdminReview = judgment == InspectionJudgment.FLAG || keepsAdminRejection,
         )
     }
 
     override fun approveByAdmin(productId: Long) {
         val product = getForUpdate(productId)
         val before = product.inspectionStatus
-        product.approveInspection()
+        product.approveByInspection()
         saveIfChanged(product, before)
     }
 
     override fun rejectByAdmin(productId: Long) {
         val product = getForUpdate(productId)
         val before = product.inspectionStatus
-        product.rejectInspection()
+        product.rejectByInspection()
         saveIfChanged(product, before)
     }
 
@@ -103,22 +111,21 @@ class ProductInspectionGateService(
      * 게이트 스위치를 보지 않는다 — 사람이 누르는 경로라서, 스위치가 꺼진 환경에서 null을
      * 돌려주면 이의가 조용히 아무것도 하지 않는다. 그 면제가 실제로 쓸모를 가지려면 자격을
      * 만드는 쪽(판정의 큐 등재·관리자 반려)도 함께 면제돼야 한다.
+     *
+     * 반려 상태와 관리자 결정 이력을 함께 본다. 반려는 AI가 내린 것일 수도 있어서 상태 하나로는
+     * 사람이 내린 반려를 가를 수 없다.
      */
-    override fun lockForAppeal(productId: Long): ProductAppealTarget? =
+    override fun lockForAppeal(
+        productId: Long,
+        isAdminRejected: () -> Boolean,
+    ): ProductAppealTarget? =
         productRepository.findByIdForUpdate(productId)?.let {
             ProductAppealTarget(
                 productName = it.name,
                 sellerId = it.sellerId,
-                adminRejected = it.inspectionStatus == InspectionStatus.REJECTED,
+                adminRejected = it.inspectionStatus == InspectionStatus.REJECTED && isAdminRejected(),
             )
         }
-
-    /** 갓 등록한 상품을 첫 판정이 올 때까지 구매자에게 보이지 않게 둠 */
-    fun holdUntilInspected(product: Product) {
-        if (!gateEnabled) return
-        product.holdInspection()
-        productRepository.save(product)
-    }
 
     private fun getForUpdate(productId: Long): Product =
         productRepository.findByIdForUpdate(productId)

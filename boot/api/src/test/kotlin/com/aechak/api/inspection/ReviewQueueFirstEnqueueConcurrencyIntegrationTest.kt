@@ -1,8 +1,7 @@
 package com.aechak.api.inspection
 
+import com.aechak.api.consumer.inspection.ContentVerdictConsumer
 import com.aechak.api.support.IntegrationTestBase
-import com.aechak.application.inspection.facade.InspectionFacade
-import com.aechak.application.inspection.usecase.command.ApplyVerdictCommand
 import com.aechak.domain.inspection.ProductReviewQueueItem
 import com.aechak.domain.inspection.repository.ProductReviewQueueRepository
 import org.junit.jupiter.api.Test
@@ -31,9 +30,12 @@ import kotlin.test.assertNotNull
  * 않고(레코드 잠금만), 매 구문이 최신 커밋을 읽어 잠금 조회의 목적인 "먼저 커밋한 쪽이 넣은
  * 행을 본다"도 함께 지켜진다.
  *
- * 이 테스트의 트랜잭션은 격리 수준을 **판정 적용 경로의 선언에서 읽어 온다**. 그 선언이 사라지면
- * 여기도 DB 기본값(REPEATABLE READ)으로 떨어져 교착이 다시 난다 — 선언이 장식이 아니라는 것을
- * 이 테스트가 들고 있는 방식이다.
+ * 이 테스트의 트랜잭션은 격리 수준을 **운영에서 그 트랜잭션을 여는 쪽의 선언에서 읽어 온다**.
+ * 그쪽이 판정 컨슈머다 — 컨슈머가 트랜잭션을 먼저 열고 판정 적용이 전파 REQUIRED로 합류하므로,
+ * 합류하는 쪽의 격리 선언은 예외도 없이 조용히 무시된다. 판정 적용의 선언에서 읽으면 컨슈머가
+ * 기본 격리로 열고 있어도 여기만 READ COMMITTED로 돌아 교착이 안 보인다. 선언이 사라지면
+ * 여기도 DB 기본값(REPEATABLE READ)으로 떨어져 교착이 다시 나는 것이, 선언이 장식이 아니라는
+ * 것을 이 테스트가 들고 있는 방식이다.
  *
  * 순서는 장벽으로 못박는다. 두 트랜잭션이 각자 잠금 조회를 끝낸 **뒤에** 둘 다 INSERT로 들어가야
  * 이 모양이 재현되고, 그 순서를 강제하지 않으면 겹치지 않은 실행이 그냥 통과해 버린다.
@@ -82,11 +84,16 @@ class ReviewQueueFirstEnqueueConcurrencyIntegrationTest : IntegrationTestBase() 
         }
     }
 
-    /** 판정 적용 경로가 선언한 격리 수준으로 도는 트랜잭션 */
+    /**
+     * 운영에서 판정 트랜잭션을 여는 쪽이 선언한 격리 수준으로 도는 트랜잭션.
+     *
+     * 클래스만 반사로 읽으므로 컨슈머가 이 테스트 컨텍스트의 빈이 아니어도 된다. 그쪽은
+     * 카프카 설정이 있을 때만 조립되고 이 수트는 그것을 켜지 않는다.
+     */
     private fun verdictPathTx(): TransactionTemplate {
         val declared =
-            InspectionFacade::class.java
-                .getMethod("applyVerdict", ApplyVerdictCommand::class.java)
+            ContentVerdictConsumer::class.java
+                .getDeclaredMethod("onMessage", String::class.java)
                 .getAnnotation(Transactional::class.java)
                 ?.isolation ?: Isolation.DEFAULT
         return TransactionTemplate(transactionManager).apply { isolationLevel = declared.value() }

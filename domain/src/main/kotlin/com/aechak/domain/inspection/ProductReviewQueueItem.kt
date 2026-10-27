@@ -132,14 +132,17 @@ class ProductReviewQueueItem protected constructor(
      * 않아서, 그대로 두면 관리자는 "셀러가 A에 억울하다 했는데 지금 걸린 것은 B"를 보고 셀러는
      * 재접수도 막혀 할 수 있는 것이 없어짐. 비우면 재접수가 열리고 셀러 상한의 정원도 비워짐.
      *
-     * 반대로 내용이 그대로인 판정으로 비우면 안 됨. 같은 내용에 판정이 또 오는 길이 둘 있음 —
-     * 재검수가 기한을 넘겨 미판정으로 닫히는 경우와, 관리자가 반려한 상품에 판정이 또 오는
-     * 경우(그 상품은 어떤 판정이 와도 관리자가 다시 봐야 해서 매번 이 메서드로 들어옴)다.
-     * 둘 다 셀러가 한 일이 없는데 거기서 지우면 모델 장애가 곧 "제출한 이의를 아무도 못 보는
-     * 상태"가 됨. 지문을 모르는 이의([appealedContentHash]가 비었음)는 가릴 근거가 없어 비움.
+     * 반대로 내용이 그대로인 판정으로 비우면 안 됨. 관리자가 반려한 상품은 어떤 판정이 와도
+     * 관리자가 다시 봐야 해서 매번 이 메서드로 들어오는데, 셀러가 한 일이 없는데 거기서 지우면
+     * 모델 장애가 곧 "제출한 이의를 아무도 못 보는 상태"가 됨. 지문을 모르는
+     * 이의([appealedContentHash]가 비었음)는 가릴 근거가 없어 비움.
      *
      * 비울 때 [appealAttemptCount]는 건드리지 않음. 그것이 "이의가 있었고 무효가 됐다"는
      * 흔적이고 동시에 되돌이를 끊는 분모임.
+     *
+     * **이 메서드가 무효화의 유일한 자리는 아님.** 판정 실패·기한 만료·모델이 읽지 않은 통과는
+     * 상품도 큐도 건드리지 않아서 여기까지 오지 않음. 그래서 내용이 바뀌는 자리에서도
+     * 비워야 함([clearAppealForContentChange]).
      */
     fun refresh(
         targetName: String?,
@@ -151,6 +154,21 @@ class ProductReviewQueueItem protected constructor(
         this.blindedAt = blindedAt
         if (appealedAt == null || appealedContentHash == contentHash) return
 
+        appealReason = null
+        appealedAt = null
+    }
+
+    /**
+     * 내용이 바뀌어 이의를 무효로 돌림. 판정을 기다리지 않는 자리에서 부름.
+     *
+     * [refresh]를 재사용하지 않는 이유가 [blindedAt]임. 그것이 관리자 목록의 정렬 키라서,
+     * 셀러 수정이 그 값을 밀면 수정 한 번이 곧 큐 정렬 조작이 됨. 상품명도 여기서는 손대지
+     * 않음 — 바뀐 이름은 다음 판정이 가져옴.
+     *
+     * [appealAttemptCount]는 그대로 둠. 되돌이를 끊는 분모이고 무효화의 흔적임.
+     */
+    fun clearAppealForContentChange() {
+        requirePending()
         appealReason = null
         appealedAt = null
     }

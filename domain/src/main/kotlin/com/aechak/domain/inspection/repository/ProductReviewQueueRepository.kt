@@ -36,4 +36,11 @@ interface ProductReviewQueueRepository {
 
     /** 이 상품의 이의가 마지막으로 기각된 시각. 쿨다운의 기준임. 기각된 적이 없으면 null */
     fun findLastAppealRejectedAt(productId: Long): LocalDateTime?
+
+    /**
+     * 관리자가 승인하거나 반려한 행 중 가장 최근 것. 관리자가 결정한 적이 없으면 null
+     *
+     * 반려 상태만으로는 AI 반려와 관리자 반려를 가를 수 없어서, 그 둘을 가르는 축이 이것이다.
+     */
+    fun findLatestAdminDecisionByProductId(productId: Long): ProductReviewQueueItem?
 }

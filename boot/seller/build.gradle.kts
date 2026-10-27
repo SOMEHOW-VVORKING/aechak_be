@@ -14,6 +14,7 @@ dependencies {
     implementation(project(":s3-client"))               // 서류 승격 어댑터
     implementation(project(":kafka"))                   // 검수 요청 발행 — 아웃박스 경유(MessagePublisher 어댑터)
     implementation(project(":message"))                 // 검수 요청 메시지 계약
+    implementation(libs.spring.boot.starter.kafka)      // KafkaTemplate 자동 구성. 테스트는 api testFixtures가 끌고 와 빠져도 통과함
     implementation(libs.jackson.databind)               // 엔벨로프 매퍼(tools.jackson) 타입을 조립에서 지목
     implementation(kotlin("reflect"))
     implementation(libs.spring.boot.starter.web)

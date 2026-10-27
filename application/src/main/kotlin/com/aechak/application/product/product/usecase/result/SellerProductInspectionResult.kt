@@ -18,10 +18,14 @@ import java.time.LocalDateTime
  * [reasonSummary]는 걸린 구절을 그대로 담는다. 셀러가 직접 쓴 문장이고, 어디를 고쳐야
  * 하는지 알려 주는 것이 반려 통지의 목적이다.
  *
- * 이의 상태를 따로 싣지 않는다. [progressStep]이 접수 뒤 자동으로 ADMIN_REVIEWING이 되고
+ * 이의의 결과를 따로 싣지 않는다. [progressStep]이 접수 뒤 ADMIN_REVIEWING이 되고
  * ([appealedAt]이 붙는 행이 곧 열린 검토 행이다), 답은 그 행이 닫히는 방식으로 나온다 —
  * 수용은 APPROVED, 기각은 REJECTED와 [rejectReason]이다. 관리자 내부 열거를 셀러 계약에
  * 새게 할 이유가 없다.
+ *
+ * 접수 사실 자체는 [appealedAt]·[appealReason]·[appealCleared]로 싣는다. AI가 반려한 상품은
+ * 노출 판정이 REJECTED라 접수 전후가 상태만으로는 구별되지 않고, 셀러가 자기 이의가 들어갔는지
+ * 확인할 길이 그 셋뿐이다.
  */
 data class SellerProductInspectionResult(
     val productId: String,
@@ -32,7 +36,7 @@ data class SellerProductInspectionResult(
     val reasonCode: String?,
     val reasonSummary: String?,
     val sellerNotice: String?,
-    /** [inspectionStatus]가 REJECTED일 때만 채움 */
+    /** 관리자가 반려한 상품일 때만 채움. AI가 반려했으면 null이고 사유는 [reasonSummary]와 [sellerNotice]에 있음 */
     val rejectReason: String?,
     /** 이의를 접수한 시각. null이면 지금 걸린 것에 이의가 없다 */
     val appealedAt: LocalDateTime?,
@@ -54,18 +58,18 @@ data class SellerProductInspectionResult(
             product: Product,
             snapshot: InspectionSnapshot?,
             openReview: OpenProductReviewSnapshot?,
-            latestRejectReason: String?,
+            adminRejectReason: String?,
         ): SellerProductInspectionResult =
             SellerProductInspectionResult(
                 productId = product.publicId,
                 inspectionStatus = product.inspectionStatus,
-                progressStep = progressStepOf(product.inspectionStatus, snapshot?.processingState, openReview != null),
+                progressStep = progressStepOf(product.inspectionStatus, snapshot, openReview),
                 processingState = snapshot?.processingState,
                 judgment = snapshot?.judgment,
                 reasonCode = snapshot?.reasonCode,
                 reasonSummary = snapshot?.reasonSummary,
                 sellerNotice = snapshot?.sellerNotice,
-                rejectReason = latestRejectReason.takeIf { product.inspectionStatus == InspectionStatus.REJECTED },
+                rejectReason = adminRejectReason.takeIf { product.inspectionStatus == InspectionStatus.REJECTED },
                 appealedAt = openReview?.appealedAt,
                 appealReason = openReview?.appealReason,
                 appealCleared = openReview?.appealCleared == true,
@@ -73,16 +77,25 @@ data class SellerProductInspectionResult(
                 settledAt = snapshot?.settledAt,
             )
 
-        /** 진행 중인 검수, 관리자 검토 큐, 상품 상태 순으로 봄. FE는 큐를 볼 수 없어 여기서 계산함 */
+        /**
+         * 진행 중인 검수, 이의 접수, 관리자 검토 큐, 상품 상태 순으로 봄. FE는 큐를 볼 수 없어 여기서 계산함.
+         *
+         * 위반 판정으로 열린 행은 AI 반려라 셀러에게 반려로 보임. 거기서 관리자 확인으로 넘어가는
+         * 길이 둘임 — 셀러가 이의를 접수했거나, 관리자가 반려한 상품을 고쳐 통과했을 때임.
+         *
+         * 이의 접수를 먼저 보는 이유가 접수 확인임. 접수해도 열린 행의 판정이 위반이라 화면이
+         * 반려인 채면 셀러는 접수가 됐는지 알 수 없고, 같은 이의를 다시 보내려다 중복으로 막힘.
+         */
         private fun progressStepOf(
             inspectionStatus: InspectionStatus,
-            processingState: InspectionProcessingState?,
-            awaitingAdminReview: Boolean,
+            snapshot: InspectionSnapshot?,
+            openReview: OpenProductReviewSnapshot?,
         ): InspectionProgressStep =
             when {
-                processingState == InspectionProcessingState.QUEUED -> InspectionProgressStep.REQUESTED
-                processingState == InspectionProcessingState.IN_FLIGHT -> InspectionProgressStep.AI_REVIEWING
-                awaitingAdminReview -> InspectionProgressStep.ADMIN_REVIEWING
+                snapshot?.processingState == InspectionProcessingState.QUEUED -> InspectionProgressStep.REQUESTED
+                snapshot?.processingState == InspectionProcessingState.IN_FLIGHT -> InspectionProgressStep.AI_REVIEWING
+                openReview?.appealedAt != null -> InspectionProgressStep.ADMIN_REVIEWING
+                openReview != null && snapshot?.judgment == InspectionJudgment.PASS -> InspectionProgressStep.ADMIN_REVIEWING
                 inspectionStatus == InspectionStatus.APPROVED -> InspectionProgressStep.APPROVED
                 inspectionStatus == InspectionStatus.REJECTED -> InspectionProgressStep.REJECTED
                 else -> InspectionProgressStep.REQUESTED

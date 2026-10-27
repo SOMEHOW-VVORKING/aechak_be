@@ -69,6 +69,17 @@ class InspectionAppealService(
         reviewQueueService.appealBySeller(productId, target, trimmed, now)
     }
 
+    /**
+     * 내용이 바뀌어 접수된 이의를 무효로 돌린다. 상품 수정 경로가 부른다.
+     *
+     * 정책을 보지 않는다 — 무효화는 셀러의 요청이 아니라 사실의 반영이고, 막을 근거가 없다.
+     * 잠금 순서와 행 쓰기는 검토 큐 서비스가 한 자리에서 든다.
+     */
+    fun invalidateOnContentChange(
+        productId: Long,
+        contentHash: String,
+    ) = reviewQueueService.invalidateAppealOnContentChange(productId, contentHash)
+
     private fun requireNotDuplicated(openState: OpenAppealState?) {
         if (openState?.alreadyAppealed == true) {
             throw BusinessException(ProductErrorCode.INSPECTION_APPEAL_ALREADY_SUBMITTED)
