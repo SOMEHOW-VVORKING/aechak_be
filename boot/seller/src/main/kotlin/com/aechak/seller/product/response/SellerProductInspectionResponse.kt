@@ -11,7 +11,8 @@ import java.time.LocalDateTime
  * 검수를 한 번도 타지 않은 상품은 [inspectionStatus]와 [progressStep]만 채워지고 나머지가 비어 온다.
  *
  * [progressStep]: REQUESTED, AI_REVIEWING, ADMIN_REVIEWING, APPROVED, REJECTED.
- * [rejectReason]은 관리자가 적은 반려 사유이고 [inspectionStatus]가 REJECTED일 때만 온다.
+ * [rejectReason]은 관리자가 적은 반려 사유이고 관리자가 반려한 상품일 때만 온다. AI가 반려했으면 비어 있고
+ * 사유는 [reasonSummary]와 [sellerNotice]에 있다.
  */
 data class SellerProductInspectionResponse(
     val productId: String,

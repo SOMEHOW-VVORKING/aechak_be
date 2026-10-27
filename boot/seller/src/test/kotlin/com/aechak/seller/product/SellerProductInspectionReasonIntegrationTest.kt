@@ -152,8 +152,8 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `AI가 문제를 찾아 관리자 확인을 기다리면 진행 단계와 걸린 문구를 함께 돌려준다`() {
-        changeStatus(InspectionStatus.PENDING)
+    fun `AI가 반려하면 진행 단계가 반려이고 사유는 AI가 찾은 문구로만 돌려준다`() {
+        changeStatus(InspectionStatus.REJECTED)
         settledInspection(
             hash = "e".repeat(64),
             judgment = InspectionJudgment.FLAG,
@@ -166,8 +166,53 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
         mockMvc
             .perform(inspectionRequest(publicId))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.progressStep").value("ADMIN_REVIEWING"))
+            .andExpect(jsonPath("$.data.progressStep").value("REJECTED"))
             .andExpect(jsonPath("$.data.reasonSummary").value("관절염 치료에 효과"))
+            .andExpect(jsonPath("$.data.sellerNotice").value("치료 효능 표현을 고쳐 주세요."))
+            .andExpect(jsonPath("$.data.rejectReason").doesNotExist())
+    }
+
+    @Test
+    fun `관리자가 반려한 상품을 고쳐 통과하면 진행 단계가 관리자 확인이다`() {
+        changeStatus(InspectionStatus.REJECTED)
+        rejectedByAdmin("효능 표현을 빼고 다시 등록해 주세요.")
+        settledInspection(
+            hash = "a".repeat(64),
+            judgment = InspectionJudgment.PASS,
+            reasonCode = null,
+            reasonSummary = null,
+            sellerNotice = null,
+        )
+        openReview()
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.progressStep").value("ADMIN_REVIEWING"))
+    }
+
+    @Test
+    fun `관리자가 반려했다가 승인한 뒤 AI가 반려하면 지난 관리자 사유를 싣지 않는다`() {
+        rejectedByAdmin("효능 표현을 빼고 다시 등록해 주세요.")
+        tx.execute {
+            val review = openReview()
+            review.approve()
+            reviewQueue.save(review)
+        }
+        changeStatus(InspectionStatus.REJECTED)
+        settledInspection(
+            hash = "b".repeat(64),
+            judgment = InspectionJudgment.FLAG,
+            reasonCode = "MEDICAL_CLAIM",
+            reasonSummary = "관절염 치료에 효과",
+            sellerNotice = "치료 효능 표현을 고쳐 주세요.",
+        )
+        openReview()
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.progressStep").value("REJECTED"))
             .andExpect(jsonPath("$.data.rejectReason").doesNotExist())
     }
 
@@ -265,6 +310,14 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
                 ProductReviewQueueItem.openForProduct(productId, sellerUserId, "연어 건사료 2kg", LocalDateTime.now()),
             )
         }!!
+
+    private fun rejectedByAdmin(reason: String) {
+        tx.execute {
+            val review = openReview()
+            review.reject(reason)
+            reviewQueue.save(review)
+        }
+    }
 
     private fun queuedInspection(hash: String): ContentInspection =
         ContentInspection.queue(
