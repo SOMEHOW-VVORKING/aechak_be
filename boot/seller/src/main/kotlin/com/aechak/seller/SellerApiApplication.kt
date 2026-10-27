@@ -31,6 +31,9 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.application.user.verification", // 전화 인증
         "com.aechak.application.file", // 서류 승격
         "com.aechak.application.product", // 상품 등록·카테고리 조회
+        // 셀러 리뷰 관리·답글 — 리뷰 작성·금칙어 판정(application.review 상위)은 구매자 경로의 것이고
+        // 금칙어 스캐너 구현과 메시지 발행이 api 모듈에만 있어 끌고 오면 부팅이 깨진다
+        "com.aechak.application.review.seller",
         "com.aechak.application.order.seller", // 셀러 주문 관리 — 구매자 주문서·장바구니 조립은 끌고 오지 않는다
         "com.aechak.application.order.claim", // 클레임 승인·거부 — 구매자 요청 계약과 파사드를 공유한다. 환불 집행은 아래 제외 필터로 뺀다
         "com.aechak.application.order.delivery", // 배송완료 전이 — 셀러 수동 처리와 배치 자동 전이가 공유하는 묶음
