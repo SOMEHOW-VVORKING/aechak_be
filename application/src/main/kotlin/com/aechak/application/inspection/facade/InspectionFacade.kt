@@ -1,9 +1,11 @@
 package com.aechak.application.inspection.facade
 
+import com.aechak.application.inspection.port.ProductInspectionGate
 import com.aechak.application.inspection.port.ViolationSerializer
 import com.aechak.application.inspection.usecase.InspectionUseCase
 import com.aechak.application.inspection.usecase.command.ApplyVerdictCommand
 import com.aechak.domain.inspection.AiCallLedgerEntry
+import com.aechak.domain.inspection.ContentInspection
 import com.aechak.domain.inspection.InspectionFinding
 import com.aechak.domain.inspection.enums.InspectionJudgment
 import com.aechak.domain.inspection.enums.InspectionPerspectiveKind
@@ -27,9 +29,11 @@ import com.aechak.message.inspection.PerspectiveOutcome as ContractOutcome
 /**
  * 판정 적용과 기한 정리의 트랜잭션 경계.
  *
- * 이 파사드는 노출 상태를 바꾸지 않는다. 판정을 받아 적기만 하고, 상품이 보이는지 아닌지는
- * 게이트를 켜는 단계에서 상품 도메인이 결정한다. 섀도로 먼저 돌려 판정 품질을 보는 동안
- * 구매자 화면이 흔들리지 않게 하려는 분리다.
+ * 판정을 받아 적고, 같은 트랜잭션에서 노출 게이트까지 반영한다. 갈라 두면 판정은 적혔는데
+ * 상품은 그대로인 상태가 남는다.
+ *
+ * 게이트가 실제로 움직이는지는 전용 스위치가 정하고 기본은 꺼짐이다. 판정을 쌓아 품질을
+ * 보는 단계와 구매자 화면에 반영하는 단계를 나눌 수 있어야 한다.
  */
 @Service
 class InspectionFacade(
@@ -37,6 +41,7 @@ class InspectionFacade(
     private val findings: InspectionFindingRepository,
     private val callLedger: AiCallLedgerRepository,
     private val violationSerializer: ViolationSerializer,
+    private val productGate: ProductInspectionGate,
     @Value("\${inspection.wait-limit-minutes:10}") private val waitLimitMinutes: Long,
     @Value("\${inspection.expire-batch-size:200}") private val expireBatchSize: Int,
 ) : InspectionUseCase {
@@ -102,6 +107,7 @@ class InspectionFacade(
             now = LocalDateTime.now(),
         )
         inspections.save(inspection)
+        applyGate(inspection)
 
         log.info(
             "판정 적용. inspectionId={} target={}:{} verdict={} violations={} unchecked={}",
@@ -141,6 +147,26 @@ class InspectionFacade(
         }
         log.warn("기한이 지난 검수를 미판정으로 닫았다. count={} cutoff={}", overdue.size, cutoff)
         return overdue.size
+    }
+
+    /**
+     * 판정을 노출 상태로 옮긴다.
+     *
+     * 판정을 받지 못한 건과 판정 과정이 실패한 건은 건드리지 않는다. 모델이 보지 못한 것을
+     * 위반으로 다루면 멀쩡한 상품이 사라지고, 모델 장애가 그대로 매출 장애가 된다.
+     *
+     * 통과 판정에 노출을 되돌리는 경로를 둔 이유는 복구 수단이 필요하기 때문이다. 셀러가
+     * 문구를 고쳐 다시 통과했을 때 되살아나지 않으면 한 번 걸린 상품을 영구히 되살릴 수 없다.
+     */
+    private fun applyGate(inspection: ContentInspection) {
+        // 리뷰는 규칙 기반 마스킹이 이미 돌고 있어 이번 범위가 아니다.
+        if (inspection.targetType != InspectionTargetType.PRODUCT) return
+
+        when (inspection.judgment) {
+            InspectionJudgment.FLAG -> productGate.rejectByInspection(inspection.targetRef)
+            InspectionJudgment.PASS -> productGate.approveByInspection(inspection.targetRef)
+            else -> Unit
+        }
     }
 
     /**
