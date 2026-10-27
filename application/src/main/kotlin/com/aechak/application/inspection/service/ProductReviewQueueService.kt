@@ -123,14 +123,25 @@ class ProductReviewQueueService(
      * 행을 또 열거나 이미 닫힌 행에 이의를 적는다. 닫힌 것이 보이면 열린 행 없음으로 떨어져
      * 자격(관리자 반려)을 다시 보게 되는 것이 올바른 답임.
      *
-     * 지문은 **지금 그 행을 막고 있는 판정**에서 읽음. 열린 행이 있으면 그 행의 시각으로 그
-     * 판정을 되찾는다 — 관리자·셀러 화면이 사유를 읽는 자리와 같은 출처라야, 셀러가 이의를 건
-     * 대상과 화면이 보여 준 사유가 같은 것을 가리킨다. 판정 여부만 보고 최신 검수를 쓰면 모델이
-     * 답을 못 준 사이에 접수한 이의가 아무것도 막지 않는 내용의 지문을 달고, 그 내용의 판정이
-     * 와도 무효가 되지 않음.
+     * 지문은 가장 최근 **판정이 적힌** 검수에서 읽음. 판정 여부를 보지 않고 최신 검수를 쓰면,
+     * 셀러가 내용을 고쳐 재검수가 아직 미판정인 사이에 접수한 이의가 그 **고친 내용**의 지문을
+     * 달고, 그 내용의 판정이 와도 지문이 같아 무효가 되지 않음 — 관리자가 읽는 사유와 걸린
+     * 내용이 어긋남.
      *
-     * 되찾지 못하면(행이 없거나 그 시각에 대응하는 검수가 없으면) 가장 최근 판정된 검수로 떨어짐.
-     * 행을 새로 여는 길에는 기댈 행이 없어 그쪽이 유일한 기준임.
+     * **화면이 사유를 읽는 자리와 같은 출처가 아니다.** 화면은 행의 시각으로 "지금 그 행을 막고
+     * 있는 판정"을 되찾는데, 이 지문은 그것이 아니라 "가장 최근 판정"이다. 둘을 같은 출처로
+     * 묶으려다 되돌렸다 — 이 칼럼을 무효화가 **지금 본문**과 대조하기 때문이다. 막고 있는
+     * 판정의 지문을 적으면 모델이 답을 못 준 구간에서 그것이 지금 본문과 갈라지고, 본문을
+     * 하나도 바꾸지 않은 수정(가격 변경)이 이의를 지운다. 한 칼럼이 "어느 본문에 대고 쓴
+     * 이의인가"와 "그 본문이 지금 무엇에 걸려 있나"를 겸할 수 없다.
+     *
+     * 남는 구간이 하나 있음. 가장 최근 판정이 지금 본문의 것이 아닐 때(셀러가 고쳤고 그 판정이
+     * 아직 안 왔을 때) 접수하면 옛 본문의 지문이 붙어서, 그 구간의 가격 수정이 이의를 지움.
+     * 가르려면 칼럼이 하나 더 필요함.
+     *
+     * 행을 새로 여는 길(관리자 반려 뒤)의 시각도 그 검수의 판정 시각임. 그 칼럼의 뜻이 "행을
+     * 열었거나 다시 연 판정의 시각"이라서, 접수 시각으로 채우면 관리자 목록의 정렬 기준이
+     * 경로마다 갈리고 막고 있는 판정도 되찾을 수 없음.
      *
      * [target]은 [lockProductForAppeal]이 돌려준 것이어야 함. 잠금을 쥔 채 받은 값이라야
      * 자격 판단과 쓰기가 같은 상태를 본다.
@@ -141,11 +152,10 @@ class ProductReviewQueueService(
         reason: String,
         now: LocalDateTime,
     ): ProductReviewQueueItem {
-        val pending = reviewQueue.findPendingByProductIdForUpdate(productId)
-        val blocking =
-            pending?.let { inspectionQuery.findBlockingProductInspection(productId, it.blindedAt) }
-                ?: inspectionQuery.findLatestSettledProductInspection(productId)
-        val item = pending ?: openForAppeal(productId, target, blocking?.settledAt ?: now)
+        val blocking = inspectionQuery.findLatestSettledProductInspection(productId)
+        val item =
+            reviewQueue.findPendingByProductIdForUpdate(productId)
+                ?: openForAppeal(productId, target, blocking?.settledAt ?: now)
 
         if (item.appealedAt != null) throw BusinessException(ProductErrorCode.INSPECTION_APPEAL_ALREADY_SUBMITTED)
         item.appeal(reason, now, blocking?.contentHash)

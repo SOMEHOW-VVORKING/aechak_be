@@ -24,10 +24,13 @@ import java.time.LocalDateTime
  * 가장 최근 검수에서 사유를 읽으면 모델이 답을 못 줄 때마다 반려는 남고 사유만 비어서,
  * 셀러는 무엇을 고쳐야 하는지 알 수 없게 된다.
  *
- * 이의의 결과를 따로 싣지 않는다. [progressStep]이 접수 뒤 ADMIN_REVIEWING이 되고
- * ([appealedAt]이 붙는 행이 곧 열린 검토 행이다), 답은 그 행이 닫히는 방식으로 나온다 —
- * 수용은 APPROVED, 기각은 REJECTED와 [rejectReason]이다. 관리자 내부 열거를 셀러 계약에
- * 새게 할 이유가 없다.
+ * 이의의 결과를 따로 싣지 않는다. 답은 열린 검토 행이 닫히는 방식으로 나온다 — 수용은
+ * APPROVED, 기각은 REJECTED와 [rejectReason]이다. 관리자 내부 열거를 셀러 계약에 새게 할
+ * 이유가 없다.
+ *
+ * 접수 뒤 [progressStep]은 ADMIN_REVIEWING이 된다. **단, 그 사이 올라간 검수가 아직 돌고
+ * 있으면 진행 중인 검수가 먼저다**(REQUESTED·AI_REVIEWING). 접수 여부는 그 경우에도
+ * [appealedAt]으로 가린다.
  *
  * 접수 사실 자체는 [appealedAt]·[appealReason]·[appealCleared]로 싣는다. AI가 반려한 상품은
  * 노출 판정이 REJECTED라 접수 전후가 상태만으로는 구별되지 않고, 셀러가 자기 이의가 들어갔는지
