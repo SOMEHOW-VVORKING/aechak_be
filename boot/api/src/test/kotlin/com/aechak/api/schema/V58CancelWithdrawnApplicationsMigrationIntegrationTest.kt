@@ -1,6 +1,6 @@
 package com.aechak.api.schema
 
-import com.aechak.api.support.IntegrationTestConfig
+import com.aechak.api.support.IntegrationTestBase
 import com.aechak.domain.seller.application.enums.ApplicationStatus
 import com.aechak.domain.user.user.enums.UserStatus
 import org.assertj.core.api.Assertions.assertThat
@@ -10,10 +10,6 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.context.annotation.Import
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
 import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.Timestamp
@@ -22,16 +18,10 @@ import javax.sql.DataSource
 /**
  * V58(탈퇴한 사용자의 승인 전 입점 신청 소급 취소)이 어떤 행을 바꾸는지 본다.
  * 깨지면 탈퇴한 계정의 신청이 승인 대기로 남거나 탈퇴하지 않은 사용자의 신청까지 취소된다.
+ * 컨텍스트를 새로 띄우지 않으려고 공용 베이스를 쓴다. V58은 별도 DB에 적용한다.
  */
-@SpringBootTest(
-    properties = [
-        "spring.jpa.hibernate.ddl-auto=none",
-        "spring.flyway.enabled=false",
-    ],
-)
-@Import(IntegrationTestConfig::class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class V58CancelWithdrawnApplicationsMigrationIntegrationTest {
+class V58CancelWithdrawnApplicationsMigrationIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var dataSource: DataSource
 
@@ -147,9 +137,5 @@ class V58CancelWithdrawnApplicationsMigrationIntegrationTest {
 
         // 탈퇴한 사용자라도 이미 끝난 신청은 그대로 둔다
         private val KEPT_FOR_WITHDRAWN = setOf(ApplicationStatus.APPROVED, ApplicationStatus.CANCELLED)
-
-        @JvmStatic
-        @DynamicPropertySource
-        fun containers(registry: DynamicPropertyRegistry) = IntegrationTestConfig.registerContainers(registry)
     }
 }
