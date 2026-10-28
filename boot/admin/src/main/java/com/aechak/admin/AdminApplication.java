@@ -29,6 +29,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
             // 주문 배송 모니터링 — order BC 중 이 하위만 쓴다. BC를 통째로 넣으면 구매자측 주문서·장바구니
             // 파사드와 그 리스너가 딸려와 어드민에 없는 빈(결제·카프카 배선)을 요구한다
             "com.aechak.application.order.admin",
+            // 어드민 클레임 조회·개입. claim BC 전체가 아니라 어드민 전용 하위만 넣는다 — 상위를 넣으면
+            // 환불 집행·자동승인 파사드가 딸려와 PG·재고·적립금 포트 어댑터를 요구하며 부팅이 깨진다.
+            // 환불액 계산기는 같은 패키지의 다른 빈과 떼어 와야 해 ClaimAmountScanConfig가 따로 집어 온다
+            "com.aechak.application.order.claim.admin",
             // 상품 검수 큐의 노출 전이(ProductInspectionGate 구현). 검수 패키지 자체는 InspectionScanConfig가 스캔함
             "com.aechak.application.product.product.service",
             "com.aechak.infra.persistence", // 리포지토리·UserStatusReader 어댑터

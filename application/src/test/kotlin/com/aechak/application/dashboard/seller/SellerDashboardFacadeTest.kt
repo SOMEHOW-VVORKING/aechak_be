@@ -127,7 +127,7 @@ class SellerDashboardFacadeTest {
 
     @Test
     fun `제재와 자격 소멸 상태는 집계를 한 번도 묻지 않고 거절한다`() {
-        listOf(SellerStatus.SUSPENDED, SellerStatus.WITHDRAWN, null).forEach { status ->
+        listOf(SellerStatus.SUSPENDED, SellerStatus.WITHDRAWN).forEach { status ->
             val exception =
                 assertThrows<BusinessException> {
                     facade(status).getSummary(SellerDashboardSummaryQuery(SELLER_ID, DashboardPeriod.ALL))
@@ -138,6 +138,21 @@ class SellerDashboardFacadeTest {
         assertTrue(claims.queries.isEmpty(), "집계 하나만 게이트 앞으로 올라가도 거절된 요청이 그 BC를 읽는다")
         assertTrue(settlement.sellerIds.isEmpty())
         assertTrue(products.sellerIds.isEmpty())
+    }
+
+    /**
+     * 셀러가 아예 아닌 경우는 제재와 다른 코드로 나간다 — 같은 10003으로 뭉개면 입점한 적 없는
+     * 계정에 "셀러센터 조회 권한이 없다"는 안내가 나가고 프런트가 입점 신청으로 보낼 수 없다.
+     */
+    @Test
+    fun `셀러가 아닌 계정은 제재와 다른 코드로 거절한다`() {
+        val exception =
+            assertThrows<BusinessException> {
+                facade(null).getSummary(SellerDashboardSummaryQuery(SELLER_ID, DashboardPeriod.ALL))
+            }
+
+        assertEquals(SellerErrorCode.NOT_SELLER, exception.errorCode)
+        assertTrue(orders.queries.isEmpty())
     }
 
     private fun facade(status: SellerStatus?) =
@@ -152,9 +167,7 @@ class SellerDashboardFacadeTest {
     private class FixedSellerUseCase(
         private val status: SellerStatus?,
     ) : SellerUseCase {
-        override fun isActiveSeller(userId: Long): Boolean = status == SellerStatus.ACTIVE
-
-        override fun getSellerStatus(userId: Long): SellerStatus? = status
+        override fun requireSellerStatus(userId: Long): SellerStatus = status ?: throw BusinessException(SellerErrorCode.NOT_SELLER)
     }
 
     private class RecordingOrderUseCase : SellerOrderUseCase {

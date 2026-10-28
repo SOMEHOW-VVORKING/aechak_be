@@ -419,11 +419,11 @@ class SellerProductDraftIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `셀러가 아닌 계정은 40004를 반환한다`() {
+    fun `셀러가 아닌 계정은 10004를 반환한다`() {
         val notSeller = mintAccessToken(createActiveUser())
 
-        mockMvc.perform(createRequest(notSeller, draftJson())).andExpect(status().isForbidden).andExpect(errorCode(40004))
-        mockMvc.perform(getDrafts(notSeller)).andExpect(status().isForbidden).andExpect(errorCode(40004))
+        mockMvc.perform(createRequest(notSeller, draftJson())).andExpect(status().isForbidden).andExpect(errorCode(10004))
+        mockMvc.perform(getDrafts(notSeller)).andExpect(status().isForbidden).andExpect(errorCode(10004))
     }
 
     @Test

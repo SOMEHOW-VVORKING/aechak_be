@@ -534,14 +534,16 @@ class V27SchemaMigrationIntegrationTest {
                 "sns_blocks",
                 "sns_mutes",
                 "sns_follows",
+                "claim_interventions",
             )
 
         /**
-         * orders는 V21이, payments는 V24가, product_drafts는 V31이, sns_user_stats는 V35가, sns_blocks는 V48이, sns_mutes는 V49가, sns_follows는 V50이 이미 만든다 —
-         * ddl-auto만으로 존재하던 테이블은 나머지 10개다.
+         * orders는 V21이, payments는 V24가, product_drafts는 V31이, sns_user_stats는 V35가, sns_blocks는 V48이, sns_mutes는 V49가,
+         * sns_follows는 V50이, claim_interventions는 V54가 이미 만든다 — ddl-auto만으로 존재하던 테이블은 나머지 10개다.
          */
         private val DDL_AUTO_TABLES =
-            TARGET_TABLES - "orders" - "payments" - "product_drafts" - "sns_user_stats" - "sns_blocks" - "sns_mutes" - "sns_follows"
+            TARGET_TABLES - "orders" - "payments" - "product_drafts" - "sns_user_stats" - "sns_blocks" - "sns_mutes" -
+                "sns_follows" - "claim_interventions"
 
         @JvmStatic
         @DynamicPropertySource

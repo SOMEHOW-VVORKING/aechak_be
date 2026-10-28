@@ -54,7 +54,7 @@ class SellerSettlementFacade(
      * 자격 소멸(탈퇴)과 제재(정지)만 막는다.
      */
     private fun requireSettlementReadableSeller(sellerId: Long) {
-        if (sellerUseCase.getSellerStatus(sellerId) !in SETTLEMENT_READABLE_SELLER_STATUSES) {
+        if (sellerUseCase.requireSellerStatus(sellerId) !in SETTLEMENT_READABLE_SELLER_STATUSES) {
             throw BusinessException(SettlementErrorCode.SETTLEMENT_ACCESS_DENIED)
         }
     }

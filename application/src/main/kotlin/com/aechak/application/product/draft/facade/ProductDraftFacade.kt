@@ -9,6 +9,7 @@ import com.aechak.application.product.draft.usecase.result.ProductDraftSaveResul
 import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.error.ProductErrorCode
+import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -55,8 +56,9 @@ class ProductDraftFacade(
      */
     private fun now(): LocalDateTime = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)
 
+    /** 셀러가 아니면 seller BC가 10004로 거른다 — 여기 코드는 등록된 셀러의 상태 정책만 가린다 */
     private fun requireActiveSeller(sellerId: Long) {
-        if (!sellerUseCase.isActiveSeller(sellerId)) {
+        if (sellerUseCase.requireSellerStatus(sellerId) != SellerStatus.ACTIVE) {
             throw BusinessException(ProductErrorCode.PRODUCT_SELLER_NOT_ACTIVE)
         }
     }
