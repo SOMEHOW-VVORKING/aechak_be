@@ -12,16 +12,16 @@ import org.springframework.stereotype.Service
 class SellerService(
     private val sellerRepository: SellerRepository,
 ) {
-    fun isActive(userId: Long): Boolean = sellerRepository.existsActiveByUserId(userId)
-
-    fun getStatus(userId: Long): SellerStatus? = sellerRepository.findStatusByUserId(userId)
+    /** 셀러 상태 — 셀러가 아니면 10004. 셀러 자격 판정의 단일 출처. */
+    fun requireStatus(userId: Long): SellerStatus =
+        sellerRepository.findStatusByUserId(userId) ?: throw BusinessException(SellerErrorCode.NOT_SELLER)
 
     /** 셀러 1건 — 셀러가 아니면 null. */
     fun find(userId: Long): Seller? = sellerRepository.findByUserId(userId)
 
-    /** 셀러 1건 + 활성 게이트. 셀러가 아니면 10000, 활성이 아니면 10002. 셀러센터 쓰기 경로의 공용 입구. */
+    /** 셀러 1건 + 활성 게이트. 셀러가 아니면 10004, 활성이 아니면 10002. 셀러센터 쓰기 경로의 공용 입구. */
     fun getActive(userId: Long): Seller {
-        val seller = find(userId) ?: throw BusinessException(SellerErrorCode.SELLER_NOT_FOUND)
+        val seller = find(userId) ?: throw BusinessException(SellerErrorCode.NOT_SELLER)
         if (seller.status != SellerStatus.ACTIVE) {
             throw BusinessException(SellerErrorCode.SELLER_NOT_ACTIVE)
         }

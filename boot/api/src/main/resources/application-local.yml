@@ -40,3 +40,9 @@ auth:
       - http://localhost:5173/login/complete   # web-seller dev
       - http://localhost:5174/login/complete   # web-admin dev
     callback-base-url: http://localhost:8080/api/v1/auth/callback   # provider 콘솔에 등록하는 주소의 밑동
+
+# AI 검수. 섀도 단계에서는 요청만 보내고 노출 상태는 바꾸지 않는다.
+inspection:
+  enabled: true
+  # 노출 게이트. 로컬에서만 켠다 — dev는 판정을 먼저 쌓아 품질을 확인하는 단계다.
+  gate-enabled: true

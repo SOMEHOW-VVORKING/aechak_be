@@ -276,13 +276,13 @@ class SellerProductDetailIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `셀러가 아닌 계정은 40004를 반환한다`() {
+    fun `셀러가 아닌 계정은 10004를 반환한다`() {
         val productId = register()
         val notSeller = createActiveUser()
 
         detail(productId, asToken = mintAccessToken(notSeller))
             .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(40004))
+            .andExpect(jsonPath("$.errorCode").value(10004))
     }
 
     @Test

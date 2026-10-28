@@ -41,10 +41,15 @@ import org.springframework.context.annotation.FilterType
         // 정산은 셀러가 조회하는 하위만 — 원장 생성·계좌 등록(application.settlement 상위)은 구매확정·심사 승인 경로의 것이다
         "com.aechak.application.settlement.seller",
         "com.aechak.application.dashboard", // 셀러센터 첫 화면 집계 — 위 네 BC 진입점을 모아 조립한다
+        // 검수 요청 발행. service 패키지만 넣는다 — facade(판정 적용·기한 정리)는 api가 소유한다.
+        "com.aechak.application.inspection.service",
         "com.aechak.infra.persistence", // JPA 어댑터 (QuerydslConfig 포함)
         "com.aechak.infra.s3", // FileStorage 어댑터
         "com.aechak.infra.redis", // 인증 코드 저장소
         "com.aechak.infra.client.sms", // SmsSender 어댑터
+        // 검수 요청 발행. 아웃박스에 적고 커밋 직후 보내는 쪽만 조립한다.
+        // consumer·outbox 패키지는 넣지 않는다 — 판정 수신과 재발행 스윕은 api가 소유한다.
+        "com.aechak.infra.kafka.publisher",
     ],
     excludeFilters = [
         // @ComponentScan을 직접 선언하면 @SpringBootApplication의 메타 필터가 가려진다 — 기본 두 개를 복원한다.

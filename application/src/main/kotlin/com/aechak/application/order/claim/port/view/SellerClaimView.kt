@@ -1,5 +1,6 @@
 package com.aechak.application.order.claim.port.view
 
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimSettlementStatus
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
@@ -19,7 +20,7 @@ data class SellerClaimView(
     val orderGroupId: Long,
     val orderPublicId: String,
     val claimType: ClaimType,
-    val reasonCode: String?,
+    val reasonCode: ClaimReasonCode?,
     val reasonDetail: String?,
     val status: ClaimStatus,
     val refundStatus: RefundStatus?,

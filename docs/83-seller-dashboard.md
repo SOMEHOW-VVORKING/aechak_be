@@ -79,7 +79,12 @@ UseCase만 주입받는다.
 | 셀러 상태 | 대시보드 조회 | 근거 |
 | --- | --- | --- |
 | ACTIVE / PAUSED / WITHDRAWAL_REQUESTED | 허용 | 휴점·탈퇴 신청 중에도 이미 받은 주문·정산은 처리 대상 |
-| SUSPENDED / WITHDRAWN / 셀러 아님 | 403 (10003) | 제재·자격 소멸 상태는 셀러센터 이용 차단 |
+| SUSPENDED / WITHDRAWN | 403 (10003) | 제재·자격 소멸 상태는 셀러센터 이용 차단 |
+| 셀러 아님 | 403 (10004) | 입점한 적 없는 계정 — 제재와 다른 상태라 프런트가 입점 신청으로 보낸다 |
+
+- **셀러 자격 자체는 seller BC가 판정한다** — `SellerUseCase.requireSellerStatus`가 셀러로 등록된 적이 없는 계정을
+  10004로 거절하고, 등록된 셀러의 상태만 돌려준다. 소비 도메인은 그 상태의 허용 범위만 정한다.
+  비셀러를 상태 정책으로 함께 거절하면 입점한 적 없는 계정에 제재 안내가 나간다.
 
 주문 목록·상품 목록의 조회 게이트와 같은 기준이다. 집계 계약 네 개(`getOrderMetrics`,
 `getClaimMetrics`, `getSummary`, `getMyProductStatusCounts`)는 **자격 게이트를 두지 않고** 호출자가

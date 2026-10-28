@@ -16,6 +16,7 @@ import com.aechak.application.order.claim.usecase.command.WithdrawClaimCommand
 import com.aechak.application.order.claim.usecase.query.SellerClaimMetricsQuery
 import com.aechak.application.order.claim.usecase.query.SellerClaimSearchQuery
 import com.aechak.application.order.claim.usecase.result.ClaimListResult
+import com.aechak.application.order.claim.usecase.result.ClaimReasonCatalogResult
 import com.aechak.application.order.claim.usecase.result.RequestClaimResult
 import com.aechak.application.order.claim.usecase.result.ReshipClaimResult
 import com.aechak.application.order.claim.usecase.result.SellerClaimDetailResult
@@ -24,6 +25,7 @@ import com.aechak.application.order.claim.usecase.result.SellerClaimPageResult
 import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.order.error.OrderErrorCode
+import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
@@ -46,6 +48,9 @@ class ClaimFacade(
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun requestClaim(command: RequestClaimCommand): RequestClaimResult = claimService.requestClaim(command)
+
+    /** 고정 어휘라 DB를 보지 않아 트랜잭션이 없다. */
+    override fun getClaimReasons(): ClaimReasonCatalogResult = ClaimReasonCatalogResult.of()
 
     @Transactional(readOnly = true)
     override fun getClaims(
@@ -111,8 +116,9 @@ class ClaimFacade(
     @Transactional(readOnly = true)
     override fun getClaimMetrics(query: SellerClaimMetricsQuery): SellerClaimMetricsResult = sellerClaimQueryService.countMetrics(query)
 
+    /** 셀러가 아니면 seller BC가 10004로 거른다 — 여기 코드는 등록된 셀러의 상태 정책만 가린다 */
     private fun requireActiveSeller(sellerId: Long) {
-        if (!sellerUseCase.isActiveSeller(sellerId)) {
+        if (sellerUseCase.requireSellerStatus(sellerId) != SellerStatus.ACTIVE) {
             throw BusinessException(OrderErrorCode.CLAIM_ACCESS_DENIED)
         }
     }
