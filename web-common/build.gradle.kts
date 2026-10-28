@@ -11,9 +11,12 @@ dependencies {
     compileOnly(libs.spring.webmvc)          // 매핑 없는 경로를 404로 옮기는 핸들러용. 런타임은 실행 모듈의 starter-web이 제공
     implementation(libs.slf4j.api)           // MDC(traceId) 연동
 
-    // 전역 예외 핸들러 단위 테스트가 예외 타입을 직접 만든다 — 위 compileOnly 둘을 테스트 런타임에도 올린다.
-    // (ServletException 계열 바인딩 예외와 낙관적 락 예외. 프로덕션 런타임은 실행 모듈이 그대로 제공한다.)
+    // 전역 예외 핸들러 단위 테스트가 예외 타입을 직접 만들고, 트립와이어가 핸들러 시그니처를 리플렉션으로 읽는다 —
+    // 위 compileOnly를 테스트 런타임에도 올린다. 프로덕션 런타임은 실행 모듈이 그대로 제공한다.
     testImplementation(libs.jakarta.servlet.api)
     testImplementation(libs.spring.tx)
     testImplementation(libs.spring.context) // 바인딩 예외(BindException/BindingResult) 조립용
+    // 404 핸들러 파라미터 타입(NoResourceFoundException·NoHandlerFoundException)이 여기 있다.
+    // declaredMethods는 파라미터 타입을 전부 로드하므로, 빠지면 트립와이어가 NoClassDefFoundError로 죽는다.
+    testImplementation(libs.spring.webmvc)
 }

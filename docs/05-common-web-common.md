@@ -54,6 +54,10 @@
    - `web-common`: `common` + `spring-web` 의존. HTTP 번역(직렬화, 상태코드 변환, 필터)은 전부 여기.
      `spring-webmvc`·`spring-context`·`spring-tx`는 **compileOnly**로만 건다 — 매핑 없는 경로를 404로 옮기는
      핸들러나 낙관적 락 충돌 변환처럼 타입 참조만 필요한 자리다. 런타임은 실행 모듈의 스타터가 제공한다.
+     - **함정**: 프로덕션 런타임은 실행 모듈이 채워주지만 **web-common 자신의 테스트 런타임은 비어 있다**.
+       전역 예외 핸들러 테스트는 핸들러 시그니처를 리플렉션으로 읽는데(`declaredMethods`는 파라미터 타입을
+       전부 로드한다) 거기 쓰인 예외가 compileOnly 쪽 소속이면 `NoClassDefFoundError`로 죽는다.
+       그래서 같은 좌표를 `testImplementation`에도 올려둔다 — 핸들러를 추가할 때 함께 확인할 자리다.
 6. **common 입장 기준**: "의존성이 없어서"가 아니라 **"둘 이상의 실행 모듈이 실제로 쓰는가"**. ErrorResponse는 웹 계열(api/admin)만 쓰므로 web-common 소속.
 
 ---

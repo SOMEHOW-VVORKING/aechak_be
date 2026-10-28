@@ -7,6 +7,7 @@ import org.springframework.core.MethodParameter
 import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpInputMessage
+import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
@@ -14,6 +15,7 @@ import org.springframework.validation.BeanPropertyBindingResult
 import org.springframework.validation.FieldError
 import org.springframework.web.HttpMediaTypeNotAcceptableException
 import org.springframework.web.HttpMediaTypeNotSupportedException
+import org.springframework.web.HttpRequestMethodNotSupportedException
 import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingRequestHeaderException
 import org.springframework.web.bind.MissingServletRequestParameterException
@@ -21,6 +23,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.multipart.MaxUploadSizeExceededException
 import org.springframework.web.multipart.MultipartException
+import org.springframework.web.servlet.NoHandlerFoundException
+import org.springframework.web.servlet.resource.NoResourceFoundException
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import kotlin.test.Test
@@ -58,6 +62,11 @@ class GlobalExceptionHandlerEnvelopeTest {
                 Case(400, 90001) { handler.handleMissingHeader(MissingRequestHeaderException("X-Trace-Id", sampleParameter())) },
             "handleConcurrentModification" to
                 Case(409, 90003) { handler.handleConcurrentModification(OptimisticLockingFailureException("버전 충돌")) },
+            "handleNoResource" to
+                Case(404, 90006) { handler.handleNoResource(NoResourceFoundException(HttpMethod.GET, UNMAPPED_PATH, UNMAPPED_PATH)) },
+            "handleNoHandler" to
+                Case(404, 90006) { handler.handleNoHandler(NoHandlerFoundException("GET", UNMAPPED_PATH, HttpHeaders())) },
+            "handleMethodNotAllowed" to Case(405, 90007) { handler.handleMethodNotAllowed(methodNotSupported()) },
             "handleUnsupportedMediaType" to Case(415, 90008) { handler.handleUnsupportedMediaType(unsupportedMediaType()) },
             "handleNotAcceptable" to
                 Case(406, 90009) { handler.handleNotAcceptable(HttpMediaTypeNotAcceptableException(jsonOnly)) },
@@ -87,6 +96,26 @@ class GlobalExceptionHandlerEnvelopeTest {
             MediaType.parseMediaTypes(advertised).any { it.isCompatibleWith(MediaType.APPLICATION_JSON) },
             "415가 알려준 지원 타입에 JSON이 없다: $advertised",
         )
+    }
+
+    /**
+     * 405 응답은 그 경로가 받는 메서드를 Allow 헤더로 알려준다(HTTP 명세가 요구한다).
+     * 못박기를 넣으면서 이 헤더를 떨어뜨리면 클라이언트가 무엇을 쓸지 알 수 없다.
+     */
+    @Test
+    fun `405는 지원 메서드를 Allow 헤더에 담는다`() {
+        val response = handler.handleMethodNotAllowed(methodNotSupported())
+
+        assertEquals("GET", response.headers.getFirst(HttpHeaders.ALLOW), "405가 알려준 지원 메서드가 다르다")
+    }
+
+    /** 지원 메서드를 모를 때는 빈 Allow 헤더를 흘리지 않는다(415의 Accept와 같은 규칙). */
+    @Test
+    fun `지원 메서드를 모를 때는 Allow 헤더를 붙이지 않는다`() {
+        val response = handler.handleMethodNotAllowed(HttpRequestMethodNotSupportedException("DELETE"))
+
+        assertEquals(null, response.headers.getFirst(HttpHeaders.ALLOW))
+        assertEnvelope(response, 405, 90007, "handleMethodNotAllowed")
     }
 
     /** 지원 타입이 비어 있으면 빈 Accept 헤더를 흘리지 않는다. */
@@ -152,6 +181,8 @@ class GlobalExceptionHandlerEnvelopeTest {
 
     private fun unsupportedMediaType() = HttpMediaTypeNotSupportedException(MediaType.TEXT_PLAIN, jsonOnly)
 
+    private fun methodNotSupported() = HttpRequestMethodNotSupportedException("DELETE", listOf("GET"))
+
     private fun unreadableBody() =
         HttpMessageNotReadableException(
             "본문 파싱 실패",
@@ -185,6 +216,7 @@ class GlobalExceptionHandlerEnvelopeTest {
 
     companion object {
         private const val MAX_UPLOAD_BYTES = 1_048_576L
+        private const val UNMAPPED_PATH = "/api/v1/no-such-path"
         private const val FIELD_REASON = "size는 1~100 사이여야 합니다."
 
         private const val UNCOVERED_HINT =

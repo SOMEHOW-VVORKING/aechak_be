@@ -5,6 +5,7 @@ import com.aechak.common.error.CommonErrorCode
 import org.slf4j.LoggerFactory
 import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -53,18 +54,21 @@ class GlobalExceptionHandler {
      * 문법이 깨진 Accept)에서는 봉투를 쓸 수 없어 MVC가 처리를 포기한다 — `sendError`가 ERROR 디스패치를
      * 띄우고, 거기 걸린 시큐리티가 공개 경로에서도 401을 쓴다. 못박으면 Accept를 아예 보지 않는다.
      *
-     * [advertise]는 415가 "이 형식으로 보내라"고 알려줄 타입이다(그 외에는 비운다).
+     * [advertise]는 415가 "이 형식으로 보내라"고 알려줄 타입, [allow]는 405가 "이 메서드를 쓰라"고 알려줄
+     * 메서드다(그 외에는 비운다). 둘 다 "무엇을 보낼 수 있는지" 알려주는 요청 계약이라 내부 구성이 새지 않는다.
      */
     private fun envelope(
         status: HttpStatus,
         body: ErrorResponse,
         advertise: List<MediaType> = emptyList(),
+        allow: Collection<HttpMethod> = emptyList(),
     ): ResponseEntity<ErrorResponse> {
         val builder =
             ResponseEntity
                 .status(status)
                 .contentType(MediaType.APPLICATION_JSON)
         advertise.takeIf { it.isNotEmpty() }?.let { builder.header(HttpHeaders.ACCEPT, MediaType.toString(it)) }
+        allow.takeIf { it.isNotEmpty() }?.let { builder.allow(*it.toTypedArray()) }
         return builder.body(body)
     }
 
@@ -178,17 +182,17 @@ class GlobalExceptionHandler {
     }
 
     private fun endpointNotFound(): ResponseEntity<ErrorResponse> =
-        ResponseEntity
-            .status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse.of(CommonErrorCode.ENDPOINT_NOT_FOUND))
+        envelope(HttpStatus.NOT_FOUND, ErrorResponse.of(CommonErrorCode.ENDPOINT_NOT_FOUND))
 
     // 경로는 있는데 그 메서드가 없는 경우. Allow 헤더를 함께 돌려줘야 클라이언트가 무엇을 쓸지 안다.
     @ExceptionHandler(HttpRequestMethodNotSupportedException::class)
     fun handleMethodNotAllowed(e: HttpRequestMethodNotSupportedException): ResponseEntity<ErrorResponse> {
         log.debug("지원하지 않는 메서드 {}", e.method)
-        val builder = ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
-        e.supportedHttpMethods?.takeIf { it.isNotEmpty() }?.let { builder.allow(*it.toTypedArray()) }
-        return builder.body(ErrorResponse.of(CommonErrorCode.METHOD_NOT_ALLOWED))
+        return envelope(
+            HttpStatus.METHOD_NOT_ALLOWED,
+            ErrorResponse.of(CommonErrorCode.METHOD_NOT_ALLOWED),
+            allow = e.supportedHttpMethods.orEmpty(),
+        )
     }
 
     @ExceptionHandler(Exception::class)
