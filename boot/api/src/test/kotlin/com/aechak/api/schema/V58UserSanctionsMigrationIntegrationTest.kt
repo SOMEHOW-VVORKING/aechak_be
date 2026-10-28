@@ -18,13 +18,13 @@ import java.sql.ResultSet
 import javax.sql.DataSource
 
 /**
- * V45(제재 이력 테이블 + users.sanction_until)의 안전성 검증.
+ * V58(제재 이력 테이블 + users.sanction_until)의 안전성 검증.
  * 깨지면 "dev에 적용하면 제재 스키마가 엔티티와 갈린다" 또는 "재실행이 스키마를 바꾼다"는 뜻이다.
  *
  * 세 스키마를 대조한다.
  *  - fresh  : 빈 DB에 Flyway 전체 적용 — 기준
  *  - entity : Hibernate가 엔티티 선언대로 만들었을 DDL
- *  - legacy : dev 재현 — ddl-auto가 users를 만들어 둔 DB에 V45를 적용
+ *  - legacy : dev 재현 — ddl-auto가 users를 만들어 둔 DB에 V58를 적용
  */
 @SpringBootTest(
     properties = [
@@ -32,13 +32,13 @@ import javax.sql.DataSource
         "spring.jpa.hibernate.ddl-auto=none",
         "spring.flyway.enabled=false",
         "spring.jpa.properties.jakarta.persistence.schema-generation.scripts.action=create",
-        "spring.jpa.properties.jakarta.persistence.schema-generation.scripts.create-target=$V45_ENTITY_SCHEMA_SCRIPT",
+        "spring.jpa.properties.jakarta.persistence.schema-generation.scripts.create-target=$V58_ENTITY_SCHEMA_SCRIPT",
         "spring.jpa.properties.hibernate.hbm2ddl.delimiter=;",
     ],
 )
 @Import(IntegrationTestConfig::class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class V45UserSanctionsMigrationIntegrationTest {
+class V58UserSanctionsMigrationIntegrationTest {
     @Autowired
     private lateinit var dataSource: DataSource
 
@@ -49,13 +49,13 @@ class V45UserSanctionsMigrationIntegrationTest {
 
     @BeforeAll
     fun prepareSchemas() {
-        freshUrl = recreateDatabase("v45_fresh")
+        freshUrl = recreateDatabase("v58_fresh")
         flyway(freshUrl).migrate()
 
-        entityUrl = recreateDatabase("v45_entity")
+        entityUrl = recreateDatabase("v58_entity")
         execute(entityUrl, entityStatementsOf(SANCTIONS_TABLE))
 
-        legacyUrl = recreateDatabase("v45_legacy")
+        legacyUrl = recreateDatabase("v58_legacy")
         migrateUpTo(legacyUrl, "35")
         execute(legacyUrl, legacyUsersStatements() + seedUser())
         legacyUsersBefore = columnsOf(legacyUrl, "users")
@@ -65,7 +65,7 @@ class V45UserSanctionsMigrationIntegrationTest {
     @Test
     fun `빈 DB에 Flyway 전체 적용이 성공하고 제재 이력 테이블이 생긴다`() {
         val applied = query(freshUrl, "SELECT version FROM flyway_schema_history WHERE success = 1") { it.getString(1) }
-        assertThat(applied).describedAs("성공으로 기록된 버전").contains("45")
+        assertThat(applied).describedAs("성공으로 기록된 버전").contains("58")
         assertThat(tableExists(freshUrl, SANCTIONS_TABLE)).describedAs("$SANCTIONS_TABLE 존재").isTrue()
     }
 
@@ -76,7 +76,7 @@ class V45UserSanctionsMigrationIntegrationTest {
 
     /** 이 단언이 깨지면 legacy 픽스처가 이미 최신이라는 뜻이고, 아래 두 테스트는 아무것도 검증하지 않는다. */
     @Test
-    fun `V45 적용 전 users에는 sanction_until이 없고 status는 새 값이 없는 네이티브 enum이다`() {
+    fun `V58 적용 전 users에는 sanction_until이 없고 status는 새 값이 없는 네이티브 enum이다`() {
         assertThat(legacyUsersBefore).describedAs("적용 전 users 컬럼").doesNotContainKey("sanction_until")
         assertThat(legacyUsersBefore.getValue("status").type)
             .describedAs("적용 전 users.status 타입")
@@ -103,7 +103,7 @@ class V45UserSanctionsMigrationIntegrationTest {
     @Test
     fun `ddl-auto가 만든 users_status가 VARCHAR로 바뀌어 새 상태값을 저장할 수 있다`() {
         assertThat(columnsOf(legacyUrl, "users").getValue("status").type)
-            .describedAs("V45 적용 뒤 users.status 타입")
+            .describedAs("V58 적용 뒤 users.status 타입")
             .isEqualTo("varchar(30)")
         assertThat(query(legacyUrl, "SELECT status FROM users") { it.getString(1) })
             .describedAs("타입 변환이 기존 값을 그대로 보존해야 한다")
@@ -134,7 +134,7 @@ class V45UserSanctionsMigrationIntegrationTest {
     }
 
     @Test
-    fun `V45를 다시 실행해도 스키마가 그대로고 세션 설정이 남지 않는다`() {
+    fun `V58를 다시 실행해도 스키마가 그대로고 세션 설정이 남지 않는다`() {
         val before = columnsOf(freshUrl, SANCTIONS_TABLE) to indexesOf(freshUrl, SANCTIONS_TABLE)
 
         val timeouts = reapplyMigration(freshUrl)
@@ -147,7 +147,7 @@ class V45UserSanctionsMigrationIntegrationTest {
 
     /** freshUrl에는 users가 없어 두 조건부 ALTER가 건너뛰어진다 — users 쪽 재실행은 적용을 마친 DB에서 봐야 한다. */
     @Test
-    fun `users에 이미 적용된 DB에 V45를 다시 실행해도 컬럼과 기존 데이터가 그대로다`() {
+    fun `users에 이미 적용된 DB에 V58를 다시 실행해도 컬럼과 기존 데이터가 그대로다`() {
         val before = columnsOf(legacyUrl, "users")
         val rowsBefore =
             query(legacyUrl, "SELECT public_id, status, sanction_until FROM users ORDER BY id") { rs ->
@@ -203,7 +203,7 @@ class V45UserSanctionsMigrationIntegrationTest {
     private fun entityStatementsOf(table: String): List<String> {
         val target = Regex("\\b`?$table`?\\b", RegexOption.IGNORE_CASE)
         val statements =
-            statementsOf(File(V45_ENTITY_SCHEMA_SCRIPT).readText())
+            statementsOf(File(V58_ENTITY_SCHEMA_SCRIPT).readText())
                 .filter { target.containsMatchIn(it) && !FOREIGN_KEY.containsMatchIn(it) }
                 .distinct() // Hibernate가 실행마다 스크립트 파일에 이어 쓴다
                 .sortedBy { if (it.startsWith("create table", ignoreCase = true)) 0 else 1 }
@@ -212,8 +212,8 @@ class V45UserSanctionsMigrationIntegrationTest {
     }
 
     /**
-     * V45 적용 전의 users — 엔티티 DDL에서 sanction_until을 떼고 status를 옛 enum으로 되돌린다.
-     * 현재 엔티티 DDL을 그대로 쓰면 두 컬럼이 이미 최신이라 V45의 ALTER가 한 번도 실행되지 않는다.
+     * V58 적용 전의 users — 엔티티 DDL에서 sanction_until을 떼고 status를 옛 enum으로 되돌린다.
+     * 현재 엔티티 DDL을 그대로 쓰면 두 컬럼이 이미 최신이라 V58의 ALTER가 한 번도 실행되지 않는다.
      */
     private fun legacyUsersStatements(): List<String> =
         entityStatementsOf("users").map { statement ->
@@ -352,7 +352,7 @@ class V45UserSanctionsMigrationIntegrationTest {
     )
 
     companion object {
-        private const val MIGRATION_NAME = "V45__create_user_sanctions_and_users_sanction_until.sql"
+        private const val MIGRATION_NAME = "V58__create_user_sanctions_and_users_sanction_until.sql"
         private const val SANCTIONS_TABLE = "user_sanctions"
 
         // MySQLContainer의 기본 root 계정. 테스트 전용 계정은 DB를 만들 권한이 없다.
@@ -371,4 +371,4 @@ class V45UserSanctionsMigrationIntegrationTest {
     }
 }
 
-private const val V45_ENTITY_SCHEMA_SCRIPT = "build/v45-entity-schema.sql"
+private const val V58_ENTITY_SCHEMA_SCRIPT = "build/v58-entity-schema.sql"
