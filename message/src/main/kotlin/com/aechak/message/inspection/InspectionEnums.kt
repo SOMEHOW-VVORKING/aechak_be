@@ -71,6 +71,9 @@ enum class InspectionPerspective {
 
     /** 결정론적 규칙 단계. 모델이 아니라 정규식과 네거티브 리스트가 낸 결과 */
     RULE,
+
+    /** 선별 단계. 모델 판정 관점이 아니므로 "모델이 봤는가" 집계에서 RULE과 함께 제외한다 */
+    TRIAGE,
 }
 
 /**

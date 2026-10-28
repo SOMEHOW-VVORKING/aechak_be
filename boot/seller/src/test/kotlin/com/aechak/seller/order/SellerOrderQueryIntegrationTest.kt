@@ -4,6 +4,7 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.pii.support.PiiStringCodec
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -470,14 +471,14 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `셀러가 아닌 계정의 주문 조회는 403과 50003이다`() {
+    fun `셀러가 아닌 계정의 주문 조회는 403과 10004다`() {
         seedOrder(status = OrderStatus.PAID)
         val notSeller = createActiveUser()
 
         mockMvc
             .perform(get("/api/v1/sellers/me/orders").header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(notSeller)}"))
             .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(50003))
+            .andExpect(jsonPath("$.errorCode").value(10004))
     }
 
     @Test
@@ -723,7 +724,7 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
                     Claim.request(
                         order = order,
                         claimType = ClaimType.CANCEL,
-                        reasonCode = "CHANGE_OF_MIND",
+                        reasonCode = ClaimReasonCode.CHANGE_OF_MIND,
                         reasonDetail = null,
                         items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 25_000L)),
                         autoApproveDueAt = LocalDateTime.now().plusDays(2),

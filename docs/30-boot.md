@@ -268,7 +268,8 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 ```
 boot/admin/src/main/java/com/aechak/admin/
 ├── AdminApplication.java
-├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config}
+├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config} · InspectionScanConfig
+├── product/         # 상품 검수 큐 컨트롤러 + request/response
 ├── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
 ├── seller/          # 입점 심사 컨트롤러 + request/response
 ├── member/          # 일반 회원 조회·제재 컨트롤러 + request/response
@@ -278,6 +279,7 @@ boot/admin/src/main/java/com/aechak/admin/
 - A-5(MVP 제외)를 해소하고 신설 — 셀러 입점 심사부터 운영자 기능이 실제 API로 필요해졌다.
 - **Java(+Lombok)로 작성한다** (팀 결정) — 경계는 boot/admin과 `Admin*` 클래스까지. 공용 모듈(application의 support 등)에 두는 코드는 Kotlin 유지. 빌드는 `aechak.java-spring-boot-app` 컨벤션(50 문서 §1).
 - **application의 어드민 전용 컴포넌트 구현체는 `Admin` 접두사를 쓰고, 구매자·셀러 실행 모듈은 그 구현체를 스캔에서 제외한다**(seller-api의 excludeFilters). 심사처럼 운영자만 쓰는 유스케이스가 셀러와 같은 BC 패키지에 사는데 컴포넌트 스캔은 패키지 단위라 가릴 수 없다 — 제외하지 않으면 셀러센터가 쓰지도 않는 빈을 조립하다 의존을 못 찾고 부팅이 깨진다(SCRUM-208 선례).
+- **반대 방향도 있다. 어드민이 쓰는 빈과 같은 패키지에 어드민이 조립하지 못하는 빈이 살면 어드민 쪽에서 그 빈을 뺀다.** 검수 패키지(`application.inspection`)에는 어드민 큐 파사드와 함께 판정 적용(`InspectionFacade`)과 요청 발행(`InspectionRequestService`)이 사는데, 둘은 어드민이 조립하지 않는 카프카 배선을 요구한다. 그래서 `InspectionScanConfig`가 두 클래스를 제외하고 패키지를 스캔한다.
 - api와 동일 구조/규칙(JSON API 기반) — web-common의 응답 봉투·GlobalExceptionHandler 재사용.
 - **자격 게이트는 모듈 SecurityConfig가 전역 강제**한다(role=ADMIN, 실패 시 20011·403). 컨트롤러별 `@PreAuthorize`를 쓰는 셀러측과 다른 점 — 모듈 전체가 운영자 전용이라 게이트가 하나면 된다. 전역 자원 접근이라 소유권 검증 계층도 없다.
 - 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(seller-api와 같은 검증 전용 모드).
