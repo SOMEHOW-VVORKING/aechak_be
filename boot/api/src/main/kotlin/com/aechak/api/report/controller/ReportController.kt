@@ -13,6 +13,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -23,6 +24,7 @@ class ReportController(
     private val userReportUseCase: UserReportUseCase,
 ) {
     @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
     fun submitReport(
         @Valid @RequestBody request: SubmitReportRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
