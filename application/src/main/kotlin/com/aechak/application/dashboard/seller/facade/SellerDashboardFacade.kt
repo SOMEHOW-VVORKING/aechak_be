@@ -75,7 +75,7 @@ class SellerDashboardFacade(
 
     /** 조회 자격 게이트 — 자격 소멸(탈퇴)과 제재(정지)만 막는다. 휴점·탈퇴신청 셀러는 자기 대시보드를 본다 */
     private fun requireDashboardReadableSeller(sellerId: Long) {
-        if (sellerUseCase.getSellerStatus(sellerId) !in DASHBOARD_READABLE_SELLER_STATUSES) {
+        if (sellerUseCase.requireSellerStatus(sellerId) !in DASHBOARD_READABLE_SELLER_STATUSES) {
             throw BusinessException(SellerErrorCode.SELLER_CENTER_READ_FORBIDDEN)
         }
     }

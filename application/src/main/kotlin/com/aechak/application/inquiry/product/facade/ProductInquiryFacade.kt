@@ -107,15 +107,16 @@ class ProductInquiryFacade(
         return userUseCase.getAuthors(authorIds).mapValues { (_, author) -> AuthorNameMask.of(author.nickname) }
     }
 
+    /** 셀러가 아니면 seller BC가 10004로 거른다 — 여기 코드는 등록된 셀러의 상태 정책만 가린다. */
     private fun requireActiveSeller(sellerId: Long) {
-        if (!sellerUseCase.isActiveSeller(sellerId)) {
+        if (sellerUseCase.requireSellerStatus(sellerId) != SellerStatus.ACTIVE) {
             throw BusinessException(InquiryErrorCode.PRODUCT_INQUIRY_SELLER_NOT_ACTIVE)
         }
     }
 
     /** 조회 자격 게이트 — 제재(정지)와 자격 소멸(탈퇴)만 막는다. 휴점·탈퇴신청 셀러는 받은 문의를 본다. */
     private fun requireInquiryReadableSeller(sellerId: Long) {
-        if (sellerUseCase.getSellerStatus(sellerId) !in INQUIRY_READABLE_SELLER_STATUSES) {
+        if (sellerUseCase.requireSellerStatus(sellerId) !in INQUIRY_READABLE_SELLER_STATUSES) {
             throw BusinessException(InquiryErrorCode.PRODUCT_INQUIRY_SELLER_NOT_ACTIVE)
         }
     }

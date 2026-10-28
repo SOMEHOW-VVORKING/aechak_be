@@ -291,7 +291,7 @@ class SellerProductListIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `정지·탈퇴 셀러와 비셀러는 40006을 반환한다`() {
+    fun `정지·탈퇴 셀러는 40006을 반환한다`() {
         register(name = "기존 상품")
 
         setSellerStatus(sellerUserId, SellerStatus.SUSPENDED)
@@ -299,11 +299,16 @@ class SellerProductListIntegrationTest : IntegrationTestBase() {
 
         setSellerStatus(sellerUserId, SellerStatus.WITHDRAWN)
         list().andExpect(status().isForbidden).andExpect(jsonPath("$.errorCode").value(40006))
+    }
 
-        val notSeller = createActiveUser()
-        list(asToken = mintAccessToken(notSeller))
+    /** 제재와 코드를 나눈다 — 40006의 "탈퇴하거나 정지된" 문구는 입점한 적 없는 계정에 거짓이다. */
+    @Test
+    fun `비셀러는 제재 셀러와 다른 10004를 반환한다`() {
+        register(name = "기존 상품")
+
+        list(asToken = mintAccessToken(createActiveUser()))
             .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(40006))
+            .andExpect(jsonPath("$.errorCode").value(10004))
     }
 
     @Test
