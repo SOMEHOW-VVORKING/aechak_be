@@ -330,12 +330,13 @@ class StoreSettingsIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.store.roadAddress").value("경기 성남시 판교역로 2"))
     }
 
+    /** 404였다가 403으로 바뀐 자리다 — 조회는 200으로 입점 단계를 돌려주고 저장만 자격으로 막힌다. */
     @Test
-    fun `셀러가 아닌 계정의 저장은 404 10000이다`() {
+    fun `셀러가 아닌 계정의 저장은 403 10004다`() {
         mockMvc
             .perform(putRequest(mintAccessToken(createActiveUser()), storeJson()))
-            .andExpect(status().isNotFound)
-            .andExpect(jsonPath("$.errorCode").value(SellerErrorCode.SELLER_NOT_FOUND.code))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(SellerErrorCode.NOT_SELLER.code))
     }
 
     @Test

@@ -284,15 +284,16 @@ class ProductFacade(
         )
     }
 
+    /** 셀러가 아니면 seller BC가 10004로 거른다 — 여기 코드는 등록된 셀러의 상태 정책만 가린다 */
     private fun requireActiveSeller(sellerId: Long) {
-        if (!sellerUseCase.isActiveSeller(sellerId)) {
+        if (sellerUseCase.requireSellerStatus(sellerId) != SellerStatus.ACTIVE) {
             throw BusinessException(ProductErrorCode.PRODUCT_SELLER_NOT_ACTIVE)
         }
     }
 
     /** 조회 자격 게이트 — 자격 소멸(탈퇴)과 제재(정지)만 막는다. 휴점·탈퇴신청 셀러는 자기 상품을 본다 */
     private fun requireProductReadableSeller(sellerId: Long) {
-        if (sellerUseCase.getSellerStatus(sellerId) !in PRODUCT_READABLE_SELLER_STATUSES) {
+        if (sellerUseCase.requireSellerStatus(sellerId) !in PRODUCT_READABLE_SELLER_STATUSES) {
             throw BusinessException(ProductErrorCode.PRODUCT_SELLER_READ_FORBIDDEN)
         }
     }
