@@ -2,6 +2,7 @@ package com.aechak.webcommon.error
 
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
+import org.junit.jupiter.api.assertAll
 import org.springframework.core.MethodParameter
 import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.http.HttpHeaders
@@ -39,20 +40,37 @@ import kotlin.test.assertTrue
 class GlobalExceptionHandlerEnvelopeTest {
     private val handler = GlobalExceptionHandler()
 
+    /**
+     * 핸들러 이름 → 기대 상태·errorCode와 **그 핸들러를 실제로 호출하는 람다**.
+     *
+     * 아래 트립와이어가 비교하는 것이 이 맵의 키이므로, 이름만 적어 통과시킬 수 없다 —
+     * 키를 적으려면 호출 람다를 함께 달아야 하고, 그 람다가 곧 여기서 검증되는 호출이다.
+     */
+    private val cases: Map<String, Case> =
+        mapOf(
+            "handleBusiness" to Case(400, 90002) { handler.handleBusiness(BusinessException(CommonErrorCode.INVALID_CURSOR)) },
+            "handleInvalidRequest" to Case(400, 90001) { handler.handleInvalidRequest(invalidRequest()) },
+            "handleTypeMismatch" to Case(400, 90001) { handler.handleTypeMismatch(typeMismatch()) },
+            "handleUnreadableBody" to Case(400, 90001) { handler.handleUnreadableBody(unreadableBody()) },
+            "handleMissingParameter" to
+                Case(400, 90001) { handler.handleMissingParameter(MissingServletRequestParameterException("size", "int")) },
+            "handleMissingHeader" to
+                Case(400, 90001) { handler.handleMissingHeader(MissingRequestHeaderException("X-Trace-Id", sampleParameter())) },
+            "handleConcurrentModification" to
+                Case(409, 90003) { handler.handleConcurrentModification(OptimisticLockingFailureException("버전 충돌")) },
+            "handleUnsupportedMediaType" to Case(415, 90008) { handler.handleUnsupportedMediaType(unsupportedMediaType()) },
+            "handleNotAcceptable" to
+                Case(406, 90009) { handler.handleNotAcceptable(HttpMediaTypeNotAcceptableException(jsonOnly)) },
+            "handleMalformedMultipart" to Case(400, 90010) { handler.handleMalformedMultipart(MultipartException("boundary 없음")) },
+            "handleUploadTooLarge" to
+                Case(413, 90011) { handler.handleUploadTooLarge(MaxUploadSizeExceededException(MAX_UPLOAD_BYTES)) },
+            "handleUnexpected" to Case(500, 90000) { handler.handleUnexpected(IllegalStateException("예상 못한 오류")) },
+        )
+
     @Test
     fun `모든 실패 응답은 JSON을 못박고 상태코드와 errorCode를 지킨다`() {
-        assertEnvelope(handler.handleBusiness(BusinessException(CommonErrorCode.INVALID_CURSOR)), 400, 90002)
-        assertEnvelope(handler.handleInvalidRequest(invalidRequest()), 400, 90001)
-        assertEnvelope(handler.handleTypeMismatch(typeMismatch()), 400, 90001)
-        assertEnvelope(handler.handleUnreadableBody(unreadableBody()), 400, 90001)
-        assertEnvelope(handler.handleMissingParameter(MissingServletRequestParameterException("size", "int")), 400, 90001)
-        assertEnvelope(handler.handleMissingHeader(MissingRequestHeaderException("X-Trace-Id", sampleParameter())), 400, 90001)
-        assertEnvelope(handler.handleConcurrentModification(OptimisticLockingFailureException("버전 충돌")), 409, 90003)
-        assertEnvelope(handler.handleUnsupportedMediaType(unsupportedMediaType()), 415, 90008)
-        assertEnvelope(handler.handleNotAcceptable(HttpMediaTypeNotAcceptableException(jsonOnly)), 406, 90009)
-        assertEnvelope(handler.handleMalformedMultipart(MultipartException("boundary 없음")), 400, 90010)
-        assertEnvelope(handler.handleUploadTooLarge(MaxUploadSizeExceededException(MAX_UPLOAD_BYTES)), 413, 90011)
-        assertEnvelope(handler.handleUnexpected(IllegalStateException("예상 못한 오류")), 500, 90000)
+        // 하나가 깨져도 나머지를 함께 보고한다 — 못박기를 빠뜨린 핸들러가 둘 이상일 때 한 번에 드러난다.
+        assertAll(cases.map { (name, case) -> { assertEnvelope(case.respond(), case.status, case.errorCode, name) } })
     }
 
     /**
@@ -77,7 +95,7 @@ class GlobalExceptionHandlerEnvelopeTest {
         val response = handler.handleUnsupportedMediaType(HttpMediaTypeNotSupportedException(MediaType.TEXT_PLAIN, emptyList()))
 
         assertEquals(null, response.headers.getFirst(HttpHeaders.ACCEPT))
-        assertEnvelope(response, 415, 90008)
+        assertEnvelope(response, 415, 90008, "handleUnsupportedMediaType")
     }
 
     /** 415 응답에 스프링 기본 문구·패키지명 같은 내부 구현이 실리지 않는다. */
@@ -93,8 +111,11 @@ class GlobalExceptionHandlerEnvelopeTest {
 
     /**
      * 핸들러를 새로 추가하면서 못박기를 빠뜨리는 것이 이 결함의 재발 경로다.
-     * 그래서 "모든 @ExceptionHandler가 위 불변식 테스트를 거쳤는가"를 여기서 강제한다.
-     * 새 핸들러를 추가하면 이 테스트가 먼저 빨개지고, 위 목록에 한 줄 더 넣어야 통과한다.
+     * 그래서 "모든 `@ExceptionHandler`가 위 불변식 테스트를 거쳤는가"를 여기서 강제한다.
+     * 새 핸들러를 추가하면 이 테스트가 먼저 빨개지고, [cases]에 한 줄 더 넣어야 통과한다.
+     *
+     * 비교 대상이 **[cases]의 키**인 것이 핵심이다. 이름 목록을 따로 들면 호출 없이 이름만 추가해
+     * 트립와이어를 통과시킬 수 있다 — 키를 적는 유일한 방법이 호출 람다를 함께 다는 것이어야 한다.
      */
     @Test
     fun `모든 ExceptionHandler가 불변식 테스트를 거친다`() {
@@ -104,7 +125,7 @@ class GlobalExceptionHandlerEnvelopeTest {
                 .map { it.name }
                 .toSortedSet()
 
-        assertEquals(COVERED_HANDLERS, declared, UNCOVERED_HINT)
+        assertEquals(declared, cases.keys.toSortedSet(), UNCOVERED_HINT)
     }
 
     /** 필드 사유를 그대로 싣는 분기(message가 errorCode 기본 문구로 뭉개지지 않는지도 같이 본다). */
@@ -117,8 +138,9 @@ class GlobalExceptionHandlerEnvelopeTest {
         response: ResponseEntity<ErrorResponse>,
         expectedStatus: Int,
         expectedErrorCode: Int,
+        handlerName: String,
     ) {
-        val where = "errorCode=$expectedErrorCode"
+        val where = "$handlerName, errorCode=$expectedErrorCode"
         assertEquals(expectedStatus, response.statusCode.value(), "상태코드가 다르다 ($where)")
         assertEquals(expectedErrorCode, response.body?.errorCode, "errorCode가 다르다 ($where)")
         // 핵심 단언: 협상에 맡기지 않았는지.
@@ -154,29 +176,19 @@ class GlobalExceptionHandlerEnvelopeTest {
     @Suppress("UNUSED_PARAMETER", "unused")
     private fun sampleParameterTarget(header: String) = Unit
 
+    /** 기대값과 호출 방법을 한 묶음으로 든다 — 둘이 떨어져 있으면 호출 없는 이름이 생길 수 있다. */
+    private class Case(
+        val status: Int,
+        val errorCode: Int,
+        val respond: () -> ResponseEntity<ErrorResponse>,
+    )
+
     companion object {
         private const val MAX_UPLOAD_BYTES = 1_048_576L
         private const val FIELD_REASON = "size는 1~100 사이여야 합니다."
 
-        /** 위 불변식 테스트가 직접 호출해 검증하는 핸들러 전수. */
-        private val COVERED_HANDLERS =
-            sortedSetOf(
-                "handleBusiness",
-                "handleConcurrentModification",
-                "handleInvalidRequest",
-                "handleMalformedMultipart",
-                "handleMissingHeader",
-                "handleMissingParameter",
-                "handleNotAcceptable",
-                "handleTypeMismatch",
-                "handleUnexpected",
-                "handleUnreadableBody",
-                "handleUnsupportedMediaType",
-                "handleUploadTooLarge",
-            )
-
         private const val UNCOVERED_HINT =
             "@ExceptionHandler가 추가·삭제됐다. 새 핸들러도 Content-Type을 JSON으로 못박아야 한다 — " +
-                "`모든 실패 응답은 JSON을 못박고...` 테스트에 한 줄 추가하고 이 목록을 갱신하라."
+                "cases 맵에 \"핸들러 이름 to Case(상태, errorCode) { 호출 }\" 한 줄을 추가하라."
     }
 }
