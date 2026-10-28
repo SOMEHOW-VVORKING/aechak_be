@@ -65,4 +65,7 @@ enum class OrderErrorCode(
     CLAIM_RESHIP_NOT_ALLOWED(50411, "회수가 끝난 교환 클레임만 재발송할 수 있습니다.", 409),
     CLAIM_REASON_NOT_SELECTABLE(50412, "요청 유형에서 선택할 수 없는 사유입니다.", 400),
     CLAIM_REASON_DETAIL_REQUIRED(50413, "기타 사유를 선택하면 상세 내용을 입력해 주세요.", 400),
+    CLAIM_NOT_OVERRIDABLE(50414, "운영자가 개입할 수 없는 클레임입니다.", 409),
+    CLAIM_INTERVENTION_REASON_NOT_SELECTABLE(50415, "귀책 판정에서 선택할 수 없는 개입 사유입니다.", 400),
+    CLAIM_INTERVENTION_REASON_DETAIL_REQUIRED(50416, "기타 사유를 선택하면 상세 내용을 입력해 주세요.", 400),
 }

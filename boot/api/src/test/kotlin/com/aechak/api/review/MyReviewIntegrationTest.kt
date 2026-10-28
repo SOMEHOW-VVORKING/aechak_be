@@ -413,6 +413,30 @@ class MyReviewIntegrationTest : IntegrationTestBase() {
         mockMvc.perform(get(PATH).param("tab", "written")).andExpect(status().isUnauthorized)
     }
 
+    /** 다른 조회 경로는 누락과 잘못된 값을 가려 주는데 이 탭만 "잘못된 요청입니다"로 뭉개던 자리다. */
+    @Test
+    fun `tab 누락은 파라미터 이름을 싣고 잘못된 값과 구별된다`() {
+        val buyerId = createActiveUser()
+
+        val missing = badRequestBody(buyerId, tab = null)
+        assertEquals(90001, JsonPath.read<Int>(missing, "$.errorCode"))
+        assertEquals("tab: 필수 파라미터가 누락되었습니다.", JsonPath.read<String>(missing, "$.message"))
+
+        val invalid = badRequestBody(buyerId, tab = "nope")
+        assertEquals(90001, JsonPath.read<Int>(invalid, "$.errorCode"))
+        assertEquals("tab: 잘못된 값입니다.", JsonPath.read<String>(invalid, "$.message"))
+    }
+
+    private fun badRequestBody(
+        userId: Long,
+        tab: String?,
+    ): String =
+        performGet(userId, tab)
+            .andExpect(status().isBadRequest)
+            .andReturn()
+            .response
+            .getContentAsString(Charsets.UTF_8)
+
     private fun performGet(
         userId: Long,
         tab: String?,
