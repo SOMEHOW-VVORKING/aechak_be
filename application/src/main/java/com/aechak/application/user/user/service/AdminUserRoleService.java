@@ -66,8 +66,9 @@ public class AdminUserRoleService {
         }
     }
 
+    /** 역할 변경은 제재와 같은 행을 두고 경쟁하므로 둘이 같은 락을 잡아야 직렬화된다. */
     private User getById(long userId) {
-        User user = userRepository.findById(userId);
+        User user = userRepository.findByIdForUpdate(userId);
         if (user == null) {
             throw new BusinessException(UserErrorCode.USER_NOT_FOUND, null, null);
         }
