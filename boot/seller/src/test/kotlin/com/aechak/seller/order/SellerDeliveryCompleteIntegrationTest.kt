@@ -223,14 +223,14 @@ class SellerDeliveryCompleteIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `셀러가 아닌 계정의 배송완료는 403과 50003이다`() {
+    fun `셀러가 아닌 계정의 배송완료는 403과 10004다`() {
         val orderPublicId = seedShippingOrder()
         val notSeller = createActiveUser()
 
         mockMvc
             .perform(deliveryCompleteRequest(mintAccessToken(notSeller), orderPublicId))
             .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(50003))
+            .andExpect(jsonPath("$.errorCode").value(10004))
     }
 
     @Test
