@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Primary
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.security.web.FilterChainProxy
+import org.springframework.test.annotation.DirtiesContext
 import org.springframework.test.context.TestPropertySource
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -33,6 +34,8 @@ import java.time.Duration
         "report.notification.recipients=ops1@aechak.com,ops2@aechak.com",
     ],
 )
+// 이 클래스만 쓰는 컨텍스트라 끝나면 닫아서 DB 연결을 돌려준다
+@DirtiesContext
 class ReportNotificationIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var context: WebApplicationContext
