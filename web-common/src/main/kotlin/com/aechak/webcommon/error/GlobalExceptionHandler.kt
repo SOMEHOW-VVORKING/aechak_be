@@ -15,6 +15,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
+import org.springframework.web.servlet.NoHandlerFoundException
 import org.springframework.web.servlet.resource.NoResourceFoundException
 
 /**
@@ -24,7 +25,8 @@ import org.springframework.web.servlet.resource.NoResourceFoundException
  * - @Valid 형식 검증 실패: 90001(INVALID_REQUEST)로 매핑하되 message에 필드별 사유를 싣는다(분기는 errorCode 고정).
  * - 본문 파싱 실패(필수 필드 누락·타입 오류·깨진 JSON): 400. 이 핸들러가 없으면 아래 catch-all이 먼저 잡아
  *   클라이언트 버그가 5xx 알람으로 둔갑한다. 파싱 예외 메시지는 페이로드 조각(PII)을 물고 올 수 있어 싣지 않는다.
- * - 매핑 없는 경로·메서드: 404·405. 같은 이유로 catch-all보다 먼저 잡는다.
+ * - 매핑 없는 경로·메서드: 404·405. 같은 이유로 catch-all보다 먼저 잡는다. 404는 구성에 따라
+ *   예외 타입이 갈려(NoResourceFoundException/NoHandlerFoundException) 둘을 함께 잡는다.
  * - 그 외 Exception: 최후 방어선. 90000으로 감싸고 스택트레이스는 로그로만 남긴다.
  *   (즉석 문자열 코드("C500" 등) 생성 금지 — errorCode 분기 일관성 유지)
  *
@@ -95,13 +97,27 @@ class GlobalExceptionHandler {
     }
 
     // 매핑이 없는 경로. 안 걸러주면 catch-all이 500으로 내보내고 요청마다 error 로그를 쌓는다.
+    // 정적 리소스 매핑이 켜져 있으면(기본값) `/**`에 걸린 ResourceHttpRequestHandler가 이쪽을 던진다.
     @ExceptionHandler(NoResourceFoundException::class)
     fun handleNoResource(e: NoResourceFoundException): ResponseEntity<ErrorResponse> {
         log.debug("매핑 없는 경로 {} {}", e.httpMethod, e.resourcePath)
-        return ResponseEntity
+        return endpointNotFound()
+    }
+
+    // 같은 "경로가 없다"의 다른 구성. spring.web.resources.add-mappings=false로 정적 리소스 매핑을 끄면
+    // `/**`가 사라져 핸들러 조회가 빈손이 되고, 그때는 DispatcherServlet.noHandlerFound가 이쪽을 던진다.
+    // Spring 7의 noHandlerFound는 더 이상 프로퍼티로 가려지지 않아 **무조건** 던진다 —
+    // 한쪽만 잡아두면 설정 한 줄에 404가 다시 500으로 샌다.
+    @ExceptionHandler(NoHandlerFoundException::class)
+    fun handleNoHandler(e: NoHandlerFoundException): ResponseEntity<ErrorResponse> {
+        log.debug("매핑 없는 경로 {} {}", e.httpMethod, e.requestURL)
+        return endpointNotFound()
+    }
+
+    private fun endpointNotFound(): ResponseEntity<ErrorResponse> =
+        ResponseEntity
             .status(HttpStatus.NOT_FOUND)
             .body(ErrorResponse.of(CommonErrorCode.ENDPOINT_NOT_FOUND))
-    }
 
     // 경로는 있는데 그 메서드가 없는 경우. Allow 헤더를 함께 돌려줘야 클라이언트가 무엇을 쓸지 안다.
     @ExceptionHandler(HttpRequestMethodNotSupportedException::class)
