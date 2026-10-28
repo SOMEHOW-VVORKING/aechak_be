@@ -151,12 +151,26 @@ class ClaimTransitionTest {
     }
 
     @Test
-    fun `종결 상태에서는 어떤 전이도 열리지 않는다`() {
-        listOf(ClaimStatus.REJECTED, ClaimStatus.WITHDRAWN, ClaimStatus.ADMIN_OVERRIDDEN).forEach { terminal ->
+    fun `철회와 개입 완료에서는 어떤 전이도 열리지 않는다`() {
+        listOf(ClaimStatus.WITHDRAWN, ClaimStatus.ADMIN_OVERRIDDEN).forEach { terminal ->
             ClaimStatus.entries.forEach { next ->
                 assertFalse(terminal.canTransitionTo(next), "$terminal → $next 가 열려 있다")
             }
         }
+    }
+
+    @Test
+    fun `셀러 거부는 운영자 개입으로만 열린다`() {
+        ClaimStatus.entries.filter { it != ClaimStatus.ADMIN_OVERRIDDEN }.forEach { next ->
+            assertFalse(
+                ClaimStatus.REJECTED.canTransitionTo(next),
+                "REJECTED → $next 가 열려 있다 — 셀러 거부를 되살리는 경로는 운영자 개입뿐이어야 한다",
+            )
+        }
+        assertTrue(
+            ClaimStatus.REJECTED.canTransitionTo(ClaimStatus.ADMIN_OVERRIDDEN),
+            "셀러 거부를 뒤집을 길이 없으면 분쟁이 끝나지 않는다",
+        )
     }
 
     @Test
