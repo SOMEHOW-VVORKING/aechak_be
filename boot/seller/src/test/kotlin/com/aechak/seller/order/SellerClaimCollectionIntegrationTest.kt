@@ -3,6 +3,7 @@ package com.aechak.seller.order
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
@@ -410,7 +411,7 @@ class SellerClaimCollectionIntegrationTest : IntegrationTestBase() {
                 Claim.request(
                     order = order,
                     claimType = claimType,
-                    reasonCode = "DEFECT",
+                    reasonCode = reasonCodeOf(claimType),
                     reasonDetail = null,
                     items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 25_000L)),
                     autoApproveDueAt = LocalDateTime.now().plusDays(2),
@@ -429,6 +430,10 @@ class SellerClaimCollectionIntegrationTest : IntegrationTestBase() {
     private fun OrderItem.markReturnOrExchangeRequested(claimType: ClaimType) {
         if (claimType == ClaimType.RETURN) markReturnRequested() else markExchangeRequested()
     }
+
+    /** 유형마다 받을 수 있는 사유가 다르다 — 취소에는 불량이 없다. */
+    private fun reasonCodeOf(claimType: ClaimType): ClaimReasonCode =
+        if (claimType == ClaimType.CANCEL) ClaimReasonCode.CHANGE_OF_MIND else ClaimReasonCode.DEFECTIVE
 
     /** 전이 API를 거치지 않고 상태를 심는다 — 주문 전이 규칙은 이 테스트의 대상이 아니다. */
     private fun forceOrderStatus(

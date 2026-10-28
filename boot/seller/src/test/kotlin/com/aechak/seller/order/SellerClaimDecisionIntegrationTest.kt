@@ -3,6 +3,7 @@ package com.aechak.seller.order
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
@@ -317,7 +318,7 @@ class SellerClaimDecisionIntegrationTest : IntegrationTestBase() {
                 Claim.request(
                     order = order,
                     claimType = ClaimType.CANCEL,
-                    reasonCode = "CHANGE_OF_MIND",
+                    reasonCode = ClaimReasonCode.CHANGE_OF_MIND,
                     reasonDetail = null,
                     items = listOf(ClaimItem.of(order.items.first(), quantity = 1, refundAmount = 25_000L)),
                     autoApproveDueAt = LocalDateTime.now().plusDays(2),

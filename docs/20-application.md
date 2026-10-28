@@ -270,6 +270,19 @@ data class ProductCatalogView(
 > 둘 다 예전엔 `result`였으나 패키지 이름을 클래스 접미사(`View`)에 맞춰 `port/view`로 분리했다.
 > 폴더 이름만으로 읽기 모델과 결과 DTO가 갈린다.
 
+### 4-2. 조회 포트 구현의 user 테이블 읽기 조인
+
+> 다른 BC는 사용자 표시 정보(닉네임, 프로필 이미지)를 user BC의 `UserUseCase.getAuthors`로 따로 받아 Facade에서 붙인다(리뷰 목록, 셀러 주문 목록).
+> SNS 관계 목록만 예외로 조회 포트 구현이 user 테이블을 직접 조인한다.
+
+- `SnsUserListQueryPort` 구현이 `sns_follows`, `sns_blocks`, `sns_mutes`를 `users`, `user_profiles`와 id 값 동등 조건으로
+  조인해 publicId, 닉네임, 프로필 이미지 key를 읽는다.
+- 두 단계 조회(`UserUseCase`로 표시 정보를 따로 붙이기)로는 닉네임 검색 결과를 페이지 크기만큼 채울 수 없어서
+  keyset 페이지, 탈퇴 사용자 제외(프로필 행이 없으면 INNER JOIN에서 빠진다), 검색을 한 쿼리로 끝낸다.
+- 읽기 전용 조회 포트 구현에서만 쓴다. 도메인 리포지토리와 쓰기 경로는 user 테이블을 읽지 않는다.
+- JPA 연관과 FK는 두지 않고 user 테이블에 쓰지 않는다.
+- 서비스를 나눌 때는 SNS 쪽 닉네임 사본으로 바꾼다.
+
 ## 5. 리포지토리 위치 — A-1 결정(L2)
 
 - 이 모듈에는 리포지토리 없음. domain의 포트(`domain/{도메인}/repository/`)를 주입받는다 — 구현은 infra/persistence (40 §1).
