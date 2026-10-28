@@ -2,6 +2,7 @@ package com.aechak.domain.user.user
 
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.support.AggregateRoot
+import com.aechak.domain.support.Ulid
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.user.enums.UserRole
 import com.aechak.domain.user.user.enums.UserStatus
@@ -22,12 +23,18 @@ import java.time.LocalDateTime
 @Entity
 @Table(
     name = "users",
-    uniqueConstraints = [UniqueConstraint(name = User.UK_PHONE_HMAC, columnNames = ["phone_hmac"])],
+    uniqueConstraints = [
+        UniqueConstraint(name = User.UK_PHONE_HMAC, columnNames = ["phone_hmac"]),
+        UniqueConstraint(name = "uk_users_public_id", columnNames = ["public_id"]),
+    ],
 )
 class User protected constructor() : AggregateRoot() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
+
+    @Column(nullable = false, updatable = false, length = 26)
+    val publicId: String = Ulid.generate()
 
     @Enumerated(EnumType.STRING)
     @Column(length = 30, nullable = false)
@@ -88,6 +95,14 @@ class User protected constructor() : AggregateRoot() {
     val profileImageKey: String?
         get() = _profile?.profileImageKey
 
+    /** 표시용 닉네임 — 프로필이 없으면 null. */
+    val nickname: String?
+        get() = _profile?.nickname
+
+    /** 소개글 — 프로필이 없으면 null. */
+    val bio: String?
+        get() = _profile?.bio
+
     /** 사용자를 탈퇴 상태로 바꾸고 닉네임과 전화번호 값을 삭제해 UNIQUE 제약에서 해제 */
     fun withdraw() {
         if (status == UserStatus.WITHDRAWN) {
@@ -131,6 +146,23 @@ class User protected constructor() : AggregateRoot() {
         this.phoneLast4Hmac = last4Hmac
         this.isPhoneVerified = true
         this.phoneVerifiedAt = LocalDateTime.now()
+    }
+
+    /** 일반 회원을 관리자로 승격 */
+    fun promoteToAdmin() {
+        if (role == UserRole.ADMIN) {
+            throw BusinessException(UserErrorCode.USER_ALREADY_ADMIN)
+        }
+        check(status == UserStatus.ACTIVE) { "관리자 승격은 ACTIVE 상태에서만 가능합니다 (userId=$id, status=$status)" }
+        role = UserRole.ADMIN
+    }
+
+    /** 관리자를 일반 회원으로 강등 — 이미 일반 회원이면 아무것도 바꾸지 않는다. */
+    fun demoteToGeneral() {
+        if (role == UserRole.GENERAL) {
+            return
+        }
+        role = UserRole.GENERAL
     }
 
     /** 다른 계정으로 전화번호를 이전하거나 탈퇴할 때 저장된 전화번호 정보를 삭제 */

@@ -25,6 +25,19 @@ interface OptionCombinationJpaRepository : JpaRepository<OptionCombination, Long
         @Param("now") now: LocalDateTime,
     ): Int
 
+    @Modifying
+    @Query(
+        "update OptionCombination oc " +
+            "set oc.stockQuantity = oc.stockQuantity + :quantity, oc.updatedAt = :now " +
+            "where oc.id = :id and oc.stockQuantity <= :ceiling",
+    )
+    fun restoreStock(
+        @Param("id") id: Long,
+        @Param("quantity") quantity: Int,
+        @Param("ceiling") ceiling: Int,
+        @Param("now") now: LocalDateTime,
+    ): Int
+
     @Query(
         "select count(c) > 0 from OptionCombination c " +
             "where c.product.id = :productId and c.isActive = true and c.stockQuantity > 0",
@@ -63,4 +76,16 @@ class OptionCombinationRepositoryAdapter(
         optionCombinationId: Long,
         quantity: Int,
     ): Boolean = jpaRepository.deductStock(optionCombinationId, quantity, LocalDateTime.now()) == 1
+
+    // 상한 비교를 쿼리에서 더하지 않고 여유분으로 미리 접는다 — 컬럼 타입(int unsigned)과 매핑 타입(Int)의 상한이 달라서다
+    override fun restoreStock(
+        optionCombinationId: Long,
+        quantity: Int,
+    ): Boolean =
+        jpaRepository.restoreStock(
+            id = optionCombinationId,
+            quantity = quantity,
+            ceiling = OptionCombination.MAX_STOCK_QUANTITY - quantity,
+            now = LocalDateTime.now(),
+        ) == 1
 }

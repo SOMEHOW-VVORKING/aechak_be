@@ -22,6 +22,13 @@ enum class UploadPurpose(
         setOf(FileType.PNG, FileType.JPEG, FileType.WEBP),
     ),
 
+    // 셀러 스토어 프로필·배너 이미지 — 구매자에게 보이는 공개 이미지
+    SELLER_STORE(
+        "sellers/store",
+        StorageCategory.MEDIA,
+        setOf(FileType.PNG, FileType.JPEG, FileType.WEBP),
+    ),
+
     // 입점 심사 서류 — 민감 문서라 공개 미디어 버킷이 아닌 DOCS 소속
     SELLER_DOCUMENT(
         "sellers/documents",

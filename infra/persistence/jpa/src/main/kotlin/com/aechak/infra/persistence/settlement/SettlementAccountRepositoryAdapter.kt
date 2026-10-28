@@ -6,11 +6,16 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
 
 /** Spring Data 인터페이스는 이 모듈 밖으로 노출되지 않는다 — 어댑터의 내부 부품. */
-interface SettlementAccountJpaRepository : JpaRepository<SettlementAccount, Long>
+interface SettlementAccountJpaRepository : JpaRepository<SettlementAccount, Long> {
+    fun findAllBySellerIdIn(sellerIds: List<Long>): List<SettlementAccount>
+}
 
 @Repository
 class SettlementAccountRepositoryAdapter(
     private val jpaRepository: SettlementAccountJpaRepository,
 ) : SettlementAccountRepository {
     override fun save(account: SettlementAccount): SettlementAccount = jpaRepository.save(account)
+
+    override fun findAllBySellerIdIn(sellerIds: List<Long>): List<SettlementAccount> =
+        if (sellerIds.isEmpty()) emptyList() else jpaRepository.findAllBySellerIdIn(sellerIds)
 }
