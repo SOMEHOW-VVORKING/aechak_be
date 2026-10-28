@@ -121,6 +121,12 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
 중복 클레임 차단 질의가 이 집합을 그대로 쓰므로, 상태를 더할 때 어느 쪽인지 정하지 않으면 같은 품목에
 클레임이 두 번 걸린다.
 
+**요청 사유는 고정 어휘다** — `ClaimReasonCode`가 코드와 화면 문구(`label`)를 함께 들고, 유형별로 받을 수 있는
+사유는 `selectableFor(claimType)`가 가른다(교환에 가격 조건이 없고 취소에 불량이 없다). 셀러가 반품비 부담 주체를
+직접 지정하고 서버는 사유로 유도하지 않으므로, 셀러는 코드만 보고 변심(구매자 부담)과 불량·오배송(셀러 부담)을
+가를 수 있어야 한다 — 자유 문자열이면 그 판단 근거가 사라진다. `OTHER`는 코드만으로 근거가 되지 않아 상세 입력을
+요구한다. 두 규칙 모두 생성 팩토리(`Claim.request`)가 강제하고, 어기면 400(50412·50413)으로 거절한다.
+
 **자동승인은 셀러 승인과 같은 전이를 탄다** — `approveByTimeout()`이 `sellerApprovalStatus`를 APPROVED로 올린다.
 클레임에 "누가 승인했는가"를 담는 컬럼이 없어 셀러 승인과 자동승인이 클레임만 보고는 구별되지 않는다 —
 구별이 필요한 자리는 주문 상태 이력의 `triggered_by`(자동승인 건은 SYSTEM)다.
@@ -182,7 +188,7 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
    common에 두지 않는 이유: common은 무의존 모듈이라 jakarta.persistence 반입 불가(05 문서).
 2. **publicId(ULID)**: 내부 bigint id의 열거(enumeration) 노출이 치명적인 애그리거트는
    `@Column(nullable=false, updatable=false, length=26) val publicId: String = Ulid.generate()` + UNIQUE.
-   생성기는 `support/Ulid` 파사드(ulid-creator 위임 — 엔티티가 라이브러리를 직접 부르지 않는다). 현재 적용: Product·OrderGroup(주문번호 역할)·Order·Claim.
+   생성기는 `support/Ulid` 파사드(ulid-creator 위임 — 엔티티가 라이브러리를 직접 부르지 않는다). 현재 적용: Product·OrderGroup(주문번호 역할)·Order·Claim·User.
    외부 API·URL에는 publicId만 노출하고 내부 id는 응답에 싣지 않는다.
    - 채번은 필드 초기화식(생성 시점 신원 확보 — DDD identity-at-creation). 엔티티를 도메인 밖에서
      new로 재구성해 detached merge하면 재채번되므로 **재구성 merge 금지, 항상 load 후 수정**.

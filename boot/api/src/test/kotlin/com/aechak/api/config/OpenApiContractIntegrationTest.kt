@@ -5,6 +5,7 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.api.support.OpenApiDocContract
 import com.aechak.api.support.OpenApiSpec
 import com.aechak.application.order.port.OrderStatusFilter
+import com.aechak.domain.order.claim.enums.ClaimReasonCode
 import com.aechak.domain.order.claim.enums.ClaimStatus
 import com.aechak.domain.order.claim.enums.ClaimType
 import com.aechak.domain.order.claim.enums.RefundStatus
@@ -116,6 +117,15 @@ class OpenApiContractIntegrationTest : IntegrationTestBase() {
             spec.allowedValues("ClaimItem", "status"),
             spec.allowedValues("OrderActiveClaimResponse", "status"),
         )
+    }
+
+    /** 사유를 고정 어휘로 좁힌 자리다 — 문서가 어휘를 적지 않으면 프런트가 선택지를 손으로 베낀다. */
+    @Test
+    fun `클레임 사유 어휘가 요청 스키마와 선택지 응답 양쪽에 적혀 있다`() {
+        assertEquals(names<ClaimReasonCode>(), spec.allowedValues("RequestClaimRequest", "reasonCode"))
+        assertEquals(names<ClaimReasonCode>(), spec.allowedValues("ClaimReasonResponse", "code"))
+        assertEquals(names<ClaimType>(), spec.allowedValues("ClaimTypeReasonsResponse", "claimType"))
+        assertEquals(setOf("code", "label", "detailRequired"), spec.propertyNames("ClaimReasonResponse"))
     }
 
     @Test

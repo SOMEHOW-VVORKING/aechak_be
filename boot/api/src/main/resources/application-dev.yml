@@ -6,6 +6,12 @@ spring:
     url: ${SPRING_DATASOURCE_URL}           # RDS - 필수, 미존재 시 부팅 실패(fail-fast)
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
+    hikari:
+      # RDS 가 db.t4g.micro 라 max_connections 가 약 60 이다. 보트 넷이 각자 기본 10 을 잡고
+      # 롤링 배포에서 구형·신형 태스크가 겹치면 두 배가 되어 1040(Too many connections)이 난다.
+      # 구매자 트래픽을 받는 쪽이라 가장 크게 준다
+      maximum-pool-size: 6
+      minimum-idle: 1
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST}       # ElastiCache
@@ -38,3 +44,9 @@ sms:
 
 server:
   forward-headers-strategy: framework   # LB가 TLS를 종료해도 원 요청 스킴 기준으로 동작(Secure 쿠키·리다이렉트 URL)
+
+# AI 검수. 섀도 단계에서는 요청만 보내고 노출 상태는 바꾸지 않는다.
+inspection:
+  enabled: true
+  # 노출 게이트는 끈 채로 둔다. 쌓인 판정의 품질을 보고 켠다 — 켜는 순간 구매자 화면이 바뀐다.
+  gate-enabled: false
