@@ -15,8 +15,5 @@ class SellerFacade(
     private val sellerService: SellerService,
 ) : SellerUseCase {
     @Transactional(readOnly = true)
-    override fun isActiveSeller(userId: Long): Boolean = sellerService.isActive(userId)
-
-    @Transactional(readOnly = true)
-    override fun getSellerStatus(userId: Long): SellerStatus? = sellerService.getStatus(userId)
+    override fun requireSellerStatus(userId: Long): SellerStatus = sellerService.requireStatus(userId)
 }
