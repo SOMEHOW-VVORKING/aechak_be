@@ -34,7 +34,7 @@ import java.time.LocalDateTime
     // 셀러센터 조회는 전부 "내 상품"으로 먼저 좁힌다.
     // products는 아직 Flyway 관리 밖(ddl-auto=update)이라 이 선언이 실제 인덱스를 만드는 곳은
     // 개발·테스트 스키마뿐이다 — ddl-auto=none인 운영에는 products DDL 이관 마이그레이션이
-    // 같은 이름으로 넣어야 붙는다. 조건부 ALTER를 V46에 넣었다가 뺐다: products가 없는 분기가
+    // 같은 이름으로 넣어야 붙는다. 조건부 ALTER를 V59에 넣었다가 뺐다: products가 없는 분기가
     // 어느 테스트에서도 실행되지 않아 검증되지 않는 코드가 된다.
     indexes = [Index(name = "ix_products_seller_id", columnList = "seller_id, id")],
 )

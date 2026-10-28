@@ -17,7 +17,7 @@ import jakarta.persistence.UniqueConstraint
 @Table(
     name = "review_replies",
     uniqueConstraints = [UniqueConstraint(name = ReviewReply.UK_REVIEW_ID, columnNames = ["review_id"])],
-    // V27 규약대로 BC 밖 참조(seller_id)에 인덱스만 둔다. 이름을 V46과 맞춰야 ddl-auto=update인
+    // V27 규약대로 BC 밖 참조(seller_id)에 인덱스만 둔다. 이름을 V59와 맞춰야 ddl-auto=update인
     // 개발·테스트 스키마가 운영과 같은 모양이 된다.
     indexes = [Index(name = "ix_review_replies_seller_id", columnList = "seller_id")],
 )
