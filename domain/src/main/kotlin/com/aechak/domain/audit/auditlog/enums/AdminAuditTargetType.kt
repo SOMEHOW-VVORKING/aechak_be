@@ -21,6 +21,11 @@ package com.aechak.domain.audit.auditlog.enums
  *
  * 기록 경로가 아직 없는 대상 종류는 선언하지 않는다. 값만 있고 쓰는 곳이 없는 열거는
  * 화면 필터에서 "조치가 한 번도 없었다"와 "아직 기록하지 않는다"를 구별할 수 없게 만든다.
+ *
+ * [ADMIN_USER]와 [MEMBER]는 둘 다 users.id 를 가리키지만 한 종류로 합치지 않는다 — 운영 화면이
+ * 관리자 명부와 일반 회원을 다른 경로로 다루고(승격·강등 / 제재·해제), 종류를 합치면 "회원에게 한
+ * 조치"만 보려는 필터가 관리자 권한 변경까지 끌고 온다. 같은 계정이 양쪽에 등장할 수는 있고,
+ * 그때 그 계정의 조치 전부를 보려면 두 종류를 각각 묻는다.
  */
 enum class AdminAuditTargetType(
     val idKind: AdminAuditTargetIdKind,
@@ -28,5 +33,7 @@ enum class AdminAuditTargetType(
 ) {
     SELLER_APPLICATION(AdminAuditTargetIdKind.INTERNAL_ID, "입점 신청"),
     ADMIN_USER(AdminAuditTargetIdKind.INTERNAL_ID, "관리자"),
+    MEMBER(AdminAuditTargetIdKind.INTERNAL_ID, "회원"),
     PRODUCT(AdminAuditTargetIdKind.PUBLIC_ULID, "상품"),
+    INQUIRY(AdminAuditTargetIdKind.INTERNAL_ID, "서비스 문의"),
 }

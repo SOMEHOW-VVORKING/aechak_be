@@ -1,5 +1,6 @@
 package com.aechak.application.user.sanction.service
 
+import com.aechak.application.audit.support.AdminAuditContextHolder
 import com.aechak.application.support.CursorPageSize
 import com.aechak.application.user.sanction.port.AdminMemberQueryPort
 import com.aechak.application.user.sanction.port.MemberPageCondition
@@ -100,7 +101,10 @@ class AdminMemberService(
         }
     }
 
-    /** 제재·해제 공통 선행 검증 — 자기 자신과 관리자 계정은 이 경로의 대상이 아니다. */
+    /**
+     * 제재·해제 공통 선행 검증 — 자기 자신과 관리자 계정은 이 경로의 대상이 아니다.
+     * 감사 기록에 쓸 대상 이름도 여기서 집는다(조치 적용 전의 값이어야 한다).
+     */
     private fun loadSanctionTarget(
         adminId: Long,
         targetUserId: Long,
@@ -112,6 +116,9 @@ class AdminMemberService(
         val target =
             userRepository.findByIdForUpdate(targetUserId)
                 ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+        // 감사 행에 남길 그 시점의 대상 이름. 조치를 적용하기 전에 집는다 — 탈퇴 처리는 프로필을
+        // 지워 닉네임을 없애므로, 뒤에서 읽으면 가장 무거운 제재의 행에 대상 이름이 비게 된다.
+        AdminAuditContextHolder.label(target.nickname)
         // 관리자를 제재하면 운영 권한을 가진 계정이 차단 상태로 남는다. 강등을 먼저 하게 끊는다
         if (target.role == UserRole.ADMIN) {
             throw BusinessException(UserErrorCode.ADMIN_CANNOT_BE_SANCTIONED)
