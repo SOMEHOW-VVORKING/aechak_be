@@ -1,5 +1,5 @@
 -- 탈퇴한 사용자의 승인 전 입점 신청서(APPROVED, CANCELLED 제외)를 CANCELLED로 바꾸고 version을 올린다.
--- seller_applications는 Flyway 관리 밖이라 테이블이 없는 DB에서는 건너뛴다.
+-- users는 Flyway 관리 밖이라 테이블이 없는 DB에서는 건너뛴다.
 
 SET @stmt = IF(
     EXISTS(
