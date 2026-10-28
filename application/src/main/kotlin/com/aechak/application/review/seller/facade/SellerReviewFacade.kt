@@ -93,14 +93,14 @@ class SellerReviewFacade(
 
     /** 쓰기 자격 게이트 — 답글은 공개 글이라 영업 자격이 살아 있어야 한다. 휴점(PAUSED)은 응대의 일부이므로 허용한다. */
     private fun requireReplyWritableSeller(sellerId: Long) {
-        if (sellerUseCase.getSellerStatus(sellerId) !in REPLY_WRITABLE_SELLER_STATUSES) {
+        if (sellerUseCase.requireSellerStatus(sellerId) !in REPLY_WRITABLE_SELLER_STATUSES) {
             throw BusinessException(ReviewErrorCode.REVIEW_SELLER_ACCESS_DENIED)
         }
     }
 
     /** 조회 자격 게이트 — 자격 소멸(탈퇴)과 제재(정지)만 막는다. 휴점·탈퇴신청 셀러는 자기 리뷰를 본다 */
     private fun requireReviewReadableSeller(sellerId: Long) {
-        if (sellerUseCase.getSellerStatus(sellerId) !in REVIEW_READABLE_SELLER_STATUSES) {
+        if (sellerUseCase.requireSellerStatus(sellerId) !in REVIEW_READABLE_SELLER_STATUSES) {
             throw BusinessException(ReviewErrorCode.REVIEW_SELLER_ACCESS_DENIED)
         }
     }

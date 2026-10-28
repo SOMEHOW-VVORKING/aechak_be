@@ -449,7 +449,7 @@ class SellerReviewIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `정지·탈퇴 셀러와 비셀러는 110011을 반환한다`() {
+    fun `정지·탈퇴 셀러는 110011, 입점한 적 없는 사용자는 10004를 반환한다`() {
         val productId = persistProduct("자동 급식기 5L", sellerUserId)
         val reviewId = persistReview(productId, rating = 5, orderItemId = 1L)
 
@@ -461,10 +461,12 @@ class SellerReviewIntegrationTest : IntegrationTestBase() {
         tx.execute { setSellerStatus(sellerUserId, SellerStatus.WITHDRAWN) }
         request().andExpect(status().isForbidden).andExpect(jsonPath("$.errorCode").value(110011))
 
+        // 셀러로 등록된 적이 없는 계정은 SCRUM-305 규약대로 seller BC 가 10004 로 거절한다 —
+        // 리뷰 도메인의 110011(제재·탈퇴 안내)을 띄우면 입점한 적 없는 사용자가 제재당했다고 읽는다.
         val notSeller = createActiveUser()
         request(asToken = mintAccessToken(notSeller))
             .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(110011))
+            .andExpect(jsonPath("$.errorCode").value(10004))
     }
 
     @Test
