@@ -17,4 +17,8 @@ enum class CommonErrorCode(
     // 멱등키는 도메인이 아니라 API 공통 메커니즘 — 소비 EP가 늘어도 코드는 하나여야 한다
     INVALID_IDEMPOTENCY_KEY(90004, "멱등키가 올바르지 않습니다.", 400),
     IDEMPOTENCY_KEY_ACCESS_DENIED(90005, "본인의 요청만 재시도할 수 있습니다.", 403),
+
+    // 매핑이 없는 요청. 도메인 404(해당 자원 없음)와 구별된다 — 이쪽은 경로 자체가 없다
+    ENDPOINT_NOT_FOUND(90006, "요청하신 경로를 찾을 수 없습니다.", 404),
+    METHOD_NOT_ALLOWED(90007, "이 경로에서 지원하지 않는 메서드입니다.", 405),
 }

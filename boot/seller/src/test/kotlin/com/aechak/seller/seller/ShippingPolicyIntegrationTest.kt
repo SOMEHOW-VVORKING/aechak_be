@@ -2,6 +2,7 @@ package com.aechak.seller.seller
 
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.domain.order.shipment.CourierMaster
+import com.aechak.domain.seller.error.SellerErrorCode
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -253,19 +254,20 @@ class ShippingPolicyIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(10002))
     }
 
+    /** 404였다가 403으로 바뀐 자리다 — 원인이 "자원이 없다"가 아니라 "자격이 없다"여서. */
     @Test
-    fun `셀러가 아닌 계정의 조회와 저장은 404와 10000이다`() {
+    fun `셀러가 아닌 계정의 조회와 저장은 403과 10004다`() {
         val notSeller = mintAccessToken(createActiveUser())
 
         mockMvc
             .perform(getRequest(notSeller))
-            .andExpect(status().isNotFound)
-            .andExpect(jsonPath("$.errorCode").value(10000))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(SellerErrorCode.NOT_SELLER.code))
 
         mockMvc
             .perform(putRequest(notSeller, policyJson()))
-            .andExpect(status().isNotFound)
-            .andExpect(jsonPath("$.errorCode").value(10000))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(SellerErrorCode.NOT_SELLER.code))
     }
 
     @Test

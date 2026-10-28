@@ -76,7 +76,7 @@ class WithdrawalFacade(
 
     /** 퇴점(WITHDRAWN)하지 않은 셀러 행이 있으면 true */
     private fun hasSellerAccount(userId: Long): Boolean {
-        val status = sellerUseCase.getSellerStatus(userId) ?: return false
+        val status = sellerUseCase.findSellerStatus(userId) ?: return false
         return status != SellerStatus.WITHDRAWN
     }
 
