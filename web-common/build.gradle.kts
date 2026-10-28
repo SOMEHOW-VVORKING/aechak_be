@@ -8,6 +8,7 @@ dependencies {
     compileOnly(libs.jakarta.servlet.api)    // 런타임은 실행 모듈의 내장 톰캣이 제공
     compileOnly(libs.jakarta.validation.api) // 커스텀 제약(@Constraint/ConstraintValidator) 정의용. 런타임은 실행 모듈의 starter-validation이 제공
     compileOnly(libs.spring.tx)              // 낙관적 락 충돌을 409로 옮기는 핸들러용. 런타임은 실행 모듈이 제공
+    compileOnly(libs.spring.webmvc)          // 매핑 없는 경로를 404로 옮기는 핸들러용. 런타임은 실행 모듈의 starter-web이 제공
     implementation(libs.slf4j.api)           // MDC(traceId) 연동
 
     // 전역 예외 핸들러 단위 테스트가 예외 타입을 직접 만든다 — 위 compileOnly 둘을 테스트 런타임에도 올린다.

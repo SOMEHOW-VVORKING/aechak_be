@@ -18,7 +18,10 @@ enum class CommonErrorCode(
     INVALID_IDEMPOTENCY_KEY(90004, "멱등키가 올바르지 않습니다.", 400),
     IDEMPOTENCY_KEY_ACCESS_DENIED(90005, "본인의 요청만 재시도할 수 있습니다.", 403),
 
-    // 90006·90007은 매핑 없는 경로·메서드(404·405)가 선점한다 — 재배정 금지.
+    // 매핑이 없는 요청. 도메인 404(해당 자원 없음)와 구별된다 — 이쪽은 경로 자체가 없다
+    ENDPOINT_NOT_FOUND(90006, "요청하신 경로를 찾을 수 없습니다.", 404),
+    METHOD_NOT_ALLOWED(90007, "이 경로에서 지원하지 않는 메서드입니다.", 405),
+
     UNSUPPORTED_MEDIA_TYPE(90008, "지원하지 않는 형식입니다.", 415),
     NOT_ACCEPTABLE(90009, "응답할 수 있는 형식이 없습니다.", 406),
 

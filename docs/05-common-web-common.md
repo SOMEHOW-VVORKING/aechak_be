@@ -52,6 +52,8 @@
 5. **의존 방향**: `도메인/실행 모듈 → common` 단방향. common은 아무것도 의존하지 않는다.
    - `common`: Spring 의존 **없음** (순수 Kotlin/Java). HTTP 상태는 raw `int`로만 표현.
    - `web-common`: `common` + `spring-web` 의존. HTTP 번역(직렬화, 상태코드 변환, 필터)은 전부 여기.
+     `spring-webmvc`·`spring-context`·`spring-tx`는 **compileOnly**로만 건다 — 매핑 없는 경로를 404로 옮기는
+     핸들러나 낙관적 락 충돌 변환처럼 타입 참조만 필요한 자리다. 런타임은 실행 모듈의 스타터가 제공한다.
 6. **common 입장 기준**: "의존성이 없어서"가 아니라 **"둘 이상의 실행 모듈이 실제로 쓰는가"**. ErrorResponse는 웹 계열(api/admin)만 쓰므로 web-common 소속.
 
 ---
@@ -255,8 +257,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  * 웹 계열 실행 모듈(api/admin) 공용 전역 예외 처리기.
  *
  * - BusinessException: errorCode.status(int) → HttpStatus 변환. 여기가 유일한 변환 지점.
- * - 미디어 타입 불일치: 415(90008)·406(90009). 안 걸러주면 아래 catch-all이 500으로 내보내고
- *   요청마다 error 로그가 쌓인다.
+ * - 매핑 없는 경로·메서드: 404(90006)·405(90007). 안 걸러주면 아래 catch-all이 500으로 내보내고
+ *   요청마다 error 로그가 쌓여 실제 장애가 묻힌다. 클라이언트 실수이므로 로그는 debug다.
+ * - 미디어 타입 불일치: 415(90008)·406(90009). 같은 이유로 catch-all보다 먼저 잡는다.
  * - 멀티파트 요청 오류: 400(90010)·413(90011). 업로드를 받는 엔드포인트가 없어도 도달한다 —
  *   DispatcherServlet이 핸들러를 찾기 전에 요청 Content-Type만 보고 멀티파트를 파싱한다.
  * - 그 외 Exception: 최후 방어선. 90000으로 감싸고 스택트레이스는 로그로만 남긴다.
@@ -295,6 +298,10 @@ class GlobalExceptionHandler {
     }
 }
 ```
+
+> 위 예시는 뼈대만 보인다. 실제 파일에는 본문 파싱 실패·필수 파라미터/헤더 누락·타입 불일치·
+> 낙관적 락 충돌·매핑 없는 경로/메서드 핸들러가 함께 있다. **분기를 더할 때는 catch-all보다
+> 구체 예외가 먼저 잡히도록 두고, 클라이언트 실수에 해당하는 것은 로그 수준을 낮춘다.**
 
 ### 4-4. trace/TraceIdFilter.kt
 

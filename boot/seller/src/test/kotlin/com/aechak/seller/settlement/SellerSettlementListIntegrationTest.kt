@@ -197,7 +197,7 @@ class SellerSettlementListIntegrationTest : SellerSettlementIntegrationTestBase(
     }
 
     @Test
-    fun `휴점 셀러는 자기 정산을 보고 정지 셀러와 비셀러는 403으로 막힌다`() {
+    fun `휴점 셀러는 자기 정산을 보고 정지 셀러는 403 70003으로 막힌다`() {
         seedSettledOrder()
         changeSellerStatus(sellerUserId, SellerStatus.PAUSED)
 
@@ -209,11 +209,14 @@ class SellerSettlementListIntegrationTest : SellerSettlementIntegrationTestBase(
         requestList()
             .andExpect(status().isForbidden)
             .andExpect(jsonPath("$.errorCode").value(70003))
+    }
 
-        val notSeller = createActiveUser()
-        requestList(asToken = mintAccessToken(notSeller))
+    /** 제재와 코드를 나눈다 — 정산 접근 거절(70003)은 입점한 적 없는 계정의 원인을 설명하지 못한다. */
+    @Test
+    fun `비셀러는 제재 셀러와 다른 10004로 막힌다`() {
+        requestList(asToken = mintAccessToken(createActiveUser()))
             .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(70003))
+            .andExpect(jsonPath("$.errorCode").value(10004))
     }
 
     private fun assertOnlyOrder(
