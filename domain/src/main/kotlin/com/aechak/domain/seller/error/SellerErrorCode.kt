@@ -8,10 +8,14 @@ enum class SellerErrorCode(
     override val status: Int,
 ) : ErrorCode {
     // 셀러
+    // 식별자로 지목한 셀러가 없을 때의 404. 요청자가 셀러가 아닌 경우는 아래 NOT_SELLER(403)다.
     SELLER_NOT_FOUND(10000, "셀러를 찾을 수 없습니다.", 404),
     ALREADY_SELLER(10001, "이미 셀러로 등록된 계정입니다.", 409),
     SELLER_NOT_ACTIVE(10002, "활성 상태의 셀러만 이용할 수 있습니다.", 403),
     SELLER_CENTER_READ_FORBIDDEN(10003, "셀러센터를 조회할 권한이 없습니다.", 403),
+
+    // 셀러로 등록된 적이 없는 계정 — 정지·탈퇴(10002 등)와 다른 상태라 코드를 따로 쓴다.
+    NOT_SELLER(10004, "셀러로 등록되지 않은 계정입니다. 입점 신청 후 이용할 수 있습니다.", 403),
     INVALID_SHIPPING_POLICY(10005, "배송 정책 값이 올바르지 않습니다.", 400),
     INVALID_STORE_SETTINGS(10006, "스토어 설정 값이 올바르지 않습니다.", 400),
 

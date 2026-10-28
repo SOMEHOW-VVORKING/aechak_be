@@ -7,12 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
 
 /** Spring Data 인터페이스는 이 모듈 밖으로 노출되지 않는다 — 어댑터의 내부 부품. */
-interface SellerJpaRepository : JpaRepository<Seller, Long> {
-    fun existsByUserIdAndStatus(
-        userId: Long,
-        status: SellerStatus,
-    ): Boolean
-}
+interface SellerJpaRepository : JpaRepository<Seller, Long>
 
 @Repository
 class SellerRepositoryAdapter(
@@ -22,8 +17,6 @@ class SellerRepositoryAdapter(
     override fun existsByUserId(userId: Long): Boolean = jpaRepository.existsById(userId)
 
     override fun save(seller: Seller): Seller = jpaRepository.save(seller)
-
-    override fun existsActiveByUserId(userId: Long): Boolean = jpaRepository.existsByUserIdAndStatus(userId, SellerStatus.ACTIVE)
 
     override fun findStatusByUserId(userId: Long): SellerStatus? = jpaRepository.findById(userId).map { it.status }.orElse(null)
 

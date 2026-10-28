@@ -9,8 +9,6 @@ interface SellerRepository {
 
     fun save(seller: Seller): Seller
 
-    fun existsActiveByUserId(userId: Long): Boolean
-
     /** 셀러 상태 — 셀러가 아니면 null. */
     fun findStatusByUserId(userId: Long): SellerStatus?
 
