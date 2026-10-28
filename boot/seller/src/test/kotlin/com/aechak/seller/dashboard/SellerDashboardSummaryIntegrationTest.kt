@@ -453,12 +453,12 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `셀러가 아닌 계정은 대시보드를 조회할 수 없다`() {
+    fun `셀러가 아닌 계정은 403과 10004다`() {
         val notSeller = mintAccessToken(createActiveUser())
 
         summary(asToken = notSeller)
             .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(10003))
+            .andExpect(jsonPath("$.errorCode").value(10004))
     }
 
     /**

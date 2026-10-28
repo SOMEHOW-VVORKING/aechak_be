@@ -174,14 +174,14 @@ class SellerOrderAcceptIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `셀러가 아닌 계정의 발주 확인은 403과 50003이다`() {
+    fun `셀러가 아닌 계정의 발주 확인은 403과 10004다`() {
         val orderPublicId = seedOrder(OrderStatus.PAID)
         val notSeller = createActiveUser()
 
         mockMvc
             .perform(acceptRequest(mintAccessToken(notSeller), orderPublicId))
             .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(50003))
+            .andExpect(jsonPath("$.errorCode").value(10004))
 
         assertEquals(OrderStatus.PAID, statusOf(orderPublicId))
     }

@@ -53,6 +53,12 @@
 5. **의존 방향**: `도메인/실행 모듈 → common` 단방향. common은 아무것도 의존하지 않는다.
    - `common`: Spring 의존 **없음** (순수 Kotlin/Java). HTTP 상태는 raw `int`로만 표현.
    - `web-common`: `common` + `spring-web` 의존. HTTP 번역(직렬화, 상태코드 변환, 필터)은 전부 여기.
+     `spring-webmvc`·`spring-context`·`spring-tx`는 **compileOnly**로만 건다 — 매핑 없는 경로를 404로 옮기는
+     핸들러나 낙관적 락 충돌 변환처럼 타입 참조만 필요한 자리다. 런타임은 실행 모듈의 스타터가 제공한다.
+     - **함정**: 프로덕션 런타임은 실행 모듈이 채워주지만 **web-common 자신의 테스트 런타임은 비어 있다**.
+       전역 예외 핸들러 테스트는 핸들러 시그니처를 리플렉션으로 읽는데(`declaredMethods`는 파라미터 타입을
+       전부 로드한다) 거기 쓰인 예외가 compileOnly 쪽 소속이면 `NoClassDefFoundError`로 죽는다.
+       그래서 같은 좌표를 `testImplementation`에도 올려둔다 — 핸들러를 추가할 때 함께 확인할 자리다.
 6. **common 입장 기준**: "의존성이 없어서"가 아니라 **"둘 이상의 실행 모듈이 실제로 쓰는가"**. ErrorResponse는 웹 계열(api/admin)만 쓰므로 web-common 소속.
 
 ---
@@ -179,6 +185,10 @@ enum class CommonErrorCode(
 }
 ```
 
+> **위 목록은 뼈대다. 90000번대의 정본은 enum 파일 자체이고, 실제로는 멱등키·미디어 타입·멀티파트 등
+> 여기 없는 코드가 더 있다.** 이 문서를 에러표로 쓰지 말고 코드를 읽는다. 새 코드는 enum 끝에
+> 이어 붙이고 **쓰인 번호는 재배정하지 않는다** — 다른 브랜치가 선점한 번호가 있으면 건너뛴다.
+
 ---
 
 ## 4. web-common 모듈 코드 템플릿
@@ -243,6 +253,7 @@ import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -251,8 +262,18 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  * 웹 계열 실행 모듈(api/admin) 공용 전역 예외 처리기.
  *
  * - BusinessException: errorCode.status(int) → HttpStatus 변환. 여기가 유일한 변환 지점.
+ * - 매핑 없는 경로·메서드: 404(90006)·405(90007). 안 걸러주면 아래 catch-all이 500으로 내보내고
+ *   요청마다 error 로그가 쌓여 실제 장애가 묻힌다. 클라이언트 실수이므로 로그는 debug다.
+ * - 미디어 타입 불일치: 415(90008)·406(90009). 같은 이유로 catch-all보다 먼저 잡는다.
+ * - 멀티파트 요청 오류: 400(90010)·413(90011). 업로드를 받는 엔드포인트가 없어도 도달한다 —
+ *   DispatcherServlet이 핸들러를 찾기 전에 요청 Content-Type만 보고 멀티파트를 파싱한다.
  * - 그 외 Exception: 최후 방어선. 90000으로 감싸고 스택트레이스는 로그로만 남긴다.
  *   (즉석 문자열 코드("C500" 등) 생성 금지 — errorCode 분기 일관성 유지)
+ *
+ * 모든 실패 응답은 응답 Content-Type을 application/json으로 못박는 한 지점(envelope)을 지난다.
+ * 협상에 맡기면 협상이 깨지는 요청(Accept: application/xml, 문법이 깨진 Accept)에서 봉투를 쓸 수 없어
+ * MVC가 처리를 포기하고, sendError가 띄운 ERROR 디스패치에서 시큐리티가 공개 경로에도 401을 쓴다.
+ * 핸들러를 새로 추가할 때 이 못박기를 빠뜨리면 그 오류만 같은 함정에 빠진다.
  *
  * 실행 모듈에서 컴포넌트 스캔에 포함시켜 활성화한다.
  * @Valid 검증 실패(MethodArgumentNotValidException)는 90001로 매핑한다.
@@ -262,23 +283,30 @@ class GlobalExceptionHandler {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
+    // 실패 봉투를 만드는 유일한 지점 — Content-Type을 못박는 자리다.
+    private fun envelope(status: HttpStatus, body: ErrorResponse): ResponseEntity<ErrorResponse> =
+        ResponseEntity
+            .status(status)
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+
     @ExceptionHandler(BusinessException::class)
     fun handleBusiness(e: BusinessException): ResponseEntity<ErrorResponse> {
         // TODO: 필요 시 warn 레벨 로깅 (traceId는 MDC로 자동 포함)
-        return ResponseEntity
-            .status(HttpStatus.valueOf(e.errorCode.status))
-            .body(ErrorResponse.of(e.errorCode))
+        return envelope(HttpStatus.valueOf(e.errorCode.status), ErrorResponse.of(e.errorCode))
     }
 
     @ExceptionHandler(Exception::class)
     fun handleUnexpected(e: Exception): ResponseEntity<ErrorResponse> {
         log.error("unexpected exception", e)
-        return ResponseEntity
-            .status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(ErrorResponse.of(CommonErrorCode.INTERNAL_SERVER_ERROR))
+        return envelope(HttpStatus.INTERNAL_SERVER_ERROR, ErrorResponse.of(CommonErrorCode.INTERNAL_SERVER_ERROR))
     }
 }
 ```
+
+> 위 예시는 뼈대만 보인다. 실제 파일에는 본문 파싱 실패·필수 파라미터/헤더 누락·타입 불일치·
+> 낙관적 락 충돌·매핑 없는 경로/메서드 핸들러가 함께 있다. **분기를 더할 때는 catch-all보다
+> 구체 예외가 먼저 잡히도록 두고, 클라이언트 실수에 해당하는 것은 로그 수준을 낮춘다.**
 
 ### 4-4. trace/TraceIdFilter.kt
 
