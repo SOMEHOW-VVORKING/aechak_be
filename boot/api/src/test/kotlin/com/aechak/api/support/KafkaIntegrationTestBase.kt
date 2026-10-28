@@ -41,7 +41,21 @@ import org.springframework.transaction.support.TransactionTemplate
     ],
 )
 @Import(IntegrationTestConfig::class, FlywayCleanMigrateConfig::class)
-@EmbeddedKafka(partitions = 1, topics = [Topics.ORDER, Topics.ORDER_DLT])
+// 토픽을 이 베이스 하나에 모아 둔다. 테스트마다 다른 목록을 선언하면 컨텍스트 캐시 키가
+// 갈라져 스프링 부팅이 테스트 묶음마다 반복되고 CI 시간이 늘어난다.
+@EmbeddedKafka(
+    partitions = 1,
+    topics = [
+        Topics.ORDER,
+        Topics.ORDER_DLT,
+        Topics.REVIEW,
+        Topics.REVIEW_DLT,
+        Topics.INSPECTION,
+        Topics.INSPECTION_DLT,
+        Topics.VERDICT,
+        Topics.VERDICT_DLT,
+    ],
+)
 abstract class KafkaIntegrationTestBase {
     @Autowired
     protected lateinit var tx: TransactionTemplate

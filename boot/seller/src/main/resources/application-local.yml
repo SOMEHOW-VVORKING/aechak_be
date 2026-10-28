@@ -14,10 +14,22 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # api와 같은 값으로 맞춘다. 생산자만 쓰고 소비자 설정은 두지 않는다.
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
 
 api:
-  # 셀러센터 웹 FE dev 오리진 — FE 리포 포트 확정 시 갱신
-  cors-allowed-origins: http://localhost:5174
+  # 셀러센터 웹 dev 오리진
+  cors-allowed-origins: http://localhost:5173
 
 # TEST/LOCAL 전용 고정 키 — 실환경 사용 금지. api application-local.yml과 동일 값(같은 로컬 DB를 복호).
 aechak:
@@ -25,3 +37,13 @@ aechak:
     aes-keys:
       1: ${PII_AES_KEY_V1:dxeyFW4YgkgYreLe9IX7laeZPHaP3Eada2M9yuBCA+Q=}
     hmac-key: ${PII_HMAC_KEY:Jtk5KHlAG6nnDtIBDhqoDXIs7FovvRs0kOckZP6cl7k=}
+
+# AI 검수. 섀도 단계에서는 요청만 보내고 노출 상태는 바꾸지 않는다.
+inspection:
+  enabled: true
+  # 셀러 이의 제기 폭주 방지. 관리자 큐를 셀러 한 명이 혼자 채우면 사람이 보는 큐가 쓸모없어짐.
+  # max-open-per-seller는 최선 노력이다 — 잠그는 것이 상품 행이라 서로 다른 상품에 동시에 쏘면
+  # 같은 분모를 읽는다. 실제 상한은 그 셀러가 가진 차단된 상품 수다
+  appeal:
+    max-open-per-seller: 3
+    cooldown-hours: 24

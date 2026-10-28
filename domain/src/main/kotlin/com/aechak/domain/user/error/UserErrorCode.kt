@@ -28,6 +28,14 @@ enum class UserErrorCode(
     // 탈퇴
     WITHDRAWAL_BLOCKED(30011, "정리되지 않은 거래가 있어 탈퇴할 수 없습니다.", 409),
 
+    // 관리자 역할
+    USER_ALREADY_ADMIN(30012, "이미 관리자인 계정입니다.", 409),
+    LAST_ADMIN_CANNOT_BE_DEMOTED(30013, "마지막 관리자는 강등할 수 없습니다.", 409),
+    SELF_ROLE_CHANGE_NOT_ALLOWED(30014, "자신의 역할은 변경할 수 없습니다.", 403),
+
+    // 30015·30016은 다른 작업에 배정돼 있어 비워 둔다
+    USER_NOT_PROMOTABLE(30017, "활성 상태인 계정만 관리자로 승격할 수 있습니다.", 409),
+
     // 적립금
     INVALID_POINT_AMOUNT(30100, "적립금 거래 금액은 0보다 커야 합니다.", 400),
     INSUFFICIENT_POINT_BALANCE(30101, "적립금 잔액이 부족합니다.", 409),

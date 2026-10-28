@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -18,6 +19,7 @@ class ProductLikeController(
     private val productLikeUseCase: ProductLikeUseCase,
 ) {
     @PostMapping("/{productId}/like")
+    @ResponseStatus(HttpStatus.CREATED)
     fun likeProduct(
         @PathVariable productId: String,
         @AuthenticationPrincipal principal: AuthPrincipal,
@@ -27,6 +29,7 @@ class ProductLikeController(
     }
 
     @DeleteMapping("/{productId}/like")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun unlikeProduct(
         @PathVariable productId: String,
         @AuthenticationPrincipal principal: AuthPrincipal,

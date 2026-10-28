@@ -6,9 +6,20 @@ spring:
     url: ${SPRING_DATASOURCE_URL}           # RDS - 필수, 미존재 시 부팅 실패(fail-fast)
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
+    hikari:
+      # RDS 가 db.t4g.micro 라 max_connections 가 약 60 이다. 보트 넷이 각자 기본 10 을 잡고
+      # 롤링 배포에서 구형·신형 태스크가 겹치면 두 배가 되어 1040(Too many connections)이 난다.
+      # 운영자 수가 가장 적다
+      maximum-pool-size: 3
+      minimum-idle: 1
 
 api:
-  cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}       # 어드민 웹 오리진 (쉼표 구분) — FE 미착수라 당분간 빈 값
+  cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}       # 어드민 웹 오리진 (쉼표 구분) — 배포 도메인 + 로컬 포트
+
+admin:
+  bootstrap:
+    enabled: ${ADMIN_BOOTSTRAP_ENABLED:true}
+    user-ids: ${ADMIN_BOOTSTRAP_USER_IDS:}   # SSM 수기 등재 — 빈 값이면 승격을 건너뛴다(부팅은 성공)
 
 aws:
   s3:

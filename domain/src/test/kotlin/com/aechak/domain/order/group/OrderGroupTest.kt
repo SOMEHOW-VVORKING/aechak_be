@@ -14,6 +14,46 @@ import kotlin.test.assertTrue
 class OrderGroupTest {
     private val expiry = LocalDateTime.of(2026, 8, 18, 12, 0, 0)
 
+    @Test
+    fun `결제완료 그룹의 부분 환불 집행은 부분취소로 간다`() {
+        val group = orderGroup().apply { markPaid() }
+
+        group.applyClaimCancellation(fullyCancelled = false)
+
+        assertEquals(OrderGroupStatus.PARTIALLY_CANCELLED, group.status)
+    }
+
+    @Test
+    fun `부분취소 그룹의 남은 금액까지 환불되면 전액취소로 종결된다`() {
+        val group = orderGroup().apply { markPaid() }
+        group.applyClaimCancellation(fullyCancelled = false)
+
+        group.applyClaimCancellation(fullyCancelled = true)
+
+        assertEquals(OrderGroupStatus.CANCELLED, group.status)
+    }
+
+    @Test
+    fun `결제대기 그룹에는 환불 집행 전이를 걸 수 없다`() {
+        val group = orderGroup()
+
+        val exception = assertFailsWith<BusinessException> { group.applyClaimCancellation(fullyCancelled = true) }
+
+        assertEquals(OrderErrorCode.ORDER_GROUP_NOT_CANCELLABLE, exception.errorCode)
+        assertEquals(OrderGroupStatus.PENDING_PAYMENT, group.status, "거절된 전이가 상태를 바꾸면 안 된다")
+    }
+
+    @Test
+    fun `전액취소된 그룹에는 환불 집행 전이를 다시 걸 수 없다`() {
+        val group = orderGroup().apply { markPaid() }
+        group.applyClaimCancellation(fullyCancelled = true)
+
+        val exception = assertFailsWith<BusinessException> { group.applyClaimCancellation(fullyCancelled = false) }
+
+        assertEquals(OrderErrorCode.ORDER_GROUP_NOT_CANCELLABLE, exception.errorCode)
+        assertEquals(OrderGroupStatus.CANCELLED, group.status)
+    }
+
     private fun orderGroup(
         expiresAt: LocalDateTime = expiry,
         usedPoint: Long = 0L,

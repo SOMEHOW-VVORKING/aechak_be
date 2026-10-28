@@ -11,6 +11,9 @@ interface SellerApplicationRepository {
     /** 유저당 신청 1행(UNIQUE user_id) — 행 재사용 모델이라 단건이다. */
     fun findByUserId(userId: Long): SellerApplication?
 
+    /** 신청 상태 — 신청 이력이 없으면 null. 신청서 전체가 필요 없는 화면 분기용. */
+    fun findStatusByUserId(userId: Long): ApplicationStatus?
+
     /** 어드민 목록 — status 미지정 시 전체, 제출일 내림차순(미제출 행은 뒤로). (status, submitted_at) 인덱스 전제. */
     fun findPage(
         status: ApplicationStatus?,

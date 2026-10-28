@@ -2,34 +2,58 @@ package com.aechak.application.order.facade
 
 import com.aechak.application.order.cart.service.CartService
 import com.aechak.application.order.port.OrderItemForReviewQueryPort
+import com.aechak.application.order.service.OrderConfirmService
+import com.aechak.application.order.service.OrderExpiryService
 import com.aechak.application.order.service.OrderService
+import com.aechak.application.order.support.OrderPointLedger
+import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.order.usecase.OrderUseCase
+import com.aechak.application.order.usecase.command.AutoConfirmPurchaseCommand
+import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.application.order.usecase.command.CreateOrderGroupCommand
+import com.aechak.application.order.usecase.command.ExpireOrderGroupCommand
+import com.aechak.application.order.usecase.command.MarkConfirmNotifiedCommand
+import com.aechak.application.order.usecase.query.AutoConfirmScanQuery
+import com.aechak.application.order.usecase.query.ConfirmNotifyScanQuery
+import com.aechak.application.order.usecase.query.ExpiredOrderGroupQuery
+import com.aechak.application.order.usecase.result.ConfirmGroupPaidResult
 import com.aechak.application.order.usecase.result.CreateOrderGroupResult
+import com.aechak.application.order.usecase.result.ExpireOrderGroupResult
+import com.aechak.application.order.usecase.result.ExpiredOrderGroupResult
 import com.aechak.application.order.usecase.result.OrderItemForReviewResult
+import com.aechak.application.settlement.usecase.SettlementUseCase
+import com.aechak.application.settlement.usecase.command.CreateSettlementLedgerCommand
 import com.aechak.application.user.address.usecase.DeliveryAddressUseCase
 import com.aechak.application.user.point.usecase.PointUseCase
+import com.aechak.application.user.point.usecase.command.EarnPurchaseRewardCommand
 import com.aechak.application.user.point.usecase.command.UsePointCommand
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
+import java.time.LocalDateTime
 
 /**
- * OrderUseCase의 유일한 구현체. 트랜잭션 경계는 여기 고정.
- * 타 BC 협력(배송지·적립금)은 그쪽 UseCase를, 같은 BC의 장바구니는 CartService를 주입받는다.
+ * order 도메인 진입점의 유일한 구현체. 트랜잭션 경계는 여기 고정.
+ * 타 BC 협력(배송지·적립금·정산)은 그쪽 UseCase를, 같은 BC의 장바구니는 CartService를 주입받는다.
+ * 만료 계약을 인터페이스로 가른 이유는 소비 모듈이 갈려서다 — 구매자 앱은 쓰지 않고 배치만 쓴다.
  */
 @Service
 class OrderFacade(
     private val orderService: OrderService,
+    private val orderConfirmService: OrderConfirmService,
+    private val orderExpiryService: OrderExpiryService,
     private val cartService: CartService,
     private val deliveryAddressUseCase: DeliveryAddressUseCase,
     private val pointUseCase: PointUseCase,
     private val orderItemForReviewQueryPort: OrderItemForReviewQueryPort,
+    private val settlementUseCase: SettlementUseCase,
     transactionManager: PlatformTransactionManager,
-) : OrderUseCase {
+) : OrderUseCase,
+    OrderExpiryUseCase {
     private val tx =
         TransactionTemplate(transactionManager).apply {
             isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
@@ -59,6 +83,86 @@ class OrderFacade(
     ): OrderItemForReviewResult? =
         orderItemForReviewQueryPort.findOrderItemForReview(orderItemId, buyerId)?.let(OrderItemForReviewResult::from)
 
+    /** 결제 확정 트랜잭션에 참여해야 하므로 REQUIRED — 결제 기록이 롤백되면 주문 전이도 함께 롤백된다 */
+    @Transactional
+    override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = orderService.confirmGroupPaid(orderGroupId)
+
+    /**
+     * 확정·적립금·정산 원장을 한 트랜잭션에 묶는다 — 셋 중 하나가 실패하면 확정도 함께 롤백된다.
+     * READ_COMMITTED: 선점 UPDATE 뒤의 클레임 조회가 REPEATABLE READ 스냅샷에 갇히면 그 사이 커밋된 클레임을 놓친다.
+     */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    override fun confirmPurchase(command: ConfirmPurchaseCommand) {
+        val confirmed = orderConfirmService.confirmPurchase(command)
+        earnPurchaseReward(confirmed)
+        createSettlementLedger(confirmed)
+    }
+
+    @Transactional(readOnly = true)
+    override fun findAutoConfirmTargetIds(query: AutoConfirmScanQuery): List<Long> = orderConfirmService.findAutoConfirmTargetIds(query)
+
+    /** 수동 확정과 같은 트랜잭션 구성·격리 수준을 쓴다 — 적립·정산 원장 실패는 확정까지 되돌린다. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    override fun autoConfirmPurchase(command: AutoConfirmPurchaseCommand) {
+        val confirmed = orderConfirmService.autoConfirmPurchase(command)
+        earnPurchaseReward(confirmed)
+        createSettlementLedger(confirmed)
+    }
+
+    @Transactional(readOnly = true)
+    override fun findConfirmNotifyTargetIds(query: ConfirmNotifyScanQuery): List<Long> =
+        orderConfirmService.findConfirmNotifyTargetIds(query)
+
+    @Transactional
+    override fun markConfirmNotified(command: MarkConfirmNotifiedCommand): Boolean = orderConfirmService.markConfirmNotified(command)
+
+    @Transactional(readOnly = true)
+    override fun findExpiredOrderGroups(query: ExpiredOrderGroupQuery): List<ExpiredOrderGroupResult> =
+        orderExpiryService.findExpired(LocalDateTime.now(), query)
+
+    /** 취소 전이·재고·적립금이 한 트랜잭션 — 복원 중 하나라도 터지면 그룹이 결제대기로 돌아가 다음 회차가 다시 집는다 */
+    @Transactional
+    override fun expireOrderGroup(command: ExpireOrderGroupCommand): ExpireOrderGroupResult =
+        orderExpiryService.expire(command.orderGroupId, LocalDateTime.now())
+
+    @Transactional
+    override fun clearOrderedCartItems(
+        buyerId: Long,
+        orderGroupId: Long,
+    ): Int = cartService.removeOrderedItems(buyerId, orderService.orderedQuantities(orderGroupId))
+
+    /** 수동·자동 확정이 함께 타는 적립 경로 — 멱등키의 재료인 주문 publicId가 같아 두 경로가 겹쳐도 원장은 1행이다 */
+    private fun earnPurchaseReward(confirmed: OrderConfirmService.ConfirmedPurchase) {
+        pointUseCase.earnPurchaseReward(
+            EarnPurchaseRewardCommand(
+                buyerUserId = confirmed.buyerId,
+                orderId = confirmed.orderId,
+                orderPublicId = confirmed.orderPublicId,
+                productAmount = confirmed.productAmount,
+            ),
+        )
+    }
+
+    /**
+     * 수동·자동 확정이 함께 타는 원장 경로 — 원장은 품목당 1행이고, 순차 재실행은 멱등키 선조회가, 동시 확정은
+     * 전이 선점과 멱등키 UNIQUE가 막아 두 경로가 겹쳐도 행이 늘지 않는다.
+     * 확정 트랜잭션 안에서 만들어 확정과 원장이 함께 살거나 함께 죽는다.
+     */
+    private fun createSettlementLedger(confirmed: OrderConfirmService.ConfirmedPurchase) {
+        settlementUseCase.createLedgerOnConfirm(
+            CreateSettlementLedgerCommand(
+                sellerId = confirmed.sellerId,
+                orderId = confirmed.orderId,
+                confirmedAt = confirmed.confirmedAt,
+                sellerShippingFee = confirmed.sellerShippingFee,
+                items =
+                    confirmed.items.map {
+                        CreateSettlementLedgerCommand.Item(orderItemId = it.orderItemId, grossAmount = it.grossAmount)
+                    },
+            ),
+        )
+    }
+
     /** 적립금 확보도 주문 트랜잭션 안 — 실패(잔액 부족)면 재고 차감·주문 저장이 함께 롤백된다 */
     private fun usePoint(
         command: CreateOrderGroupCommand,
@@ -69,15 +173,9 @@ class OrderFacade(
             UsePointCommand(
                 userId = command.buyerId,
                 amount = command.usedPoint,
-                idempotencyKey = "$POINT_USE_KEY_PREFIX${result.orderGroupId}",
-                sourceType = POINT_SOURCE_ORDER_GROUP,
+                idempotencyKey = OrderPointLedger.useKey(result.orderGroupId),
+                sourceType = OrderPointLedger.SOURCE_TYPE,
             ),
         )
-    }
-
-    companion object {
-        // 주문그룹 publicId 기반 결정적 키 — 같은 그룹의 사용 기록은 재실행돼도 원장 1행
-        const val POINT_USE_KEY_PREFIX = "USE:ORDER:"
-        const val POINT_SOURCE_ORDER_GROUP = "ORDER_GROUP"
     }
 }

@@ -7,6 +7,8 @@ import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.product.enums.SaleStatus
+import io.swagger.v3.oas.annotations.media.ArraySchema
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.PositiveOrZero
 import jakarta.validation.constraints.Size
 import org.hibernate.validator.constraints.Range
@@ -20,7 +22,9 @@ import java.time.format.DateTimeParseException
 data class SellerProductSearchRequest(
     @field:Size(max = SellerProductSearchQuery.KEYWORD_MAX, message = "keyword는 최대 {max}자입니다.")
     val keyword: String? = null,
+    @field:ArraySchema(schema = Schema(allowableValues = ["ON_SALE", "OUT_OF_STOCK", "SUSPENDED", "ENDED"]))
     val saleStatus: List<String> = emptyList(),
+    @field:ArraySchema(schema = Schema(allowableValues = ["DRAFT", "PENDING", "APPROVED", "REJECTED"]))
     val inspectionStatus: List<String> = emptyList(),
     val category: Long? = null,
     val createdFrom: String? = null,

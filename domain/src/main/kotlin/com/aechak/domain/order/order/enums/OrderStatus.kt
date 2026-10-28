@@ -18,6 +18,7 @@ enum class OrderStatus {
 
     fun canCancel(): Boolean = this in CANCELLABLE
 
+    /** 배송완료에서 취소로 가는 길은 반품 환불이 쓴다 — 열어 두지 않으면 반품이 끝난 주문이 자동 구매확정된다. */
     fun canTransitionTo(next: OrderStatus): Boolean =
         next in
             when (this) {
@@ -26,7 +27,7 @@ enum class OrderStatus {
                 PREPARING -> setOf(DISPATCH_PENDING, CANCELLED)
                 DISPATCH_PENDING -> setOf(SHIPPING, CANCELLED)
                 SHIPPING -> setOf(DELIVERED)
-                DELIVERED -> setOf(PURCHASE_CONFIRMED)
+                DELIVERED -> setOf(PURCHASE_CONFIRMED, CANCELLED)
                 PURCHASE_CONFIRMED, CANCELLED -> emptySet()
             }
 

@@ -446,6 +446,8 @@ class MyReviewIntegrationTest : IntegrationTestBase() {
                     sellerNameSnapshot = "store-$sellerId",
                     allocatedCouponDiscount = 0L,
                     sellerShippingFee = 3000L,
+                    baseShippingFeeSnapshot = null,
+                    freeShippingThresholdSnapshot = null,
                     items = items,
                 )
             em.persist(order)

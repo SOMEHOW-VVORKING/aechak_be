@@ -1,7 +1,9 @@
 package com.aechak.seller.product
 
 import com.aechak.application.product.product.usecase.SellerProductUseCase
+import com.aechak.application.product.product.usecase.command.AppealProductInspectionCommand
 import com.aechak.seller.product.request.OptionCombinationChangeRequest
+import com.aechak.seller.product.request.ProductInspectionAppealRequest
 import com.aechak.seller.product.request.ProductRegisterRequest
 import com.aechak.seller.product.request.ProductSaleStatusChangeRequest
 import com.aechak.seller.product.request.ProductUpdateRequest
@@ -10,6 +12,8 @@ import com.aechak.seller.product.response.OptionCombinationChangeResponse
 import com.aechak.seller.product.response.ProductRegisterResponse
 import com.aechak.seller.product.response.ProductSaleStatusChangeResponse
 import com.aechak.seller.product.response.ProductUpdateResponse
+import com.aechak.seller.product.response.SellerProductDetailResponse
+import com.aechak.seller.product.response.SellerProductInspectionResponse
 import com.aechak.seller.product.response.SellerProductListResponse
 import com.aechak.seller.product.response.SellerProductOptionsResponse
 import com.aechak.webcommon.response.ApiResponse
@@ -26,6 +30,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
@@ -34,6 +39,7 @@ class SellerProductController(
     private val sellerProductUseCase: SellerProductUseCase,
 ) {
     @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
     fun register(
         @Valid @RequestBody request: ProductRegisterRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
@@ -95,6 +101,18 @@ class SellerProductController(
             ApiResponse.of(SellerProductListResponse.from(sellerProductUseCase.getMyProducts(request.toQuery(principal.userId)))),
         )
 
+    /** 내 상품 단건 — 수정 폼 프리필용 */
+    @GetMapping("/{productId}")
+    fun getMyProductDetail(
+        @PathVariable productId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<SellerProductDetailResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(
+                SellerProductDetailResponse.from(sellerProductUseCase.getMyProductDetail(principal.userId, productId)),
+            ),
+        )
+
     /** 내 상품의 옵션 조합별 재고 — 목록 행 클릭 시 모달용 */
     @GetMapping("/{productId}/options")
     fun getMyProductOptions(
@@ -103,5 +121,44 @@ class SellerProductController(
     ): ResponseEntity<ApiResponse<SellerProductOptionsResponse>> =
         ResponseEntity.ok(
             ApiResponse.of(SellerProductOptionsResponse.from(sellerProductUseCase.getMyProductOptions(principal.userId, productId))),
+        )
+
+    /** 내 상품의 검수 결과 — 목록에서 반려 상태를 보고 사유를 확인할 때 부른다 */
+    @GetMapping("/{productId}/inspection")
+    fun getMyProductInspection(
+        @PathVariable productId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<SellerProductInspectionResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(
+                SellerProductInspectionResponse.from(
+                    sellerProductUseCase.getMyProductInspection(principal.userId, productId),
+                ),
+            ),
+        )
+
+    /**
+     * 내 상품의 검수 차단에 이의를 접수한다 — 조회와 같은 몸통을 돌려주므로 FE는 다시 조회하지 않아도 된다.
+     *
+     * 접수는 노출을 바꾸지 않는다. 바뀌는 것은 관리자가 보는 큐에 이의가 붙는 것뿐이다.
+     */
+    @PostMapping("/{productId}/inspection/appeals")
+    fun appealMyProductInspection(
+        @PathVariable productId: String,
+        @Valid @RequestBody request: ProductInspectionAppealRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<SellerProductInspectionResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(
+                SellerProductInspectionResponse.from(
+                    sellerProductUseCase.appealMyProductInspection(
+                        AppealProductInspectionCommand(
+                            sellerId = principal.userId,
+                            productPublicId = productId,
+                            reason = request.reason,
+                        ),
+                    ),
+                ),
+            ),
         )
 }

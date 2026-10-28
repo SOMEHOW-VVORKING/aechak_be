@@ -145,7 +145,10 @@ AFTER_COMMIT 리스너가 발화하지 않고, 이벤트/outbox 흐름이 조용
 
 - 이미지 태그는 운영 DB 버전으로 고정한다(`latest` 금지). 현재 태그 값은 코드가 들고 있다.
 - 스키마는 지금 `ddl-auto=create`로 만든다(ERD 확정 전 과도기).
-- 알려진 예외: `boot/batch`는 아웃박스 스위퍼가 실 outbox 테이블을 읽어야 해서 런타임 DB가 MySQL이다(H2 제거 완료, SCRUM-143). 테스트는 아직 착수하지 않았다 — 착수하는 커밋에서 재사용 가능한 베이스(§3 예외)부터 만들고 같은 패턴으로 정렬한다. 그 전까지 batch 테스트 작성 금지.
+- 알려진 예외: `boot/batch`는 아웃박스 스위퍼가 실 outbox 테이블을 읽어야 해서 런타임 DB가 MySQL이다(H2 제거 완료, SCRUM-143).
+  batch 통합 테스트는 `boot/batch/src/test/.../support/BatchIntegrationTestBase`를 상속한다 — 컨테이너는 `:api` test-fixtures의
+  `IntegrationTestConfig.registerContainers`로 api와 같은 것을 공유하고(모듈마다 띄우지 않는다), Fake 빈은 끌어오지 않는다(배치는 웹 포트가 없다).
+  유스케이스 수준 통합(실 DB + Fake PG)은 어댑터와 Fake가 다 있는 `boot/api` 컨텍스트에서 돌리고, batch에는 조립 스모크만 둔다(결제 대사 선례).
 
 ## 7. 스타일
 
@@ -186,6 +189,14 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
 - ~~**Outbox/이벤트 검증**~~ → **본문 승격 완료(§3.0, 2026-07-23)**. EmbeddedKafka 채택, Awaitility 배선 완료.
 - **Flyway**: `DatabaseCleaner` 이력 테이블 truncate 제외는 완료(2026-07-23). 남은 것 — `ddl-auto=create` 제거, 테스트 스키마 전체를 마이그레이션으로
   생성 + `ddl-auto=validate` 전환(전체 DDL 이관 시점에).
+  - 이관이 끝나기 전까지의 정합 검증 수단은 `boot/api/src/test/.../schema/V27SchemaMigrationIntegrationTest`다.
+    `ddl-auto=validate` 부팅은 아직 Flyway 밖인 테이블(users·products 등)에서 먼저 깨지므로 쓸 수 없다. 대신
+    `jakarta.persistence.schema-generation.scripts.action=create`로 "Hibernate가 만들 DDL"만 파일로 받아 별도 스키마에 적용하고,
+    Flyway만 적용한 스키마와 컬럼·인덱스를 테이블 단위로 대조한다. 새 테이블을 Flyway로 옮길 때 이 테스트의 대상 목록에 추가한다.
+    이미 Flyway가 소유한 테이블(orders·payments)도 목록에 둔다 — 그 테이블에 컬럼·인덱스를 더할 때 엔티티 선언을 같이 고치지 않은 것이 여기서 잡힌다.
+    ddl-auto가 만든 DB를 재현한 스키마와의 대조는 타입까지 엄격하게 본다 — 마이그레이션이 기존 네이티브 enum 컬럼을
+    VARCHAR로 수렴시키기 때문이다. 엔티티 선언과의 대조에서만 enum↔VARCHAR을 허용하고, 이때도 VARCHAR 길이가 모든
+    enum 값을 담는지 확인한다. ddl-auto가 FK 때문에 만든 보조 인덱스는 양쪽 비교에서 제외한다.
 - **MockMvc**: 컨트롤러 통합 착수 시 `spring-boot-webmvc-test-autoconfigure` 배선(Boot 4에서 별도 아티팩트), `@AutoConfigureMockMvc`는 베이스에.
 - **픽스처 빌더**: 유스케이스 테스트 착수 시 `OrderFixture.aCart()` 형태의 Object Mother 도입. 그 전까지 도메인 팩토리 직접 호출 허용.
 - **인증**: Security가 컨트롤러 통합에 붙으면 `@WithMockUser`/커스텀 시큐리티 테스트 지원 구체화.
@@ -196,7 +207,8 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
   Flyway clean-then-migrate 전략(`FlywayCleanMigrateConfig`)도 clean을 연 이 베이스만 import한다 — 공용 fixture에 두면 clean이 막힌 다른 실행 모듈 컨텍스트가 부팅에서 깨진다.
 - **MongoDB**: 도입 시 공용 베이스에 `@ServiceConnection` Mongo 컨테이너를 추가한다 — 별도 베이스를 만들지 않는다.
 - **병렬 실행**: 테스트별 스키마/DB 분리로 격리가 강화되면 재검토.
-- **모듈 간 테스트 베이스 공유**: boot/batch·infra에 통합 테스트가 필요해지는 커밋에서 결정한다 — 위 `:api` test-fixtures를 그대로 소비할지, 모듈마다 자체 베이스를 둘지. 공유 장치 자체는 SCRUM-192에서 `:api` java-test-fixtures로 도입됐고, 현재 소비자는 seller-api뿐이다.
+- ~~**모듈 간 테스트 베이스 공유**~~ → **결정 완료(결제 대사, 2026-10-16)**. boot/batch는 자체 베이스(`BatchIntegrationTestBase`)를 두되 컨테이너는
+  `:api` test-fixtures의 `IntegrationTestConfig.registerContainers`를 소비한다(§6). infra 모듈은 여전히 단위·계약 테스트만 둔다.
 - **운영 MySQL 버전 확정 시**: 컨테이너 태그를 그 버전으로 맞춘다.
 
 ## 10. PR 전 체크리스트

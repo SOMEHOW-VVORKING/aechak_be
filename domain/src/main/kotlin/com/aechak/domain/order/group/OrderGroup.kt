@@ -13,6 +13,7 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 import java.time.LocalDateTime
@@ -20,6 +21,9 @@ import java.time.LocalDateTime
 @Entity
 @Table(
     name = "order_groups",
+    indexes = [
+        Index(name = "idx_order_groups_buyer_id", columnList = "buyer_id, id"),
+    ],
     uniqueConstraints = [
         UniqueConstraint(name = "uk_order_group_public_id", columnNames = ["public_id"]),
         UniqueConstraint(name = "uk_order_group_idempotency_key", columnNames = ["idempotency_key"]),
@@ -99,6 +103,17 @@ class OrderGroup protected constructor(
     fun cancelUnpaid() {
         if (status == OrderGroupStatus.CANCELLED) return
         transitionFromPending(OrderGroupStatus.CANCELLED)
+    }
+
+    /**
+     * 클레임 환불 집행에 따른 취소 전이. 취소가능액이 0으로 떨어지면 전액취소, 남으면 부분취소다 —
+     * PG 쪽 취소 상태와 같은 기준이어야 대사가 이 그룹을 불일치로 보지 않는다.
+     */
+    fun applyClaimCancellation(fullyCancelled: Boolean) {
+        if (status != OrderGroupStatus.PAID && status != OrderGroupStatus.PARTIALLY_CANCELLED) {
+            throw BusinessException(OrderErrorCode.ORDER_GROUP_NOT_CANCELLABLE)
+        }
+        status = if (fullyCancelled) OrderGroupStatus.CANCELLED else OrderGroupStatus.PARTIALLY_CANCELLED
     }
 
     /** 상태 규칙만 강제함. 동시 선점은 저장소 조건부 UPDATE가 가름 */

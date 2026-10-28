@@ -28,6 +28,7 @@ import tools.jackson.databind.ObjectMapper // Spring Boot 4부터 Jackson 3의 t
  * 공개 경로와 인증 실패 응답, 사용자 상태별 접근 권한을 이 파일에서 관리한다.
  *
  * 로그인, 토큰 갱신, 헬스 체크, API 문서는 인증 없이 접근할 수 있다. 일반 로그아웃은 인증이 필요하다.
+ * 결제 웹훅(/webhooks/portone)도 인증 없이 받는다 — 신원은 JWT가 아니라 포트원 서명 검증이 보증한다.
  * JWT 인증 실패는 AuthenticationEntryPoint가 401로 응답하고, 계정 상태에 따른 제한은 UserStatusFilter가 403으로 응답한다.
  */
 @Configuration(proxyBeanMethods = false)
@@ -63,10 +64,19 @@ class SecurityConfig {
                     ).permitAll()
                     .requestMatchers("/actuator/health")
                     .permitAll()
-                    .requestMatchers(HttpMethod.GET, "$basePath/products")
+                    .requestMatchers(HttpMethod.POST, "$basePath/webhooks/portone") // 신원은 JWT가 아니라 포트원 서명이 보증
                     .permitAll()
-                    .requestMatchers(HttpMethod.GET, "$basePath/search/products") // 게스트도 상품 검색 허용
-                    .permitAll()
+                    // 게스트 카탈로그. 와일드카드는 세그먼트 한 칸이라 상품 상세는 열리고,
+                    // 로그인을 요구하는 /products/{productId}/reviews 는 닫힌 채로 남는다.
+                    // 홈은 아직 비회원에게 열지 않아 여기에 넣지 않는다.
+                    .requestMatchers(
+                        HttpMethod.GET,
+                        "$basePath/products",
+                        "$basePath/products/*",
+                        "$basePath/products/*/options",
+                        "$basePath/search/products",
+                        "$basePath/sns/users/*", // 한 칸 와일드카드라 /followers, /followings는 닫힌 채로 남는다
+                    ).permitAll()
                     .anyRequest()
                     .authenticated()
             }.oauth2ResourceServer { resourceServer ->

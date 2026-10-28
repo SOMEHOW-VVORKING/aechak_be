@@ -11,10 +11,16 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.Table
 
 @Entity
-@Table(name = "application_reviews")
+@Table(
+    name = "application_reviews",
+    indexes = [
+        Index(name = "idx_application_reviews_application_id", columnList = "application_id"),
+    ],
+)
 class ApplicationReview protected constructor(
     reviewerAdminId: Long,
     decision: ReviewDecision,

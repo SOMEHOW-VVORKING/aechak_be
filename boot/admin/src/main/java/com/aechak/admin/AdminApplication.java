@@ -23,6 +23,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
             "com.aechak.application.user.user", // SellerApplicationFacade의 휴대폰 인증 검사 의존(UserUseCase) — user 전체 스캔은 전화
             // 인증(Redis·SMS 포트) 조립까지 요구해 하위로 좁힌다
             "com.aechak.application.user.term", // UserFacade의 약관 동의 의존(ConsentService)
+            // 배송 정책 파사드의 택배사 검증 의존(CourierUseCase) — 어드민이 쓰는 기능은 아니지만
+            // 그 파사드가 application.seller에 살아 패키지 단위 스캔으로는 가릴 수 없다. order BC 중 이 하위만 쓴다
+            "com.aechak.application.order.shipment",
+            // 상품 검수 큐의 노출 전이(ProductInspectionGate 구현). 검수 패키지 자체는 InspectionScanConfig가 스캔함
+            "com.aechak.application.product.product.service",
             "com.aechak.infra.persistence", // 리포지토리·UserStatusReader 어댑터
             "com.aechak.infra.s3", // FileStorage 어댑터
         })
