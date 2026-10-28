@@ -227,6 +227,8 @@ class SellerEligibilityContractIntegrationTest : IntegrationTestBase() {
 
         const val INVOICE_BODY = """{"courierCode": "CJ", "trackingNumber": "1234567890"}"""
 
+        const val REPLY_BODY = """{"content": "자격 게이트 확인용 답글"}"""
+
         /**
          * 셀러 자격을 요구하는 경로 전수. 값은 그 경로가 자격 게이트까지 도달하는 데 필요한 본문이다 —
          * 본문 검증이 게이트보다 앞서서, 본문이 틀리면 400이 되어 자격 계약을 재지 못한다.
@@ -267,6 +269,10 @@ class SellerEligibilityContractIntegrationTest : IntegrationTestBase() {
                 "GET /api/v1/sellers/me/settlements" to null,
                 "GET /api/v1/sellers/me/settlements/months" to null,
                 "GET /api/v1/sellers/me/settlements/{orderPublicId}" to null,
+                "GET /api/v1/sellers/me/reviews" to null,
+                "POST /api/v1/sellers/me/reviews/{reviewId}/reply" to REPLY_BODY,
+                "PUT /api/v1/sellers/me/reviews/{reviewId}/reply" to REPLY_BODY,
+                "DELETE /api/v1/sellers/me/reviews/{reviewId}/reply" to null,
             )
 
         /** 자격 게이트를 두지 않는 경로와 그 이유. */
