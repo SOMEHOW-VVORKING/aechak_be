@@ -385,6 +385,44 @@ resource "aws_ssm_parameter" "batch_pii_hmac_key" {
   }
 }
 
+# ── batch 스케줄 스위치 (SCRUM-328) ────────────────────
+# 일곱 스케줄 모두 코드 기본값이 false다. 의도된 설계다 — 돈을 움직이거나 비가역 전이를 하는
+# 경로라서 꺼진 채로 배포하고 환경별로 켠다. 대신 SSM에 값을 넣지 않으면 배치 보트는 떠 있는데
+# 스케줄은 하나도 돌지 않는다. 2026-10-29 dev 실측이 정확히 그 상태였다:
+# /aechak/dev/batch 에 일곱 개가 전부 없고, CloudWatch 1주일 로그에 일곱 스케줄 전부 0건.
+# (대사 스케줄만 플래그 없이 매일 돌지만 그 경로의 포트원 시크릿이 미등재라 FAILED로 끝난다.)
+#
+# 키 이름은 boot/batch/src/main/resources/application.yml 의 플레이스홀더와 글자까지 같아야 한다.
+# 배치는 경로 프리픽스(spring.config.import)로 읽으므로 이름이 틀려도 부팅은 성공하고 플래그만
+# 기본값 false로 남는다 — 오타가 조용히 묻힌다. order.delivery.enabled 의 이름이 특히 헷갈리는데
+# ORDER_DELIVERY_ENABLED 가 아니라 ORDER_DELIVERY_BATCH_ENABLED 다.
+locals {
+  batch_schedule_flags = {
+    ORDER_EXPIRY_ENABLED             = var.batch_schedules_enabled.order_expiry
+    ORDER_AUTO_CONFIRM_ENABLED       = var.batch_schedules_enabled.order_auto_confirm
+    ORDER_DELIVERY_BATCH_ENABLED     = var.batch_schedules_enabled.order_delivery
+    ORDER_DELIVERY_TRACKING_ENABLED  = var.batch_schedules_enabled.delivery_tracking
+    ORDER_CLAIM_REFUND_ENABLED       = var.batch_schedules_enabled.claim_refund
+    ORDER_CLAIM_AUTO_APPROVE_ENABLED = var.batch_schedules_enabled.claim_auto_approve
+    SETTLEMENT_EXECUTION_ENABLED     = var.batch_schedules_enabled.settlement_execution
+  }
+  # yml에 enabled 플래그가 둘 더 있지만 스케줄 스위치가 아니라 여기 넣지 않는다.
+  #   TOSS_RECONCILIATION_ENABLED          — 대사의 소스 하나를 추가한다(스케줄은 이미 무조건 돈다).
+  #                                          켜려면 TOSS_SECRET_KEY 수기 등재가 먼저다.
+  #   ORDER_DELIVERY_TRACKING_MOCK_ENABLED — 목 추적 어댑터 조립 여부. delivery_tracking 의 하위 선택지다.
+}
+
+# 값이 비밀이 아니라 terraform이 직접 넣는다 — 포트원 시크릿(아래)과 다른 취급이다.
+# 끄는 쪽도 파라미터를 지우지 말고 false로 둔다: 지우면 "의도적으로 꺼 둠"과 "등재를 잊음"이
+# SSM만 봐서는 구분되지 않는다. 이번 건이 바로 그 구분이 안 돼 묻혀 있던 일이다.
+resource "aws_ssm_parameter" "batch_schedule_flags" {
+  for_each = local.batch_schedule_flags
+
+  name  = "/${var.project}/${var.env}/batch/${each.key}"
+  type  = "String"
+  value = tostring(each.value)
+}
+
 # --- 포트원 시크릿: 수기 등재 (위 api 경로와 같은 방침) ---
 # 대사가 포트원 결제 목록 조회·재조회에 쓴다. 비면 부팅은 되고 대사 회차가 실패로 기록된다.
 #   /{project}/{env}/batch/PORTONE_API_SECRET     (SecureString)
