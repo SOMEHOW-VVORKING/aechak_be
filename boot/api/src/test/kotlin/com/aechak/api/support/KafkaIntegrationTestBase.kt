@@ -54,6 +54,9 @@ import org.springframework.transaction.support.TransactionTemplate
         Topics.INSPECTION_DLT,
         Topics.VERDICT,
         Topics.VERDICT_DLT,
+        Topics.REVIEW_SUMMARY_REQUEST,
+        Topics.REVIEW_SUMMARY_RESULT,
+        Topics.REVIEW_SUMMARY_RESULT_DLT,
     ],
 )
 abstract class KafkaIntegrationTestBase {
