@@ -69,7 +69,9 @@ class ReviewCommandService(
         userId: Long,
         reviewId: Long,
     ): Long? {
-        val review = reviewRepository.findById(reviewId) ?: throw BusinessException(ReviewErrorCode.REVIEW_NOT_FOUND)
+        // 운영자 전이와 같은 잠금을 탄다 — 한쪽만 잠그면 잠그지 않은 쪽이 먼저 읽은 상태로 덮어쓴다
+        val review =
+            reviewRepository.findByIdForUpdate(reviewId) ?: throw BusinessException(ReviewErrorCode.REVIEW_NOT_FOUND)
         if (review.authorUserId != userId) {
             throw BusinessException(ReviewErrorCode.REVIEW_ACCESS_DENIED)
         }

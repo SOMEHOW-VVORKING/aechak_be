@@ -5,6 +5,7 @@ import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.review.reply.ReviewReply
 import com.aechak.domain.review.review.Review
+import com.aechak.domain.review.review.enums.ReviewBlindReason
 import com.aechak.domain.review.review.enums.ReviewStatus
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.user.user.User
@@ -356,6 +357,45 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
         assertEquals(listOf("공개 리뷰"), JsonPath.read<List<String>>(body, "$.data.reviews[*].content"))
         assertEquals(1, JsonPath.read<Int>(body, "$.data.summary.reviewCount"))
         assertEquals(0, JsonPath.read<Int>(body, "$.data.summary.ratingDistribution['1']"))
+    }
+
+    @Test
+    fun `운영자가 블라인드한 리뷰는 목록과 별점 요약에서 빠지고 해제하면 돌아온다`() {
+        val fixture =
+            tx.execute {
+                val product = persistVisibleProduct("사료")
+                em.flush()
+                val author = persistAuthor("작성자")
+                persistReview(product.id, author, rating = 5, orderItemId = 1L, content = "공개 리뷰")
+                val target = persistReview(product.id, author, rating = 1, orderItemId = 2L, content = "악의적 리뷰")
+                em.flush()
+                target.blindByAdmin(adminId = 1L, reasonCode = ReviewBlindReason.ABUSE, reasonText = null)
+                em.flush()
+                product.publicId to target.id
+            }!!
+
+        val blinded = getReviews(fixture.first)
+
+        assertEquals(listOf("공개 리뷰"), JsonPath.read<List<String>>(blinded, "$.data.reviews[*].content"))
+        assertEquals(1, JsonPath.read<Int>(blinded, "$.data.summary.reviewCount"))
+        assertEquals(
+            0,
+            BigDecimal("5.00").compareTo(readBigDecimal(blinded, "$.data.summary.averageRating")),
+            "1점이 평균을 끌어내려선 안 된다",
+        )
+        assertEquals(0, JsonPath.read<Int>(blinded, "$.data.summary.ratingDistribution['1']"))
+
+        tx.execute { em.find(Review::class.java, fixture.second).unblind() }
+
+        val unblinded = getReviews(fixture.first)
+
+        assertEquals(
+            listOf("악의적 리뷰", "공개 리뷰"),
+            JsonPath.read<List<String>>(unblinded, "$.data.reviews[*].content"),
+            "해제한 리뷰는 구매자 목록으로 돌아와야 한다",
+        )
+        assertEquals(2, JsonPath.read<Int>(unblinded, "$.data.summary.reviewCount"))
+        assertEquals(0, BigDecimal("3.00").compareTo(readBigDecimal(unblinded, "$.data.summary.averageRating")))
     }
 
     @Test

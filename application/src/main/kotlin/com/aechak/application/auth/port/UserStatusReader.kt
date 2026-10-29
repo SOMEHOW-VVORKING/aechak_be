@@ -11,6 +11,11 @@ import com.aechak.domain.user.user.enums.UserStatus
  * 트래픽 증가 시 Redis 캐시 데코레이터를 이 포트 뒤에 끼운다 — 호출부 무변경(확장 사다리).
  */
 interface UserStatusReader {
-    /** null = 유저 없음(탈퇴 직후 옛 토큰 등) — 호출부는 차단으로 취급한다. */
+    /**
+     * 접근 판정에 쓸 **유효 상태** — 기간이 지난 임시 정지는 ACTIVE로 돌려준다.
+     * 만료 판정을 호출부마다 반복하지 않도록 포트가 책임지며, 규칙 자체는 도메인(UserStatus.effective)이 소유한다.
+     *
+     * null = 유저 없음(탈퇴 직후 옛 토큰 등) — 호출부는 차단으로 취급한다.
+     */
     fun statusOf(userId: Long): UserStatus?
 }
