@@ -48,6 +48,13 @@ interface OrderJpaRepository : JpaRepository<Order, Long> {
         @Param("publicId") publicId: String,
     ): Order?
 
+    // 위와 같은 행을 잠근다 — 잠그는 행이 갈리면 두 경로가 직렬화되지 않는다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select o from Order o where o.id = :id")
+    fun findForUpdateById(
+        @Param("id") id: Long,
+    ): Order?
+
     @Modifying
     @Query(
         "update Order o " +
@@ -135,6 +142,8 @@ class OrderRepositoryAdapter(
     ): Order? = jpaRepository.findByPublicIdAndOrderGroupBuyerId(publicId, buyerId)
 
     override fun findByPublicIdForUpdate(publicId: String): Order? = jpaRepository.findForUpdateByPublicId(publicId)
+
+    override fun findByIdForUpdate(id: Long): Order? = jpaRepository.findForUpdateById(id)
 
     override fun findByPublicIdAndSellerId(
         publicId: String,

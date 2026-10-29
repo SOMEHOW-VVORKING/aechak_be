@@ -32,6 +32,13 @@ interface OrderRepository {
      */
     fun findByPublicIdForUpdate(publicId: String): Order?
 
+    /**
+     * 주문 행 선점 조회(내부 식별자). 클레임을 이미 손에 든 호출자가 쓴다 — 운영자 개입이
+     * [findByPublicIdForUpdate]와 **같은 행**을 잠가야 신규 클레임 요청과 직렬화된다.
+     * 공개 식별자를 거치려면 주문을 한 번 더 읽어야 하므로 id로 받는다.
+     */
+    fun findByIdForUpdate(id: Long): Order?
+
     /** 셀러 스코프 단건 조회 — 타 셀러 주문은 없는 것으로 본다. */
     fun findByPublicIdAndSellerId(
         publicId: String,
