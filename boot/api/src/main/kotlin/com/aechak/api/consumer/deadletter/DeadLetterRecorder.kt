@@ -32,7 +32,7 @@ class DeadLetterRecorder {
     private val log = LoggerFactory.getLogger(javaClass)
 
     @KafkaListener(
-        topics = [Topics.ORDER_DLT, Topics.REVIEW_DLT, Topics.INSPECTION_DLT, Topics.VERDICT_DLT],
+        topics = [Topics.ORDER_DLT, Topics.REVIEW_DLT, Topics.INSPECTION_DLT, Topics.VERDICT_DLT, Topics.REVIEW_SUMMARY_RESULT_DLT],
         groupId = GROUP,
     )
     fun onDeadLetter(record: ConsumerRecord<String, String>) {

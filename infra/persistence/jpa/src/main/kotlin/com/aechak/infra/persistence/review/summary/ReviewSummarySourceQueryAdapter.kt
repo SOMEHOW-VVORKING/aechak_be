@@ -154,6 +154,41 @@ class ReviewSummarySourceQueryAdapter(
             .optional()
             .orElse(emptyList())
 
+    override fun countVisibleReviews(productId: Long): Int =
+        db
+            .sql("SELECT COUNT(*) FROM reviews WHERE product_id = :productId AND review_status IN (:visibleStatuses)")
+            .param("productId", productId)
+            .param("visibleStatuses", VISIBLE_STATUSES)
+            .query(Int::class.java)
+            .single()
+
+    override fun findVisibleReviewIdsOfProduct(
+        productId: Long,
+        reviewIds: Collection<Long>,
+    ): Set<Long> {
+        if (reviewIds.isEmpty()) return emptySet()
+        return db
+            .sql("SELECT id FROM reviews WHERE product_id = :productId AND id IN (:reviewIds) AND review_status IN (:visibleStatuses)")
+            .param("productId", productId)
+            .param("reviewIds", reviewIds.toSet())
+            .param("visibleStatuses", VISIBLE_STATUSES)
+            .query { rs, _ -> rs.getLong("id") }
+            .set()
+    }
+
+    override fun findReviewIdsOfProduct(
+        productId: Long,
+        reviewIds: Collection<Long>,
+    ): Set<Long> {
+        if (reviewIds.isEmpty()) return emptySet()
+        return db
+            .sql("SELECT id FROM reviews WHERE product_id = :productId AND id IN (:reviewIds)")
+            .param("productId", productId)
+            .param("reviewIds", reviewIds.toSet())
+            .query { rs, _ -> rs.getLong("id") }
+            .set()
+    }
+
     companion object {
         private val VISIBLE_STATUSES = ReviewStatus.entries.filter { it.isVisible() }.map { it.name }
 

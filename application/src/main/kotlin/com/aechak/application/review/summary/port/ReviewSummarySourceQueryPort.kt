@@ -5,7 +5,7 @@ import com.aechak.application.review.summary.port.view.SummaryReviewContentView
 import com.aechak.application.review.summary.port.view.SummaryReviewStateView
 import java.time.LocalDateTime
 
-/** 리뷰 요약 요청에 쓰는 리뷰 조회. 노출 리뷰는 ReviewStatus.isVisible()인 리뷰 */
+/** 리뷰 요약 요청과 노출에 쓰는 리뷰 조회. 노출 리뷰는 ReviewStatus.isVisible()인 리뷰 */
 interface ReviewSummarySourceQueryPort {
     /**
      * 노출 상품 중 노출 리뷰가 minReviewCount 이상이고, 쉬는 중(retryAfter가 now 이후)이 아니며,
@@ -26,4 +26,16 @@ interface ReviewSummarySourceQueryPort {
 
     /** 대분류부터 소분류 순 */
     fun findCategoryPath(productId: Long): List<String>
+
+    fun countVisibleReviews(productId: Long): Int
+
+    fun findVisibleReviewIdsOfProduct(
+        productId: Long,
+        reviewIds: Collection<Long>,
+    ): Set<Long>
+
+    fun findReviewIdsOfProduct(
+        productId: Long,
+        reviewIds: Collection<Long>,
+    ): Set<Long>
 }

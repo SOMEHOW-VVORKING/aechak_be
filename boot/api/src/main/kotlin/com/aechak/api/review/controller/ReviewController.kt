@@ -5,7 +5,9 @@ import com.aechak.api.review.request.MyReviewListRequest
 import com.aechak.api.review.request.ReviewListRequest
 import com.aechak.api.review.response.CreateReviewResponse
 import com.aechak.api.review.response.MyReviewListResponse
+import com.aechak.api.review.response.ProductReviewSummaryResponse
 import com.aechak.api.review.response.ReviewListResponse
+import com.aechak.application.review.summary.usecase.ReviewSummaryUseCase
 import com.aechak.application.review.usecase.ReviewCommandUseCase
 import com.aechak.application.review.usecase.ReviewQueryUseCase
 import com.aechak.webcommon.response.ApiResponse
@@ -27,7 +29,19 @@ import org.springframework.web.bind.annotation.RestController
 class ReviewController(
     private val reviewQueryUseCase: ReviewQueryUseCase,
     private val reviewCommandUseCase: ReviewCommandUseCase,
+    private val reviewSummaryUseCase: ReviewSummaryUseCase,
 ) {
+    @GetMapping("/products/{productId}/review-summary")
+    fun getProductReviewSummary(
+        @PathVariable("productId") productPublicId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<ProductReviewSummaryResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(
+                ProductReviewSummaryResponse.from(reviewSummaryUseCase.getProductReviewSummary(productPublicId, principal.userId)),
+            ),
+        )
+
     @GetMapping("/products/{productId}/reviews")
     fun getProductReviews(
         @PathVariable("productId") productPublicId: String,
