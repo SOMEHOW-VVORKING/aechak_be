@@ -2,6 +2,8 @@ package com.aechak.domain.review.review
 
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.review.error.ReviewErrorCode
+import com.aechak.domain.review.review.enums.ReviewBlindActor
+import com.aechak.domain.review.review.enums.ReviewBlindReason
 import com.aechak.domain.review.review.enums.ReviewStatus
 import java.time.LocalDateTime
 import kotlin.test.Test
@@ -99,12 +101,166 @@ class ReviewTest {
     }
 
     @Test
-    fun `차단하면 BLOCKED 상태가 된다`() {
+    fun `차단하면 BLOCKED 상태가 되고 자동 판정이 주체로 기록된다`() {
         val review = aReview()
 
         review.block()
 
         assertEquals(ReviewStatus.BLOCKED, review.reviewStatus)
+        assertEquals(ReviewBlindActor.AI, review.blindActor)
+        assertEquals(ReviewBlindReason.PROFANITY, review.blindReasonCode)
+        assertNotNull(review.blindedAt)
+        assertNull(review.blindedByAdminId, "자동 판정에는 집행한 운영자가 없다")
+    }
+
+    @Test
+    fun `운영자가 블라인드하면 주체와 사유, 집행자가 기록된다`() {
+        val review = aReview()
+
+        review.blindByAdmin(adminId = 77L, reasonCode = ReviewBlindReason.AD_SPAM, reasonText = "  광고 문구 반복  ")
+
+        assertEquals(ReviewStatus.BLOCKED, review.reviewStatus)
+        assertEquals(ReviewBlindActor.ADMIN, review.blindActor)
+        assertEquals(ReviewBlindReason.AD_SPAM, review.blindReasonCode)
+        assertEquals("광고 문구 반복", review.blindReasonText, "메모는 앞뒤 공백을 다듬어 저장한다")
+        assertEquals(77L, review.blindedByAdminId)
+        assertNotNull(review.blindedAt)
+    }
+
+    @Test
+    fun `마스킹된 리뷰도 블라인드할 수 있다`() {
+        val review = aReview()
+        review.mask("** 상품입니다")
+
+        review.blindByAdmin(adminId = 1L, reasonCode = ReviewBlindReason.ABUSE, reasonText = null)
+
+        assertEquals(ReviewStatus.BLOCKED, review.reviewStatus)
+        assertEquals("** 상품입니다", review.displayContent, "해제할 때 되돌릴 상태의 근거라 대체 본문은 지우지 않는다")
+    }
+
+    @Test
+    fun `이미 블라인드된 리뷰를 다시 블라인드하면 REVIEW_ALREADY_BLINDED 오류를 던진다`() {
+        val review = aReview()
+        review.blindByAdmin(1L, ReviewBlindReason.ABUSE, null)
+
+        val e = assertFailsWith<BusinessException> { review.blindByAdmin(2L, ReviewBlindReason.AD_SPAM, null) }
+
+        assertEquals(ReviewErrorCode.REVIEW_ALREADY_BLINDED, e.errorCode)
+        assertEquals(1L, review.blindedByAdminId, "거절된 요청이 먼저 걸린 블라인드의 집행자를 덮어쓰지 않아야 한다")
+    }
+
+    @Test
+    fun `삭제된 리뷰는 블라인드할 수 없다`() {
+        val review = aReview()
+        review.delete()
+
+        val e = assertFailsWith<BusinessException> { review.blindByAdmin(1L, ReviewBlindReason.ABUSE, null) }
+
+        assertEquals(ReviewErrorCode.INVALID_REVIEW_STATUS_TRANSITION, e.errorCode)
+        assertEquals(ReviewStatus.DELETED, review.reviewStatus)
+        assertNull(review.blindActor, "거절된 요청이 처리 주체를 남기지 않아야 한다")
+    }
+
+    @Test
+    fun `사유 메모가 상한을 넘으면 INVALID_REVIEW_BLIND_REASON 오류를 던진다`() {
+        val review = aReview()
+
+        val e =
+            assertFailsWith<BusinessException> {
+                review.blindByAdmin(1L, ReviewBlindReason.OTHER, "가".repeat(Review.BLIND_REASON_TEXT_MAX + 1))
+            }
+
+        assertEquals(ReviewErrorCode.INVALID_REVIEW_BLIND_REASON, e.errorCode)
+        assertEquals(ReviewStatus.PUBLIC, review.reviewStatus, "검증 실패는 상태를 바꾸지 않아야 한다")
+    }
+
+    @Test
+    fun `블라인드를 해제하면 PUBLIC으로 돌아가고 처리 기록이 비워진다`() {
+        val review = aReview()
+        review.blindByAdmin(5L, ReviewBlindReason.PRIVACY, "주소 노출")
+
+        review.unblind()
+
+        assertEquals(ReviewStatus.PUBLIC, review.reviewStatus)
+        assertNull(review.blindActor)
+        assertNull(review.blindReasonCode)
+        assertNull(review.blindReasonText)
+        assertNull(review.blindedAt)
+        assertNull(review.blindedByAdminId)
+    }
+
+    @Test
+    fun `마스킹된 리뷰의 블라인드를 해제하면 MASKED로 돌아간다`() {
+        val review = aReview()
+        review.mask("** 상품입니다")
+        review.blindByAdmin(5L, ReviewBlindReason.ABUSE, null)
+
+        review.unblind()
+
+        assertEquals(ReviewStatus.MASKED, review.reviewStatus, "금칙어 마스킹은 블라인드 해제가 되돌리는 대상이 아니다")
+    }
+
+    @Test
+    fun `자동 블라인드도 운영자가 해제할 수 있다`() {
+        val review = aReview()
+        review.block()
+
+        review.unblind()
+
+        assertEquals(ReviewStatus.PUBLIC, review.reviewStatus)
+        assertNull(review.blindActor)
+    }
+
+    @Test
+    fun `블라인드가 아닌 리뷰를 해제하면 REVIEW_NOT_BLINDED 오류를 던진다`() {
+        listOf<Pair<String, (Review) -> Unit>>(
+            "노출 중" to { },
+            "삭제됨" to { it.delete() },
+        ).forEach { (label, setUp) ->
+            val review = aReview()
+            setUp(review)
+
+            val e = assertFailsWith<BusinessException> { review.unblind() }
+
+            assertEquals(ReviewErrorCode.REVIEW_NOT_BLINDED, e.errorCode, "$label 리뷰는 해제 대상이 아니다")
+        }
+    }
+
+    @Test
+    fun `운영자가 삭제하면 집행자와 사유가 남고 블라인드 시각은 비워진다`() {
+        val review = aReview()
+        review.blindByAdmin(5L, ReviewBlindReason.ABUSE, "욕설")
+
+        review.deleteByAdmin(adminId = 9L, reasonCode = ReviewBlindReason.AD_SPAM, reasonText = "광고")
+
+        assertEquals(ReviewStatus.DELETED, review.reviewStatus)
+        assertNotNull(review.deletedAt)
+        assertEquals(9L, review.deletedByAdminId)
+        assertEquals(ReviewBlindActor.ADMIN, review.blindActor)
+        assertEquals(ReviewBlindReason.AD_SPAM, review.blindReasonCode, "삭제 사유가 블라인드 사유를 대체한다")
+        assertEquals("광고", review.blindReasonText)
+        assertNull(review.blindedAt, "삭제는 블라인드가 아니라 종결이다 — 시각은 deletedAt이 든다")
+    }
+
+    @Test
+    fun `운영자가 삭제한 리뷰를 다시 삭제하면 INVALID_REVIEW_STATUS_TRANSITION 오류를 던진다`() {
+        val review = aReview()
+        review.deleteByAdmin(9L, ReviewBlindReason.OTHER, null)
+
+        val e = assertFailsWith<BusinessException> { review.deleteByAdmin(10L, ReviewBlindReason.OTHER, null) }
+
+        assertEquals(ReviewErrorCode.INVALID_REVIEW_STATUS_TRANSITION, e.errorCode)
+        assertEquals(9L, review.deletedByAdminId, "거절된 요청이 먼저 지운 운영자를 덮어쓰지 않아야 한다")
+    }
+
+    @Test
+    fun `작성자가 지운 리뷰에는 운영자 집행 기록이 남지 않는다`() {
+        val review = aReview()
+
+        review.delete()
+
+        assertNull(review.deletedByAdminId, "작성자 삭제와 운영자 삭제를 가르는 축이다")
+        assertNull(review.blindActor)
     }
 
     @Test

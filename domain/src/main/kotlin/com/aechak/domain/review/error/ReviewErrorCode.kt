@@ -19,6 +19,11 @@ enum class ReviewErrorCode(
     REVIEW_TOO_MANY_IMAGES(110009, "리뷰 사진은 최대 5장까지 첨부할 수 있습니다.", 400),
     REVIEW_ITEM_NOT_REVIEWABLE(110010, "취소·반품한 주문 품목은 리뷰를 작성할 수 없습니다.", 400),
 
+    // 운영자 블라인드 — 110011~110019는 머지 전 셀러 답글 작업이 쓰고 있어 비워 둔다
+    REVIEW_ALREADY_BLINDED(110020, "이미 블라인드된 리뷰입니다.", 409),
+    REVIEW_NOT_BLINDED(110021, "블라인드되지 않은 리뷰는 해제할 수 없습니다.", 409),
+    INVALID_REVIEW_BLIND_REASON(110022, "처리 사유 메모는 500자 이하여야 합니다.", 400),
+
     // 리뷰 신고
     INVALID_REVIEW_REPORT_STATUS_TRANSITION(110100, "허용되지 않는 리뷰 신고 처리 상태 전이입니다.", 400),
 }
