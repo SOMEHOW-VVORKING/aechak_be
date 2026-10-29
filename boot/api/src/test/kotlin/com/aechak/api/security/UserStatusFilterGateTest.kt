@@ -134,7 +134,7 @@ class UserStatusFilterGateTest {
     private val mockMvc: MockMvc =
         MockMvcBuilders
             .standaloneSetup(UserController(fakeUserUseCase, fakeConsentUseCase, fakeWithdrawalUseCase, refreshCookieFactory))
-            .addFilters<StandaloneMockMvcBuilder>(UserStatusFilter(pendingReader, mapper, allowedPaths))
+            .addFilters<StandaloneMockMvcBuilder>(UserStatusFilter(pendingReader, mapper, allowedPaths, emptySet()))
             .setCustomArgumentResolvers(principalResolver)
             .setMessageConverters(JacksonJsonHttpMessageConverter(mapper))
             .setControllerAdvice(GlobalExceptionHandler())

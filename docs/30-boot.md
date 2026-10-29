@@ -21,6 +21,22 @@ boot/api/src/main/kotlin/com/aechak/api/
     └── order/
 ```
 
+### 1-1. 계정 상태 게이트 (UserStatusFilter)
+
+JWT에 상태를 박지 않고 매 요청 `users.status`를 프로젝션 조회한다 — 정지·탈퇴·제재가 재로그인 없이 즉시 반영된다.
+판정 메커니즘은 web-security의 필터가, **어느 경로를 어떻게 막을지는 각 실행 모듈의 SecurityConfig가** 소유한다.
+
+| 유효 상태 | 처리 |
+|---|---|
+| ACTIVE | 통과 |
+| RESTRICTED | 제한 경로의 쓰기만 403(20013). 로그인·조회·주문은 통과 |
+| PENDING_ONBOARDING | 온보딩 허용 경로 외 403(20006) |
+| SUSPENDED · BANNED · WITHDRAWN · 유저 없음 | 403(20005) |
+
+- **유효 상태**는 저장값이 아니다 — 기간이 지난 임시 정지는 ACTIVE로 본다(`UserStatus.effective`). 이 판정은 `UserStatusReader` 포트가 책임지므로 호출부(필터·토큰 회전)가 반복하지 않는다.
+- RESTRICTED의 제한 경로는 api의 `restrictedWritePathPrefixes` — 리뷰·SNS·문의 등 커뮤니티성 쓰기다. 주문·결제는 넣지 않는다: 이용 제한은 거래를 끊는 제재가 아니고, 거래를 끊어야 하는 제재는 임시/영구 정지다.
+- 게이트는 필터 하나가 아니다. 소셜 로그인(`SocialLoginService`)과 refresh 회전(`TokenService`)도 같은 상태를 보고 SUSPENDED·BANNED·WITHDRAWN을 끊는다 — 필터만 막으면 토큰 수명이 연장된다.
+
 ## 2. Controller 규칙
 
 ```kotlin
@@ -253,11 +269,15 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 boot/admin/src/main/java/com/aechak/admin/
 ├── AdminApplication.java
 ├── claim/           # 클레임 조회·개입 컨트롤러 + request/response
-├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config} · InspectionScanConfig · ClaimAmountScanConfig
+├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config} · InspectionScanConfig · ClaimAmountScanConfig · AdminReviewScanConfig
+├── inspection/      # AI 검수 지표 컨트롤러 + response
 ├── order/           # 주문 배송 모니터링 컨트롤러 + request/response
 ├── product/         # 상품 검수 큐 컨트롤러 + request/response
+├── review/          # 리뷰 관리·블라인드 컨트롤러 + request/response
 ├── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
+├── inquiry/         # 서비스 문의 조회·답변 컨트롤러 + request/response
 ├── seller/          # 입점 심사 컨트롤러 + request/response
+├── member/          # 일반 회원 조회·제재 컨트롤러 + request/response
 └── user/            # 관리자 명부 컨트롤러 + request/response
 ```
 
@@ -266,12 +286,25 @@ boot/admin/src/main/java/com/aechak/admin/
 - **application의 어드민 전용 컴포넌트 구현체는 `Admin` 접두사를 쓰고, 구매자·셀러 실행 모듈은 그 구현체를 스캔에서 제외한다**(seller-api의 excludeFilters). 심사처럼 운영자만 쓰는 유스케이스가 셀러와 같은 BC 패키지에 사는데 컴포넌트 스캔은 패키지 단위라 가릴 수 없다 — 제외하지 않으면 셀러센터가 쓰지도 않는 빈을 조립하다 의존을 못 찾고 부팅이 깨진다(SCRUM-208 선례).
 - **반대 방향도 있다. 어드민이 쓰는 빈과 같은 패키지에 어드민이 조립하지 못하는 빈이 살면 어드민 쪽에서 그 빈을 뺀다.** 검수 패키지(`application.inspection`)에는 어드민 큐 파사드와 함께 판정 적용(`InspectionFacade`)과 요청 발행(`InspectionRequestService`)이 사는데, 둘은 어드민이 조립하지 않는 카프카 배선을 요구한다. 그래서 `InspectionScanConfig`가 두 클래스를 제외하고 패키지를 스캔한다.
   - 뺄 것이 많으면 거꾸로 **쓸 것만 집어 온다.** 클레임 패키지(`application.order.claim.service`)에는 환불 집행·회수·자동승인 서비스가 함께 살고 그것들이 PG·재고·적립금 포트를 요구해, 패키지 단위로는 어드민이 조립할 수 없다. 그래서 어드민 전용 빈은 하위 패키지(`application.order.claim.admin`)로 따로 두어 `scanBasePackages`에 그 하위만 넣고, 그 패키지 밖에서 하나만 필요한 환불액 계산기는 `ClaimAmountScanConfig`가 `useDefaultFilters = false` + 타입 포함 필터로 집어 온다. 계산 경로를 복제하지 않는 이유는 운영자와 셀러가 같은 클레임에서 다른 환불 예정액을 보면 그 숫자로 판정할 수 없기 때문이다.
+- **제외 필터로 가리는 것보다 어드민 전용 유스케이스를 하위 패키지에 모으는 쪽이 낫다.** 리뷰 관리는 `application.review.admin`(usecase·port·facade·service)에 모여 있고 `AdminReviewScanConfig`가 그 패키지만 스캔한다 — 제외 목록은 같은 패키지에 빈이 하나 늘어날 때 함께 고쳐야 하고, 빠뜨리면 어드민 부팅이 깨지는 쪽으로 틀린다. 접두사 규칙(`Admin*`)은 그대로 적용한다. 구매자측과 공유해야 하는 빈만 이름으로 집어 온다 — 평점 재집계(`ReviewRatingFacade`·`ReviewQueryService`)가 그렇다(집계 규칙을 두 벌로 두면 블라인드가 반영한 평점과 리뷰 작성이 반영한 평점이 다른 기준으로 갈린다).
+- **어드민이 일으킨 상태 변경이 비정규화된 값을 건드리면 같은 트랜잭션에서 직접 다시 센다.** 리뷰 블라인드·해제·삭제는 `product_stats`의 평점 집계를 그 자리에서 재집계한다. 조회 시점 집계는 이미 블라인드를 제외하지만 상품 목록·상세가 읽는 값은 비정규화돼 있고 그 갱신 경로는 리뷰 작성·삭제 카프카 이벤트뿐이다 — 어드민은 카프카를 조립하지 않으므로 이벤트에 맡기면 블라인드해도 평점이 그대로 남는다. 운영자 수동 처리라 호출 빈도가 낮아 동기 재집계의 비용이 문제되지 않는다.
+- **운영자가 일으키는 상태 전이는 대상 행을 잠가 읽는다.** 리뷰 블라인드·해제·삭제는 `ReviewRepository.findByIdForUpdate`로 집는다. 잠그지 않으면 판정과 저장 사이에 다른 전이가 끼어든다 — 운영자 A의 삭제와 B의 해제가 겹치면 둘 다 BLOCKED를 읽어 둘 다 204로 성공하고, 나중에 쓰는 해제가 종결된 리뷰를 PUBLIC으로 되살린다. `@Version`으로는 막히지 않는다: 거절된 전이(삭제된 리뷰의 블라인드 등)는 아무것도 쓰지 않아 버전이 올라가지 않는다(`ProductRepository.findByIdForUpdate`와 같은 판단). **같은 애그리거트를 쓰는 다른 경로도 같은 잠금을 타야 한다** — 한쪽만 잠그면 잠그지 않은 쪽이 먼저 읽은 상태로 덮어쓰므로 작성자 삭제(`ReviewCommandService.delete`)도 함께 바꿨다.
+- 리뷰 관리 경로는 `/admin/reviews`(목록·상세·블라인드·해제·삭제)다. 구매자 조회와 달리 노출 상태로 걸러내지 않는다 — 가려진 리뷰를 되돌릴 수 있어야 하는 쪽이라 블라인드·삭제된 리뷰도 결과에 나온다. 이미 블라인드된 리뷰의 재블라인드는 409(110020), 블라인드가 아닌 리뷰의 해제는 409(110021), 삭제된 리뷰의 블라인드·재삭제는 400(110002)으로 막는다. 블라인드는 되돌릴 수 있고 삭제는 되돌리는 경로가 없다(행은 soft delete로 남는다).
 - api와 동일 구조/규칙(JSON API 기반) — web-common의 응답 봉투·GlobalExceptionHandler 재사용.
+- **application 쪽 스캔은 BC 패키지 전체가 아니라 어드민이 실제 소비하는 하위까지 좁힌다.** 같은 BC에 구매자측 리스너가 살면 패키지 단위 스캔이 그 리스너의 어댑터(메일 발송 등)까지 요구해 부팅이 깨진다 — 문의 BC는 `inquiry.facade`·`inquiry.service`만 스캔한다(`application.user.user`로 좁힌 선례와 같은 결).
 - **자격 게이트는 모듈 SecurityConfig가 전역 강제**한다(role=ADMIN, 실패 시 20011·403). 컨트롤러별 `@PreAuthorize`를 쓰는 셀러측과 다른 점 — 모듈 전체가 운영자 전용이라 게이트가 하나면 된다. 전역 자원 접근이라 소유권 검증 계층도 없다.
 - 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(seller-api와 같은 검증 전용 모드).
 - **관리자 명부의 저장값은 `users.role`이고, 기동 부트스트랩(`admin.bootstrap.enabled`/`user-ids`)이 기동마다 설정 명부를 멱등 승격한다.** 최초 관리자를 만드는 경로이자 관리자가 0명이 된 상태의 유일한 복구 경로라 "최초 1회"가 아니라 기동마다 돈다. 명부에 적힌 계정이 없거나 비활성이면 경고 로그만 남기고 부팅을 계속한다 — 어드민이 뜨지 않으면 명부를 고칠 수단도 사라진다. 두 경우 모두 에러 코드가 붙은 비즈니스 예외로 분류돼 경고 로그에 남고(비활성은 409), 이미 관리자인 계정은 멱등 건너뜀으로 처리한다. 부트스트랩이 admin에 사는 이유는 이 모듈만 ECS 태스크가 1대로 고정이고(api는 오토스케일) `users` 쓰기 배선이 이미 조립돼 있어서다.
   - 토큰의 `role` 클레임은 로그인 시점 스냅샷이다 — 승격 직후 ADMIN 토큰을 받으려면 api에서 다시 로그인해야 하고, 강등해도 발급돼 있던 토큰은 만료까지 ADMIN으로 통과한다.
   - 명부를 손으로 바꾸는 경로는 `/admin/admins`(목록·승격·강등)다. 자기 역할 변경은 403(30014), 관리자가 0명이 되는 강등은 409(30013), 활성 상태가 아닌 계정의 승격은 409(30017)로 막는다.
+- **일반 회원 조회·제재 경로는 `/admin/members`다** — 목록(상태 필터·닉네임/회원ID 검색·가입일 범위·커서 페이징), 상세(제재 이력 포함), 제재(`POST .../sanctions`), 해제(`POST .../sanctions/release`).
+  - 목록·상세는 `users.role = GENERAL`만 본다. 관리자 계정은 명부 경로가 따로 있어 여기서는 조회도 404(30000), 제재도 409(30021)로 막는다 — 운영 권한을 가진 계정이 차단 상태로 남지 않게 강등을 먼저 하게 한다. 자기 자신 제재는 403(30020).
+  - 제재는 `users.status` 단일 축으로 표현한다(RESTRICTED·SUSPENDED·BANNED). 접근 판정의 단일 지점이 매 요청 한 컬럼만 읽고 끝나야 하고, 제재 상태끼리는 배타적이라 축을 둘로 나누면 모순 조합이 생긴다.
+  - **탈퇴(WITHDRAWN, 본인 의사)와 영구 정지(BANNED, 운영 조치)는 합치지 않는다.** 차단 효과가 같아도 한 값으로 묶으면 사후에 가릴 수 없다. 운영자의 탈퇴 처리는 WITHDRAWN으로 가고, 운영 조치였다는 사실은 제재 이력(`user_sanctions`)이 남긴다.
+  - 영구 정지는 종단 상태다 — 추가 제재(409/30018)도 해제(409/30019)도 받지 않는다. 탈퇴한 계정도 제재 대상이 아니다(409/30003).
+  - **온보딩을 마치지 않은 계정에는 되돌아오는 제재(이용 제한·임시 정지)를 걸 수 없다**(409/30023). 상태가 한 축이라 PENDING_ONBOARDING을 덮으면 돌아올 상태를 잃고, 해제·만료가 약관 동의도 프로필도 없는 ACTIVE를 만들어 온보딩 게이트를 우회한다. 영구 정지·탈퇴 처리는 돌아올 상태가 없어 허용한다.
+  - 제재 이력은 추가 전용이다. 해제도 UPDATE가 아니라 `action=RELEASE` 행 추가로 남기고, 사유는 자유 문자열이 아니라 고정 어휘(`SanctionReasonCode`) + 상세로 받는다 — 신고 사유와 같은 결정이다.
+  - **임시 정지 만료는 조회 시점 판정이다**(`UserStatus.effective`). 저장값(SUSPENDED + `sanction_until`)은 "7일 정지를 걸었다"는 사실 기록으로 남고, 인가 게이트와 어드민 조회가 같은 함수로 유효 상태를 계산한다. 상태를 되돌리는 배치는 두지 않았다 — 판정이 한 곳이면 운영자가 본 상태와 실제 접근 권한이 갈리지 않는다.
 - **주문 배송 모니터링(`/admin/orders`)의 "지연" 기준은 서버가 쥔다.** 목록 행의 지연 신호와 지표 카드의 지연 건수가
   같은 경계 시각을 받아 판정한다 — 프런트가 날짜를 빼서 세면 두 수치가 다른 기준으로 갈린다. 발송 기한은 셀러센터가 쓰는
   `order.dispatch.sla-days`를 그대로 읽어 같은 주문을 두 화면이 같게 본다. 셀러가 신고하는 `avgDispatchDays`는 쓰지 않는다 —
