@@ -14,8 +14,15 @@ enum class InquiryErrorCode(
     INQUIRY_REPLY_EMAIL_REQUIRED(120002, "답변받을 이메일은 필수입니다.", 400),
     INQUIRY_REPLY_EMAIL_TOO_LONG(120003, "답변받을 이메일은 255자를 넘을 수 없습니다.", 400),
     INQUIRY_INVALID_REPLY_EMAIL(120004, "답변받을 이메일 형식이 올바르지 않습니다.", 400),
+    INQUIRY_NOT_FOUND(120005, "문의를 찾을 수 없습니다.", 404),
+    INQUIRY_ANSWER_REQUIRED(120006, "답변 내용은 필수입니다.", 400),
+    INQUIRY_ANSWER_TOO_LONG(120007, "답변 내용은 1000자를 넘을 수 없습니다.", 400),
+    INQUIRY_ALREADY_ANSWERED(120008, "이미 답변이 등록된 문의입니다.", 409),
+    INQUIRY_STATUS_TRANSITION_NOT_ALLOWED(120009, "현재 상태에서 요청한 상태로 변경할 수 없습니다.", 409),
 
-    // 상품 문의(ProductInquiry)
+    // 상품 문의(ProductInquiry) — 1200xx와 구간을 가른다. 두 문의는 보내는 사람도 받는 사람도
+    // 다르므로(서비스 문의는 고객이 운영자에게, 상품 문의는 구매자가 셀러에게) 코드가 섞이면
+    // 응답만 보고 어느 쪽 문의인지 가릴 수 없다.
     PRODUCT_INQUIRY_NOT_FOUND(120100, "상품 문의를 찾을 수 없습니다.", 404),
     PRODUCT_INQUIRY_TITLE_REQUIRED(120101, "문의 제목은 필수입니다.", 400),
     PRODUCT_INQUIRY_TITLE_TOO_LONG(120102, "문의 제목은 100자를 넘을 수 없습니다.", 400),

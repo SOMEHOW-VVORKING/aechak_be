@@ -26,6 +26,11 @@ class UserService(
         userRepository.findById(userId)
             ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
 
+    /** 행 전체를 다시 쓰는 경로용 — 잠그지 않으면 읽은 뒤 바뀐 status를 옛 값으로 되돌려 쓴다. */
+    fun getByIdForUpdate(userId: Long): User =
+        userRepository.findByIdForUpdate(userId)
+            ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+
     fun findById(userId: Long): User? = userRepository.findById(userId)
 
     fun findByPublicId(publicId: String): User? = userRepository.findByPublicId(publicId)

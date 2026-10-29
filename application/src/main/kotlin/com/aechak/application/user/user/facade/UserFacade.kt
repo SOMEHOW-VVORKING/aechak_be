@@ -58,15 +58,22 @@ class UserFacade(
     override fun setNickname(command: SetNicknameCommand): UserMeResult {
         try {
             tx.execute {
-                val user = userService.getById(command.userId)
-                when (user.status) {
-                    UserStatus.PENDING_ONBOARDING -> completeOnboarding(user, command.nickname)
+                // 상태를 ACTIVE로 전이하는 경로라 잠그고 읽는다 — 제재가 끼어들면 그 제재가 사라진다
+                val user = userService.getByIdForUpdate(command.userId)
+                when (user.effectiveStatus()) {
+                    UserStatus.PENDING_ONBOARDING -> {
+                        completeOnboarding(user, command.nickname)
+                    }
 
-                    // 온보딩 전용 EP — ACTIVE의 닉네임 변경은 updateProfile이 유일 경로다
-                    UserStatus.ACTIVE -> throw BusinessException(UserErrorCode.ONBOARDING_ALREADY_COMPLETED)
+                    // 온보딩 전용 EP — 온보딩을 마친 계정의 닉네임 변경은 updateProfile이 유일 경로다
+                    UserStatus.ACTIVE, UserStatus.RESTRICTED -> {
+                        throw BusinessException(UserErrorCode.ONBOARDING_ALREADY_COMPLETED)
+                    }
 
                     // UserStatusFilter(20005)가 걸렀어야 할 상태 — 도달 자체가 방어선 이상이라 500이 맞다
-                    else -> error("차단됐어야 할 상태의 닉네임 변경 시도 (userId=${user.id}, status=${user.status})")
+                    else -> {
+                        error("차단됐어야 할 상태의 닉네임 변경 시도 (userId=${user.id}, status=${user.status})")
+                    }
                 }
             } // ← 커밋까지 이 블록 안 — 커밋 시점 UNIQUE 폭발도 아래 catch가 잡는다
         } catch (e: DataIntegrityViolationException) {
@@ -113,7 +120,7 @@ class UserFacade(
             }
         try {
             tx.execute {
-                userService.getById(command.userId).updateProfile(command.nickname, command.bio, finalKey)
+                userService.getByIdForUpdate(command.userId).updateProfile(command.nickname, command.bio, finalKey)
             }
         } catch (e: DataIntegrityViolationException) {
             translateNicknameConflict(e)
@@ -129,12 +136,15 @@ class UserFacade(
     @Transactional(readOnly = true)
     override fun getMe(userId: Long): UserMeResult = loadMe(userId)
 
-    /** 프로필 노출은 ACTIVE에서만 — 그 외 상태는 프로필 계열 null(ACTIVE 아닌 조회는 어드민 모듈 몫), FE 재시작 라우팅은 status만 쓴다. */
+    /**
+     * 프로필 계열은 프로필이 없는 것이 정상인 상태(온보딩 전·탈퇴)에서만 null이고, 그 외 누락은 500으로 드러난다.
+     * 저장 상태가 아니라 유효 상태를 내린다: 기간이 지난 임시 정지는 접근이 열려 있어 화면도 정상으로 읽어야 한다.
+     */
     private fun loadMe(userId: Long): UserMeResult {
         val user = userService.getById(userId)
-        val profile = if (user.status != UserStatus.ACTIVE) null else user.profile
+        val profile = user.profileIfExpected
         return UserMeResult(
-            status = user.status,
+            status = user.effectiveStatus(),
             nickname = profile?.nickname,
             profileImageUrl = fileUseCase.resolveMediaUrl(profile?.profileImageKey),
             profileImageKey = profile?.profileImageKey,
