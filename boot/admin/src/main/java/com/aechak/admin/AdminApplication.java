@@ -20,6 +20,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
             "com.aechak.application.seller", // 심사 유스케이스 (신청자측 파사드도 딸려온다 — 아래 user·file 스캔 이유)
             "com.aechak.application.settlement", // 승인 tx의 정산계좌 이관 진입점
             "com.aechak.application.file", // 서류 다운로드 URL 발급(FileUseCase)
+            // 문의는 하위 두 패키지만 — inquiry 전체를 스캔하면 접수 통지 리스너까지 딸려와
+            // 어드민에 없는 EmailSender 어댑터와 통지 정책 빈을 요구하며 부팅이 깨진다.
+            "com.aechak.application.inquiry.facade", // 문의 조회·답변 유스케이스
+            "com.aechak.application.inquiry.service", // 위 파사드가 쓰는 로직 보관함
             "com.aechak.application.user.user", // SellerApplicationFacade의 휴대폰 인증 검사 의존(UserUseCase) — user 전체 스캔은 전화
             // 인증(Redis·SMS 포트) 조립까지 요구해 하위로 좁힌다
             "com.aechak.application.user.term", // UserFacade의 약관 동의 의존(ConsentService)

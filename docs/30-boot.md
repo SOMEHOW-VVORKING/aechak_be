@@ -258,6 +258,7 @@ boot/admin/src/main/java/com/aechak/admin/
 ├── product/         # 상품 검수 큐 컨트롤러 + request/response
 ├── review/          # 리뷰 관리·블라인드 컨트롤러 + request/response
 ├── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
+├── inquiry/         # 서비스 문의 조회·답변 컨트롤러 + request/response
 ├── seller/          # 입점 심사 컨트롤러 + request/response
 └── user/            # 관리자 명부 컨트롤러 + request/response
 ```
@@ -272,6 +273,7 @@ boot/admin/src/main/java/com/aechak/admin/
 - **운영자가 일으키는 상태 전이는 대상 행을 잠가 읽는다.** 리뷰 블라인드·해제·삭제는 `ReviewRepository.findByIdForUpdate`로 집는다. 잠그지 않으면 판정과 저장 사이에 다른 전이가 끼어든다 — 운영자 A의 삭제와 B의 해제가 겹치면 둘 다 BLOCKED를 읽어 둘 다 204로 성공하고, 나중에 쓰는 해제가 종결된 리뷰를 PUBLIC으로 되살린다. `@Version`으로는 막히지 않는다: 거절된 전이(삭제된 리뷰의 블라인드 등)는 아무것도 쓰지 않아 버전이 올라가지 않는다(`ProductRepository.findByIdForUpdate`와 같은 판단). **같은 애그리거트를 쓰는 다른 경로도 같은 잠금을 타야 한다** — 한쪽만 잠그면 잠그지 않은 쪽이 먼저 읽은 상태로 덮어쓰므로 작성자 삭제(`ReviewCommandService.delete`)도 함께 바꿨다.
 - 리뷰 관리 경로는 `/admin/reviews`(목록·상세·블라인드·해제·삭제)다. 구매자 조회와 달리 노출 상태로 걸러내지 않는다 — 가려진 리뷰를 되돌릴 수 있어야 하는 쪽이라 블라인드·삭제된 리뷰도 결과에 나온다. 이미 블라인드된 리뷰의 재블라인드는 409(110020), 블라인드가 아닌 리뷰의 해제는 409(110021), 삭제된 리뷰의 블라인드·재삭제는 400(110002)으로 막는다. 블라인드는 되돌릴 수 있고 삭제는 되돌리는 경로가 없다(행은 soft delete로 남는다).
 - api와 동일 구조/규칙(JSON API 기반) — web-common의 응답 봉투·GlobalExceptionHandler 재사용.
+- **application 쪽 스캔은 BC 패키지 전체가 아니라 어드민이 실제 소비하는 하위까지 좁힌다.** 같은 BC에 구매자측 리스너가 살면 패키지 단위 스캔이 그 리스너의 어댑터(메일 발송 등)까지 요구해 부팅이 깨진다 — 문의 BC는 `inquiry.facade`·`inquiry.service`만 스캔한다(`application.user.user`로 좁힌 선례와 같은 결).
 - **자격 게이트는 모듈 SecurityConfig가 전역 강제**한다(role=ADMIN, 실패 시 20011·403). 컨트롤러별 `@PreAuthorize`를 쓰는 셀러측과 다른 점 — 모듈 전체가 운영자 전용이라 게이트가 하나면 된다. 전역 자원 접근이라 소유권 검증 계층도 없다.
 - 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(seller-api와 같은 검증 전용 모드).
 - **관리자 명부의 저장값은 `users.role`이고, 기동 부트스트랩(`admin.bootstrap.enabled`/`user-ids`)이 기동마다 설정 명부를 멱등 승격한다.** 최초 관리자를 만드는 경로이자 관리자가 0명이 된 상태의 유일한 복구 경로라 "최초 1회"가 아니라 기동마다 돈다. 명부에 적힌 계정이 없거나 비활성이면 경고 로그만 남기고 부팅을 계속한다 — 어드민이 뜨지 않으면 명부를 고칠 수단도 사라진다. 두 경우 모두 에러 코드가 붙은 비즈니스 예외로 분류돼 경고 로그에 남고(비활성은 409), 이미 관리자인 계정은 멱등 건너뜀으로 처리한다. 부트스트랩이 admin에 사는 이유는 이 모듈만 ECS 태스크가 1대로 고정이고(api는 오토스케일) `users` 쓰기 배선이 이미 조립돼 있어서다.
