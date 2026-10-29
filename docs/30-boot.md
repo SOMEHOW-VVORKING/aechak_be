@@ -253,8 +253,10 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 boot/admin/src/main/java/com/aechak/admin/
 ├── AdminApplication.java
 ├── claim/           # 클레임 조회·개입 컨트롤러 + request/response
-├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config} · InspectionScanConfig · ClaimAmountScanConfig
+├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config} · InspectionScanConfig · ClaimAmountScanConfig · AdminReviewScanConfig
+├── inspection/      # AI 검수 지표 컨트롤러 + response
 ├── product/         # 상품 검수 큐 컨트롤러 + request/response
+├── review/          # 리뷰 관리·블라인드 컨트롤러 + request/response
 ├── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
 ├── seller/          # 입점 심사 컨트롤러 + request/response
 └── user/            # 관리자 명부 컨트롤러 + request/response
@@ -265,6 +267,10 @@ boot/admin/src/main/java/com/aechak/admin/
 - **application의 어드민 전용 컴포넌트 구현체는 `Admin` 접두사를 쓰고, 구매자·셀러 실행 모듈은 그 구현체를 스캔에서 제외한다**(seller-api의 excludeFilters). 심사처럼 운영자만 쓰는 유스케이스가 셀러와 같은 BC 패키지에 사는데 컴포넌트 스캔은 패키지 단위라 가릴 수 없다 — 제외하지 않으면 셀러센터가 쓰지도 않는 빈을 조립하다 의존을 못 찾고 부팅이 깨진다(SCRUM-208 선례).
 - **반대 방향도 있다. 어드민이 쓰는 빈과 같은 패키지에 어드민이 조립하지 못하는 빈이 살면 어드민 쪽에서 그 빈을 뺀다.** 검수 패키지(`application.inspection`)에는 어드민 큐 파사드와 함께 판정 적용(`InspectionFacade`)과 요청 발행(`InspectionRequestService`)이 사는데, 둘은 어드민이 조립하지 않는 카프카 배선을 요구한다. 그래서 `InspectionScanConfig`가 두 클래스를 제외하고 패키지를 스캔한다.
   - 뺄 것이 많으면 거꾸로 **쓸 것만 집어 온다.** 클레임 패키지(`application.order.claim.service`)에는 환불 집행·회수·자동승인 서비스가 함께 살고 그것들이 PG·재고·적립금 포트를 요구해, 패키지 단위로는 어드민이 조립할 수 없다. 그래서 어드민 전용 빈은 하위 패키지(`application.order.claim.admin`)로 따로 두어 `scanBasePackages`에 그 하위만 넣고, 그 패키지 밖에서 하나만 필요한 환불액 계산기는 `ClaimAmountScanConfig`가 `useDefaultFilters = false` + 타입 포함 필터로 집어 온다. 계산 경로를 복제하지 않는 이유는 운영자와 셀러가 같은 클레임에서 다른 환불 예정액을 보면 그 숫자로 판정할 수 없기 때문이다.
+- **제외 필터로 가리는 것보다 어드민 전용 유스케이스를 하위 패키지에 모으는 쪽이 낫다.** 리뷰 관리는 `application.review.admin`(usecase·port·facade·service)에 모여 있고 `AdminReviewScanConfig`가 그 패키지만 스캔한다 — 제외 목록은 같은 패키지에 빈이 하나 늘어날 때 함께 고쳐야 하고, 빠뜨리면 어드민 부팅이 깨지는 쪽으로 틀린다. 접두사 규칙(`Admin*`)은 그대로 적용한다. 구매자측과 공유해야 하는 빈만 이름으로 집어 온다 — 평점 재집계(`ReviewRatingFacade`·`ReviewQueryService`)가 그렇다(집계 규칙을 두 벌로 두면 블라인드가 반영한 평점과 리뷰 작성이 반영한 평점이 다른 기준으로 갈린다).
+- **어드민이 일으킨 상태 변경이 비정규화된 값을 건드리면 같은 트랜잭션에서 직접 다시 센다.** 리뷰 블라인드·해제·삭제는 `product_stats`의 평점 집계를 그 자리에서 재집계한다. 조회 시점 집계는 이미 블라인드를 제외하지만 상품 목록·상세가 읽는 값은 비정규화돼 있고 그 갱신 경로는 리뷰 작성·삭제 카프카 이벤트뿐이다 — 어드민은 카프카를 조립하지 않으므로 이벤트에 맡기면 블라인드해도 평점이 그대로 남는다. 운영자 수동 처리라 호출 빈도가 낮아 동기 재집계의 비용이 문제되지 않는다.
+- **운영자가 일으키는 상태 전이는 대상 행을 잠가 읽는다.** 리뷰 블라인드·해제·삭제는 `ReviewRepository.findByIdForUpdate`로 집는다. 잠그지 않으면 판정과 저장 사이에 다른 전이가 끼어든다 — 운영자 A의 삭제와 B의 해제가 겹치면 둘 다 BLOCKED를 읽어 둘 다 204로 성공하고, 나중에 쓰는 해제가 종결된 리뷰를 PUBLIC으로 되살린다. `@Version`으로는 막히지 않는다: 거절된 전이(삭제된 리뷰의 블라인드 등)는 아무것도 쓰지 않아 버전이 올라가지 않는다(`ProductRepository.findByIdForUpdate`와 같은 판단). **같은 애그리거트를 쓰는 다른 경로도 같은 잠금을 타야 한다** — 한쪽만 잠그면 잠그지 않은 쪽이 먼저 읽은 상태로 덮어쓰므로 작성자 삭제(`ReviewCommandService.delete`)도 함께 바꿨다.
+- 리뷰 관리 경로는 `/admin/reviews`(목록·상세·블라인드·해제·삭제)다. 구매자 조회와 달리 노출 상태로 걸러내지 않는다 — 가려진 리뷰를 되돌릴 수 있어야 하는 쪽이라 블라인드·삭제된 리뷰도 결과에 나온다. 이미 블라인드된 리뷰의 재블라인드는 409(110020), 블라인드가 아닌 리뷰의 해제는 409(110021), 삭제된 리뷰의 블라인드·재삭제는 400(110002)으로 막는다. 블라인드는 되돌릴 수 있고 삭제는 되돌리는 경로가 없다(행은 soft delete로 남는다).
 - api와 동일 구조/규칙(JSON API 기반) — web-common의 응답 봉투·GlobalExceptionHandler 재사용.
 - **자격 게이트는 모듈 SecurityConfig가 전역 강제**한다(role=ADMIN, 실패 시 20011·403). 컨트롤러별 `@PreAuthorize`를 쓰는 셀러측과 다른 점 — 모듈 전체가 운영자 전용이라 게이트가 하나면 된다. 전역 자원 접근이라 소유권 검증 계층도 없다.
 - 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(seller-api와 같은 검증 전용 모드).
