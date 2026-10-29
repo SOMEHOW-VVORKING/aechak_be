@@ -7,6 +7,7 @@ import com.aechak.application.user.pet.usecase.result.DeletePetProfileResult
 import com.aechak.application.user.pet.usecase.result.PetProfileListResult
 import com.aechak.application.user.pet.usecase.result.PetProfileResult
 import com.aechak.application.user.pet.usecase.result.RegisterPetProfileResult
+import com.aechak.application.user.pet.usecase.result.RepresentativePetResult
 import com.aechak.application.user.pet.usecase.result.SetDefaultPetResult
 
 interface PetProfileUseCase {
@@ -16,6 +17,9 @@ interface PetProfileUseCase {
 
     /** 여러 사용자의 대표 펫 요약. 대표 펫은 isDefault로 고르고 없으면 먼저 등록한 펫을 쓴다. ACTIVE 펫만 세고 펫이 없는 사용자는 빠진다 */
     fun getDefaultPetSummaries(userIds: Collection<Long>): List<DefaultPetSummaryResult>
+
+    /** 대표 펫. 고르는 기준은 getDefaultPetSummaries와 같고 ACTIVE 펫이 없으면 null */
+    fun findRepresentativePet(userId: Long): RepresentativePetResult?
 
     fun updatePet(command: UpdatePetProfileCommand): PetProfileResult
 

@@ -7,6 +7,7 @@ import com.aechak.common.error.BusinessException
 import com.aechak.domain.review.error.ReviewErrorCode
 import com.aechak.domain.review.review.Review
 import com.aechak.domain.review.review.ReviewImage
+import com.aechak.domain.review.review.ReviewPetSnapshot
 import com.aechak.domain.review.review.repository.DuplicateOrderItemReviewException
 import com.aechak.domain.review.review.repository.ReviewRepository
 import org.springframework.stereotype.Service
@@ -48,8 +49,9 @@ class ReviewCommandService(
         orderItem: OrderItemForReviewResult,
         images: List<ReviewImage>,
         moderationDecision: ReviewModerationDecision,
+        petSnapshot: ReviewPetSnapshot?,
     ): Review {
-        val review = command.toEntity(orderItem, images)
+        val review = command.toEntity(orderItem, images, petSnapshot)
         when (moderationDecision) {
             is ReviewModerationDecision.Keep -> Unit
             is ReviewModerationDecision.Mask -> review.mask(moderationDecision.displayContent)

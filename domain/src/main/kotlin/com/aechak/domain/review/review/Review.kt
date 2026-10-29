@@ -6,6 +6,7 @@ import com.aechak.domain.review.review.enums.ReviewStatus
 import com.aechak.domain.support.AggregateRoot
 import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
+import jakarta.persistence.Embedded
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
@@ -63,6 +64,10 @@ class Review protected constructor(
     val images: List<ReviewImage> get() = _images.toList()
 
     var deletedAt: LocalDateTime? = null
+        protected set
+
+    @Embedded
+    var petSnapshot: ReviewPetSnapshot? = null
         protected set
 
     fun isDeleted(): Boolean = reviewStatus == ReviewStatus.DELETED
@@ -129,6 +134,7 @@ class Review protected constructor(
             rating: Int,
             content: String,
             images: List<ReviewImage> = emptyList(),
+            petSnapshot: ReviewPetSnapshot? = null,
         ): Review {
             if (rating !in 1..5) {
                 throw BusinessException(ReviewErrorCode.INVALID_REVIEW_RATING)
@@ -137,7 +143,10 @@ class Review protected constructor(
                 throw BusinessException(ReviewErrorCode.REVIEW_TOO_MANY_IMAGES)
             }
             return Review(productId, optionNameSnapshot, orderItemId, authorUserId, rating, content)
-                .apply { _images.addAll(images) }
+                .apply {
+                    _images.addAll(images)
+                    this.petSnapshot = petSnapshot
+                }
         }
     }
 }
