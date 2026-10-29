@@ -86,7 +86,7 @@ class PointControllerTest {
     private val mockMvc: MockMvc =
         MockMvcBuilders
             .standaloneSetup(PointController(fakePointUseCase))
-            .addFilters<StandaloneMockMvcBuilder>(UserStatusFilter(statusReader, mapper, allowedPaths))
+            .addFilters<StandaloneMockMvcBuilder>(UserStatusFilter(statusReader, mapper, allowedPaths, emptySet()))
             .setCustomArgumentResolvers(principalResolver)
             .setMessageConverters(JacksonJsonHttpMessageConverter(mapper))
             .setControllerAdvice(GlobalExceptionHandler())

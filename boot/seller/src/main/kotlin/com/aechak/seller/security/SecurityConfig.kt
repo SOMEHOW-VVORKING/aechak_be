@@ -63,7 +63,7 @@ class SecurityConfig {
                 resourceServer.authenticationEntryPoint(unauthenticatedEntryPoint)
             }.exceptionHandling { it.authenticationEntryPoint(unauthenticatedEntryPoint) }
             .addFilterAfter(
-                UserStatusFilter(userStatusReader, objectMapper, emptySet()),
+                UserStatusFilter(userStatusReader, objectMapper, emptySet(), emptySet()),
                 BearerTokenAuthenticationFilter::class.java,
             )
         return http.build()

@@ -30,7 +30,7 @@
    | 130000 | sns | `SnsErrorCode` |
 
    - **애그리거트 100번대**: 대역 안에서 애그리거트 **루트** 하나가 100번대 하나를 받고, 그 안은 00번부터 채운다
-     (`User` 30000~, `PointTransaction` 30100~, `DeliveryAddress` 30500~,
+     (`User` 30000~, `PointTransaction` 30100~, `DeliveryAddress` 30500~, `UserSanction` 30800~,
      `Order` 50000~, `OrderGroup` 50100~, `CartItem` 50200~, `Shipment` 50300~, `Claim` 50400~). 배정 단위는 패키지가 아니라 루트이고,
      판별 기준은 **자체 리포지토리 포트를 갖는가**다. 한 패키지를 공유하는 애그리거트라도 루트마다 100번대를
      따로 받는다 — `pet/`의 `PetProfile`(30600~)과 `Breed`(30700~)가 그 예다.

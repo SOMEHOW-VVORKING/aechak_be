@@ -85,10 +85,12 @@ class TokenService(
      * 정지·탈퇴 계정의 회전 거부 — API 차단(상태검증 필터)과 별개로,
      * 토큰 수명이 연장되는 것까지 봉쇄하는 두 번째 저지선.
      * 유저 없음(null)도 차단한다: 탈퇴·삭제 직후 살아남은 옛 refresh의 재기동 방지.
+     * 포트가 주는 값은 유효 상태라 기간이 지난 임시 정지는 통과한다. 이용 제한(RESTRICTED)도 통과한다 —
+     * 제한은 커뮤니티성 쓰기만 막는 제재이고 그 판정은 요청 경로를 아는 필터가 한다.
      */
     private fun ensureAccountUsable(userId: Long) {
         when (userStatusReader.statusOf(userId)) {
-            UserStatus.SUSPENDED, UserStatus.WITHDRAWN, null -> {
+            UserStatus.SUSPENDED, UserStatus.BANNED, UserStatus.WITHDRAWN, null -> {
                 throw BusinessException(AuthErrorCode.ACCOUNT_BLOCKED)
             }
 
