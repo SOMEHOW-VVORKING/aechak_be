@@ -471,14 +471,14 @@ class SellerOrderQueryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `셀러가 아닌 계정의 주문 조회는 403과 50003이다`() {
+    fun `셀러가 아닌 계정의 주문 조회는 403과 10004다`() {
         seedOrder(status = OrderStatus.PAID)
         val notSeller = createActiveUser()
 
         mockMvc
             .perform(get("/api/v1/sellers/me/orders").header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(notSeller)}"))
             .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(50003))
+            .andExpect(jsonPath("$.errorCode").value(10004))
     }
 
     @Test

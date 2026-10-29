@@ -16,4 +16,5 @@ enum class AdminAuditAction(
     ADMIN_DEMOTED(AdminAuditTargetType.ADMIN_USER, "관리자 권한 회수"),
     PRODUCT_INSPECTION_APPROVED(AdminAuditTargetType.PRODUCT, "상품 검수 승인"),
     PRODUCT_INSPECTION_REJECTED(AdminAuditTargetType.PRODUCT, "상품 검수 반려"),
+    CLAIM_INTERVENED(AdminAuditTargetType.CLAIM, "클레임 개입"),
 }
