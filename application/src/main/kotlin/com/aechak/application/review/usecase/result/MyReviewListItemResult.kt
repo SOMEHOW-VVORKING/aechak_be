@@ -3,6 +3,7 @@ package com.aechak.application.review.usecase.result
 import com.aechak.application.review.port.view.UnreviewedOrderItemView
 import com.aechak.application.review.port.view.WrittenReviewView
 import com.aechak.domain.review.review.Review
+import com.aechak.domain.review.review.enums.ReviewBlindReason
 import com.aechak.domain.review.review.enums.ReviewStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -14,6 +15,7 @@ data class WrittenReviewItemResult(
     val rating: Int,
     val content: String,
     val reviewStatus: ReviewStatus,
+    val blindReasonCode: ReviewBlindReason?,
     val optionName: String,
     val productPublicId: String,
     val productName: String,
@@ -32,6 +34,7 @@ data class WrittenReviewItemResult(
                 rating = view.rating,
                 content = Review.visibleContent(view.reviewStatus, view.content, view.displayContent),
                 reviewStatus = view.reviewStatus,
+                blindReasonCode = view.blindReasonCode,
                 optionName = view.optionNameSnapshot,
                 productPublicId = view.productPublicId,
                 productName = view.productNameSnapshot,
