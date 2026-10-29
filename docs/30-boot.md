@@ -202,6 +202,7 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 │                               # ClaimAutoApproveSchedule — 셀러 미응답 클레임의 자동승인과 환불(매시, 기본 꺼짐)
 │   └── config/                  # 배치별 정책값(@ConfigurationProperties) — 켜고 끄는 플래그 포함
 ├── settlement/                  # SettlementExecutionSchedule — 정산 집행(매일 05:00 KST, 기준일 1회, 기본 꺼짐)
+├── review/                      # ReviewSummaryRequestSchedule — 리뷰 AI 요약 요청(매시 15분, 회차당 상품 30개, 기본 꺼짐)
 ├── job/{도메인}/                 # (예정) Spring Batch Job/Step — ItemProcessor 등에서 UseCase 호출
 └── support/
     └── BusinessSkipPolicy.kt    # (예정) BusinessException → errorCode 로깅 + 스킵 판단 (HTTP 개념 없음)
@@ -234,6 +235,10 @@ boot/batch/src/main/kotlin/com/aechak/batch/
   경합 자체는 건마다 결제 결과를 먼저 확정한 뒤(외부 조회이므로 트랜잭션 밖) 그래도 결제대기로 남은 건만 취소하는 순서로 줄인다.
 - **배송 배치는 `order.delivery.enabled`로 꺼 둘 수 있고 기본값이 false다.** 켜면 송장 등록 시각만 보고 주문을 배송완료로 넘기므로,
   택배사 추적 연동 없이 켜면 실제로 도착하지 않은 주문에 구매확정 기한이 시작된다.
+- **리뷰 요약 요청 배치는 `review.summary.enabled`로 꺼 둘 수 있고 기본값이 false다.** 켜면 AI 서버에 요약을 요청해
+  모델 호출 비용이 든다. AI 서버의 `enable_review_summary`를 먼저 켜야 한다. 거꾸로 켜면 소비하는 쪽이 없어 요청이 토픽에 쌓이고
+  응답 대기 30분이 지날 때마다 같은 상품을 다시 요청한다. 선별 스캔에는 `application.review.summary.request`만 올린다.
+  결과 반영과 조회 파사드는 api 몫이다.
 - **추적 갱신 배치는 `order.delivery.tracking.enabled`로 꺼 둘 수 있고 기본값이 false다.** 지금 조립할 수 있는 추적 어댑터는
   외부를 부르지 않는 목뿐이라, 켜면 `[모의]` 표식이 붙은 가짜 상태가 발송에 쌓여 구매자·셀러 주문 조회에 그대로 뜬다.
   목 어댑터 자체도 기본 꺼짐이고 운영 프로파일에서는 켜도 조립되지 않는다 — 스위치가 둘로 갈려 있어 하나만 켜도 가짜 값이 들어가지 않는다.
