@@ -423,11 +423,14 @@ resource "aws_ssm_parameter" "batch_schedule_flags" {
   value = tostring(each.value)
 }
 
-# --- 포트원 시크릿: 수기 등재 (위 api 경로와 같은 방침) ---
+# --- 포트원 값: 수기 등재 (위 api 경로와 같은 방침) ---
 # 대사가 포트원 결제 목록 조회·재조회에 쓴다. 비면 부팅은 되고 대사 회차가 실패로 기록된다.
 #   /{project}/{env}/batch/PORTONE_API_SECRET     (SecureString)
 #   /{project}/{env}/batch/PORTONE_WEBHOOK_SECRET (SecureString)
+#   /{project}/{env}/batch/PORTONE_STORE_ID       (String)
 # 웹훅 시크릿은 배치가 웹훅을 받지 않아도 필요하다 — 결제 파사드 조립에 검증기가 딸려온다.
+# STORE_ID는 환불 집행(batch_schedules_enabled.claim_refund)이 취소 요청에 실을 상점이다.
+# 셋 다 api 경로에 등재된 같은 값을 쓴다 — 같은 상점의 결제를 대사하고 취소해야 하기 때문이다.
 
 # --- JWT RS256 키: 수기 등재 (헤더의 카카오·JWT 키 방침과 동일) ---
 # terraform으로 생성하면 개인키가 state에 남아 여기서는 관리하지 않는다.
