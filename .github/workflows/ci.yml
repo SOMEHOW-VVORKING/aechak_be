@@ -11,15 +11,20 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true # 같은 PR에 연속 푸시 시 이전 실행 취소 — 최신 커밋만 검증하면 충분
+  # 같은 PR에 연속 푸시 시 이전 실행 취소 — 최신 커밋만 검증하면 충분.
+  # 취소가 다음 run을 오염시키지 않는 근거: 전 잡이 GitHub 호스티드 러너(ubuntu-*)라
+  # run마다 VM이 새로 생기고 끝나면 파괴된다. Testcontainers·임베디드 Kafka가 남겨도
+  # 다음 run은 그 디스크를 보지 못한다. (self-hosted로 옮기면 이 전제가 깨진다)
+  cancel-in-progress: true
 
 jobs:
   # 워크플로 파일 정적검사 — 스키마·표현식·셸 오류를 PR에서 차단
   actionlint:
+    # 값싼 잡은 ubuntu-latest에 남겨 Ubuntu 26 이행의 카나리아로 쓴다 — test 잡은 고정(아래 주석 참고)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker://rhysd/actionlint:1.7.12
         with:
           args: -color -ignore SC2016
@@ -29,8 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
       - name: fmt + validate
         # backend=false: state·AWS 접근 없이 코드만 검증 — PR 단계에선 자격증명을 주지 않는다
         run: |
@@ -41,17 +46,44 @@ jobs:
           terraform validate -no-color
 
   test:
-    runs-on: ubuntu-latest
+    # 러너 이미지를 고정한다. ubuntu-latest는 2026-10-19부터 Ubuntu 26으로 이행 중이라
+    # 그 사이 run이 24/26에 갈려 앉는다 — 플레이크를 쫓는 동안 환경이 움직이면 비교가 불가능하다.
+    # 대가: ubuntu-24.04 은퇴 전에 손으로 올려야 한다. 그 신호는 위 두 잡(ubuntu-latest)이
+    # 먼저 Ubuntu 26에서 깨지는 것으로 받는다.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20 # 행 걸린 테스트가 러너를 무한 점유하는 것 방지
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
 
-      - uses: gradle/actions/setup-gradle@v4 # gradle 캐시 — 매번 의존성 재다운로드 방지
+      # v6으로 올리지 않는다: v6은 캐싱이 비오픈소스 상용 컴포넌트로 분리되고
+      # 업그레이드 자체가 별도 이용약관 동의로 간주된다(blog.gradle.org/github-actions-for-gradle-v6).
+      # 라이선스는 팀이 판단할 몫이라 Node 24만 확보하는 v5에서 멈춘다.
+      - uses: gradle/actions/setup-gradle@v5 # gradle 캐시 — 매번 의존성 재다운로드 방지
 
       - name: Test
-        run: ./gradlew test --console=plain # Testcontainers(MySQL) 포함 — 러너에 Docker가 기본 탑재라 그대로 돎
+        # 실패한 테스트만 1회 재시도한다(build-logic의 공통 Test 컨벤션, CI 한정).
+        # 재시도로 통과한 것은 아래 단계가 잡 요약에 이름까지 올려 드러낸다.
+        run: ./gradlew test --console=plain
+
+      # 재시도로 가려진 플레이크를 매 run마다 드러낸다 — 실패했을 때도 돌아야 하므로 always()
+      - name: 플레이크 요약
+        if: always()
+        run: python3 .github/scripts/flaky-report.py .
+
+      # 로그는 잘리고 스크롤도 길다. 실패했을 때 원본 리포트(HTML·XML)를 남겨
+      # 기대값·실제값·스택을 PR에서 바로 받아볼 수 있게 한다.
+      - name: 테스트 리포트 업로드
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports-${{ github.run_id }}
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
