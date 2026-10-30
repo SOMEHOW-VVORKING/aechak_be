@@ -230,17 +230,16 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
         long targetUserId = createMember("신고당한사람", UserRole.GENERAL);
         long userReportId = persistUserReport(targetUserId, ReportReasonCode.SPAM, "도배해요");
 
-        String cursor = mockMvc.perform(bearer(get(BASE).param("size", "2"), adminToken))
+        String cursor = cursorOf(mockMvc.perform(bearer(get(BASE).param("size", "2"), adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].targetType").value("USER"))
                 .andExpect(jsonPath("$.data.items[0].reportId").value(userReportId))
+                .andExpect(jsonPath("$.data.items[1].targetType").value("REVIEW"))
                 .andExpect(jsonPath("$.data.items[1].reportId").value(reviewReportId))
                 .andExpect(jsonPath("$.data.totalCount").value(3))
                 .andExpect(jsonPath("$.data.hasNext").value(true))
-                .andReturn()
-                .getResponse()
-                .getContentAsString()
-                .replaceAll(".*\"nextCursor\":\"([^\"]+)\".*", "$1");
+                .andExpect(jsonPath("$.data.nextCursor").exists()));
 
         mockMvc.perform(bearer(get(BASE).param("size", "2").param("cursor", cursor), adminToken))
                 .andExpect(status().isOk())
@@ -257,12 +256,15 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
         long reviewId = persistReview(1001L, "리뷰 본문");
         persistReviewReport(reviewId, ReviewReportReason.ABUSE, "욕설이에요");
 
-        String cursor = mockMvc.perform(bearer(get(BASE).param("size", "1"), adminToken))
+        String cursor = cursorOf(mockMvc.perform(bearer(get(BASE).param("size", "1"), adminToken))
                 .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString()
-                .replaceAll(".*\"nextCursor\":\"([^\"]+)\".*", "$1");
+                .andExpect(jsonPath("$.data.hasNext").value(true))
+                .andExpect(jsonPath("$.data.nextCursor").exists()));
+
+        // 같은 조건에서는 그 커서가 통한다 — 아래 400 이 커서 고장이 아니라 지문 불일치임을 가린다
+        mockMvc.perform(bearer(get(BASE).param("size", "1").param("cursor", cursor), adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1));
 
         mockMvc.perform(bearer(
                         get(BASE)
@@ -349,13 +351,15 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    void 상품_신고의_비공개_전환은_상품_노출을_막는다() throws Exception {
+    void 상품_신고에는_비공개_전환을_걸_수_없고_400_140002_이며_노출도_기록도_그대로다() throws Exception {
         long reportId = persistProductReport(ProductReportReason.ILLEGAL, "불법이에요");
 
-        decide("PRODUCT", reportId, hideBody("ILLEGAL")).andExpect(status().isNoContent());
+        decide("PRODUCT", reportId, hideBody("ILLEGAL"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value(140002));
 
-        assertThat(inspectionStatusOf(productId)).isEqualTo(InspectionStatus.REJECTED);
-        assertThat(decisions()).hasSize(1);
+        assertThat(inspectionStatusOf(productId)).isEqualTo(InspectionStatus.APPROVED);
+        assertThat(decisions()).isEmpty();
     }
 
     @Test
@@ -372,6 +376,32 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
         assertThat(sanctions).hasSize(1);
         assertThat(sanctions.get(0).getActedByAdminId()).isEqualTo(adminId);
         assertThat(sanctions.get(0).getMemo()).isEqualTo("1차 조치");
+    }
+
+    @Test
+    void 상품_신고의_계정_제재는_셀러를_제재하되_상품_노출은_건드리지_않는다() throws Exception {
+        long reportId = persistProductReport(ProductReportReason.ILLEGAL, "불법이에요");
+
+        decide("PRODUCT", reportId, sanctionBody("ILLEGAL", "RESTRICT", "OTHER", null))
+                .andExpect(status().isNoContent());
+
+        assertThat(statusOf(sellerUserId)).isEqualTo(UserStatus.RESTRICTED);
+        assertThat(sanctionsOf(sellerUserId)).hasSize(1);
+        assertThat(decisions().get(0).getTargetOwnerUserId()).isEqualTo(sellerUserId);
+        // 상품 비노출 수단이 아직 없다 — 셀러 제재가 진열을 내리지는 않는다
+        assertThat(inspectionStatusOf(productId)).isEqualTo(InspectionStatus.APPROVED);
+    }
+
+    @Test
+    void 사용자_신고를_제재_없이_종결하면_계정이_그대로다() throws Exception {
+        long targetUserId = createMember("신고당한사람", UserRole.GENERAL);
+        long reportId = persistUserReport(targetUserId, ReportReasonCode.ABUSE, "욕설해요");
+
+        decide("USER", reportId, dismissBody()).andExpect(status().isNoContent());
+
+        assertThat(statusOf(targetUserId)).isEqualTo(UserStatus.ACTIVE);
+        assertThat(sanctionsOf(targetUserId)).isEmpty();
+        assertThat(decisions()).hasSize(1);
     }
 
     @Test
@@ -439,13 +469,14 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
 
     @Test
     void 확인_불가_사유로_제재하면_400_140005_이고_대상은_그대로다() throws Exception {
-        long reportId = persistProductReport(ProductReportReason.ILLEGAL, "불법이에요");
+        long reviewId = persistReview(1001L, "욕설이 섞인 리뷰");
+        long reportId = persistReviewReport(reviewId, ReviewReportReason.ABUSE, "욕설이에요");
 
-        decide("PRODUCT", reportId, body("HIDE_TARGET", "NOT_CONFIRMED", null, null))
+        decide("REVIEW", reportId, body("HIDE_TARGET", "NOT_CONFIRMED", null, null))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value(140005));
 
-        assertThat(inspectionStatusOf(productId)).isEqualTo(InspectionStatus.APPROVED);
+        assertThat(reviewStatusOf(reviewId)).isEqualTo(ReviewStatus.PUBLIC);
         assertThat(decisions()).isEmpty();
     }
 
@@ -500,6 +531,76 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
         assertThat(decisions()).hasSize(2);
     }
 
+    @Test
+    void 접수_시각이_같은_여섯_건을_커서로_나눠_받아도_중복도_누락도_없다() throws Exception {
+        long productA = persistProductReport(ProductReportReason.FALSE_AD, "과장광고예요");
+        long productB = persistProductReport(ProductReportReason.ILLEGAL, "불법이에요");
+        long reviewId = persistReview(1001L, "리뷰 본문");
+        long reviewA = persistReviewReport(reviewId, ReviewReportReason.ABUSE, "욕설이에요");
+        long reviewB = persistReviewReport(reviewId, ReviewReportReason.SPAM, "광고예요");
+        long targetUserId = createMember("신고당한사람", UserRole.GENERAL);
+        long userA = persistUserReport(targetUserId, ReportReasonCode.ABUSE, "욕설해요");
+        long userB = persistUserReport(targetUserId, ReportReasonCode.SPAM, "도배해요");
+
+        // 접수 시각을 같은 마이크로초로 맞춰 시각 축의 타이브레이크를 없앤다 —
+        // keyset 에서 종류·id 조건이 빠지면 여기서 행이 빠지거나 두 번 나온다
+        LocalDateTime sameInstant = LocalDateTime.now().withNano(123_000_000);
+        setReportedAt("product_reports", productA, sameInstant);
+        setReportedAt("product_reports", productB, sameInstant);
+        setReportedAt("review_reports", reviewA, sameInstant);
+        setReportedAt("review_reports", reviewB, sameInstant);
+        setReportedAt("user_reports", userA, sameInstant);
+        setReportedAt("user_reports", userB, sameInstant);
+
+        // 전역 순서는 접수 역순 -> 종류 이름순 -> id 역순이다
+        List<String> expected = List.of(
+                "PRODUCT:" + productB,
+                "PRODUCT:" + productA,
+                "REVIEW:" + reviewB,
+                "REVIEW:" + reviewA,
+                "USER:" + userB,
+                "USER:" + userA);
+
+        assertThat(pageThrough(1)).containsExactlyElementsOf(expected);
+        assertThat(pageThrough(2)).containsExactlyElementsOf(expected);
+        assertThat(pageThrough(4)).containsExactlyElementsOf(expected);
+    }
+
+    @Test
+    void 제재_상세가_필요한_사유인데_비어_있으면_회원_제재_도메인이_막고_전부_되돌아간다() throws Exception {
+        long reviewId = persistReview(1001L, "욕설이 섞인 리뷰");
+        long reportId = persistReviewReport(reviewId, ReviewReportReason.ABUSE, "욕설이에요");
+        String withoutDetail = "{\"decision\":\"SANCTION_ACCOUNT\",\"reasonCode\":\"ABUSE\","
+                + "\"reasonDetail\":\"확인했습니다\",\"noticeToOwner\":null,\"internalMemo\":null,"
+                + "\"sanction\":{\"action\":\"RESTRICT\",\"reasonCode\":\"OTHER\","
+                + "\"reasonDetail\":null,\"durationDays\":null}}";
+
+        decide("REVIEW", reportId, withoutDetail)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value(30800));
+
+        assertThat(reviewStatusOf(reviewId)).isEqualTo(ReviewStatus.PUBLIC);
+        assertThat(sanctionsOf(authorId)).isEmpty();
+        assertThat(decisions()).isEmpty();
+    }
+
+    @Test
+    void 제재가_거절되면_이미_걸린_리뷰_비노출까지_되돌아간다() throws Exception {
+        // 관리자 계정이 쓴 리뷰 — 비노출은 통과하고 그 뒤 계정 제재가 30021 로 거절된다
+        long adminAuthorId = createMember("부운영자", UserRole.ADMIN);
+        long reviewId = persistReviewBy(adminAuthorId, 2002L, "욕설이 섞인 리뷰");
+        long reportId = persistReviewReport(reviewId, ReviewReportReason.ABUSE, "욕설이에요");
+
+        decide("REVIEW", reportId, sanctionBody("ABUSE", "BAN", "ABUSIVE_REVIEW", null))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(30021));
+
+        assertThat(reviewStatusOf(reviewId)).isEqualTo(ReviewStatus.PUBLIC);
+        assertThat(statusOf(adminAuthorId)).isEqualTo(UserStatus.ACTIVE);
+        assertThat(sanctionsOf(adminAuthorId)).isEmpty();
+        assertThat(decisions()).isEmpty();
+    }
+
     // --- 요청 본문 ---
 
     private ResultActions decide(String targetType, long reportId, String body) throws Exception {
@@ -524,7 +625,7 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
         return "{\"decision\":\"SANCTION_ACCOUNT\",\"reasonCode\":\"" + reasonCode
                 + "\",\"reasonDetail\":\"확인했습니다\",\"noticeToOwner\":\"안내합니다\",\"internalMemo\":\"1차 조치\","
                 + "\"sanction\":{\"action\":\"" + action + "\",\"reasonCode\":\"" + sanctionReason
-                + "\",\"reasonDetail\":null,\"durationDays\":"
+                + "\",\"reasonDetail\":\"위반을 확인했습니다\",\"durationDays\":"
                 + (durationDays == null ? "null" : durationDays) + "}}";
     }
 
@@ -537,6 +638,46 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
         return "{\"decision\":\"" + decision + "\",\"reasonCode\":\"" + reasonCode + "\",\"reasonDetail\":"
                 + (reasonDetail == null ? "null" : "\"" + reasonDetail + "\"")
                 + ",\"noticeToOwner\":\"안내합니다\",\"internalMemo\":\"1차 조치\",\"sanction\":" + sanction + "}";
+    }
+
+    /** 커서를 꺼낸다. 호출부가 nextCursor 존재를 먼저 단언한 뒤 쓴다. */
+    private String cursorOf(ResultActions actions) throws Exception {
+        String body = actions.andReturn().getResponse().getContentAsString();
+        java.util.regex.Matcher matcher =
+                java.util.regex.Pattern.compile("\"nextCursor\":\"([^\"]+)\"").matcher(body);
+        assertThat(matcher.find()).as("nextCursor 가 응답에 없다").isTrue();
+        return matcher.group(1);
+    }
+
+    /** 커서를 끝까지 따라가며 "종류:신고id" 를 순서대로 모은다. */
+    private List<String> pageThrough(int size) throws Exception {
+        List<String> collected = new java.util.ArrayList<>();
+        String cursor = null;
+        for (int guard = 0; guard < 20; guard++) {
+            MockHttpServletRequestBuilder request = get(BASE).param("size", String.valueOf(size));
+            if (cursor != null) {
+                request = request.param("cursor", cursor);
+            }
+            String body = mockMvc.perform(bearer(request, adminToken))
+                    .andExpect(status().isOk())
+                    .andReturn()
+                    .getResponse()
+                    .getContentAsString();
+            java.util.regex.Matcher rows = java.util.regex.Pattern.compile(
+                            "\"targetType\":\"([A-Z]+)\",\"reportId\":(\\d+)")
+                    .matcher(body);
+            while (rows.find()) {
+                collected.add(rows.group(1) + ":" + rows.group(2));
+            }
+            if (!body.contains("\"hasNext\":true")) {
+                return collected;
+            }
+            java.util.regex.Matcher next = java.util.regex.Pattern.compile("\"nextCursor\":\"([^\"]+)\"")
+                    .matcher(body);
+            assertThat(next.find()).as("hasNext 인데 nextCursor 가 없다").isTrue();
+            cursor = next.group(1);
+        }
+        throw new AssertionError("커서가 끝나지 않는다");
     }
 
     // --- 시드 ---
@@ -564,6 +705,24 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
             em.flush();
             return review.getId();
         }));
+    }
+
+    private long persistReviewBy(long author, long orderItemId, String content) {
+        return Objects.requireNonNull(tx.execute(txStatus -> {
+            Review review = Review.Companion.write(productId, "5kg / 1개", orderItemId, author, 2, content, List.of());
+            em.persist(review);
+            em.flush();
+            return review.getId();
+        }));
+    }
+
+    /** 접수 시각을 직접 맞춘다 — 엔티티가 생성 시각을 스스로 채워 심는 쪽에서 지정할 수 없다. */
+    private void setReportedAt(String table, long reportId, LocalDateTime reportedAt) {
+        tx.executeWithoutResult(
+                txStatus -> em.createNativeQuery("update " + table + " set created_at = :at where id = :id")
+                        .setParameter("at", reportedAt)
+                        .setParameter("id", reportId)
+                        .executeUpdate());
     }
 
     private long persistProductReport(ProductReportReason reasonCode, String reasonText) {

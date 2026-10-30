@@ -1,6 +1,5 @@
 package com.aechak.application.report.admin.facade
 
-import com.aechak.application.inspection.port.ProductInspectionGate
 import com.aechak.application.report.admin.port.view.ReportRowView
 import com.aechak.application.report.admin.service.AdminReportService
 import com.aechak.application.report.admin.support.ReportCursorCodec
@@ -33,8 +32,8 @@ import org.springframework.transaction.annotation.Transactional
 /**
  * AdminReportUseCase 의 유일한 구현체. 트랜잭션 경계는 여기 고정.
  *
- * 비노출·제재는 기존 경로에 위임한다 — 상품은 ProductInspectionGate.rejectByAdmin,
- * 리뷰는 AdminReviewUseCase.blind, 계정은 AdminMemberUseCase.sanction.
+ * 비노출·제재는 기존 경로에 위임한다 — 리뷰는 AdminReviewUseCase.blind,
+ * 계정은 AdminMemberUseCase.sanction.
  * 결정 기록을 먼저 저장(flush)한 뒤 위임한다.
  * 안내 문구는 보관만 한다 — 어드민 보트에 발송 어댑터가 조립되어 있지 않다.
  */
@@ -42,7 +41,6 @@ import org.springframework.transaction.annotation.Transactional
 class AdminReportFacade(
     private val adminReportService: AdminReportService,
     private val reportDecisionRepository: ReportDecisionRepository,
-    private val productInspectionGate: ProductInspectionGate,
     private val adminReviewUseCase: AdminReviewUseCase,
     private val adminMemberUseCase: AdminMemberUseCase,
     private val userUseCase: UserUseCase,
@@ -127,7 +125,7 @@ class AdminReportFacade(
                 throw BusinessException(ReportErrorCode.REPORT_ALREADY_DECIDED, e)
             }
 
-        // 사용자 신고는 숨길 콘텐츠가 없어 비노출 단계를 건너뛰고 제재로 바로 간다
+        // 비노출 수단이 없는 종류(상품·사용자)는 이 단계를 건너뛰고 제재로 바로 간다
         if (command.decision.hidesTarget() && command.targetType.hasHidableTarget()) {
             hideTarget(command, view)
         }
@@ -158,13 +156,6 @@ class AdminReportFacade(
             return
         }
         when (command.targetType) {
-            // 판매 상태(셀러의 의사)가 아니라 검수 상태(플랫폼의 노출 판단)를 내린다.
-            // [한계] 검수 게이트(inspection.gate-enabled)를 켜면 이후 PASS 판정이 이 반려를 되돌린다 —
-            // 반려 유지 판정이 검토 큐의 관리자 결정만 보고 신고 결정은 보지 않는다
-            ReportTargetType.PRODUCT -> {
-                productInspectionGate.rejectByAdmin(view.targetId)
-            }
-
             ReportTargetType.REVIEW -> {
                 adminReviewUseCase.blind(
                     BlindReviewCommand(
@@ -176,8 +167,8 @@ class AdminReportFacade(
                 )
             }
 
-            // ReportDecision.decide 가 이미 막아 도달하지 않는다
-            ReportTargetType.USER -> {
+            // 비노출 수단이 없는 종류다 — ReportDecision.decide 가 이미 막아 도달하지 않는다
+            ReportTargetType.PRODUCT, ReportTargetType.USER -> {
                 throw BusinessException(ReportErrorCode.REPORT_DECISION_NOT_APPLICABLE)
             }
         }
