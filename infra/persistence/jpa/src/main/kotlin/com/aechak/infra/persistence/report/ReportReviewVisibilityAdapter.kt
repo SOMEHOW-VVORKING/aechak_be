@@ -25,6 +25,10 @@ interface ReportReviewLockJpaRepository : JpaRepository<Review, Long> {
  * 리뷰 행을 잠그고 노출 여부만 꺼낸다. 뒤따르는 비노출 위임
  * (`AdminReviewService.blind` → `findByIdForUpdate`)이 같은 행을 같은 잠금으로 다시 읽으므로
  * 판정과 조치가 같은 상태를 본다.
+ *
+ * 전제: 호출부가 이 트랜잭션에서 그 리뷰를 **처음 적재하는 자리**여야 한다. 이미 영속성 컨텍스트에
+ * 올라와 있으면 잠금 조회가 관리 중인 인스턴스를 그대로 돌려주고 방금 읽은 행 값을 버려, 잠금만
+ * 잡고 낡은 상태를 판정하게 된다. 지금 호출부(신고 조회)는 스칼라 투영이라 엔티티를 올리지 않는다.
  */
 @Repository
 class ReportReviewVisibilityAdapter(
