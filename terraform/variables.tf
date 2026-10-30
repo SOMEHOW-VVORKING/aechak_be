@@ -112,7 +112,7 @@ variable "admin_frontend_origins" {
   default     = []
 }
 
-# 배치 보트의 스케줄 스위치 일곱 개. 기본값은 코드와 같게 전부 false로 둔다 —
+# 배치 보트의 스케줄 스위치 여덟 개. 기본값은 코드와 같게 전부 false로 둔다 —
 # tfvars에 안 적힌 플래그가 조용히 켜지면 돈이 나가거나 비가역 전이가 일어난다.
 # 켜기 전 전제는 플래그마다 다르다. 아래 주석이 요약이고 정본은
 # boot/batch/src/main/resources/application.yml 의 주석이다.
@@ -148,6 +148,10 @@ variable "batch_schedules_enabled" {
     # 정산 지급 건 생성. PG 호출은 없지만, 지급 건에 묶인 정산은 다음 회차가 다시 집지 않아
     # 되돌리기가 쉽지 않다. 대사(04:30)가 끝난 뒤 05:00에 돈다.
     settlement_execution = optional(bool, false)
+
+    # AI 서버에 리뷰 요약을 요청한다. 켜면 모델 호출 비용이 든다.
+    # AI 서버의 enable_review_summary를 먼저 켜고, 결과를 받는 api가 배포된 뒤에 켠다.
+    review_summary = optional(bool, false)
   })
   default     = {}
   description = "배치 스케줄 on/off. 전부 미설정이면 배치 보트는 떠 있어도 스케줄이 하나도 돌지 않는다."

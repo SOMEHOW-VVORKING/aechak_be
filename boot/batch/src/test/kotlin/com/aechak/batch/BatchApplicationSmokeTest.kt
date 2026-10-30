@@ -9,6 +9,7 @@ import com.aechak.application.order.usecase.OrderExpiryUseCase
 import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.payment.port.PaymentReconciliationSourcePort
 import com.aechak.application.payment.reconciliation.usecase.PaymentReconciliationUseCase
+import com.aechak.application.review.summary.request.usecase.ReviewSummaryRequestUseCase
 import com.aechak.application.settlement.seller.usecase.SellerSettlementUseCase
 import com.aechak.application.settlement.usecase.SettlementPayoutUseCase
 import com.aechak.application.settlement.usecase.SettlementUseCase
@@ -18,6 +19,7 @@ import com.aechak.batch.order.OrderDeliverySchedule
 import com.aechak.batch.order.OrderExpirySchedule
 import com.aechak.batch.order.ShipmentTrackingSchedule
 import com.aechak.batch.payment.PaymentReconciliationSchedule
+import com.aechak.batch.review.ReviewSummaryRequestSchedule
 import com.aechak.batch.settlement.SettlementExecutionSchedule
 import com.aechak.batch.support.BatchIntegrationTestBase
 import com.aechak.domain.payment.reconciliation.ReconciliationSource
@@ -114,6 +116,12 @@ class BatchApplicationSmokeTest : BatchIntegrationTestBase() {
         // 집행 배치는 정산 BC의 지급 파사드만 요구한다 — 스캔에서 application.settlement가 빠지면 부팅에서 깨진다
         context.getBean(SettlementExecutionSchedule::class.java)
         context.getBean(SettlementPayoutUseCase::class.java)
+    }
+
+    @Test
+    fun `리뷰 요약 요청 스케줄과 그 유스케이스가 조립된다`() {
+        context.getBean(ReviewSummaryRequestSchedule::class.java)
+        context.getBean(ReviewSummaryRequestUseCase::class.java)
     }
 
     @Test

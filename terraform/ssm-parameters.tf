@@ -386,7 +386,7 @@ resource "aws_ssm_parameter" "batch_pii_hmac_key" {
 }
 
 # ── batch 스케줄 스위치 (SCRUM-328) ────────────────────
-# 일곱 스케줄 모두 코드 기본값이 false다. 의도된 설계다 — 돈을 움직이거나 비가역 전이를 하는
+# 여덟 스케줄 모두 코드 기본값이 false다. 의도된 설계다 — 돈을 움직이거나 비가역 전이를 하는
 # 경로라서 꺼진 채로 배포하고 환경별로 켠다. 대신 SSM에 값을 넣지 않으면 배치 보트는 떠 있는데
 # 스케줄은 하나도 돌지 않는다. 2026-10-29 dev 실측이 정확히 그 상태였다:
 # /aechak/dev/batch 에 일곱 개가 전부 없고, CloudWatch 1주일 로그에 일곱 스케줄 전부 0건.
@@ -405,6 +405,7 @@ locals {
     ORDER_CLAIM_REFUND_ENABLED       = var.batch_schedules_enabled.claim_refund
     ORDER_CLAIM_AUTO_APPROVE_ENABLED = var.batch_schedules_enabled.claim_auto_approve
     SETTLEMENT_EXECUTION_ENABLED     = var.batch_schedules_enabled.settlement_execution
+    REVIEW_SUMMARY_ENABLED           = var.batch_schedules_enabled.review_summary
   }
   # yml에 enabled 플래그가 둘 더 있지만 스케줄 스위치가 아니라 여기 넣지 않는다.
   #   TOSS_RECONCILIATION_ENABLED          — 대사의 소스 하나를 추가한다(스케줄은 이미 무조건 돈다).
