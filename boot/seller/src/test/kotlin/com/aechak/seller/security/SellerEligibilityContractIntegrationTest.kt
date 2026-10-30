@@ -276,6 +276,8 @@ class SellerEligibilityContractIntegrationTest : IntegrationTestBase() {
                 "POST /api/v1/sellers/me/reviews/{reviewId}/reply" to REPLY_BODY,
                 "PUT /api/v1/sellers/me/reviews/{reviewId}/reply" to REPLY_BODY,
                 "DELETE /api/v1/sellers/me/reviews/{reviewId}/reply" to null,
+                "GET /api/v1/sellers/me/notices" to null,
+                "GET /api/v1/sellers/me/notices/{noticeId}" to null,
             )
 
         /** 자격 게이트를 두지 않는 경로와 그 이유. */
