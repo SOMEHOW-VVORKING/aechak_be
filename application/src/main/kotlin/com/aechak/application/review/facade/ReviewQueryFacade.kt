@@ -12,6 +12,7 @@ import com.aechak.application.review.usecase.result.ProductReviewListResult
 import com.aechak.application.review.usecase.result.ReviewImageItemResult
 import com.aechak.application.review.usecase.result.ReviewItemResult
 import com.aechak.application.review.usecase.result.ReviewRatingSummaryResult
+import com.aechak.application.review.usecase.result.ReviewReplyResult
 import com.aechak.application.review.usecase.result.UnreviewedOrderItemResult
 import com.aechak.application.review.usecase.result.WrittenReviewItemResult
 import com.aechak.application.support.CursorPageResult
@@ -44,6 +45,11 @@ class ReviewQueryFacade(
         val page = reviewQueryService.getVisiblePage(productId, query)
         val imagesByReviewId = imagesByReviewId(page.items.map { it.id })
         val authorsById = userUseCase.getAuthors(page.items.map { it.authorUserId })
+        // 셀러 답글도 페이지 단위로 한 번에 읽는다 — 리뷰마다 조회하면 페이지 크기만큼 쿼리가 늘어난다
+        val replyByReviewId =
+            reviewQueryService
+                .getRepliesByReviewIds(page.items.map { it.id })
+                .associate { it.reviewId to ReviewReplyResult.from(it) }
 
         val itemPage =
             page.map { view ->
@@ -54,6 +60,7 @@ class ReviewQueryFacade(
                     authorNickname = author.nickname,
                     authorProfileImageUrl = author.profileImageUrl,
                     isMine = view.authorUserId == viewerId,
+                    sellerReply = replyByReviewId[view.id],
                 )
             }
 

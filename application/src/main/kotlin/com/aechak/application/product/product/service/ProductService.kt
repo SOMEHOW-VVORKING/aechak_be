@@ -11,6 +11,7 @@ import com.aechak.application.product.product.port.view.ProductCatalogDetailView
 import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.application.product.product.port.view.ProductImageView
 import com.aechak.application.product.product.port.view.ProductOptionsView
+import com.aechak.application.product.product.port.view.ProductRefView
 import com.aechak.application.product.product.port.view.SellerProductOptionView
 import com.aechak.application.product.product.port.view.SellerProductStatusCountView
 import com.aechak.application.product.product.port.view.SellerProductView
@@ -362,6 +363,11 @@ class ProductService(
     /** 노출 상품의 내부 id — 상세 전체 로딩 없이 id만. 없거나 미노출이면 404. */
     fun getVisibleProductId(publicId: String): Long =
         productCatalogQueryPort.findVisibleIdByPublicId(publicId)
+            ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
+
+    /** 노출 상품의 식별 정보(id·셀러·상품명). 없거나 미노출이면 404. */
+    fun getVisibleProductRef(publicId: String): ProductRefView =
+        productCatalogQueryPort.findVisibleRefByPublicId(publicId)
             ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
 
     fun getImages(productId: Long): List<ProductImageView> = productDetailQueryPort.findImagesByProductId(productId)

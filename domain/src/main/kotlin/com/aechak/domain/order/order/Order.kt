@@ -35,6 +35,10 @@ import java.time.LocalDateTime
         Index(name = "idx_orders_seller_id_status", columnList = "seller_id, status, id"),
         Index(name = "idx_orders_status_auto_confirm_due_at", columnList = "status, auto_confirm_due_at"),
         Index(name = "idx_orders_seller_id_purchase_confirmed_at", columnList = "seller_id, purchase_confirmed_at"),
+        // 어드민 전체 주문 목록의 정렬·커서·기간 필터 축 — 셀러 스코프가 없어 모수가 전체 주문이다
+        Index(name = "idx_orders_created_at_id", columnList = "created_at, id"),
+        // 상태 한 종을 골라 주문 시각 내림차순으로 보는 경로
+        Index(name = "idx_orders_status_created_at", columnList = "status, created_at, id"),
     ],
 )
 class Order protected constructor(

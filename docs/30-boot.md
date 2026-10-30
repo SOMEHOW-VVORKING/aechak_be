@@ -191,10 +191,17 @@ class OrderMessageConsumer(private val someUseCase: SomeUseCase) {
 - 라우팅은 **호스트 분리**(`seller-api.<도메인>`) 전제 — `api.base-path`(/api/v1)와 경로는 api 시절 그대로라 FE 경로 수정이 없다.
 - **선별 스캔**: 루트(com.aechak) 스캔은 auth·kafka 등 api 전용 조립까지 요구해 부팅이 깨진다.
   스캔 목록은 `SellerApiApplication` 소유 — application 패키지를 추가로 쓰면 그 패키지가 요구하는 infra 어댑터·config 조립도 함께 늘린다.
-- **셀러센터 전용 유스케이스는 BC 패키지의 `seller` 하위에 둔다**(`application.order.seller`, `application.settlement.seller`).
+- **셀러센터 전용 유스케이스는 BC 패키지의 `seller` 하위에 둔다**(`application.order.seller`, `application.settlement.seller`,
+  `application.review.seller`).
+  구매자와 셀러가 **같은 파사드를 공유**하는 애그리거트는 `seller` 하위로 내리지 않고 애그리거트 패키지째
+  스캔에 넣는다(`application.order.claim`, `application.inquiry.product`) — 파사드를 쪼개면 같은 서비스 주입이
+  양쪽에 복제된다(20 문서 §2). 이때도 **BC 패키지 전체를 넣지 않는다**: `application.inquiry`를 통째로 넣으면
+  앱 서비스 문의의 메일 발송 조립(ses-client)까지 딸려온다.
   BC 패키지 전체를 스캔하면 셀러센터가 안 쓰는 파사드가 딸려온다 — `application.order`는 구매자 주문서·장바구니가 배송지·적립금
-  조립까지 요구하고, `application.settlement`는 구매확정 원장 생성과 계좌 이관이 딸려온다. 뒤집어, batch는 두 BC 패키지를
-  스캔하므로 이 하위 패키지들을 excludeFilters로 뺀다 — 셀러 자격(`application.seller`)을 배치가 끌고 오지 않게 한다.
+  조립까지 요구하고, `application.settlement`는 구매확정 원장 생성과 계좌 이관이 딸려온다. `application.review`는 리뷰 작성이
+  금칙어 판정 포트(구현은 api 모듈의 아호코라식)와 메시지 발행을 요구해, 상위를 스캔하면 셀러센터가 둘을 조립해야 한다.
+  뒤집어, batch는 두 BC 패키지를 스캔하므로 이 하위 패키지들을 excludeFilters로 뺀다 — 셀러 자격(`application.seller`)을
+  배치가 끌고 오지 않게 한다.
 - **셀러와 배치가 같은 전이를 일으키는 로직은 `application.order.{하위}` 를 따로 파고 양쪽 스캔에 넣는다**(`application.order.delivery`).
   `application.order.seller` 에 두면 batch의 제외 필터에 걸려 배치가 쓸 수 없고, 복제해 두면 전이 순서·이력 기록이 갈린다.
 - **Flyway 미탑재**: 스키마 관리는 api가 유일 소유자. seller 단독 배포 시 새 마이그레이션은 api 선배포가 전제.
@@ -271,6 +278,7 @@ boot/admin/src/main/java/com/aechak/admin/
 ├── claim/           # 클레임 조회·개입 컨트롤러 + request/response
 ├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config} · InspectionScanConfig · ClaimAmountScanConfig · AdminReviewScanConfig
 ├── inspection/      # AI 검수 지표 컨트롤러 + response
+├── order/           # 주문 배송 모니터링 컨트롤러 + request/response
 ├── product/         # 상품 검수 큐 컨트롤러 + request/response
 ├── review/          # 리뷰 관리·블라인드 컨트롤러 + request/response
 ├── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
@@ -304,5 +312,14 @@ boot/admin/src/main/java/com/aechak/admin/
   - **온보딩을 마치지 않은 계정에는 되돌아오는 제재(이용 제한·임시 정지)를 걸 수 없다**(409/30023). 상태가 한 축이라 PENDING_ONBOARDING을 덮으면 돌아올 상태를 잃고, 해제·만료가 약관 동의도 프로필도 없는 ACTIVE를 만들어 온보딩 게이트를 우회한다. 영구 정지·탈퇴 처리는 돌아올 상태가 없어 허용한다.
   - 제재 이력은 추가 전용이다. 해제도 UPDATE가 아니라 `action=RELEASE` 행 추가로 남기고, 사유는 자유 문자열이 아니라 고정 어휘(`SanctionReasonCode`) + 상세로 받는다 — 신고 사유와 같은 결정이다.
   - **임시 정지 만료는 조회 시점 판정이다**(`UserStatus.effective`). 저장값(SUSPENDED + `sanction_until`)은 "7일 정지를 걸었다"는 사실 기록으로 남고, 인가 게이트와 어드민 조회가 같은 함수로 유효 상태를 계산한다. 상태를 되돌리는 배치는 두지 않았다 — 판정이 한 곳이면 운영자가 본 상태와 실제 접근 권한이 갈리지 않는다.
+- **주문 배송 모니터링(`/admin/orders`)의 "지연" 기준은 서버가 쥔다.** 목록 행의 지연 신호와 지표 카드의 지연 건수가
+  같은 경계 시각을 받아 판정한다 — 프런트가 날짜를 빼서 세면 두 수치가 다른 기준으로 갈린다. 발송 기한은 셀러센터가 쓰는
+  `order.dispatch.sla-days`를 그대로 읽어 같은 주문을 두 화면이 같게 본다. 셀러가 신고하는 `avgDispatchDays`는 쓰지 않는다 —
+  셀러마다 기준이 갈려 "지연 N건"이 셀러 간 비교 불가가 되고, 영업일을 날짜로 환산할 휴일 달력이 없다.
+  배송 정체(`order.delivery.sla-days`)는 셀러 화면에 없는 어드민 전용 축이다.
+- **셀러 발송 독촉(`POST /admin/orders/{orderId}/dispatch-nudges`)은 기록만 남긴다.** 어드민 모듈은 발송 어댑터(`:ses-client`)를
+  의존하지 않아 `EmailSender` 구현이 조립되지 않는다 — 그래서 응답에 발송을 주장하는 필드를 두지 않는다. 발송을 붙이는 시점에
+  의존·스캔과 응답 계약을 함께 고친다. 같은 주문 반복 독촉은 `order.dispatch.nudge-cooldown-hours` 간격으로 묶고, 주문 행
+  선점 조회로 동시 요청을 직렬화한다(409·50501).
 - DB 마이그레이션은 api 단일 소유 그대로 — admin은 접속만 한다.
 - 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.
