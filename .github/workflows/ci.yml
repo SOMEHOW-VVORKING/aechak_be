@@ -51,7 +51,11 @@ jobs:
     # 대가: ubuntu-24.04 은퇴 전에 손으로 올려야 한다. 그 신호는 위 두 잡(ubuntu-latest)이
     # 먼저 Ubuntu 26에서 깨지는 것으로 받는다.
     runs-on: ubuntu-24.04
-    timeout-minutes: 20 # 행 걸린 테스트가 러너를 무한 점유하는 것 방지
+    # 행 걸린 테스트가 러너를 무한 점유하는 것 방지.
+    # 20분에서 올린 이유: 전 모듈 완주가 실측 12~13분대라 여유가 6분뿐인데, 재시도는 새 JVM 에서
+    # 돌아 스프링 컨텍스트와 임베디드 Kafka 를 다시 띄운다(아래 Test 단계 주석 참고).
+    # 그대로 두면 플레이크가 재시도 중 타임아웃으로 바뀌어 더 나빠진다.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 

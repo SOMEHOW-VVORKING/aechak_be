@@ -24,7 +24,7 @@ querydsl = "7.0"                 # OpenFeign 포크 — JPA 3.2/Hibernate 7 타�
 ksp = "2.2.21-2.0.5"             # QueryDSL Q클래스 생성 — Kotlin 2.2.21 정합 버전
 solapi = "1.1.0"                 # CoolSMS 발송 SDK — nurigo v4(아카이브)의 공식 후속, 도메인만 coolsms로 지정해 사용
 ahocorasick = "0.6.3"            # 금칙어 다중 패턴 매칭(리뷰 마스킹) — robert-bor/aho-corasick, Apache-2.0
-test-retry = "1.6.6"           # org.gradle.test-retry — CI 에서 실패한 테스트만 재시도(플레이크 격리)
+test-retry = "1.6.6"             # org.gradle.test-retry — CI 에서 실패한 테스트만 재시도(플레이크 격리)
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
