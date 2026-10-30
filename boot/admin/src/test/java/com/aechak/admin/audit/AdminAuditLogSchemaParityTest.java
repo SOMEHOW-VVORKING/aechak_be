@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
  */
 class AdminAuditLogSchemaParityTest {
 
-    private static final String MIGRATION = "V64__create_admin_audit_logs.sql";
+    private static final String MIGRATION = "V71__create_admin_audit_logs.sql";
     private static final Pattern INDEX_NAME = Pattern.compile("CREATE INDEX\\s+(\\w+)");
 
     /** 엔티티가 든 칼럼 — 하나라도 마이그레이션에 없으면 운영에서만 깨진다 */
