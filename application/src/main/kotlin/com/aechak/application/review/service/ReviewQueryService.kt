@@ -8,6 +8,7 @@ import com.aechak.application.review.port.UnreviewedOrderItemListCondition
 import com.aechak.application.review.port.WrittenReviewListCondition
 import com.aechak.application.review.port.view.RatingBucketView
 import com.aechak.application.review.port.view.ReviewImageView
+import com.aechak.application.review.port.view.ReviewReplyView
 import com.aechak.application.review.port.view.ReviewView
 import com.aechak.application.review.port.view.UnreviewedOrderItemView
 import com.aechak.application.review.port.view.WrittenReviewView
@@ -68,6 +69,8 @@ class ReviewQueryService(
     fun getRatingBuckets(productId: Long): List<RatingBucketView> = reviewListQueryPort.findRatingBuckets(productId)
 
     fun getImagesByReviewIds(reviewIds: Collection<Long>): List<ReviewImageView> = reviewListQueryPort.findImagesByReviewIds(reviewIds)
+
+    fun getRepliesByReviewIds(reviewIds: Collection<Long>): List<ReviewReplyView> = reviewListQueryPort.findRepliesByReviewIds(reviewIds)
 
     fun getWrittenReviewPage(query: MyReviewListQuery): CursorPageResult<WrittenReviewView> {
         val anchor = query.cursor?.let { ReviewCursorCodec.MyReviews.decodeWritten(it, query.userId) }

@@ -3,7 +3,6 @@ package com.aechak.infra.persistence.user.user
 import com.aechak.application.user.user.port.view.UserAuthorView
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserRole
-import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.domain.user.user.repository.UserRepository
 import jakarta.persistence.LockModeType
 import org.springframework.data.domain.PageRequest
@@ -19,11 +18,20 @@ import java.time.LocalDateTime
 
 /** Spring Data 인터페이스는 이 모듈 밖으로 노출되지 않는다 — 어댑터의 내부 부품. */
 interface UserJpaRepository : JpaRepository<User, Long> {
-    /** 인가 상태검증용 프로젝션 — 엔티티(+eager 프로필) 로딩 없이 status만 읽는다. */
-    @Query("select u.status from User u where u.id = :id")
-    fun findStatusById(
+    /** 인가 상태검증용 프로젝션 — 엔티티(+eager 프로필) 로딩 없이 상태와 제재 만료 시각만 읽는다. */
+    @Query(
+        "select new com.aechak.infra.persistence.user.user.UserAccessStatusProjection(u.status, u.sanctionUntil) " +
+            "from User u where u.id = :id",
+    )
+    fun findAccessStatusById(
         @Param("id") id: Long,
-    ): UserStatus?
+    ): UserAccessStatusProjection?
+
+    /** 토큰 발급용 프로젝션 — 회전 시점에 현재 역할을 다시 읽는다(SCRUM-329). */
+    @Query("select u.role from User u where u.id = :id")
+    fun findRoleById(
+        @Param("id") id: Long,
+    ): UserRole?
 
     /** 작성자 표시용 배치 프로젝션 — 프로필 없어도 포함되도록 left join. */
     @Query(
@@ -44,6 +52,13 @@ interface UserJpaRepository : JpaRepository<User, Long> {
     fun findByPhoneHmac(phoneHmac: ByteArray): User?
 
     fun findByPublicId(publicId: String): User?
+
+    // 동시 제재·해제가 같은 회원 행을 두고 경쟁하면 마지막 커밋이 앞선 상태를 덮는다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.id = :id")
+    fun findByIdWithLock(
+        @Param("id") id: Long,
+    ): User?
 
     @Modifying
     @Query(
@@ -91,6 +106,8 @@ class UserRepositoryAdapter(
     private val jpaRepository: UserJpaRepository,
 ) : UserRepository {
     override fun findById(id: Long): User? = jpaRepository.findByIdOrNull(id)
+
+    override fun findByIdForUpdate(id: Long): User? = jpaRepository.findByIdWithLock(id)
 
     override fun findByPublicId(publicId: String): User? = jpaRepository.findByPublicId(publicId)
 
