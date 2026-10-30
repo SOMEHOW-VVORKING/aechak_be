@@ -111,3 +111,44 @@ variable "admin_frontend_origins" {
   type        = list(string)
   default     = []
 }
+
+# 배치 보트의 스케줄 스위치 일곱 개. 기본값은 코드와 같게 전부 false로 둔다 —
+# tfvars에 안 적힌 플래그가 조용히 켜지면 돈이 나가거나 비가역 전이가 일어난다.
+# 켜기 전 전제는 플래그마다 다르다. 아래 주석이 요약이고 정본은
+# boot/batch/src/main/resources/application.yml 의 주석이다.
+variable "batch_schedules_enabled" {
+  type = object({
+    # 미결제 주문그룹 만료. 주문그룹 생성이 재고·적립금을 먼저 깎으므로 꺼 두면 그만큼 자산이 묶인다.
+    # 결제 시도 흔적이 있는 건만 PG를 조회한다 — 그 경로의 PORTONE_API_SECRET이 없으면 그 건은 못 만료시킨다.
+    order_expiry = optional(bool, false)
+
+    # 배송완료 후 기한이 지난 주문의 구매확정 + 기한 D-1 사전 안내.
+    # 확정은 비가역이고 반품 기한·정산의 기산점이다.
+    order_auto_confirm = optional(bool, false)
+
+    # 송장 등록 후 일수만 보고 배송완료로 전이하고, 집화 지연은 경고로 남긴다.
+    # 배치 모듈이 그 환경에 실제로 배포돼 있어야 켠다 — 실물 배송과 무관하게 시간만 보기 때문이다.
+    order_delivery = optional(bool, false)
+
+    # 택배사 추적 갱신. 실제 택배사 어댑터가 붙은 환경에서만 켠다.
+    # 지금 조립되는 어댑터가 목뿐이라, 켜면 '[모의]' 표식이 붙은 가짜 상태가 DB에 쌓여
+    # 구매자·셀러 화면에 그대로 뜬다. order_delivery 가 auto_complete_days 로 배송완료까지
+    # 진행시키므로, 추적 없이도 주문 생애주기는 끝까지 돈다.
+    delivery_tracking = optional(bool, false)
+
+    # 승인된 취소 클레임의 환불 집행. 실제로 PG로 돈이 나가는 유일한 배치다.
+    # batch 경로에 PORTONE_API_SECRET·PORTONE_STORE_ID 가 등재돼 있고, 그 상점이
+    # 테스트 상점인지 확인한 뒤 켠다. PAYMENT_CANCEL_MAX_AMOUNT 가 1건 금액 상한이다.
+    claim_refund = optional(bool, false)
+
+    # 셀러 무응답 클레임 자동승인. 자동승인은 환불 집행까지 이어지므로
+    # claim_refund 가 false면 켜도 스케줄이 조립되지 않는다(코드가 두 플래그를 AND로 본다).
+    claim_auto_approve = optional(bool, false)
+
+    # 정산 지급 건 생성. PG 호출은 없지만, 지급 건에 묶인 정산은 다음 회차가 다시 집지 않아
+    # 되돌리기가 쉽지 않다. 대사(04:30)가 끝난 뒤 05:00에 돈다.
+    settlement_execution = optional(bool, false)
+  })
+  default     = {}
+  description = "배치 스케줄 on/off. 전부 미설정이면 배치 보트는 떠 있어도 스케줄이 하나도 돌지 않는다."
+}
