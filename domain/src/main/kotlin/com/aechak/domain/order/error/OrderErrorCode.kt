@@ -68,4 +68,9 @@ enum class OrderErrorCode(
     CLAIM_NOT_OVERRIDABLE(50414, "운영자가 개입할 수 없는 클레임입니다.", 409),
     CLAIM_INTERVENTION_REASON_NOT_SELECTABLE(50415, "귀책 판정에서 선택할 수 없는 개입 사유입니다.", 400),
     CLAIM_INTERVENTION_REASON_DETAIL_REQUIRED(50416, "기타 사유를 선택하면 상세 내용을 입력해 주세요.", 400),
+
+    // 발송 독촉
+    ORDER_NUDGE_NOT_APPLICABLE(50500, "발송 전 상태의 주문만 발송 독촉할 수 있습니다.", 409),
+    ORDER_NUDGE_TOO_SOON(50501, "직전 발송 독촉 이후 충분한 시간이 지나지 않았습니다.", 409),
+    ORDER_NUDGE_MEMO_TOO_LONG(50502, "독촉 메모가 허용 길이를 초과했습니다.", 400),
 }
