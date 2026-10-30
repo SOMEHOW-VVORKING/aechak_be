@@ -11,6 +11,7 @@ import com.aechak.application.user.pet.usecase.result.DeletePetProfileResult
 import com.aechak.application.user.pet.usecase.result.PetProfileListResult
 import com.aechak.application.user.pet.usecase.result.PetProfileResult
 import com.aechak.application.user.pet.usecase.result.RegisterPetProfileResult
+import com.aechak.application.user.pet.usecase.result.RepresentativePetResult
 import com.aechak.application.user.pet.usecase.result.SetDefaultPetResult
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -38,6 +39,10 @@ class PetProfileFacade(
     @Transactional(readOnly = true)
     override fun getDefaultPetSummaries(userIds: Collection<Long>): List<DefaultPetSummaryResult> =
         if (userIds.isEmpty()) emptyList() else petSummaryQueryPort.findDefaultPetSummaries(userIds).map(DefaultPetSummaryResult::from)
+
+    @Transactional(readOnly = true)
+    override fun findRepresentativePet(userId: Long): RepresentativePetResult? =
+        petProfileService.getActivePets(userId).firstOrNull()?.let(RepresentativePetResult::from)
 
     @Transactional
     override fun updatePet(command: UpdatePetProfileCommand): PetProfileResult {

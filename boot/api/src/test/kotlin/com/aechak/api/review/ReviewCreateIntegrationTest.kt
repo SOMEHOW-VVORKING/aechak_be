@@ -13,6 +13,9 @@ import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.option.OptionCombination
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.seller.seller.Seller
+import com.aechak.domain.user.pet.Breed
+import com.aechak.domain.user.pet.PetProfile
+import com.aechak.domain.user.pet.enums.Species
 import com.aechak.domain.user.point.policy.ReviewRewardPolicy
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserStatus
@@ -23,6 +26,7 @@ import jakarta.persistence.PersistenceContext
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -42,6 +46,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.math.BigDecimal
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
@@ -112,6 +117,37 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
         assertEquals(1L, outboxCount)
         assertEquals("PUBLIC", reviewStatus(reviewId))
         awaitRewardProcessed(reviewId)
+    }
+
+    @Test
+    fun `대표 펫이 있으면 작성 당시 종, 품종, 생년월, 체중과 체급 묶음 키를 리뷰에 남긴다`() {
+        val buyerId = createActiveUser()
+        val defaultBreedId = registerPet(buyerId, weight = BigDecimal("4.2"), isDefault = true, birthYearMonth = "2022-03")
+        registerPet(buyerId, weight = BigDecimal("30.0"), isDefault = false, birthYearMonth = "2019-11")
+        val fixture = persistReviewableOrderItem(buyerId)
+
+        val reviewId = postReviewAndGetId(buyerId, fixture.orderItemId)
+
+        val snapshot = petSnapshotOf(reviewId)
+        assertEquals("DOG", snapshot["pet_species"], "대표 펫이 둘 이상이어도 기본 펫을 남긴다")
+        assertEquals(defaultBreedId, (snapshot["pet_breed_id"] as Number).toLong())
+        assertEquals("2022-03", snapshot["pet_birth_year_month"])
+        assertEquals(0, BigDecimal("4.2").compareTo(snapshot["pet_weight"] as BigDecimal))
+        assertEquals("DOG:DOG_UNDER_5", snapshot["pet_segment_key"], "AI 서버 selection.py와 같은 체급 키여야 묶음 요약이 맞는다")
+    }
+
+    @Test
+    fun `펫이 없거나 체중을 모르면 체급 묶음 키를 비워 둔다`() {
+        val noPetBuyer = createActiveUser()
+        val unknownWeightBuyer = createActiveUser()
+        registerPet(unknownWeightBuyer, weight = null, isDefault = true)
+
+        val noPetReview = postReviewAndGetId(noPetBuyer, persistReviewableOrderItem(noPetBuyer).orderItemId)
+        val unknownWeightReview = postReviewAndGetId(unknownWeightBuyer, persistReviewableOrderItem(unknownWeightBuyer).orderItemId)
+
+        assertNull(petSnapshotOf(noPetReview)["pet_species"], "펫이 없으면 남길 조건이 없다")
+        assertEquals("DOG", petSnapshotOf(unknownWeightReview)["pet_species"])
+        assertNull(petSnapshotOf(unknownWeightReview)["pet_segment_key"], "체중 모르는 아이끼리를 비슷한 아이로 묶지 않는다")
     }
 
     @Test
@@ -440,6 +476,38 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
         val keys = imageKeys.joinToString(",") { "\"$it\"" }
         return """{"orderItemId":$orderItemId,"rating":$rating,"content":"$content","imageKeys":[$keys]}"""
     }
+
+    private fun postReviewAndGetId(
+        userId: Long,
+        orderItemId: Long,
+    ): Long {
+        val body =
+            postReview(userId, reviewBody(orderItemId))
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        return JsonPath.read<Int>(body, "$.data.reviewId").toLong()
+    }
+
+    private fun registerPet(
+        userId: Long,
+        weight: BigDecimal?,
+        isDefault: Boolean,
+        birthYearMonth: String = "2022-03",
+    ): Long =
+        tx.execute {
+            val breed = Breed.of(Species.DOG, "말티즈-$userId-$isDefault").also { em.persist(it) }
+            em.persist(PetProfile.register(em.find(User::class.java, userId), breed, "코코", birthYearMonth, weight, isDefault = isDefault))
+            breed.id
+        }!!
+
+    private fun petSnapshotOf(reviewId: Long): Map<String, Any?> =
+        db
+            .sql("SELECT pet_species, pet_breed_id, pet_birth_year_month, pet_weight, pet_segment_key FROM reviews WHERE id = :id")
+            .param("id", reviewId)
+            .query()
+            .singleRow()
 
     private fun bearer(userId: Long) = "Bearer ${mintAccessToken(userId)}"
 

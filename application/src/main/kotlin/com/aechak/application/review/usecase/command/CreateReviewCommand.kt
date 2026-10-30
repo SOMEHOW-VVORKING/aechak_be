@@ -3,6 +3,7 @@ package com.aechak.application.review.usecase.command
 import com.aechak.application.order.usecase.result.OrderItemForReviewResult
 import com.aechak.domain.review.review.Review
 import com.aechak.domain.review.review.ReviewImage
+import com.aechak.domain.review.review.ReviewPetSnapshot
 
 /** 리뷰 작성 입력 */
 data class CreateReviewCommand(
@@ -15,6 +16,7 @@ data class CreateReviewCommand(
     fun toEntity(
         orderItem: OrderItemForReviewResult,
         images: List<ReviewImage>,
+        petSnapshot: ReviewPetSnapshot?,
     ): Review =
         Review.write(
             productId = orderItem.productId,
@@ -24,5 +26,6 @@ data class CreateReviewCommand(
             rating = rating,
             content = content,
             images = images,
+            petSnapshot = petSnapshot,
         )
 }
