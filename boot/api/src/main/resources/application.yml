@@ -109,6 +109,13 @@ inquiry:
     enabled: ${INQUIRY_NOTIFICATION_ENABLED:false}
     recipients: ${INQUIRY_OPS_RECIPIENTS:}
 
+# 신고 접수 알림. REPORT_* 값이 없으면 문의 알림의 켜기 여부와 수신자를 따른다.
+# 꺼져 있거나 수신자가 비어 있으면 발송만 생략한다.
+report:
+  notification:
+    enabled: ${REPORT_NOTIFICATION_ENABLED:${INQUIRY_NOTIFICATION_ENABLED:false}}
+    recipients: ${REPORT_OPS_RECIPIENTS:${INQUIRY_OPS_RECIPIENTS:}}
+
 # 클레임 정책값. 셀러가 이 기한까지 응답하지 않으면 자동승인 대상이 된다.
 order:
   claim:
