@@ -29,4 +29,5 @@ enum class AdminAuditAction(
     REVIEW_UNBLINDED(AdminAuditTargetType.REVIEW, "리뷰 블라인드 해제"),
     REVIEW_DELETED(AdminAuditTargetType.REVIEW, "리뷰 삭제"),
     ORDER_DISPATCH_NUDGED(AdminAuditTargetType.ORDER, "셀러 발송 독촉"),
+    REPORT_DECIDED(AdminAuditTargetType.REPORT, "신고 처리"),
 }

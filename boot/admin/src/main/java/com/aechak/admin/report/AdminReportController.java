@@ -1,12 +1,17 @@
 package com.aechak.admin.report;
 
+import com.aechak.admin.audit.AdminAudited;
 import com.aechak.admin.report.request.DecideReportRequest;
 import com.aechak.admin.report.response.AdminReportDetailResponse;
 import com.aechak.admin.report.response.AdminReportListResponse;
+import com.aechak.application.audit.support.AdminAuditContextHolder;
 import com.aechak.application.report.admin.usecase.AdminReportUseCase;
 import com.aechak.application.report.admin.usecase.command.DecideReportCommand;
 import com.aechak.application.report.admin.usecase.query.ReportSearchQuery;
 import com.aechak.application.support.CursorPageSize;
+import com.aechak.domain.audit.auditlog.enums.AdminAuditAction;
+import com.aechak.domain.audit.auditlog.enums.AdminAuditTargetType;
+import com.aechak.domain.report.decision.enums.ReportDecisionReason;
 import com.aechak.domain.report.decision.enums.ReportTargetType;
 import com.aechak.webcommon.response.ApiResponse;
 import com.aechak.websecurity.authentication.AuthPrincipal;
@@ -71,12 +76,17 @@ public class AdminReportController {
      * 이미 처리된 신고면 409(140001), 사용자 신고에 비공개 전환을 보내면 400(140002).
      */
     @PostMapping("/{targetType}/{reportId}/decision")
+    @AdminAudited(AdminAuditAction.REPORT_DECIDED)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public ResponseEntity<Void> decide(
             @PathVariable ReportTargetType targetType,
             @PathVariable long reportId,
             @Valid @RequestBody DecideReportRequest request,
             @AuthenticationPrincipal AuthPrincipal principal) {
+        // 대상 식별자는 종류와 번호를 합쳐야 가려진다 -- 세 신고 표가 각자 AUTO_INCREMENT 다.
+        // 사유는 요청 본문에만 있고, 둘 다 조치보다 먼저 올려야 거부된 시도의 행에도 남는다.
+        AdminAuditContextHolder.INSTANCE.target(AdminAuditTargetType.REPORT, targetType.name() + "/" + reportId);
+        AdminAuditContextHolder.INSTANCE.reason(auditReason(request.reasonCode(), request.reasonDetail()));
         adminReportUseCase.decide(new DecideReportCommand(
                 principal.getUserId(),
                 targetType,
@@ -88,5 +98,11 @@ public class AdminReportController {
                 request.internalMemo(),
                 request.toSanctionDetail()));
         return ResponseEntity.noContent().build();
+    }
+
+    /** 감사 행의 사유 칸 -- 고정 어휘를 사람이 읽는 문구로 옮기고 상세가 있으면 이어 붙인다. */
+    private static String auditReason(ReportDecisionReason reasonCode, String reasonDetail) {
+        String detail = reasonDetail == null || reasonDetail.isBlank() ? null : reasonDetail.strip();
+        return detail == null ? reasonCode.getLabel() : reasonCode.getLabel() + " — " + detail;
     }
 }

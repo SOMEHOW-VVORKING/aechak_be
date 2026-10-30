@@ -28,6 +28,7 @@
    | 110000 | review | `ReviewErrorCode` |
    | 120000 | inquiry | `InquiryErrorCode` |
    | 130000 | sns | `SnsErrorCode` |
+   | 140000 | report (신고) | `ReportErrorCode` |
 
    - **애그리거트 100번대**: 대역 안에서 애그리거트 **루트** 하나가 100번대 하나를 받고, 그 안은 00번부터 채운다
      (`User` 30000~, `PointTransaction` 30100~, `DeliveryAddress` 30500~, `UserSanction` 30800~,

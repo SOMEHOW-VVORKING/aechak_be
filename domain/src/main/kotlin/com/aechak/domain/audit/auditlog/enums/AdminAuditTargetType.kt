@@ -39,4 +39,5 @@ enum class AdminAuditTargetType(
     INQUIRY(AdminAuditTargetIdKind.INTERNAL_ID, "서비스 문의"),
     REVIEW(AdminAuditTargetIdKind.INTERNAL_ID, "리뷰"),
     ORDER(AdminAuditTargetIdKind.PUBLIC_ULID, "주문"),
+    REPORT(AdminAuditTargetIdKind.TYPED_INTERNAL_ID, "신고"),
 }

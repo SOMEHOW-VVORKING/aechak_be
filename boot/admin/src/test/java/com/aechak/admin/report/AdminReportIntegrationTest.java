@@ -8,6 +8,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.aechak.admin.support.IntegrationTestBase;
 import com.aechak.application.report.admin.port.ReportReviewVisibilityPort;
+import com.aechak.domain.audit.auditlog.AdminAuditLog;
+import com.aechak.domain.audit.auditlog.enums.AdminAuditAction;
+import com.aechak.domain.audit.auditlog.enums.AdminAuditResult;
+import com.aechak.domain.audit.auditlog.enums.AdminAuditTargetType;
 import com.aechak.domain.product.category.Category;
 import com.aechak.domain.product.product.Product;
 import com.aechak.domain.product.product.enums.InspectionStatus;
@@ -70,7 +74,7 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
-                .addFilters(securityFilterChain)
+                .addFilters(new com.aechak.webcommon.trace.TraceIdFilter(), securityFilterChain)
                 .build();
         adminId = createMember("운영자", UserRole.ADMIN);
         adminToken = mintAccessToken(adminId);
@@ -789,6 +793,85 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
     }
 
     // --- 검증 ---
+
+    // --- 감사 로그 기록 ---
+
+    /**
+     * 신고 처리는 전용 표(report_decisions)에도 남지만 감사 로그에 함께 기록한다 — 클레임 개입과
+     * 같은 판단이다. 운영자 조치를 한 자리에서 훑는 것이 감사 조회의 목적이기 때문이다.
+     *
+     * <p>대상 식별자가 `종류/번호` 복합인 것이 이 경로의 특징이다. 세 신고 표가 각자
+     * AUTO_INCREMENT 라 숫자 하나로는 어느 행인지 가리지 못한다.
+     */
+    @Test
+    void 신고_처리는_종류와_번호를_합친_대상으로_성공_행을_남긴다() throws Exception {
+        long reportId = persistProductReport(ProductReportReason.FALSE_AD, "과장광고예요");
+
+        decide("PRODUCT", reportId, dismissBody()).andExpect(status().isNoContent());
+
+        List<AdminAuditLog> rows = auditRows();
+        assertThat(rows).hasSize(1);
+        AdminAuditLog row = rows.get(0);
+        assertThat(row.getActorUserId()).isEqualTo(adminId);
+        assertThat(row.getAction()).isEqualTo(AdminAuditAction.REPORT_DECIDED);
+        assertThat(row.getTargetType()).isEqualTo(AdminAuditTargetType.REPORT);
+        assertThat(row.getTargetId()).isEqualTo("PRODUCT/" + reportId);
+        assertThat(row.getResult()).isEqualTo(AdminAuditResult.SUCCESS);
+        assertThat(row.getHttpStatus()).isEqualTo(204);
+        assertThat(row.getRequestId()).as("X-Trace-Id가 행에 들어오지 않았다").isNotBlank();
+        // 고정 어휘를 사람이 읽는 문구로 옮긴다 — 열거 이름이 그대로 새면 운영자가 코드를 해독해야 한다
+        assertThat(row.getReason()).isEqualTo("신고 내용 확인 불가");
+    }
+
+    /** 거부당한 시도도 남는다 — 되돌릴 수 없는 조치를 누가 또 누르려 했는지가 기록의 요점이다 */
+    @Test
+    void 같은_신고의_재처리_시도는_실패_행을_남긴다() throws Exception {
+        long reportId = persistProductReport(ProductReportReason.ILLEGAL, "불법이에요");
+        decide("PRODUCT", reportId, dismissBody()).andExpect(status().isNoContent());
+
+        decide("PRODUCT", reportId, dismissBody())
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(140001));
+
+        List<AdminAuditLog> rows = auditRows();
+        assertThat(rows).hasSize(2);
+        AdminAuditLog failure = rows.get(1);
+        assertThat(failure.getAction()).isEqualTo(AdminAuditAction.REPORT_DECIDED);
+        assertThat(failure.getTargetId()).isEqualTo("PRODUCT/" + reportId);
+        assertThat(failure.getResult()).isEqualTo(AdminAuditResult.FAILURE);
+        assertThat(failure.getHttpStatus()).isEqualTo(409);
+        // 사유를 조치보다 먼저 올리므로 실패 행에도 남는다
+        assertThat(failure.getReason()).isEqualTo("신고 내용 확인 불가");
+    }
+
+    /** 없는 신고를 집은 시도도 요청이 들고 온 식별자와 함께 남는다 */
+    @Test
+    void 없는_신고_처리_시도도_실패_행으로_남는다() throws Exception {
+        decide("REVIEW", 999_999L, dismissBody())
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value(140000));
+
+        List<AdminAuditLog> rows = auditRows();
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).getTargetId()).isEqualTo("REVIEW/999999");
+        assertThat(rows.get(0).getResult()).isEqualTo(AdminAuditResult.FAILURE);
+    }
+
+    @Test
+    void 신고_조회는_감사_행을_남기지_않는다() throws Exception {
+        long reportId = persistProductReport(ProductReportReason.FALSE_AD, "과장광고예요");
+
+        mockMvc.perform(bearer(get(BASE), adminToken)).andExpect(status().isOk());
+        mockMvc.perform(bearer(get(BASE + "/PRODUCT/" + reportId), adminToken)).andExpect(status().isOk());
+
+        assertThat(auditRows()).isEmpty();
+    }
+
+    private List<AdminAuditLog> auditRows() {
+        return tx.execute(
+                txStatus -> em.createQuery("select l from AdminAuditLog l order by l.id asc", AdminAuditLog.class)
+                        .getResultList());
+    }
 
     private List<ReportDecision> decisions() {
         return tx.execute(

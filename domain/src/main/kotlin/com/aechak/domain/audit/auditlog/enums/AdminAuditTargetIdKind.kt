@@ -18,6 +18,27 @@ enum class AdminAuditTargetIdKind {
     INTERNAL_ID {
         override fun accepts(targetId: String): Boolean = (targetId.toLongOrNull() ?: 0L) > 0L
     },
+
+    /**
+     * `종류/내부id` 복합. 한 조치가 **표가 여러 개인 대상**을 다루고 표마다 id 시퀀스가 따로일 때 쓴다.
+     *
+     * 신고가 그렇다 — product_reports·review_reports·user_reports 가 각자 AUTO_INCREMENT 라
+     * 숫자 하나로는 어느 행인지 가리지 못한다. 종류를 조치로 쪼개 대상 종류를 셋으로 나누는 길도
+     * 있지만, 조치는 핸들러가 선언하는 값이라 한 핸들러가 세 종류를 받는 경로에서는 쓸 수 없다.
+     *
+     * 종류 칸은 열거 이름을 그대로 적는다(대문자·밑줄). 그래야 화면 필터가 문자열을 가공하지 않고
+     * 앞자리로 가를 수 있다.
+     */
+    TYPED_INTERNAL_ID {
+        override fun accepts(targetId: String): Boolean {
+            val parts = targetId.split('/')
+            if (parts.size != 2) return false
+            val (kind, id) = parts
+            return kind.isNotBlank() &&
+                kind.all { it in 'A'..'Z' || it == '_' } &&
+                (id.toLongOrNull() ?: 0L) > 0L
+        }
+    },
     ;
 
     abstract fun accepts(targetId: String): Boolean

@@ -51,6 +51,65 @@ class AdminAuditLogTest {
     }
 
     @Test
+    fun `종류와 번호를 합친 식별자는 두 칸이 다 맞아야 받아들인다`() {
+        // 신고는 표가 셋이고 각자 AUTO_INCREMENT 라 숫자 하나로는 어느 행인지 가리지 못한다
+        record(
+            action = AdminAuditAction.REPORT_DECIDED,
+            targetType = AdminAuditTargetType.REPORT,
+            targetId = "REVIEW/412",
+        )
+
+        // 번호만 — 어느 표인지 모른다
+        assertFailsWith<IllegalArgumentException> {
+            record(
+                action = AdminAuditAction.REPORT_DECIDED,
+                targetType = AdminAuditTargetType.REPORT,
+                targetId = "412",
+            )
+        }
+        // 종류만
+        assertFailsWith<IllegalArgumentException> {
+            record(
+                action = AdminAuditAction.REPORT_DECIDED,
+                targetType = AdminAuditTargetType.REPORT,
+                targetId = "REVIEW/",
+            )
+        }
+        // 종류 칸이 열거 이름 꼴이 아니다 — 화면 필터가 앞자리로 가를 수 있어야 한다
+        assertFailsWith<IllegalArgumentException> {
+            record(
+                action = AdminAuditAction.REPORT_DECIDED,
+                targetType = AdminAuditTargetType.REPORT,
+                targetId = "review/412",
+            )
+        }
+        // 칸이 셋
+        assertFailsWith<IllegalArgumentException> {
+            record(
+                action = AdminAuditAction.REPORT_DECIDED,
+                targetType = AdminAuditTargetType.REPORT,
+                targetId = "REVIEW/412/9",
+            )
+        }
+    }
+
+    @Test
+    fun `거부된 시도의 복합 식별자는 형식이 틀려도 남는다`() {
+        // 요청이 들고 온 값 그대로여서 형식부터 틀릴 수 있다. 거기서 막으면 남아야 할 실패 행이 사라진다
+        val row =
+            record(
+                action = AdminAuditAction.REPORT_DECIDED,
+                targetType = AdminAuditTargetType.REPORT,
+                targetId = "REVIEW/not-a-number",
+                result = AdminAuditResult.FAILURE,
+                httpStatus = 404,
+            )
+
+        assertEquals("REVIEW/not-a-number", row.targetId)
+        assertEquals(AdminAuditResult.FAILURE, row.result)
+    }
+
+    @Test
     fun `내부 숫자 id 대상에 ULID를 적으려 하면 막힌다`() {
         assertFailsWith<IllegalArgumentException> {
             record(
