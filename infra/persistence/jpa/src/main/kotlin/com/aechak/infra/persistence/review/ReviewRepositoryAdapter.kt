@@ -16,6 +16,7 @@ import org.springframework.stereotype.Repository
 interface ReviewJpaRepository : JpaRepository<Review, Long> {
     fun existsByOrderItemId(orderItemId: Long): Boolean
 
+    // 상속받은 findById에는 @Lock을 걸 수 없어 잠금 전용 메서드를 따로 둔다
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from Review r where r.id = :id")
     fun findByIdForUpdate(
