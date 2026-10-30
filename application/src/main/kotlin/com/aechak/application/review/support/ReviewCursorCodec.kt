@@ -94,6 +94,55 @@ object ReviewCursorCodec {
         }
     }
 
+    object SellerReviews {
+        private const val TAG = "s"
+        private const val ABSENT = "-"
+
+        data class Anchor(
+            val lastReviewId: Long,
+        )
+
+        fun encode(
+            sellerId: Long,
+            productPublicId: String?,
+            rating: Int?,
+            hasReply: Boolean?,
+            lastReviewId: Long,
+        ): String =
+            CursorPayloadCodec.encode(
+                TAG,
+                sellerId.requirePositive("sellerId").toString(),
+                productPublicId ?: ABSENT,
+                rating?.requireRating()?.toString() ?: ABSENT,
+                hasReply?.toFlag() ?: ABSENT,
+                lastReviewId.requirePositive("lastReviewId").toString(),
+            )
+
+        /** 커서에 필터를 함께 담아 검증한다 — 필터를 바꾼 뒤 이전 커서를 다시 쓰면 커서 오류로 끊는다. */
+        fun decode(
+            encodedCursor: String,
+            expectedSellerId: Long,
+            expectedProductPublicId: String?,
+            expectedRating: Int?,
+            expectedHasReply: Boolean?,
+        ): Anchor {
+            val fields =
+                CursorPayloadCodec
+                    .decode(encodedCursor)
+                    .requireSchema(TAG, size = 6)
+
+            if (
+                fields[1].toPositiveLongOrInvalid() != expectedSellerId ||
+                fields[2] != (expectedProductPublicId ?: ABSENT) ||
+                fields[3] != (expectedRating?.toString() ?: ABSENT) ||
+                fields[4] != (expectedHasReply?.toFlag() ?: ABSENT)
+            ) {
+                invalidCursor()
+            }
+            return Anchor(lastReviewId = fields[5].toPositiveLongOrInvalid())
+        }
+    }
+
     object MyReviews {
         private const val WRITTEN_TAG = "mw"
         private const val UNREVIEWED_TAG = "mu"

@@ -124,6 +124,7 @@ class JacksonWireFormatTest : IntegrationTestBase() {
             createdAt = LocalDateTime.of(2026, 7, 1, 0, 0),
             images = emptyList(),
             isMine = true,
+            sellerReply = null,
         )
 
     private fun loginUser() = LoginResponse.User(status = UserStatus.ACTIVE, isNew = true)

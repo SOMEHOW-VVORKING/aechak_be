@@ -114,6 +114,7 @@ class MyReviewQueryAdapter(
             review.content,
             review.displayContent,
             review.reviewStatus,
+            review.blindReasonCode,
             review.optionNameSnapshot,
             product.publicId,
             productVersion.nameSnapshot,
