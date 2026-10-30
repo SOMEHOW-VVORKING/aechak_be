@@ -16,6 +16,9 @@ enum class OrderStatus {
 
     fun isShippedOrLater(): Boolean = this in SHIPPED_OR_LATER
 
+    /** 결제는 됐지만 송장이 아직 붙지 않은 구간 — 발송 기한을 재고 독촉을 걸 수 있는 상태들이다. */
+    fun isAwaitingDispatch(): Boolean = this in AWAITING_DISPATCH
+
     fun canCancel(): Boolean = this in CANCELLABLE
 
     /** 배송완료에서 취소로 가는 길은 반품 환불이 쓴다 — 열어 두지 않으면 반품이 끝난 주문이 자동 구매확정된다. */
@@ -33,6 +36,7 @@ enum class OrderStatus {
 
     private companion object {
         private val SHIPPED_OR_LATER = setOf(SHIPPING, DELIVERED, PURCHASE_CONFIRMED)
+        private val AWAITING_DISPATCH = setOf(PAID, PREPARING, DISPATCH_PENDING)
         private val CANCELLABLE = setOf(PAID, PREPARING)
     }
 }

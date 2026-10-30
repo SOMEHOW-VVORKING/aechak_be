@@ -28,4 +28,7 @@ enum class AuthErrorCode(
     /** role=ADMIN 자격 게이트 실패 — 어드민 모듈의 AccessDeniedHandler가 쓴다. */
     FORBIDDEN(20011, "접근 권한이 없습니다.", 403),
     REJOIN_BLOCKED(20012, "탈퇴한 계정입니다. 일정 기간이 지난 뒤 다시 가입할 수 있습니다.", 403),
+
+    /** 이용 제한(RESTRICTED) 계정의 커뮤니티성 쓰기 차단 — 로그인·조회는 되므로 ACCOUNT_BLOCKED와 구분한다. */
+    ACCOUNT_RESTRICTED(20013, "이용이 제한된 계정이라 이 기능을 사용할 수 없습니다.", 403),
 }

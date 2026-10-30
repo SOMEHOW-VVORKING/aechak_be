@@ -15,6 +15,7 @@ data class ReviewItemResponse(
     val images: List<ReviewImageResponse>,
     @get:JsonProperty("isMine")
     val isMine: Boolean,
+    val sellerReply: ReviewReplyResponse?,
 ) {
     companion object {
         fun from(result: ReviewItemResult): ReviewItemResponse =
@@ -28,6 +29,7 @@ data class ReviewItemResponse(
                 createdAt = result.createdAt,
                 images = result.images.map(ReviewImageResponse::from),
                 isMine = result.isMine,
+                sellerReply = result.sellerReply?.let(ReviewReplyResponse::from),
             )
     }
 }

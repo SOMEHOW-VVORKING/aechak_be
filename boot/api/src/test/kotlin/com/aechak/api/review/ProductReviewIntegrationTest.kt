@@ -3,13 +3,16 @@ package com.aechak.api.review
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
+import com.aechak.domain.review.reply.ReviewReply
 import com.aechak.domain.review.review.Review
+import com.aechak.domain.review.review.enums.ReviewBlindReason
 import com.aechak.domain.review.review.enums.ReviewStatus
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.user.user.User
 import com.jayway.jsonpath.JsonPath
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -69,6 +72,53 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
         assertEquals(1, JsonPath.read<Int>(body, "$.data.summary.ratingDistribution['5']"))
         assertEquals(1, JsonPath.read<Int>(body, "$.data.summary.ratingDistribution['3']"))
         assertEquals(0, JsonPath.read<Int>(body, "$.data.summary.ratingDistribution['1']"))
+    }
+
+    @Test
+    fun `셀러 답글이 있으면 구매자 목록에도 함께 실린다`() {
+        val publicId =
+            tx.execute {
+                val product = persistVisibleProduct("강아지 사료")
+                em.flush()
+                val author = persistAuthor("코코")
+                val answered = persistReview(product.id, author, rating = 2, orderItemId = 1L, content = "사이즈가 작아요")
+                persistReview(product.id, author, rating = 5, orderItemId = 2L, content = "답글 없는 리뷰")
+                em.flush()
+                em.persist(ReviewReply.write(answered.id, defaultSellerId, "사이즈표를 실측값으로 다시 올렸어요."))
+                product.publicId
+            }!!
+
+        val body = getReviews(publicId)
+
+        // 최신순이라 답글 없는 리뷰가 0번
+        assertNull(JsonPath.read<Any?>(body, "$.data.reviews[0].sellerReply"))
+        assertEquals(
+            "사이즈표를 실측값으로 다시 올렸어요.",
+            JsonPath.read<String>(body, "$.data.reviews[1].sellerReply.content"),
+        )
+        assertNotNull(JsonPath.read<Any>(body, "$.data.reviews[1].sellerReply.repliedAt"))
+        // 답글 식별자는 셀러만 쓰므로 구매자 응답에 담지 않는다
+        assertTrue(JsonPath.read<Map<String, Any>>(body, "$.data.reviews[1].sellerReply").keys.none { it == "replyId" })
+    }
+
+    @Test
+    fun `지워진 리뷰에 붙어 있던 답글은 구매자 목록에 나타나지 않는다`() {
+        val publicId =
+            tx.execute {
+                val product = persistVisibleProduct("강아지 사료")
+                em.flush()
+                val author = persistAuthor("코코")
+                val review = persistReview(product.id, author, rating = 1, orderItemId = 1L)
+                em.flush()
+                em.persist(ReviewReply.write(review.id, defaultSellerId, "사라져야 하는 답글"))
+                em.flush()
+                softDeleteReview(review.id)
+                product.publicId
+            }!!
+
+        val body = getReviews(publicId)
+
+        assertEquals(0, JsonPath.read<List<*>>(body, "$.data.reviews").size)
     }
 
     @Test
@@ -307,6 +357,45 @@ class ProductReviewIntegrationTest : IntegrationTestBase() {
         assertEquals(listOf("공개 리뷰"), JsonPath.read<List<String>>(body, "$.data.reviews[*].content"))
         assertEquals(1, JsonPath.read<Int>(body, "$.data.summary.reviewCount"))
         assertEquals(0, JsonPath.read<Int>(body, "$.data.summary.ratingDistribution['1']"))
+    }
+
+    @Test
+    fun `운영자가 블라인드한 리뷰는 목록과 별점 요약에서 빠지고 해제하면 돌아온다`() {
+        val fixture =
+            tx.execute {
+                val product = persistVisibleProduct("사료")
+                em.flush()
+                val author = persistAuthor("작성자")
+                persistReview(product.id, author, rating = 5, orderItemId = 1L, content = "공개 리뷰")
+                val target = persistReview(product.id, author, rating = 1, orderItemId = 2L, content = "악의적 리뷰")
+                em.flush()
+                target.blindByAdmin(adminId = 1L, reasonCode = ReviewBlindReason.ABUSE, reasonText = null)
+                em.flush()
+                product.publicId to target.id
+            }!!
+
+        val blinded = getReviews(fixture.first)
+
+        assertEquals(listOf("공개 리뷰"), JsonPath.read<List<String>>(blinded, "$.data.reviews[*].content"))
+        assertEquals(1, JsonPath.read<Int>(blinded, "$.data.summary.reviewCount"))
+        assertEquals(
+            0,
+            BigDecimal("5.00").compareTo(readBigDecimal(blinded, "$.data.summary.averageRating")),
+            "1점이 평균을 끌어내려선 안 된다",
+        )
+        assertEquals(0, JsonPath.read<Int>(blinded, "$.data.summary.ratingDistribution['1']"))
+
+        tx.execute { em.find(Review::class.java, fixture.second).unblind() }
+
+        val unblinded = getReviews(fixture.first)
+
+        assertEquals(
+            listOf("악의적 리뷰", "공개 리뷰"),
+            JsonPath.read<List<String>>(unblinded, "$.data.reviews[*].content"),
+            "해제한 리뷰는 구매자 목록으로 돌아와야 한다",
+        )
+        assertEquals(2, JsonPath.read<Int>(unblinded, "$.data.summary.reviewCount"))
+        assertEquals(0, BigDecimal("3.00").compareTo(readBigDecimal(unblinded, "$.data.summary.averageRating")))
     }
 
     @Test
