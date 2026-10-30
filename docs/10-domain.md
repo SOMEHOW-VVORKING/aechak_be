@@ -21,6 +21,7 @@ domain/src/main/kotlin/com/aechak/domain/
 │   ├── cart/ · group/ · stock/ · shipment/ · claim/   # 위성 애그리거트(군) — 동일 내부 구조
 │   └── error/                  # error만 BC 레벨 — 대역(50000번대)은 BC 소유, 100번대 구분이 애그리거트 (05 §0-4)
 ├── user/ ...                   # 동일 구조 반복 (user/·social/·pet/·term/·privacy/·report/·sanction/·point/·address/)
+├── audit/                      # 어드민 감사 로그 — auditlog/ 하나뿐이고 error/가 없다(§2-3 참조)
 └── support/
     └── AggregateRoot.kt        # 이벤트 수집 베이스 (아래 §3)
 ```
@@ -37,6 +38,8 @@ domain/src/main/kotlin/com/aechak/domain/
      (예: `pet/` PetProfile+Breed, `term/` Term+ConsentRecord, `shipment/` Shipment+CourierMaster).
      패키지 공유와 에러 코드 100번대 배정은 별개다 — 100번대는 애그리거트 루트마다 따로 받는다 (05 §0-4).
   5. `error/`는 BC 레벨 — 에러 코드 대역이 BC 단위 소유라서 애그리거트로 쪼개지 않는다.
+     **업무 실패가 없는 BC는 `error/`를 두지 않는다** — `audit/`가 그 예다(더하기와 읽기만 있어
+     클라이언트가 분기할 실패가 없고, 조회 조건 오류는 플랫폼 대역 90001·90002로 끊는다).
      enum 파일은 BC당 하나이고, 대역 안의 100번대 하나가 애그리거트 루트 하나에 대응한다 (05 §0-4).
 - 에러 코드 enum은 **발생하는 BC 패키지가 소유**한다 (05 문서 §5 템플릿 참조).
 
@@ -111,6 +114,13 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
 **Claim 애그리거트**는 주문 애그리거트 중 유일하게 `@Version`을 든다. 셀러 승인과 자동승인 배치가 같은
 클레임을 동시에 집을 수 있고, 둘 다 같은 전이(`CLAIM_REQUESTED → APPROVED`)를 요구해 기대 상태 조건만으로는
 가려지지 않는다. 그래서 선점 심판이 조건부 UPDATE가 아니라 버전 충돌이다.
+
+**ProductInquiry는 세 번째 방식 — 쓰기 경로의 조회를 행 잠금으로 읽는다**(`findByPublicIdForUpdate`).
+`RECEIVED`에서 갈리는 전이가 둘(셀러 답변·구매자 철회)이고 **서로 다른 전이**라서 기대 상태 조건부 UPDATE로는
+한쪽만 심판할 수 있다. `@Version`으로도 부족하다: 답변은 자식 행 INSERT를 함께 하는데 Hibernate가 자식 INSERT를
+루트 UPDATE보다 먼저 플러시하므로, 답변 두 건이 경합하면 버전 검사에 닿기 전에 `UNIQUE(inquiry_id)`가 터져
+패자가 409 대신 500을 받는다. 두 경로 모두 로드 시점에 잠그면 패자가 커밋된 상태를 보고 자기 상태 가드로
+거절되므로, 계약에 적어 둔 코드(철회된 문의 120114·이미 답변함 120109·답변된 문의 철회 120111)가 그대로 나간다.
 
 상태는 4축으로 갈라져 있다 — `ClaimStatus`(진행), `RefundStatus`(환불), `SellerApprovalStatus`(셀러 응답),
 `ClaimSettlementStatus`(정산 차감). 서버는 네 축을 그대로 내리고 화면 어휘로 접는 책임은 클라이언트에 둔다.
@@ -212,7 +222,7 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
    common에 두지 않는 이유: common은 무의존 모듈이라 jakarta.persistence 반입 불가(05 문서).
 2. **publicId(ULID)**: 내부 bigint id의 열거(enumeration) 노출이 치명적인 애그리거트는
    `@Column(nullable=false, updatable=false, length=26) val publicId: String = Ulid.generate()` + UNIQUE.
-   생성기는 `support/Ulid` 파사드(ulid-creator 위임 — 엔티티가 라이브러리를 직접 부르지 않는다). 현재 적용: Product·OrderGroup(주문번호 역할)·Order·Claim·User.
+   생성기는 `support/Ulid` 파사드(ulid-creator 위임 — 엔티티가 라이브러리를 직접 부르지 않는다). 현재 적용: Product·OrderGroup(주문번호 역할)·Order·Claim·User·ProductInquiry.
    외부 API·URL에는 publicId만 노출하고 내부 id는 응답에 싣지 않는다.
    - 채번은 필드 초기화식(생성 시점 신원 확보 — DDD identity-at-creation). 엔티티를 도메인 밖에서
      new로 재구성해 detached merge하면 재채번되므로 **재구성 merge 금지, 항상 load 후 수정**.

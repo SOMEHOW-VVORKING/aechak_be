@@ -17,6 +17,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
             "com.aechak.websecurity", // RS256 디코더 조립(JwtConfig)·프린시펄 변환
             "com.aechak.pii", // PII 암호화 엔진·키 조립(PiiCryptoConfig) — 계좌번호 복호에 필요
             "com.aechak.application.pii", // 암호문 Base64 왕복 부품(PiiStringCodec) — 계좌번호 복호가 경유
+            "com.aechak.application.audit", // 감사 로그 기록·조회 — 어드민 전용 BC라 포트 어댑터는 persistence뿐이다
             "com.aechak.application.seller", // 심사 유스케이스 (신청자측 파사드도 딸려온다 — 아래 user·file 스캔 이유)
             "com.aechak.application.settlement", // 승인 tx의 정산계좌 이관 진입점
             "com.aechak.application.file", // 서류 다운로드 URL 발급(FileUseCase)
@@ -31,6 +32,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
             // 배송 정책 파사드의 택배사 검증 의존(CourierUseCase) — 어드민이 쓰는 기능은 아니지만
             // 그 파사드가 application.seller에 살아 패키지 단위 스캔으로는 가릴 수 없다. order BC 중 이 하위만 쓴다
             "com.aechak.application.order.shipment",
+            // 주문 배송 모니터링 — order BC 중 이 하위만 쓴다. BC를 통째로 넣으면 구매자측 주문서·장바구니
+            // 파사드와 그 리스너가 딸려와 어드민에 없는 빈(결제·카프카 배선)을 요구한다
+            "com.aechak.application.order.admin",
             // 어드민 클레임 조회·개입. claim BC 전체가 아니라 어드민 전용 하위만 넣는다 — 상위를 넣으면
             // 환불 집행·자동승인 파사드가 딸려와 PG·재고·적립금 포트 어댑터를 요구하며 부팅이 깨진다.
             // 환불액 계산기는 같은 패키지의 다른 빈과 떼어 와야 해 ClaimAmountScanConfig가 따로 집어 온다

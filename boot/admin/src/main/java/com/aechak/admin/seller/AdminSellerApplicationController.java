@@ -1,10 +1,13 @@
 package com.aechak.admin.seller;
 
+import com.aechak.admin.audit.AdminAudited;
 import com.aechak.admin.seller.request.RejectApplicationRequest;
 import com.aechak.admin.seller.response.AdminApplicationDetailResponse;
 import com.aechak.admin.seller.response.AdminApplicationListResponse;
+import com.aechak.application.audit.support.AdminAuditContextHolder;
 import com.aechak.application.seller.usecase.AdminSellerReviewUseCase;
 import com.aechak.application.support.PageQuery;
+import com.aechak.domain.audit.auditlog.enums.AdminAuditAction;
 import com.aechak.domain.seller.application.enums.ApplicationStatus;
 import com.aechak.webcommon.response.ApiResponse;
 import com.aechak.websecurity.authentication.AuthPrincipal;
@@ -51,6 +54,7 @@ public class AdminSellerApplicationController {
     /** 승인 — 한 트랜잭션으로 셀러 개점 + 정산계좌 이관(VERIFIED). 처리 불가 상태·동시 충돌은 409(10101). */
     @PostMapping("/{applicationId}/approve")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @AdminAudited(value = AdminAuditAction.SELLER_APPLICATION_APPROVED, targetVar = "applicationId")
     public ResponseEntity<Void> approve(
             @PathVariable long applicationId, @AuthenticationPrincipal AuthPrincipal principal) {
         adminSellerReviewUseCase.approve(principal.getUserId(), applicationId);
@@ -60,12 +64,15 @@ public class AdminSellerApplicationController {
     /** 반려 — 사유 필수(10102). 신청자는 수정 후 재제출한다. */
     @PostMapping("/{applicationId}/reject")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @AdminAudited(value = AdminAuditAction.SELLER_APPLICATION_REJECTED, targetVar = "applicationId")
     public ResponseEntity<Void> reject(
             @PathVariable long applicationId,
             @Valid @RequestBody RejectApplicationRequest request,
             @AuthenticationPrincipal AuthPrincipal principal) {
-        adminSellerReviewUseCase.reject(
-                principal.getUserId(), applicationId, request.reason() == null ? "" : request.reason());
+        String reason = request.reason() == null ? "" : request.reason();
+        // 사유는 요청 본문에만 있다. 조치보다 먼저 올려 둬야 거부된 시도의 행에도 사유가 남는다.
+        AdminAuditContextHolder.INSTANCE.reason(reason);
+        adminSellerReviewUseCase.reject(principal.getUserId(), applicationId, reason);
         return ResponseEntity.noContent().build();
     }
 }

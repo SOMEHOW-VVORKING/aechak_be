@@ -266,6 +266,9 @@ class SellerEligibilityContractIntegrationTest : IntegrationTestBase() {
                 "POST /api/v1/sellers/me/claims/{claimPublicId}/collection" to INVOICE_BODY,
                 "POST /api/v1/sellers/me/claims/{claimPublicId}/collection/complete" to null,
                 "POST /api/v1/sellers/me/claims/{claimPublicId}/reship" to INVOICE_BODY,
+                "GET /api/v1/sellers/me/inquiries" to null,
+                // 본문 검증은 DTO에 거울을 두지 않고 ProductInquiry가 갖는다 — 게이트까지 가려면 content만 있으면 된다
+                "POST /api/v1/sellers/me/inquiries/{inquiryId}/answer" to """{"content": "자격 게이트 확인용 답변"}""",
                 "GET /api/v1/sellers/me/settlements" to null,
                 "GET /api/v1/sellers/me/settlements/months" to null,
                 "GET /api/v1/sellers/me/settlements/{orderPublicId}" to null,
