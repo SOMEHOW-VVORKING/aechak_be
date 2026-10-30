@@ -185,6 +185,8 @@ data "aws_iam_policy_document" "github_deploy_ai" {
     actions = ["ecs:UpdateService", "ecs:DescribeServices"]
     resources = [
       "arn:aws:ecs:${var.region}:${data.aws_caller_identity.me.account_id}:service/${var.project}-${var.env}/${var.project}-ai-${var.env}",
+      # 초안 API는 같은 이미지를 다른 커맨드로 띄우는 별 서비스라 갱신 대상이 둘이다.
+      "arn:aws:ecs:${var.region}:${data.aws_caller_identity.me.account_id}:service/${var.project}-${var.env}/${var.project}-ai-draft-${var.env}",
     ]
   }
 
