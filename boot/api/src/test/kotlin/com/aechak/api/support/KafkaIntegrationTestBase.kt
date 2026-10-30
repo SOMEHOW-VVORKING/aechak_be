@@ -13,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.kafka.config.KafkaListenerEndpointRegistry
+import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.test.context.EmbeddedKafka
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -77,8 +78,12 @@ abstract class KafkaIntegrationTestBase {
     @Autowired
     private lateinit var cleaner: DatabaseCleaner
 
+    /** 하위 테스트가 컨슈머를 세워 가로채기를 재현할 때 쓴다. */
     @Autowired
-    private lateinit var listenerRegistry: KafkaListenerEndpointRegistry
+    protected lateinit var listenerRegistry: KafkaListenerEndpointRegistry
+
+    @Autowired
+    private lateinit var kafkaTemplate: KafkaTemplate<String, String>
 
     /**
      * 테이블을 비우기 전에 컨슈머가 밀린 레코드를 다 처리하게 만든다.
@@ -101,6 +106,11 @@ abstract class KafkaIntegrationTestBase {
     }
 
     private fun drainConsumers() {
+        // 끝 오프셋을 읽기 전에 프로듀서를 비운다. 아웃박스는 afterCommit 에서 send() 를 부르는데
+        // 전송이 비동기라, flush 없이 LATEST 를 읽으면 아직 브로커에 닿지 않은 레코드를 "없다"고 읽는다.
+        // 그러면 드레인이 즉시 통과하고 그 뒤에 레코드가 소비된다 — 막으려던 바로 그 순간이다.
+        kafkaTemplate.flush()
+
         val assignments =
             listenerRegistry.listenerContainers
                 .mapNotNull { container ->
