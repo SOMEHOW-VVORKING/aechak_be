@@ -4,6 +4,7 @@ import com.aechak.application.product.product.port.ProductCatalogCondition
 import com.aechak.application.product.product.port.ProductCatalogQueryPort
 import com.aechak.application.product.product.port.ProductCatalogSort
 import com.aechak.application.product.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.view.ProductRefView
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.infra.persistence.product.catalogViewProjection
 import com.aechak.infra.persistence.product.category
@@ -14,6 +15,7 @@ import com.aechak.infra.persistence.product.productStats
 import com.aechak.infra.persistence.product.visibleProductQuery
 import com.querydsl.core.types.OrderSpecifier
 import com.querydsl.core.types.Predicate
+import com.querydsl.core.types.Projections
 import com.querydsl.core.types.dsl.Expressions
 import com.querydsl.core.types.dsl.NumberExpression
 import com.querydsl.jpa.impl.JPAQuery
@@ -59,6 +61,13 @@ class ProductCatalogQueryAdapter(
     override fun findVisibleIdByPublicId(publicId: String): Long? =
         visibleProductQuery(queryFactory, product.id)
             .where(product.publicId.eq(publicId))
+            .fetchOne()
+
+    override fun findVisibleRefByPublicId(publicId: String): ProductRefView? =
+        visibleProductQuery(
+            queryFactory,
+            Projections.constructor(ProductRefView::class.java, product.id, product.publicId, product.sellerId, product.name),
+        ).where(product.publicId.eq(publicId))
             .fetchOne()
 
     /**
