@@ -3,12 +3,14 @@ package com.aechak.api.security
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.common.error.CommonErrorCode
+import com.aechak.domain.product.error.ProductErrorCode
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserStatus
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
@@ -17,10 +19,12 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delet
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.net.URI
 import java.time.LocalDateTime
 
 /**
@@ -189,6 +193,51 @@ class SanctionedAccountGateIntegrationTest : IntegrationTestBase() {
                     .content("{}"),
             ).andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
+    }
+
+    /**
+     * 게이트는 거부 목록이라 "패턴에 안 걸리면 통과"다 — 그래서 라우팅이 보는 경로와 같은 경로를 봐야 한다.
+     * MVC는 세그먼트를 디코딩해 핸들러를 찾으므로 `%69nquiries`도 `inquiries`로 라우팅된다.
+     * 원문 URI를 문자열로 비교하던 판정은 이 요청을 놓쳐 제재가 우회됐다.
+     */
+    @Test
+    fun `이용 제한 계정은 경로를 퍼센트 인코딩해도 상품 문의 등록이 막힌다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        mockMvc
+            .perform(
+                bearer(
+                    request(HttpMethod.POST, URI.create("/api/v1/products/01J0000000000000000000PROD/%69nquiries")),
+                    mintAccessToken(userId),
+                ).contentType(MediaType.APPLICATION_JSON)
+                    .content("{}"),
+            ).andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.ACCOUNT_RESTRICTED.code))
+    }
+
+    /** 중간 세그먼트만의 문제가 아니다 — 첫 세그먼트를 인코딩한 리뷰 작성도 같은 구멍이었다. */
+    @Test
+    fun `이용 제한 계정은 경로를 퍼센트 인코딩해도 리뷰 작성이 막힌다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        mockMvc
+            .perform(
+                bearer(request(HttpMethod.POST, URI.create("/api/v1/%72eviews")), mintAccessToken(userId))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{}"),
+            ).andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.ACCOUNT_RESTRICTED.code))
+    }
+
+    /** 과차단 방지 — 상품 하위의 다른 쓰기(찜)는 커뮤니티성 제재 대상이 아니라 통과해야 한다. */
+    @Test
+    fun `이용 제한 계정의 상품 찜은 막지 않는다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        mockMvc
+            .perform(bearer(post("/api/v1/products/01J0000000000000000000PROD/like"), mintAccessToken(userId)))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(ProductErrorCode.PRODUCT_NOT_FOUND.code))
     }
 
     /** 제한은 쓰기만 막는다 — 제한 계정도 상품 문의 목록은 읽어야 한다. */
