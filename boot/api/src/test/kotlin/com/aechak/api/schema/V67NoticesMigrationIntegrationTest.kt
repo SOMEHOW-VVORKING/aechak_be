@@ -19,7 +19,7 @@ import java.util.UUID
 import javax.sql.DataSource
 
 /**
- * V64(공지 테이블)의 안전성 검증.
+ * V67(공지 테이블)의 안전성 검증.
  * 깨지면 "dev에 적용하면 공지 스키마가 엔티티와 갈린다" 또는 "재실행이 스키마를 바꾼다"는 뜻이다.
  *
  * 두 스키마를 대조한다.
@@ -41,7 +41,7 @@ import javax.sql.DataSource
 )
 @Import(IntegrationTestConfig::class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class V64NoticesMigrationIntegrationTest {
+class V67NoticesMigrationIntegrationTest {
     @Autowired
     private lateinit var dataSource: DataSource
 
@@ -50,10 +50,10 @@ class V64NoticesMigrationIntegrationTest {
 
     @BeforeAll
     fun prepareSchemas() {
-        freshUrl = recreateDatabase("v64_fresh")
+        freshUrl = recreateDatabase("v67_fresh")
         flyway(freshUrl).migrate()
 
-        entityUrl = recreateDatabase("v64_entity")
+        entityUrl = recreateDatabase("v67_entity")
         execute(entityUrl, entityStatementsOf(NOTICES_TABLE))
     }
 
@@ -61,7 +61,7 @@ class V64NoticesMigrationIntegrationTest {
     fun `빈 DB에 Flyway 전체 적용이 성공하고 공지 테이블이 생긴다`() {
         val applied = query(freshUrl, "SELECT version FROM flyway_schema_history WHERE success = 1") { it.getString(1) }
 
-        assertThat(applied).describedAs("성공으로 기록된 버전").contains("64")
+        assertThat(applied).describedAs("성공으로 기록된 버전").contains("67")
         assertThat(tableExists(freshUrl, NOTICES_TABLE)).describedAs("$NOTICES_TABLE 존재").isTrue()
     }
 
@@ -83,7 +83,7 @@ class V64NoticesMigrationIntegrationTest {
     }
 
     @Test
-    fun `V64를 다시 실행해도 스키마가 그대로다`() {
+    fun `V67을 다시 실행해도 스키마가 그대로다`() {
         val before = columnsOf(freshUrl, NOTICES_TABLE) to indexesOf(freshUrl, NOTICES_TABLE)
 
         execute(freshUrl, statementsOf(migrationSql()))
@@ -271,7 +271,7 @@ class V64NoticesMigrationIntegrationTest {
     )
 
     companion object {
-        private const val MIGRATION_NAME = "V64__create_notices.sql"
+        private const val MIGRATION_NAME = "V67__create_notices.sql"
         private const val NOTICES_TABLE = "notices"
         private const val DUPLICATE_PUBLIC_ID = "01DUPLICATE000000000000001"
         private const val LONG_BODY_PUBLIC_ID = "01LONGBODY0000000000000001"
@@ -289,7 +289,7 @@ class V64NoticesMigrationIntegrationTest {
          * 이번 실행이 DDL을 쓰지 못했는데도 지난 실행의 파일로 비교가 통과한다.
          */
         private val ENTITY_SCHEMA_SCRIPT: File =
-            File("build/v64-entity-schema-${UUID.randomUUID()}.sql").also {
+            File("build/v67-entity-schema-${UUID.randomUUID()}.sql").also {
                 it.parentFile.mkdirs()
                 it.delete()
                 it.deleteOnExit()

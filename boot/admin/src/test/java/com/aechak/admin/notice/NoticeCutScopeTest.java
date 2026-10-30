@@ -18,11 +18,11 @@ import org.junit.jupiter.api.Test;
  *
  * <p>마이그레이션과 엔티티의 실제 스키마 정합은 여기서 보지 않는다 — 파일 텍스트를 훑는 검사는
  * 타입·길이·nullable·인덱스 구성을 못 본다. 그 대조는 실 MySQL에 두 스키마를 만들어 비교하는
- * {@code boot/api/src/test/.../schema/V64NoticesMigrationIntegrationTest}가 한다.
+ * {@code boot/api/src/test/.../schema/V67NoticesMigrationIntegrationTest}가 한다.
  */
 class NoticeCutScopeTest {
 
-    private static final String MIGRATION = "V64__create_notices.sql";
+    private static final String MIGRATION = "V67__create_notices.sql";
 
     @Test
     void 마이그레이션은_발송과_예약_게시_컬럼을_두지_않는다() {
