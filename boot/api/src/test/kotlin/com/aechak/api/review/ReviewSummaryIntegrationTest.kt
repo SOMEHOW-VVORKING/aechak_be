@@ -207,6 +207,38 @@ class ReviewSummaryIntegrationTest : KafkaIntegrationTestBase() {
             .hasSize(1)
     }
 
+    @Test
+    fun `추출에 실패했던 리뷰가 다음 요청에서 추출되고 서술만 실패하면 쉬는 시간 뒤 상품 전체 요약을 다시 요청한다`() {
+        val product = persistProduct("늦게 추출된 리뷰")
+        val reviewIds = persistReviews(product.id, publicCount = 11)
+        val lateReviewId = reviewIds.last()
+        reviewSummaryRequestUseCase.requestSummaryIfStale(product.id, LocalDateTime.now())
+        val lateReviewFailed =
+            resultOf(product.id, requestIdOf(product.id), reviewIds.dropLast(1)).let { result ->
+                result.copy(
+                    extracted =
+                        result.extracted +
+                            ReviewSummaryMessage.ExtractedReview(
+                                extracted = ReviewSummaryMessage.ExtractStatus.UNEXTRACTED,
+                                reviewId = lateReviewId,
+                                aspects = emptyList(),
+                                excludeReason = null,
+                            ),
+                )
+            }
+        reviewSummaryUseCase.applyResult(ApplyReviewSummaryResultCommand(lateReviewFailed))
+        reviewSummaryRequestUseCase.requestSummaryIfStale(product.id, LocalDateTime.now())
+        val narrationFailed =
+            resultOf(product.id, requestIdOf(product.id), listOf(lateReviewId)).let { result ->
+                result.copy(summaries = result.summaries.map { it.copy(pros = emptyList(), narrateFailure = "timeout") })
+            }
+        reviewSummaryUseCase.applyResult(ApplyReviewSummaryResultCommand(narrationFailed))
+
+        assertThat(reviewSummaryRequestUseCase.requestSummaryIfStale(product.id, LocalDateTime.now().plusHours(7)))
+            .`as`("남아 있는 요약은 늦게 추출된 리뷰를 빼고 쓴 것이다")
+            .isTrue()
+    }
+
     // ---------- 픽스처 ----------
 
     private fun persistProduct(name: String): Product =

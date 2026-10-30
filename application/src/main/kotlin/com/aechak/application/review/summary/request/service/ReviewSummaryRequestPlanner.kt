@@ -85,6 +85,20 @@ object ReviewSummaryRequestPlanner {
         settledReviewCount: Int,
     ): String = "$reviewCount:$reviewIdSum:$reviewIdXor:$settledReviewCount"
 
+    /** 지문의 확정 수를 settledReviewCount 이하로 낮춤 */
+    fun capSettledReviewCount(
+        signature: String,
+        settledReviewCount: Int,
+    ): String {
+        val (reviewCount, reviewIdSum, reviewIdXor, expectedSettledCount) = signature.split(":")
+        return signatureOf(
+            reviewCount.toInt(),
+            reviewIdSum.toLong(),
+            reviewIdXor.toLong(),
+            minOf(expectedSettledCount.toInt(), settledReviewCount),
+        )
+    }
+
     private fun signatureOf(reviews: List<SummaryReviewStateView>): String =
         signatureOf(reviews.size, reviews.sumOf { it.reviewId }, xorOf(reviews), reviews.count { it.settled })
 

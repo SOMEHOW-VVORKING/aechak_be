@@ -2,6 +2,7 @@ package com.aechak.application.review.summary.facade
 
 import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.review.summary.port.ReviewSummarySourceQueryPort
+import com.aechak.application.review.summary.request.service.ReviewSummaryRequestPlanner
 import com.aechak.application.review.summary.usecase.ReviewSummaryUseCase
 import com.aechak.application.review.summary.usecase.command.ApplyReviewSummaryResultCommand
 import com.aechak.application.review.summary.usecase.result.ProductReviewSummaryResult
@@ -43,10 +44,14 @@ class ReviewSummaryFacade(
     @Transactional
     override fun applyResult(command: ApplyReviewSummaryResultCommand): Boolean {
         val message = command.message
-        saveExtractions(message)
+        val reviewStatesBeforeResult = reviewSummarySourceQueryPort.findVisibleReviewStates(message.productId)
+        val extractionByReviewId = saveExtractions(message).associateBy { it.reviewId }
 
         val request = reviewSummaryRequestRepository.findByProductId(message.productId)
         if (request == null || !request.isLatest(message.requestId)) return false
+        // 상품 전체 범위의 기대 지문은 보낸 리뷰가 모두 확정된다고 보고 만든 값이라, 결과를 못 받은 리뷰만큼 확정 수를 낮춤.
+        // 그대로 두면 그 리뷰가 나중에 추출되고 서술만 실패했을 때 그 리뷰가 빠진 요약이 최신으로 남음
+        val settledReviewCount = reviewStatesBeforeResult.count { extractionByReviewId[it.reviewId]?.isSettled() ?: it.settled }
 
         val now = LocalDateTime.now()
         if (message.state == ReviewSummaryMessage.State.FAILED) {
@@ -65,11 +70,17 @@ class ReviewSummaryFacade(
                 return@forEach
             }
             val expectedSignature = request.findExpectedSignature(scopeKey) ?: return@forEach
+            val basisSignature =
+                if (scopeKey == ReviewSummary.PRODUCT_SCOPE_KEY) {
+                    ReviewSummaryRequestPlanner.capSettledReviewCount(expectedSignature, settledReviewCount)
+                } else {
+                    expectedSignature
+                }
             val summary =
                 reviewSummaryRepository.findByProductIdAndScopeKey(message.productId, scopeKey)
                     ?: ReviewSummary.create(message.productId, scopeKey)
             summary.refresh(
-                basisSignature = expectedSignature,
+                basisSignature = basisSignature,
                 analyzedReviewCount = scopeSummary.analyzedReviewCount,
                 enoughReviews = scopeSummary.notEnoughReason == null && scopeSummary.consAbsenceReason != NOT_ENOUGH_REVIEWS,
                 consAbsenceReason = scopeSummary.consAbsenceReason,
@@ -122,7 +133,7 @@ class ReviewSummaryFacade(
         )
     }
 
-    private fun saveExtractions(message: ReviewSummaryMessage) {
+    private fun saveExtractions(message: ReviewSummaryMessage): List<ReviewAspectExtraction> {
         val ownReviewIds =
             reviewSummarySourceQueryPort.findReviewIdsOfProduct(message.productId, message.extracted.map { it.reviewId })
         val extractionByReviewId = reviewAspectExtractionRepository.findAllByReviewIds(ownReviewIds).associateBy { it.reviewId }
@@ -148,6 +159,7 @@ class ReviewSummaryFacade(
                 extraction
             }
         reviewAspectExtractionRepository.saveAll(extractions)
+        return extractions
     }
 
     private fun scopeKeyOf(scopeSummary: ReviewSummaryMessage.ScopeSummary): String? =
