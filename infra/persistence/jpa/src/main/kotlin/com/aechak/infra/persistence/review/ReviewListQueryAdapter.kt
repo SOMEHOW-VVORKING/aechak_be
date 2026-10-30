@@ -5,7 +5,9 @@ import com.aechak.application.review.port.ReviewListQueryPort
 import com.aechak.application.review.port.ReviewListSort
 import com.aechak.application.review.port.view.RatingBucketView
 import com.aechak.application.review.port.view.ReviewImageView
+import com.aechak.application.review.port.view.ReviewReplyView
 import com.aechak.application.review.port.view.ReviewView
+import com.aechak.domain.review.reply.QReviewReply
 import com.aechak.domain.review.review.QReview
 import com.aechak.domain.review.review.QReviewImage
 import com.aechak.domain.review.review.enums.ReviewStatus
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Repository
 
 private val review = QReview.review
 private val reviewImage = QReviewImage.reviewImage
+private val reviewReply = QReviewReply.reviewReply
 
 private val VISIBLE_STATUSES: List<ReviewStatus> = ReviewStatus.entries.filter { it.isVisible() }
 
@@ -62,6 +65,23 @@ class ReviewListQueryAdapter(
             .join(review._images, reviewImage)
             .where(review.id.`in`(reviewIds), reviewImage.deletedAt.isNull)
             .orderBy(review.id.asc(), reviewImage.sortOrder.asc(), reviewImage.id.asc())
+            .fetch()
+    }
+
+    override fun findRepliesByReviewIds(reviewIds: Collection<Long>): List<ReviewReplyView> {
+        if (reviewIds.isEmpty()) return emptyList()
+        return queryFactory
+            .select(
+                Projections.constructor(
+                    ReviewReplyView::class.java,
+                    reviewReply.id,
+                    reviewReply.reviewId,
+                    reviewReply.content,
+                    reviewReply.createdAt,
+                    reviewReply.updatedAt,
+                ),
+            ).from(reviewReply)
+            .where(reviewReply.reviewId.`in`(reviewIds))
             .fetch()
     }
 
