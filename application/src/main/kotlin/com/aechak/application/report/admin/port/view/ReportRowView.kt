@@ -21,9 +21,11 @@ data class ReportRowView(
     val targetName: String?,
     /** 대상 소유자 — 상품은 셀러, 리뷰는 작성자, 사용자는 본인 */
     val targetOwnerUserId: Long,
-    /** 대상이 이미 구매자에게 안 보이는지 (상품: 검수 미승인, 리뷰: 비노출·삭제). 사용자는 항상 false */
-    val targetAlreadyHidden: Boolean,
-    /** 내려진 결정. 없으면 아직 미처리(RECEIVED) */
+    /**
+     * 내려진 결정. 없으면 아직 미처리(RECEIVED)
+     *
+     * 대상의 현재 노출 여부는 여기 담지 않는다 — 조치 판정은 `ReportReviewVisibilityPort` 의 잠금 조회로 한다.
+     */
     val decision: ReportDecisionType?,
     val decisionReasonCode: ReportDecisionReason?,
     val decidedAt: LocalDateTime?,

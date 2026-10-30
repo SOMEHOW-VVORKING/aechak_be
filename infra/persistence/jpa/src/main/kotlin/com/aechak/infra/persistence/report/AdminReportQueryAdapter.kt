@@ -6,7 +6,6 @@ import com.aechak.application.report.admin.port.ReportStatusCondition
 import com.aechak.application.report.admin.port.view.ReportRowView
 import com.aechak.application.report.admin.port.view.ReportTargetCountView
 import com.aechak.domain.product.product.QProduct
-import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.report.QProductReport
 import com.aechak.domain.report.decision.QReportDecision
 import com.aechak.domain.report.decision.enums.ReportDecisionType
@@ -141,7 +140,6 @@ class AdminReportQueryAdapter(
                         product.publicId,
                         product.name,
                         product.sellerId,
-                        product.inspectionStatus,
                         decision.decision,
                         decision.reasonCode,
                         decision.createdAt,
@@ -162,7 +160,6 @@ class AdminReportQueryAdapter(
                         review.id,
                         review.content,
                         review.authorUserId,
-                        review.reviewStatus,
                         decision.decision,
                         decision.reasonCode,
                         decision.createdAt,
@@ -209,7 +206,6 @@ class AdminReportQueryAdapter(
                     targetKey = tuple.get(product.publicId)!!,
                     targetName = tuple.get(product.name),
                     targetOwnerUserId = tuple.get(product.sellerId)!!,
-                    targetAlreadyHidden = tuple.get(product.inspectionStatus) != InspectionStatus.APPROVED,
                     decision = tuple.get(decision.decision),
                     decisionReasonCode = tuple.get(decision.reasonCode),
                     decidedAt = tuple.get(decision.createdAt),
@@ -229,8 +225,6 @@ class AdminReportQueryAdapter(
                     targetKey = tuple.get(review.id)!!.toString(),
                     targetName = tuple.get(review.content),
                     targetOwnerUserId = tuple.get(review.authorUserId)!!,
-                    // 노출 중(PUBLIC·MASKED)이 아니면 이미 가려진 것으로 본다
-                    targetAlreadyHidden = tuple.get(review.reviewStatus)?.isVisible() != true,
                     decision = tuple.get(decision.decision),
                     decisionReasonCode = tuple.get(decision.reasonCode),
                     decidedAt = tuple.get(decision.createdAt),
@@ -251,7 +245,6 @@ class AdminReportQueryAdapter(
                     // 사용자의 표시 이름은 user_profiles 에 있어 호출부가 닉네임으로 채운다
                     targetName = null,
                     targetOwnerUserId = tuple.get(targetUser.id)!!,
-                    targetAlreadyHidden = false,
                     decision = tuple.get(decision.decision),
                     decisionReasonCode = tuple.get(decision.reasonCode),
                     decidedAt = tuple.get(decision.createdAt),

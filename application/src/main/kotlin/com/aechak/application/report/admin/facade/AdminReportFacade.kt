@@ -1,5 +1,6 @@
 package com.aechak.application.report.admin.facade
 
+import com.aechak.application.report.admin.port.ReportReviewVisibilityPort
 import com.aechak.application.report.admin.port.view.ReportRowView
 import com.aechak.application.report.admin.service.AdminReportService
 import com.aechak.application.report.admin.support.ReportCursorCodec
@@ -35,12 +36,14 @@ import org.springframework.transaction.annotation.Transactional
  * 비노출·제재는 기존 경로에 위임한다 — 리뷰는 AdminReviewUseCase.blind,
  * 계정은 AdminMemberUseCase.sanction.
  * 결정 기록을 먼저 저장(flush)한 뒤 위임한다.
+ * 비노출 위임 여부는 조치 직전의 잠금 조회(ReportReviewVisibilityPort)로 정한다.
  * 안내 문구는 보관만 한다 — 어드민 보트에 발송 어댑터가 조립되어 있지 않다.
  */
 @Service
 class AdminReportFacade(
     private val adminReportService: AdminReportService,
     private val reportDecisionRepository: ReportDecisionRepository,
+    private val reportReviewVisibilityPort: ReportReviewVisibilityPort,
     private val adminReviewUseCase: AdminReviewUseCase,
     private val adminMemberUseCase: AdminMemberUseCase,
     private val userUseCase: UserUseCase,
@@ -142,29 +145,14 @@ class AdminReportFacade(
         )
     }
 
-    /** 대상 비노출 위임. 이미 가려진 대상은 건너뛴다 — 다시 걸면 409 로 거절돼 처리가 막힌다. */
+    /** 대상 비노출 위임. */
     private fun hideTarget(
         command: DecideReportCommand,
         view: ReportRowView,
     ) {
-        if (view.targetAlreadyHidden) {
-            log.info(
-                "대상이 이미 비노출이라 비노출 위임을 건너뛴다 targetType={} reportId={}",
-                command.targetType,
-                command.reportId,
-            )
-            return
-        }
         when (command.targetType) {
             ReportTargetType.REVIEW -> {
-                adminReviewUseCase.blind(
-                    BlindReviewCommand(
-                        command.adminId,
-                        view.targetId,
-                        toBlindReason(command.reasonCode),
-                        command.reasonDetail,
-                    ),
-                )
+                blindReview(command, view.targetId)
             }
 
             // 비노출 수단이 없는 종류다 — ReportDecision.decide 가 이미 막아 도달하지 않는다
@@ -172,6 +160,36 @@ class AdminReportFacade(
                 throw BusinessException(ReportErrorCode.REPORT_DECISION_NOT_APPLICABLE)
             }
         }
+    }
+
+    /**
+     * 리뷰 비노출. 이미 가려진 리뷰는 건너뛴다 — 다시 걸면 409(110020)로 거절돼 처리가 막힌다.
+     * 건너뛸지는 조회 결과가 아니라 잠금 조회로 읽은 현재 상태로 판정한다.
+     */
+    private fun blindReview(
+        command: DecideReportCommand,
+        reviewId: Long,
+    ) {
+        val alreadyHidden =
+            reportReviewVisibilityPort.lockAndReadHidden(reviewId)
+                // 신고 행이 가리키던 대상이 사라졌다 — 숨겼다고 기록만 남기지 않고 처리를 되돌린다
+                ?: throw BusinessException(ReportErrorCode.REPORT_TARGET_NOT_FOUND)
+        if (alreadyHidden) {
+            log.info(
+                "대상이 이미 비노출이라 비노출 위임을 건너뛴다 targetType={} reportId={}",
+                command.targetType,
+                command.reportId,
+            )
+            return
+        }
+        adminReviewUseCase.blind(
+            BlindReviewCommand(
+                command.adminId,
+                reviewId,
+                toBlindReason(command.reasonCode),
+                command.reasonDetail,
+            ),
+        )
     }
 
     /** 계정 제재 위임. 운영자가 고른 제재 어휘를 변환하지 않고 그대로 넘긴다. */
