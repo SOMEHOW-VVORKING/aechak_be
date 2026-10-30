@@ -278,6 +278,7 @@ boot/admin/src/main/java/com/aechak/admin/
 ├── claim/           # 클레임 조회·개입 컨트롤러 + request/response
 ├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config} · InspectionScanConfig · ClaimAmountScanConfig · AdminReviewScanConfig
 ├── inspection/      # AI 검수 지표 컨트롤러 + response
+├── order/           # 주문 배송 모니터링 컨트롤러 + request/response
 ├── product/         # 상품 검수 큐 컨트롤러 + request/response
 ├── review/          # 리뷰 관리·블라인드 컨트롤러 + request/response
 ├── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
@@ -311,5 +312,14 @@ boot/admin/src/main/java/com/aechak/admin/
   - **온보딩을 마치지 않은 계정에는 되돌아오는 제재(이용 제한·임시 정지)를 걸 수 없다**(409/30023). 상태가 한 축이라 PENDING_ONBOARDING을 덮으면 돌아올 상태를 잃고, 해제·만료가 약관 동의도 프로필도 없는 ACTIVE를 만들어 온보딩 게이트를 우회한다. 영구 정지·탈퇴 처리는 돌아올 상태가 없어 허용한다.
   - 제재 이력은 추가 전용이다. 해제도 UPDATE가 아니라 `action=RELEASE` 행 추가로 남기고, 사유는 자유 문자열이 아니라 고정 어휘(`SanctionReasonCode`) + 상세로 받는다 — 신고 사유와 같은 결정이다.
   - **임시 정지 만료는 조회 시점 판정이다**(`UserStatus.effective`). 저장값(SUSPENDED + `sanction_until`)은 "7일 정지를 걸었다"는 사실 기록으로 남고, 인가 게이트와 어드민 조회가 같은 함수로 유효 상태를 계산한다. 상태를 되돌리는 배치는 두지 않았다 — 판정이 한 곳이면 운영자가 본 상태와 실제 접근 권한이 갈리지 않는다.
+- **주문 배송 모니터링(`/admin/orders`)의 "지연" 기준은 서버가 쥔다.** 목록 행의 지연 신호와 지표 카드의 지연 건수가
+  같은 경계 시각을 받아 판정한다 — 프런트가 날짜를 빼서 세면 두 수치가 다른 기준으로 갈린다. 발송 기한은 셀러센터가 쓰는
+  `order.dispatch.sla-days`를 그대로 읽어 같은 주문을 두 화면이 같게 본다. 셀러가 신고하는 `avgDispatchDays`는 쓰지 않는다 —
+  셀러마다 기준이 갈려 "지연 N건"이 셀러 간 비교 불가가 되고, 영업일을 날짜로 환산할 휴일 달력이 없다.
+  배송 정체(`order.delivery.sla-days`)는 셀러 화면에 없는 어드민 전용 축이다.
+- **셀러 발송 독촉(`POST /admin/orders/{orderId}/dispatch-nudges`)은 기록만 남긴다.** 어드민 모듈은 발송 어댑터(`:ses-client`)를
+  의존하지 않아 `EmailSender` 구현이 조립되지 않는다 — 그래서 응답에 발송을 주장하는 필드를 두지 않는다. 발송을 붙이는 시점에
+  의존·스캔과 응답 계약을 함께 고친다. 같은 주문 반복 독촉은 `order.dispatch.nudge-cooldown-hours` 간격으로 묶고, 주문 행
+  선점 조회로 동시 요청을 직렬화한다(409·50501).
 - DB 마이그레이션은 api 단일 소유 그대로 — admin은 접속만 한다.
 - 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.
