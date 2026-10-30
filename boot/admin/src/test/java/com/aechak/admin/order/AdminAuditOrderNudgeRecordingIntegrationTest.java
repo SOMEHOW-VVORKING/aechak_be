@@ -54,10 +54,10 @@ class AdminAuditOrderNudgeRecordingIntegrationTest extends OrderMonitoringTestBa
 
     @Test
     void 발송_독촉은_메모와_함께_성공_행을_남긴다() throws Exception {
-        var seeded = seedOrder(sellerUserId, "멍멍마켓", OrderStatus.PREPARING, LocalDateTime.now().minusDays(4));
+        var seeded = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.PREPARING, LocalDateTime.now().minusDays(4));
 
-        nudge(seeded.publicId(), "{\"memo\": \"고객 문의가 두 번 들어왔습니다\"}")
-                .andExpect(status().isCreated());
+        nudge(seeded.publicId(), "{\"memo\": \"고객 문의가 두 번 들어왔습니다\"}").andExpect(status().isCreated());
 
         AdminAuditLog row = onlyRow();
         assertThat(row.getActorUserId()).isEqualTo(adminUserId);
@@ -74,7 +74,8 @@ class AdminAuditOrderNudgeRecordingIntegrationTest extends OrderMonitoringTestBa
     /** 메모는 선택이다 — 사유 없이 누른 독촉도 기록으로 남고 사유 칸만 빈다 */
     @Test
     void 메모_없는_독촉도_사유가_빈_성공_행을_남긴다() throws Exception {
-        var seeded = seedOrder(sellerUserId, "멍멍마켓", OrderStatus.PREPARING, LocalDateTime.now().minusDays(4));
+        var seeded = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.PREPARING, LocalDateTime.now().minusDays(4));
 
         nudge(seeded.publicId(), "{}").andExpect(status().isCreated());
 
@@ -84,7 +85,8 @@ class AdminAuditOrderNudgeRecordingIntegrationTest extends OrderMonitoringTestBa
     /** 쿨다운에 막힌 시도도 남는다 — 메모를 조치보다 먼저 올리기 때문에 실패 행에도 사유가 실린다 */
     @Test
     void 쿨다운에_막힌_재독촉도_실패_행을_남긴다() throws Exception {
-        var seeded = seedOrder(sellerUserId, "멍멍마켓", OrderStatus.PREPARING, LocalDateTime.now().minusDays(4));
+        var seeded = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.PREPARING, LocalDateTime.now().minusDays(4));
         nudge(seeded.publicId(), "{\"memo\": \"첫 독촉\"}").andExpect(status().isCreated());
 
         nudge(seeded.publicId(), "{\"memo\": \"두 번째 독촉\"}")
@@ -115,7 +117,8 @@ class AdminAuditOrderNudgeRecordingIntegrationTest extends OrderMonitoringTestBa
 
     @Test
     void 주문_조회는_행을_남기지_않는다() throws Exception {
-        var seeded = seedOrder(sellerUserId, "멍멍마켓", OrderStatus.PREPARING, LocalDateTime.now().minusDays(4));
+        var seeded = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.PREPARING, LocalDateTime.now().minusDays(4));
 
         tracedMockMvc.perform(bearer(get(BASE))).andExpect(status().isOk());
         tracedMockMvc.perform(bearer(get(BASE + "/" + seeded.publicId()))).andExpect(status().isOk());

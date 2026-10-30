@@ -76,7 +76,9 @@ public class AdminOrderMonitoringController {
             @AuthenticationPrincipal AuthPrincipal principal) {
         // 메모는 요청 본문에만 있다. 조치보다 먼저 올려 둬야 쿨다운에 막힌 시도의 행에도 남는다.
         AdminAuditContextHolder.INSTANCE.reason(
-                request.memo() == null || request.memo().isBlank() ? null : request.memo().strip());
+                request.memo() == null || request.memo().isBlank()
+                        ? null
+                        : request.memo().strip());
         AdminOrderDispatchNudgeResponse response = AdminOrderDispatchNudgeResponse.from(
                 adminOrderMonitoringUseCase.nudgeDispatch(request.toCommand(principal.getUserId(), orderId)));
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.Companion.of(response));
