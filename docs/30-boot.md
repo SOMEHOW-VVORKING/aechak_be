@@ -34,7 +34,9 @@ JWT에 상태를 박지 않고 매 요청 `users.status`를 프로젝션 조회�
 | SUSPENDED · BANNED · WITHDRAWN · 유저 없음 | 403(20005) |
 
 - **유효 상태**는 저장값이 아니다 — 기간이 지난 임시 정지는 ACTIVE로 본다(`UserStatus.effective`). 이 판정은 `UserStatusReader` 포트가 책임지므로 호출부(필터·토큰 회전)가 반복하지 않는다.
-- RESTRICTED의 제한 경로는 api의 `restrictedWritePathPatterns` — 리뷰·SNS·문의(앱 서비스 문의와 상품 문의) 등 커뮤니티성 쓰기다. 주문·결제는 넣지 않는다: 이용 제한은 거래를 끊는 제재가 아니고, 거래를 끊어야 하는 제재는 임시/영구 정지다. **접두가 아니라 Ant 패턴인 이유**는 상품 문의 등록이 `/products/{id}/inquiries`로 가변 세그먼트를 중간에 끼고 있어 접두로 표현되지 않기 때문이다 — 커뮤니티성 쓰기를 새로 열면 이 목록에 함께 넣는다(빠지면 게이트가 조용히 통과한다).
+- RESTRICTED의 제한 경로는 api의 `restrictedWritePathPatterns` — 리뷰·SNS·문의(앱 서비스 문의와 상품 문의) 등 커뮤니티성 쓰기다. 주문·결제는 넣지 않는다: 이용 제한은 거래를 끊는 제재가 아니고, 거래를 끊어야 하는 제재는 임시/영구 정지다. 커뮤니티성 쓰기를 새로 열면 이 목록에 함께 넣는다(빠지면 게이트가 조용히 통과한다).
+- **이 목록은 거부 목록이라 판정이 라우팅과 같은 경로를 봐야 한다.** 그래서 접두 문자열·AntPathMatcher가 아니라 `PathPattern`(MVC 매핑과 같은 판정)으로 견준다. 이유 둘 — ① 상품 문의 등록이 `/products/{id}/inquiries`로 가변 세그먼트를 중간에 끼고 있어 접두로 표현되지 않는다. ② MVC는 경로 세그먼트를 **디코딩해** 핸들러를 찾으므로 `/products/{id}/%69nquiries`도 문의 등록으로 라우팅되는데, 원문 `requestURI`를 문자열로 견주면 걸리지 않아 제재가 우회됐다(`SanctionedAccountGateIntegrationTest`가 인코딩 요청까지 고정한다). 허용 목록인 `onboardingAllowedPaths`는 어긋나면 막는 쪽으로 실패하므로 원문 비교로 둔다.
+- **셀러센터·어드민은 제한 경로가 비어 있다**(두 보트의 `UserStatusFilter`에 `emptySet()`). 의도된 정책이다 — 셀러의 문의 답변·리뷰 답글은 응대이고, 응대에는 답변 기한과 지표가 걸려 있다. 구매자로서의 커뮤니티 제재(RESTRICTED)로 응대를 끊으면 기다리는 구매자가 손해를 보고 셀러는 자기 잘못이 아닌 기한을 넘긴다. 셀러의 공개 글을 끊어야 하는 제재는 임시/영구 정지(SUSPENDED·BANNED)이고 그것은 모든 보트에서 403(20005)으로 전면 차단된다.
 - 게이트는 필터 하나가 아니다. 소셜 로그인(`SocialLoginService`)과 refresh 회전(`TokenService`)도 같은 상태를 보고 SUSPENDED·BANNED·WITHDRAWN을 끊는다 — 필터만 막으면 토큰 수명이 연장된다.
 
 ## 2. Controller 규칙
@@ -206,7 +208,8 @@ class OrderMessageConsumer(private val someUseCase: SomeUseCase) {
   `application.order.seller` 에 두면 batch의 제외 필터에 걸려 배치가 쓸 수 없고, 복제해 두면 전이 순서·이력 기록이 갈린다.
 - **Flyway 미탑재**: 스키마 관리는 api가 유일 소유자. seller 단독 배포 시 새 마이그레이션은 api 선배포가 전제.
 - 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(web-security JwtConfig 공유, 같은 키 주입).
-- 온보딩 허용 경로 없음 — 셀러센터 전 EP가 ACTIVE 전용(UserStatusFilter 화이트리스트 empty).
+- 온보딩 허용 경로 없음 — 온보딩 미완(PENDING_ONBOARDING) 계정은 셀러센터 전 EP에서 403(UserStatusFilter 화이트리스트 empty).
+  제한 경로도 비어 있어 RESTRICTED는 셀러센터를 통과한다 — 의도된 정책이고 근거는 §1-1에 적었다.
 - 배포: ECS 서비스 `aechak-seller-api-dev` + ALB host 규칙(`seller-api-<env>` 도메인). JWT는 공개키만 주입한 검증 전용 모드 — 발급은 api 소관.
 
 ## 6. batch
