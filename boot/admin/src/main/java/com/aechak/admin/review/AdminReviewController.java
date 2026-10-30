@@ -13,6 +13,7 @@ import com.aechak.webcommon.response.ApiResponse;
 import com.aechak.websecurity.authentication.AuthPrincipal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -39,7 +40,7 @@ public class AdminReviewController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<AdminReviewListResponse>> list(
-            @Valid @ModelAttribute AdminReviewSearchRequest request) {
+            @Valid @ModelAttribute @ParameterObject AdminReviewSearchRequest request) {
         return ResponseEntity.ok(
                 ApiResponse.Companion.of(AdminReviewListResponse.from(adminReviewUseCase.list(request.toQuery()))));
     }

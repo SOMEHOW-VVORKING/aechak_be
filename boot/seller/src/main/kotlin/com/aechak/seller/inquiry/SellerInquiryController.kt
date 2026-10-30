@@ -8,6 +8,7 @@ import com.aechak.seller.inquiry.response.SellerInquiryListResponse
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -28,7 +29,7 @@ class SellerInquiryController(
 ) {
     @GetMapping
     fun search(
-        @Valid @ModelAttribute request: SellerInquirySearchRequest,
+        @Valid @ModelAttribute @ParameterObject request: SellerInquirySearchRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SellerInquiryListResponse>> =
         ResponseEntity.ok(

@@ -140,7 +140,7 @@ boot가 domain을 참조하게 된다.** `application`이 domain을 `api`로 걸
 문서는 springdoc이 **자기 ObjectMapper로** 만들고 응답은 컨테이너의 ObjectMapper가 만든다. 둘은 같은
 매퍼가 아니다 — 컨테이너 쪽에는 jackson-module-kotlin이 붙어 있고 문서 쪽에는 붙지 않는다. 또 문서
 생성기는 핸들러 본문을 읽지 못하므로 애노테이션이 없으면 성공 코드를 200으로 가정한다. 그래서 아래
-다섯은 코드만 읽어서는 어긋난 것이 보이지 않고, 문서를 믿는 클라이언트에서만 터진다.
+일곱은 코드만 읽어서는 어긋난 것이 보이지 않고, 문서를 믿는 클라이언트에서만 터진다.
 
 | 상황 | 두는 것 |
 | --- | --- |
@@ -148,6 +148,8 @@ boot가 domain을 참조하게 된다.** `application`이 domain을 `api`로 걸
 | 한 실행 모듈 안에서 단순 이름이 겹치는 DTO(중첩 클래스 포함) | 한쪽에 `@Schema(name = "...")`. 문서는 단순 이름으로 스키마를 등록해서 겹치면 한 벌만 남고 나머지가 사라진다 |
 | 요청이 스스로를 검사하는 계산 프로퍼티(`@get:AssertTrue`) | `@get:Schema(hidden = true)`. 클라이언트가 채워 보낼 값이 아니다 |
 | 상태·종류를 내리는 필드 | 문자열 대신 **enum 타입 그대로** 선언한다(`.name` 변환을 두지 않는다). 와이어 어휘가 enum 이름이 아니면(화면용 소문자 세그먼트 등) `@field:Schema(allowableValues = [...])`로 못박고, 그 목록이 서버가 실제로 받는 값과 같은지는 계약 테스트가 지킨다 |
+| 쿼리 파라미터를 객체로 묶어 받는 핸들러(`@ModelAttribute`) | 파라미터에 `@ParameterObject`. 없으면 문서에는 필수 객체 파라미터 `request` 하나만 적히고 개별 쿼리 이름과 허용값이 사라진다 |
+| 기본값이나 널 허용으로 받고 생략하면 서버가 직접 거절하는 쿼리 파라미터 | `@field:Schema(requiredMode = Schema.RequiredMode.REQUIRED)`. 생성기는 본문의 판정을 읽지 못해 선택으로 적는다 |
 
 `lastTrackingStatus`처럼 외부(택배사)가 준 자유 문자열은 허용값이 없다 — 억지로 enum을 만들지 말고
 `@field:Schema(description = ...)`로 자유 문자열임을 적는다.
@@ -161,7 +163,8 @@ boot가 domain을 참조하게 된다.** `application`이 domain을 `api`로 걸
 
 구매자·셀러 실행 모듈의 계약 테스트(`OpenApiContractIntegrationTest`)가 `/v3/api-docs`를 받아 그 보트의
 요청·응답 DTO와 핸들러를 전수로 검사하고, 받은 스펙을 `build/openapi/`에 남긴다 — 문서를 다시 보려고 앱을
-따로 띄울 필요가 없다. 어드민에는 아직 이 테스트가 없어 위 규칙을 사람이 지켜야 한다.
+따로 띄울 필요가 없다. 어드민 계약 테스트(`AdminOpenApiContractIntegrationTest`)는 쿼리 파라미터가 접히거나
+빠지는지만 보므로, 나머지 규칙은 어드민에서 사람이 지켜야 한다.
 
 성공 코드 검사가 보는 것은 "핸들러가 선언한 코드와 문서가 같은지"다. 선언이 핸들러가 실제로 세우는 코드와
 같은지는 본문을 읽어야 알 수 있어, 그쪽은 통합 테스트의 상태코드 단언이 지킨다.

@@ -1,5 +1,6 @@
 package com.aechak.api.config
 
+import com.aechak.api.support.HandlerQueryObjects
 import com.aechak.api.support.HandlerStatuses
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.api.support.OpenApiDocContract
@@ -89,8 +90,39 @@ class OpenApiContractIntegrationTest : IntegrationTestBase() {
     @Test
     fun `상태 필드에 허용값이 붙어 있다`() {
         val missing = OpenApiDocContract.statusPropertiesWithoutAllowedValues(spec.schemas, FREE_FORM_STATUS_PROPERTIES)
+        val missingInQuery = OpenApiDocContract.statusPropertiesWithoutAllowedValues(spec.queryParameters, FREE_FORM_STATUS_PROPERTIES)
 
         assertTrue(missing.isEmpty(), "허용값 없이 문자열로만 나가는 상태 필드가 있다: $missing")
+        assertTrue(missingInQuery.isEmpty(), "허용값 없이 문자열로만 나가는 상태 쿼리 파라미터가 있다: $missingInQuery")
+    }
+
+    @Test
+    fun `쿼리 파라미터가 요청 객체 하나로 접히지 않고 이름마다 문서에 적힌다`() {
+        assertTrue(
+            spec.collapsedQueryParameters.isEmpty(),
+            "쿼리 파라미터가 객체 스키마 하나로 접혀 프런트가 개별 이름을 읽지 못하는 자리가 있다: ${spec.collapsedQueryParameters}",
+        )
+    }
+
+    @Test
+    fun `쿼리 객체가 바인딩하는 이름이 빠짐없이 그 경로의 쿼리 파라미터로 문서에 적힌다`() {
+        val undocumented =
+            OpenApiDocContract.undocumentedQueryObjectFields(HandlerQueryObjects.of(context, BASE_PACKAGE), spec.queryParameters)
+
+        assertTrue(undocumented.isEmpty(), "서버는 받는데 문서에 없는 쿼리 파라미터가 있다: $undocumented")
+    }
+
+    /** 둘 다 기본값이나 널 허용으로 받아 서버가 직접 거절하므로 문서 생성기가 필수인 줄 모른다. */
+    @Test
+    fun `생략하면 서버가 400으로 거절하는 쿼리 파라미터는 문서에도 필수로 적힌다`() {
+        assertTrue(
+            "keyword" in spec.requiredQueryParameters["GET /api/v1/search/products"].orEmpty(),
+            "검색어를 생략하면 400인데 문서는 선택으로 적고 있다",
+        )
+        assertTrue(
+            "tab" in spec.requiredQueryParameters["GET /api/v1/users/me/reviews"].orEmpty(),
+            "내 리뷰 탭을 생략하면 400인데 문서는 선택으로 적고 있다",
+        )
     }
 
     @Test
@@ -132,7 +164,7 @@ class OpenApiContractIntegrationTest : IntegrationTestBase() {
     fun `주문 목록 상태 필터의 허용값이 서버가 받는 세그먼트 코드와 같다`() {
         assertEquals(
             OrderStatusFilter.entries.map { it.code }.toSet(),
-            spec.allowedValues("OrderListRequest", "status"),
+            spec.allowedQueryValues("GET /api/v1/order-groups", "status"),
             "문서의 허용값과 서버가 실제로 받는 코드가 다르다",
         )
     }

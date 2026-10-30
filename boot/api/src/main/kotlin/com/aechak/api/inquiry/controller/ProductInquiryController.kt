@@ -11,6 +11,7 @@ import com.aechak.application.inquiry.product.usecase.command.WithdrawProductInq
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -45,7 +46,7 @@ class ProductInquiryController(
     @GetMapping("/products/{productId}/inquiries")
     fun getProductInquiries(
         @PathVariable("productId") productPublicId: String,
-        @Valid @ModelAttribute request: ProductInquiryListRequest,
+        @Valid @ModelAttribute @ParameterObject request: ProductInquiryListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<ProductInquiryListResponse>> =
         ResponseEntity.ok(
@@ -58,7 +59,7 @@ class ProductInquiryController(
 
     @GetMapping("/users/me/product-inquiries")
     fun getMyProductInquiries(
-        @Valid @ModelAttribute request: MyProductInquiryListRequest,
+        @Valid @ModelAttribute @ParameterObject request: MyProductInquiryListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<MyProductInquiryListResponse>> =
         ResponseEntity.ok(

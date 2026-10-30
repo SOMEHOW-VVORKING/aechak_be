@@ -11,6 +11,7 @@ import com.aechak.application.review.usecase.ReviewQueryUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -31,7 +32,7 @@ class ReviewController(
     @GetMapping("/products/{productId}/reviews")
     fun getProductReviews(
         @PathVariable("productId") productPublicId: String,
-        @Valid @ModelAttribute request: ReviewListRequest,
+        @Valid @ModelAttribute @ParameterObject request: ReviewListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<ReviewListResponse>> =
         ResponseEntity.ok(
@@ -44,7 +45,7 @@ class ReviewController(
 
     @GetMapping("/users/me/reviews")
     fun getMyReviews(
-        @Valid @ModelAttribute request: MyReviewListRequest,
+        @Valid @ModelAttribute @ParameterObject request: MyReviewListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<MyReviewListResponse>> =
         ResponseEntity.ok(

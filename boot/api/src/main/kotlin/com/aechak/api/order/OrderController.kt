@@ -9,6 +9,7 @@ import com.aechak.application.order.usecase.command.ConfirmPurchaseCommand
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -26,7 +27,7 @@ class OrderController(
 ) {
     @GetMapping("/order-groups")
     fun getOrderGroups(
-        @Valid @ModelAttribute request: OrderListRequest,
+        @Valid @ModelAttribute @ParameterObject request: OrderListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<OrderListResponse>> =
         ResponseEntity.ok(

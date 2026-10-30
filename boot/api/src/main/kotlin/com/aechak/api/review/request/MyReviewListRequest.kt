@@ -5,9 +5,11 @@ import com.aechak.application.review.usecase.query.MyReviewTab
 import com.aechak.application.support.CursorPageSize
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
+import io.swagger.v3.oas.annotations.media.Schema
 import org.hibernate.validator.constraints.Range
 
 data class MyReviewListRequest(
+    @field:Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     val tab: String? = null,
     val cursor: String? = null,
     @field:Range(

@@ -11,6 +11,7 @@ import com.aechak.seller.order.response.ShipmentRegisterResponse
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -69,7 +70,7 @@ class SellerOrderController(
     /** 내 주문 목록 — 상태 세그먼트·키워드·주문일 범위 필터와 오프셋 페이지네이션 */
     @GetMapping
     fun getMyOrders(
-        @Valid @ModelAttribute request: SellerOrderSearchRequest,
+        @Valid @ModelAttribute @ParameterObject request: SellerOrderSearchRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SellerOrderListResponse>> =
         ResponseEntity.ok(
