@@ -136,6 +136,28 @@ variable "ai_desired_count" {
   default     = 0
 }
 
+# 초안 API는 검수 컨슈머와 같은 이미지를 다른 커맨드로 띄운 별 서비스다. 이미지가 듣는
+# 포트를 PORT 환경변수 하나로 받으므로 taskdef·포트맵이 전부 이 값을 본다.
+variable "ai_draft_port" {
+  description = "AI 셀러 폼 초안 API 컨테이너 포트"
+  type        = number
+  default     = 8200
+}
+
+variable "ai_draft_desired_count" {
+  description = "초안 API 태스크 수. 검수 서비스와 같은 근거로 첫 이미지 뒤 1로 올린다"
+  type        = number
+  default     = 0
+}
+
+# 모델 비용이 나가는 토글이라 기본 꺼짐이다. 이쪽을 먼저 켜고 그다음 seller-api의
+# PRODUCT_DRAFT_AUTOFILL_ENABLED를 켠다 — 반대 순서면 셀러 요청이 503으로 돌아온다.
+variable "ai_draft_enabled" {
+  description = "AI 초안 생성 기능(AECHAK_AI_ENABLE_DRAFT). 켜면 호출마다 모델 비용이 난다"
+  type        = bool
+  default     = false
+}
+
 # 배치 보트의 스케줄 스위치 일곱 개. 기본값은 코드와 같게 전부 false로 둔다 —
 # tfvars에 안 적힌 플래그가 조용히 켜지면 돈이 나가거나 비가역 전이가 일어난다.
 # 켜기 전 전제는 플래그마다 다르다. 아래 주석이 요약이고 정본은

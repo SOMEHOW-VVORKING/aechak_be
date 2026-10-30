@@ -76,8 +76,6 @@ resource "aws_ecr_lifecycle_policy" "admin" {
 
 resource "aws_ecr_repository" "batch" {
   name = "${var.project}-batch" # boot/batch 모듈 배포용 (SCRUM-251)
-resource "aws_ecr_repository" "ai" {
-  name = "${var.project}-ai" # 별 레포(aechak_ai)의 파이썬 검수 서버용
 
   image_scanning_configuration {
     scan_on_push = true
@@ -86,6 +84,29 @@ resource "aws_ecr_repository" "ai" {
 
 resource "aws_ecr_lifecycle_policy" "batch" {
   repository = aws_ecr_repository.batch.name
+
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "keep last 10"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
+      }
+      action = { type = "expire" }
+    }]
+  })
+}
+
+resource "aws_ecr_repository" "ai" {
+  name = "${var.project}-ai" # 별 레포(aechak_ai)의 파이썬 검수 서버용
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
 resource "aws_ecr_lifecycle_policy" "ai" {
   repository = aws_ecr_repository.ai.name
 

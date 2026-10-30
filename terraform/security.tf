@@ -160,3 +160,30 @@ resource "aws_security_group_rule" "kafka_from_ai" {
   source_security_group_id = aws_security_group.ai.id
   description              = "ai inspection service" # AWS가 설명에 ASCII만 허용한다
 }
+
+# 초안 API 전용 SG. 공개 ALB가 아니라 **BE 앱 SG에서만** 받는다 — 그 한 줄이
+# `/internal/seller-draft`(호출마다 모델 비용)를 인터넷에서 떼어 놓는 첫째 겹이고,
+# 공유 비밀 헤더가 둘째 겹이다. 검수 서버 SG와도 분리한다: 저쪽은 ALB에서 받고
+# 카프카에 닿지만 초안은 둘 다 필요 없다.
+resource "aws_security_group" "ai_draft" {
+  name_prefix = "${var.project}-ai-draft-"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = var.ai_draft_port
+    to_port         = var.ai_draft_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+
+  # 외부 모델 API 호출 + ECR·CloudWatch. NAT를 지난다.
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  lifecycle { create_before_destroy = true }
+}
+

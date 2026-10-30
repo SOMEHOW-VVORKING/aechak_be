@@ -363,7 +363,6 @@ resource "aws_cloudwatch_log_group" "batch" {
   name              = "/ecs/${var.project}-batch-${var.env}"
   retention_in_days = 30
 }
-
 resource "aws_ecs_task_definition" "batch" {
   family                   = "${var.project}-batch-${var.env}"
   requires_compatibilities = ["FARGATE"]
@@ -372,6 +371,61 @@ resource "aws_ecs_task_definition" "batch" {
   memory                   = 1024
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
+  }
+
+  container_definitions = jsonencode([{
+    name      = "batch"
+    image     = "${aws_ecr_repository.batch.repository_url}:bootstrap" # 첫 CI 배포가 실제 태그로 교체
+    essential = true
+
+    environment = [
+      { name = "SPRING_PROFILES_ACTIVE", value = var.env },
+      { name = "AWS_REGION", value = var.region },
+    ]
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.batch.name
+        awslogs-region        = var.region
+        awslogs-stream-prefix = "batch"
+      }
+    }
+  }])
+}
+
+resource "aws_ecs_service" "batch" {
+  name            = "${var.project}-batch-${var.env}"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.batch.arn
+  desired_count   = 1 # 고정 1대. 2대 이상이면 같은 스케줄 회차가 동시에 돈다
+  launch_type     = "FARGATE"
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  # 신규 태스크를 띄우기 전에 기존 태스크를 먼저 내린다 — 기본값(100/200)이면 롤링 중 잠시 2대가 겹친다
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 100
+
+  network_configuration {
+    subnets          = [aws_subnet.app_a.id]
+    security_groups  = [aws_security_group.app.id]
+    assign_public_ip = false
+  }
+
+  # 오토스케일링 없음 — desired_count는 TF가 1로 고정 관리
+  lifecycle {
+    ignore_changes = [task_definition] # CI가 새 리비전 등록 — TF가 되돌리지 않게
+  }
+}
+
 # ── AI 검수 서버 (별 레포 aechak_ai) ──────────────────
 # 롤을 자바 세 모듈과 나눈다. 공용 task 롤은 S3 쓰기·삭제와 BE SSM 트리 조회를 들고 있고,
 # 검수 서버는 그 어느 것도 필요하지 않다. 권한을 물려받으면 '판정기는 DB와 버킷을 모른다'가
@@ -405,7 +459,7 @@ resource "aws_iam_role_policy" "ecs_execution_ai_secrets" {
 }
 
 # 런타임 권한이 비어 있는 것이 의도다. 검수 서버는 AWS 리소스를 쓰지 않는다 —
-# 카프카로만 말하고 외부 모델 API만 부른다.
+# 카프카로만 말하고 외부 모델 API만 부른다. 초안 서비스도 같은 롤을 쓴다.
 resource "aws_iam_role" "ecs_task_ai" {
   name               = "${var.project}-ecs-task-ai-${var.env}"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
@@ -431,13 +485,6 @@ resource "aws_ecs_task_definition" "ai" {
   }
 
   container_definitions = jsonencode([{
-    name      = "batch"
-    image     = "${aws_ecr_repository.batch.repository_url}:bootstrap" # 첫 CI 배포가 실제 태그로 교체
-    essential = true
-
-    environment = [
-      { name = "SPRING_PROFILES_ACTIVE", value = var.env },
-      { name = "AWS_REGION", value = var.region },
     name      = "ai"
     image     = "${aws_ecr_repository.ai.repository_url}:bootstrap" # 첫 CI 배포가 실제 태그로 교체
     essential = true
@@ -445,6 +492,9 @@ resource "aws_ecs_task_definition" "ai" {
     portMappings = [{ containerPort = var.ai_app_port, protocol = "tcp" }]
 
     environment = [
+      # 이미지가 PORT 하나로 듣는 포트를 정한다. 포트맵·타겟그룹과 같은 변수에서 뽑아야
+      # 세 자리가 어긋나지 않는다 — 어긋나면 컨테이너는 떠 있는데 헬스체크가 영구 실패한다.
+      { name = "PORT", value = tostring(var.ai_app_port) },
       { name = "AECHAK_AI_KAFKA_BOOTSTRAP_SERVERS", value = "${local.kafka_private_ip}:9092" },
       # 추적이 켜지면 리뷰 본문과 상품 설명이 외부로 송신된다. 이미지 기본값도 false지만
       # 상속으로 켜지는 경로를 막으려고 여기서 한 번 더 못박는다.
@@ -463,9 +513,6 @@ resource "aws_ecs_task_definition" "ai" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        awslogs-group         = aws_cloudwatch_log_group.batch.name
-        awslogs-region        = var.region
-        awslogs-stream-prefix = "batch"
         awslogs-group         = aws_cloudwatch_log_group.ai.name
         awslogs-region        = var.region
         awslogs-stream-prefix = "ai"
@@ -474,11 +521,6 @@ resource "aws_ecs_task_definition" "ai" {
   }])
 }
 
-resource "aws_ecs_service" "batch" {
-  name            = "${var.project}-batch-${var.env}"
-  cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.batch.arn
-  desired_count   = 1 # 고정 1대. 2대 이상이면 같은 스케줄 회차가 동시에 돈다
 resource "aws_ecs_service" "ai" {
   name            = "${var.project}-ai-${var.env}"
   cluster         = aws_ecs_cluster.main.id
@@ -491,17 +533,6 @@ resource "aws_ecs_service" "ai" {
     rollback = true
   }
 
-  # 신규 태스크를 띄우기 전에 기존 태스크를 먼저 내린다 — 기본값(100/200)이면 롤링 중 잠시 2대가 겹친다
-  deployment_minimum_healthy_percent = 0
-  deployment_maximum_percent         = 100
-
-  network_configuration {
-    subnets          = [aws_subnet.app_a.id]
-    security_groups  = [aws_security_group.app.id]
-    assign_public_ip = false
-  }
-
-  # 오토스케일링 없음 — desired_count는 TF가 1로 고정 관리
   network_configuration {
     subnets          = [aws_subnet.app_a.id]
     security_groups  = [aws_security_group.ai.id]
@@ -515,6 +546,138 @@ resource "aws_ecs_service" "ai" {
   }
 
   health_check_grace_period_seconds = 120 # 파이썬이라 자바 모듈(300초)보다 기동이 빠르다
+
+  lifecycle {
+    ignore_changes = [task_definition] # CI가 새 리비전 등록 — TF가 되돌리지 않게
+  }
+}
+
+# ── 셀러 폼 초안 API (SCRUM-330): 같은 이미지, 다른 커맨드 ──────────────────
+# 검수 컨슈머와 **별 ASGI 앱**이다(`app/draft_api/app.py`). 한 서비스로 합칠 수 없는 이유가
+# 레포 쪽에 적혀 있다 — 운영 앱의 라우트 집합은 `/health` 하나로 불변이고, 초안은 셀러가
+# 기다리는 동기 HTTP라서 검수 컨슈머의 폴 간격 예산에 들어가면 리밸런스가 **검수**를
+# 재배달한다. 그래서 같은 이미지에 CMD와 포트만 달리해 서비스를 하나 더 둔다.
+#
+# 공개 ALB에 매달지 않는다. 그쪽 타겟그룹에 붙이면 `/internal/seller-draft`가 인터넷에서
+# 닿고, 그 경로는 호출마다 모델 비용이 난다. 내부 전용 DNS로만 노출하고 공유 비밀 헤더를
+# 둘째 겹으로 둔다(앱이 직접 상수 시간 비교하고, 비밀이 비면 전건 403으로 닫는다).
+resource "aws_service_discovery_private_dns_namespace" "internal" {
+  name        = "${var.project}-${var.env}.internal"
+  vpc         = aws_vpc.main.id
+  description = "VPC 내부 전용 이름. 공개 ALB를 지나지 않는 서비스 간 호출에 쓴다"
+}
+
+# Fargate 태스크는 고정 IP를 가질 수 없어서 카프카(고정 사설 IP)처럼 주소를 박을 수 없다.
+# A 레코드 TTL을 짧게 둬도 JVM이 성공 조회를 30초 캐시하므로, 재배포 직후 최대 그만큼은
+# 옛 IP로 간다 — 그 구간은 seller-api가 state=UNAVAILABLE로 접고 빈 폼을 그대로 둔다.
+resource "aws_service_discovery_service" "ai_draft" {
+  name = "ai-draft"
+
+  dns_config {
+    namespace_id   = aws_service_discovery_private_dns_namespace.internal.id
+    routing_policy = "MULTIVALUE"
+
+    dns_records {
+      type = "A" # awsvpc 태스크 IP를 그대로 등록한다
+      ttl  = 10
+    }
+  }
+
+  # ECS가 태스크 상태로 등록·해제를 관리한다. 컨테이너 헬스체크를 따로 걸지 않아서
+  # uvicorn이 포트를 잡기 전 몇 초는 등록된 채 연결 실패할 수 있고, 그 실패도 위와 같이
+  # UNAVAILABLE로 접힌다 — 초안은 보조 기능이라 등록을 막을 만큼의 값이 아니다.
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}
+
+resource "aws_cloudwatch_log_group" "ai_draft" {
+  name              = "/ecs/${var.project}-ai-draft-${var.env}"
+  retention_in_days = 30
+}
+
+resource "aws_ecs_task_definition" "ai_draft" {
+  family                   = "${var.project}-ai-draft-${var.env}"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = 512 # 검수 컨슈머와 같은 근거 — 모델 응답 대기가 대부분이다
+  memory                   = 1024
+  execution_role_arn       = aws_iam_role.ecs_execution_ai.arn # /ai 트리 단건 조회 권한을 공유
+  task_role_arn            = aws_iam_role.ecs_task_ai.arn      # 런타임 AWS 권한 없음 — 초안도 S3를 받지 않는다
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
+  }
+
+  container_definitions = jsonencode([{
+    name      = "ai-draft"
+    image     = "${aws_ecr_repository.ai.repository_url}:bootstrap" # 검수 컨슈머와 같은 이미지
+    essential = true
+
+    # 이미지 CMD는 검수 컨슈머(app.main:app)다. 모듈 경로만 바꿔 덮는다.
+    # `$PORT`는 HCL 보간이 아니다 — HCL은 `$` 다음에 중괄호가 와야 보간하고, 여기선
+    # 컨테이너 안의 sh가 펼친다.
+    command = ["sh", "-c", "exec uvicorn app.draft_api.app:app --host 0.0.0.0 --port $PORT"]
+
+    portMappings = [{ containerPort = var.ai_draft_port, protocol = "tcp" }]
+
+    environment = [
+      { name = "PORT", value = tostring(var.ai_draft_port) },
+      # 비용 kill switch는 BE가 아니라 돈이 나가는 이쪽에 둔다. 기본 꺼짐이고, 켜는 순서는
+      # 이쪽을 먼저 켠 뒤 seller-api의 PRODUCT_DRAFT_AUTOFILL_ENABLED다.
+      { name = "AECHAK_AI_ENABLE_DRAFT", value = tostring(var.ai_draft_enabled) },
+      { name = "LANGSMITH_TRACING", value = "false" },
+      { name = "LANGCHAIN_TRACING_V2", value = "false" },
+    ]
+
+    # 카프카 주소를 **주지 않는다.** 이 앱의 lifespan이 컨슈머를 아예 만들지 않는 것이
+    # 설계이고, 주소가 없으면 설정 사고로도 컨슈머가 될 수 없다.
+    secrets = [
+      {
+        name      = "AECHAK_AI_ANTHROPIC_API_KEY"
+        valueFrom = "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/ai/AECHAK_AI_ANTHROPIC_API_KEY"
+      },
+      # 비면 앱이 전건 403으로 닫는다. 그래서 미등재 상태로 태스크가 뜨는 것보다
+      # 기동 자체가 실패하는 쪽이 낫다 — secrets 참조가 그 실패를 만든다.
+      {
+        name      = "AECHAK_AI_DRAFT_SHARED_SECRET"
+        valueFrom = "arn:aws:ssm:${var.region}:${data.aws_caller_identity.me.account_id}:parameter/${var.project}/${var.env}/ai/AECHAK_AI_DRAFT_SHARED_SECRET"
+      },
+    ]
+
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.ai_draft.name
+        awslogs-region        = var.region
+        awslogs-stream-prefix = "ai-draft"
+      }
+    }
+  }])
+}
+
+resource "aws_ecs_service" "ai_draft" {
+  name            = "${var.project}-ai-draft-${var.env}"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.ai_draft.arn
+  desired_count   = var.ai_draft_desired_count # 검수 서비스와 같은 근거로 기본 0
+  launch_type     = "FARGATE"
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  network_configuration {
+    subnets          = [aws_subnet.app_a.id]
+    security_groups  = [aws_security_group.ai_draft.id]
+    assign_public_ip = false
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.ai_draft.arn
+  }
 
   lifecycle {
     ignore_changes = [task_definition] # CI가 새 리비전 등록 — TF가 되돌리지 않게
