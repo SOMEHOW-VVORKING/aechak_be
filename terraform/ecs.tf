@@ -363,6 +363,7 @@ resource "aws_cloudwatch_log_group" "batch" {
   name              = "/ecs/${var.project}-batch-${var.env}"
   retention_in_days = 30
 }
+
 resource "aws_ecs_task_definition" "batch" {
   family                   = "${var.project}-batch-${var.env}"
   requires_compatibilities = ["FARGATE"]
@@ -500,6 +501,10 @@ resource "aws_ecs_task_definition" "ai" {
       # 상속으로 켜지는 경로를 막으려고 여기서 한 번 더 못박는다.
       { name = "LANGSMITH_TRACING", value = "false" },
       { name = "LANGCHAIN_TRACING_V2", value = "false" },
+      # 비평 단계를 끈다. 이미지 기본값이 켜짐이라 명시해야 뒤집힌다.
+      { name = "AECHAK_AI_ENABLE_ESCALATION", value = "false" },
+      # 리뷰 요약 러너는 검수 컨슈머와 같은 프로세스에서 돌기 때문에 이 자리가 그 스위치다.
+      { name = "AECHAK_AI_ENABLE_REVIEW_SUMMARY", value = "true" },
     ]
 
     # 값을 terraform이 알 수 없는 것만 secrets로 받는다. 수기 등재가 전제다.
