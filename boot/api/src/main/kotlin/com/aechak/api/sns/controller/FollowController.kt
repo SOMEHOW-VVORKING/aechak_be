@@ -8,6 +8,7 @@ import com.aechak.application.sns.usecase.command.FollowUserCommand
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -48,14 +49,14 @@ class FollowController(
     @GetMapping("/users/{publicId}/followers")
     fun getFollowers(
         @PathVariable publicId: String,
-        @Valid @ModelAttribute request: SnsFollowListRequest,
+        @Valid @ModelAttribute @ParameterObject request: SnsFollowListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SnsUserPageResponse>> = getFollows(publicId, request, principal, SnsFollowDirection.FOLLOWERS)
 
     @GetMapping("/users/{publicId}/followings")
     fun getFollowings(
         @PathVariable publicId: String,
-        @Valid @ModelAttribute request: SnsFollowListRequest,
+        @Valid @ModelAttribute @ParameterObject request: SnsFollowListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SnsUserPageResponse>> = getFollows(publicId, request, principal, SnsFollowDirection.FOLLOWINGS)
 

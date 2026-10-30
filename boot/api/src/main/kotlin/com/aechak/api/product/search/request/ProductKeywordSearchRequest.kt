@@ -18,6 +18,7 @@ import java.math.BigDecimal
 
 /** 키워드 상품 검색 요청 파라미터 */
 data class ProductKeywordSearchRequest(
+    @field:Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     @field:NotBlankUnicode(message = "검색어는 필수입니다.")
     @field:Size(max = ProductKeywordSearchQuery.MAX_LENGTH, message = "검색어가 너무 깁니다.")
     val keyword: String = "",

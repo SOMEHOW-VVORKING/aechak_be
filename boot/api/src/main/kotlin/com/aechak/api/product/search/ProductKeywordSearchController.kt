@@ -6,6 +6,7 @@ import com.aechak.application.product.search.usecase.ProductKeywordSearchUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
@@ -21,7 +22,7 @@ class ProductKeywordSearchController(
 ) {
     @GetMapping("/products")
     fun searchProducts(
-        @Valid @ModelAttribute request: ProductKeywordSearchRequest,
+        @Valid @ModelAttribute @ParameterObject request: ProductKeywordSearchRequest,
         @AuthenticationPrincipal principal: AuthPrincipal?,
     ): ResponseEntity<ApiResponse<ProductListResponse>> {
         val result = productKeywordSearchUseCase.searchProducts(request.toQuery(), principal?.userId)

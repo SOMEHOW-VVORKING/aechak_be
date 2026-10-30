@@ -12,6 +12,7 @@ import com.aechak.webcommon.response.ApiResponse;
 import com.aechak.websecurity.authentication.AuthPrincipal;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -40,7 +41,7 @@ public class AdminOrderMonitoringController {
     /** 전체 주문 목록 — 상태·셀러·기간·지연 필터와 키워드 검색, 커서 페이지네이션. 결제대기 주문은 대상이 아니다 */
     @GetMapping
     public ResponseEntity<ApiResponse<AdminOrderListResponse>> list(
-            @Valid @ModelAttribute AdminOrderSearchRequest request) {
+            @Valid @ModelAttribute @ParameterObject AdminOrderSearchRequest request) {
         return ResponseEntity.ok(ApiResponse.Companion.of(
                 AdminOrderListResponse.from(adminOrderMonitoringUseCase.getOrders(request.toQuery()))));
     }
@@ -48,7 +49,7 @@ public class AdminOrderMonitoringController {
     /** 모니터링 카드 — 발송 대기·배송 중·지연·조회 범위 결제액 */
     @GetMapping("/metrics")
     public ResponseEntity<ApiResponse<AdminOrderMetricsResponse>> metrics(
-            @Valid @ModelAttribute AdminOrderMetricsRequest request) {
+            @Valid @ModelAttribute @ParameterObject AdminOrderMetricsRequest request) {
         return ResponseEntity.ok(ApiResponse.Companion.of(
                 AdminOrderMetricsResponse.from(adminOrderMonitoringUseCase.getOrderMetrics(request.toQuery()))));
     }
