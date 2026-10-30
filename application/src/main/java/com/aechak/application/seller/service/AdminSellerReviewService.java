@@ -41,9 +41,11 @@ public class AdminSellerReviewService {
         return application;
     }
 
-    public void reject(long adminId, long applicationId, String reason) {
+    /** 반려 전이. 전이한 신청서를 돌려준다 — 호출부가 감사 기록에 그때의 상호명을 남긴다. */
+    public SellerApplication reject(long adminId, long applicationId, String reason) {
         SellerApplication application = getById(applicationId);
         application.reject(adminId, reason);
+        return application;
     }
 
     /** 동일 사업자번호의 과거 신청 — 세탁 대조 보조(차단 아님). 자기 행은 빼고 최신순. */
