@@ -221,6 +221,11 @@ private class FakeOrderGroupRepository : OrderGroupRepository {
 
     override fun findById(id: Long): OrderGroup? = byPublicId.values.find { it.id == id }
 
+    override fun countUnexpiredPendingPayment(
+        buyerId: Long,
+        now: LocalDateTime,
+    ): Long = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
+
     override fun markPaidIfPending(id: Long): Boolean = throw UnsupportedOperationException("결제 준비 테스트에서는 호출되지 않는다")
 
     override fun transitionStatusIf(
@@ -247,6 +252,8 @@ private class UnusedOrderUseCase : OrderUseCase {
         orderItemId: Long,
         buyerId: Long,
     ): OrderItemForReviewResult? = throw UnsupportedOperationException()
+
+    override fun countPendingPaymentOrderGroups(buyerId: Long): Long = throw UnsupportedOperationException()
 
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = throw UnsupportedOperationException()
 

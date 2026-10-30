@@ -16,4 +16,7 @@ class SellerFacade(
 ) : SellerUseCase {
     @Transactional(readOnly = true)
     override fun requireSellerStatus(userId: Long): SellerStatus = sellerService.requireStatus(userId)
+
+    @Transactional(readOnly = true)
+    override fun findSellerStatus(userId: Long): SellerStatus? = sellerService.find(userId)?.status
 }

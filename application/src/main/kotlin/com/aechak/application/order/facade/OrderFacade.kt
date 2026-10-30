@@ -83,6 +83,9 @@ class OrderFacade(
     ): OrderItemForReviewResult? =
         orderItemForReviewQueryPort.findOrderItemForReview(orderItemId, buyerId)?.let(OrderItemForReviewResult::from)
 
+    @Transactional(readOnly = true)
+    override fun countPendingPaymentOrderGroups(buyerId: Long): Long = orderService.countPendingPaymentOrderGroups(buyerId)
+
     /** 결제 확정 트랜잭션에 참여해야 하므로 REQUIRED — 결제 기록이 롤백되면 주문 전이도 함께 롤백된다 */
     @Transactional
     override fun confirmGroupPaid(orderGroupId: Long): ConfirmGroupPaidResult = orderService.confirmGroupPaid(orderGroupId)

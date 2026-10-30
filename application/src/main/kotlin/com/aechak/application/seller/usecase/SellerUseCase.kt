@@ -15,4 +15,10 @@ interface SellerUseCase {
      * 합치면 입점한 적 없는 계정에 정지 안내가 나간다.
      */
     fun requireSellerStatus(userId: Long): SellerStatus
+
+    /**
+     * 셀러 상태. 셀러로 등록된 적이 없으면 null이다.
+     * 탈퇴 판정처럼 셀러가 아니어도 되는 조회에 쓰고 자격 게이트는 requireSellerStatus를 쓴다.
+     */
+    fun findSellerStatus(userId: Long): SellerStatus?
 }

@@ -655,6 +655,11 @@ class PaymentReconciliationFacadeTest {
 
         override fun findByPublicId(publicId: String) = rows.values.find { it.publicId == publicId }
 
+        override fun countUnexpiredPendingPayment(
+            buyerId: Long,
+            now: LocalDateTime,
+        ): Long = throw UnsupportedOperationException()
+
         override fun markPaidIfPending(id: Long): Boolean = throw UnsupportedOperationException()
 
         override fun transitionStatusIf(

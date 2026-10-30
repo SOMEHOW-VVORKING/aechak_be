@@ -16,6 +16,12 @@ import java.time.LocalDateTime
 interface OrderGroupJpaRepository : JpaRepository<OrderGroup, Long> {
     fun findByIdempotencyKey(idempotencyKey: String): OrderGroup?
 
+    fun countByBuyerIdAndStatusAndExpiresAtGreaterThanEqual(
+        buyerId: Long,
+        status: OrderGroupStatus,
+        now: LocalDateTime,
+    ): Long
+
     fun findByPublicId(publicId: String): OrderGroup?
 
     @Modifying
@@ -67,6 +73,11 @@ class OrderGroupRepositoryAdapter(
     override fun findById(id: Long): OrderGroup? = jpaRepository.findByIdOrNull(id)
 
     override fun findByIdempotencyKey(idempotencyKey: String): OrderGroup? = jpaRepository.findByIdempotencyKey(idempotencyKey)
+
+    override fun countUnexpiredPendingPayment(
+        buyerId: Long,
+        now: LocalDateTime,
+    ): Long = jpaRepository.countByBuyerIdAndStatusAndExpiresAtGreaterThanEqual(buyerId, OrderGroupStatus.PENDING_PAYMENT, now)
 
     override fun findByPublicId(publicId: String): OrderGroup? = jpaRepository.findByPublicId(publicId)
 

@@ -168,6 +168,8 @@ class SellerDashboardFacadeTest {
         private val status: SellerStatus?,
     ) : SellerUseCase {
         override fun requireSellerStatus(userId: Long): SellerStatus = status ?: throw BusinessException(SellerErrorCode.NOT_SELLER)
+
+        override fun findSellerStatus(userId: Long): SellerStatus? = status
     }
 
     private class RecordingOrderUseCase : SellerOrderUseCase {
