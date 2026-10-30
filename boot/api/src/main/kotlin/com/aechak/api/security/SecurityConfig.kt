@@ -87,7 +87,12 @@ class SecurityConfig {
                 resourceServer.authenticationEntryPoint(unauthenticatedEntryPoint)
             }.exceptionHandling { it.authenticationEntryPoint(unauthenticatedEntryPoint) }
             .addFilterAfter(
-                UserStatusFilter(userStatusReader, objectMapper, onboardingAllowedPaths(basePath)),
+                UserStatusFilter(
+                    userStatusReader,
+                    objectMapper,
+                    onboardingAllowedPaths(basePath),
+                    restrictedWritePathPrefixes(basePath),
+                ),
                 BearerTokenAuthenticationFilter::class.java,
             )
         return http.build()
@@ -107,6 +112,20 @@ class SecurityConfig {
             "$basePath/auth/logout",
             "$basePath/auth/web/refresh",
             "$basePath/auth/web/logout",
+        )
+
+    /**
+     * 이용 제한(RESTRICTED) 계정에게 막을 경로 접두 — 쓰기 메서드에만 적용된다.
+     *
+     * 화면이 약속한 제한 범위는 "일부 기능(리뷰 작성, 채팅 등)"이다. 채팅은 아직 없으므로
+     * 지금 존재하는 커뮤니티성 쓰기만 담는다 — 리뷰 작성/삭제, SNS 활동, 문의 등록.
+     * 주문·결제는 뺀다: 이용 제한은 거래를 끊는 제재가 아니고, 거래를 끊어야 하는 제재는 임시/영구 정지다.
+     */
+    private fun restrictedWritePathPrefixes(basePath: String): Set<String> =
+        setOf(
+            "$basePath/reviews",
+            "$basePath/sns",
+            "$basePath/inquiries",
         )
 
     /**
