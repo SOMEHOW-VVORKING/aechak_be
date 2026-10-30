@@ -1,5 +1,7 @@
 package com.aechak.admin.notice;
 
+import com.aechak.admin.audit.AdminAuditExempt;
+import com.aechak.admin.audit.AdminAudited;
 import com.aechak.admin.notice.request.SaveNoticeRequest;
 import com.aechak.admin.notice.response.AdminNoticeDetailResponse;
 import com.aechak.admin.notice.response.AdminNoticeListResponse;
@@ -7,6 +9,7 @@ import com.aechak.application.notice.admin.usecase.AdminNoticeUseCase;
 import com.aechak.application.notice.admin.usecase.command.PublishNoticeCommand;
 import com.aechak.application.notice.admin.usecase.command.UnpublishNoticeCommand;
 import com.aechak.application.notice.admin.usecase.query.AdminNoticeSearchQuery;
+import com.aechak.domain.audit.auditlog.enums.AdminAuditAction;
 import com.aechak.domain.notice.notice.enums.NoticeAudience;
 import com.aechak.domain.notice.notice.enums.NoticeCategory;
 import com.aechak.domain.notice.notice.enums.NoticeStatus;
@@ -57,6 +60,11 @@ public class AdminNoticeController {
 
     /** 공지 초안 생성. 게시는 별도 경로다 — 쓰는 즉시 노출되는 길을 두지 않는다. */
     @PostMapping
+    @AdminAuditExempt(
+            reason = "초안 생성은 아직 밖에 드러나지 않고, 만든 사람은 공지 행의 createdByAdminId가 들고 있다."
+                    + " 밖에 드러나는 조치인 게시·내림과 내용 변경을 기록한다. 기구상으로도 생성 전에는"
+                    + " 공개 식별자가 없어 거부된 시도의 행에 대상을 적을 수 없다(인터셉터가 대상을 못 찾으면"
+                    + " 기록을 건너뛰고 error 로그만 남긴다).")
     public ResponseEntity<ApiResponse<AdminNoticeDetailResponse>> create(
             @Valid @RequestBody SaveNoticeRequest request, @AuthenticationPrincipal AuthPrincipal principal) {
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -73,6 +81,7 @@ public class AdminNoticeController {
 
     /** 내용 수정 — 게시 중 공지도 고칠 수 있고 게시 상태는 그대로 남는다. */
     @PutMapping("/{noticeId}")
+    @AdminAudited(value = AdminAuditAction.NOTICE_UPDATED, targetVar = "noticeId")
     public ResponseEntity<ApiResponse<AdminNoticeDetailResponse>> update(
             @PathVariable String noticeId,
             @Valid @RequestBody SaveNoticeRequest request,
@@ -83,6 +92,7 @@ public class AdminNoticeController {
 
     /** 게시 — 이 시점부터 대상 독자의 목록에 올라간다. 발송은 하지 않는다. */
     @PostMapping("/{noticeId}/publish")
+    @AdminAudited(value = AdminAuditAction.NOTICE_PUBLISHED, targetVar = "noticeId")
     public ResponseEntity<ApiResponse<AdminNoticeDetailResponse>> publish(
             @PathVariable String noticeId, @AuthenticationPrincipal AuthPrincipal principal) {
         return ResponseEntity.ok(ApiResponse.Companion.of(AdminNoticeDetailResponse.from(
@@ -91,6 +101,7 @@ public class AdminNoticeController {
 
     /** 내림 — 독자 목록에서 사라진다. 게시 기록(publishedAt)은 남는다. */
     @PostMapping("/{noticeId}/unpublish")
+    @AdminAudited(value = AdminAuditAction.NOTICE_UNPUBLISHED, targetVar = "noticeId")
     public ResponseEntity<ApiResponse<AdminNoticeDetailResponse>> unpublish(
             @PathVariable String noticeId, @AuthenticationPrincipal AuthPrincipal principal) {
         return ResponseEntity.ok(ApiResponse.Companion.of(AdminNoticeDetailResponse.from(

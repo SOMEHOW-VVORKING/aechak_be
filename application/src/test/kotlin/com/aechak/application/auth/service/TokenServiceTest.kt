@@ -6,6 +6,7 @@ import com.aechak.application.auth.port.RefreshTokenEntry
 import com.aechak.application.auth.port.RefreshTokenRef
 import com.aechak.application.auth.port.RefreshTokenStore
 import com.aechak.application.auth.port.TokenCodec
+import com.aechak.application.auth.port.UserRoleReader
 import com.aechak.application.auth.port.UserStatusReader
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.user.enums.UserRole
@@ -24,11 +25,13 @@ import kotlin.test.assertTrue
 class TokenServiceTest {
     private val store = FakeRefreshTokenStore()
     private val statusReader = FakeUserStatusReader()
+    private val roleReader = FakeUserRoleReader()
     private val service =
         TokenService(
             tokenCodec = FakeTokenCodec(),
             refreshTokenStore = store,
             userStatusReader = statusReader,
+            userRoleReader = roleReader,
             policy =
                 TokenPolicy(
                     accessTtl = Duration.ofMinutes(30),
@@ -128,9 +131,67 @@ class TokenServiceTest {
         assertTrue(issued.expiresInSeconds > 0)
     }
 
+    @Test
+    fun `승격 후 회전 - 토큰에 박힌 역할이 아니라 현재 역할로 발급된다`() {
+        val issued = service.issue(USER_ID, UserRole.GENERAL)
+        roleReader.role = UserRole.ADMIN
+
+        val rotated = service.rotate(issued.refreshToken)
+
+        // 가짜 코덱이 역할을 문자열에 담으므로 발급된 역할을 그대로 들여다볼 수 있다.
+        assertTrue(rotated.accessToken.contains(":ADMIN:"), rotated.accessToken)
+        assertTrue(rotated.refreshToken.contains(":ADMIN:"), rotated.refreshToken)
+    }
+
+    @Test
+    fun `강등 후 회전 - 회수된 권한이 다음 발급부터 사라진다`() {
+        val issued = service.issue(USER_ID, UserRole.ADMIN)
+        roleReader.role = UserRole.GENERAL
+
+        val rotated = service.rotate(issued.refreshToken)
+
+        // 이쪽이 보안상 중요한 방향이다 — 복사하면 회수가 refresh TTL(30일) 내내 반영되지 않는다.
+        assertTrue(rotated.accessToken.contains(":GENERAL:"), rotated.accessToken)
+        assertTrue(rotated.refreshToken.contains(":GENERAL:"), rotated.refreshToken)
+    }
+
+    @Test
+    fun `유예 재시도 - refresh는 바이트까지 같고 access만 현재 역할로 갱신된다`() {
+        val issued = service.issue(USER_ID, UserRole.GENERAL)
+        val first = service.rotate(issued.refreshToken)
+        roleReader.role = UserRole.ADMIN
+
+        val second = service.rotate(issued.refreshToken)
+
+        // refresh는 저장된 successor 클레임으로 재현하는 것이라 역할을 바꾸면 멱등이 깨진다.
+        assertEquals(first.refreshToken, second.refreshToken)
+        assertTrue(second.refreshToken.contains(":GENERAL:"), second.refreshToken)
+        // access는 발급 시각이 매번 달라 애초에 멱등이 아니므로 현재 역할을 싣는다.
+        assertTrue(second.accessToken.contains(":ADMIN:"), second.accessToken)
+    }
+
+    @Test
+    fun `회전 직전에 유저가 사라진 경합 - 토큰의 역할로 되돌아가지 않고 거부한다`() {
+        val issued = service.issue(USER_ID, UserRole.ADMIN)
+        // 상태 검증은 통과하는데 역할 조회에서 사라진 상태 — 그 틈에 토큰 역할을 쓰면
+        // 삭제된 계정의 권한이 되살아난다.
+        roleReader.role = null
+
+        val exception = assertFailsWith<BusinessException> { service.rotate(issued.refreshToken) }
+
+        assertEquals(AuthErrorCode.ACCOUNT_BLOCKED, exception.errorCode)
+    }
+
     companion object {
         private const val USER_ID = 7L
     }
+}
+
+/** 역할을 갈아끼울 수 있는 가짜 리더 — 기본 GENERAL. null은 유저 없음. */
+private class FakeUserRoleReader(
+    var role: UserRole? = UserRole.GENERAL,
+) : UserRoleReader {
+    override fun roleOf(userId: Long): UserRole? = role
 }
 
 /** 상태를 갈아끼울 수 있는 가짜 리더 — 기본 ACTIVE. */
