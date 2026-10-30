@@ -262,7 +262,10 @@ class AdminNoticeIntegrationTest extends IntegrationTestBase {
     void 내린_공지는_게시_기록을_남기고_다시_게시하면_시각이_갱신된다() throws Exception {
         String publicId = createDraft("점검 안내", "본문", "MAINTENANCE", "ALL", false, null);
         publish(publicId).andExpect(status().isOk());
-        java.time.LocalDateTime firstPublishedAt = java.time.LocalDateTime.now().minusDays(3);
+        // DATETIME(6)은 마이크로초까지만 담는다 — now()의 나노초를 그대로 쓰면 DB 왕복에서 값이 달라져
+        // 정상 구현도 아래 동등 비교에서 실패한다.
+        java.time.LocalDateTime firstPublishedAt =
+                java.time.LocalDateTime.now().minusDays(3).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         backdatePublishedAt(publicId, firstPublishedAt);
 
         mockMvc.perform(bearer(post(BASE + "/" + publicId + "/unpublish"), actorToken))

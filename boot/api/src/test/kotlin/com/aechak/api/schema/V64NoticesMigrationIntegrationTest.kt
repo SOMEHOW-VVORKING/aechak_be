@@ -15,6 +15,7 @@ import org.springframework.test.context.DynamicPropertySource
 import java.io.File
 import java.sql.Connection
 import java.sql.ResultSet
+import java.util.UUID
 import javax.sql.DataSource
 
 /**
@@ -31,10 +32,10 @@ import javax.sql.DataSource
 @SpringBootTest(
     properties = [
         // DB를 건드리지 않고 Hibernate가 만들 DDL만 파일로 받는다.
+        // 받을 파일 경로는 @DynamicPropertySource가 실행마다 새로 정한다 — 아래 ENTITY_SCHEMA_SCRIPT 주석 참조.
         "spring.jpa.hibernate.ddl-auto=none",
         "spring.flyway.enabled=false",
         "spring.jpa.properties.jakarta.persistence.schema-generation.scripts.action=create",
-        "spring.jpa.properties.jakarta.persistence.schema-generation.scripts.create-target=$V64_ENTITY_SCHEMA_SCRIPT",
         "spring.jpa.properties.hibernate.hbm2ddl.delimiter=;",
     ],
 )
@@ -156,9 +157,8 @@ class V64NoticesMigrationIntegrationTest {
     private fun entityStatementsOf(table: String): List<String> {
         val target = Regex("\\b`?$table`?\\b", RegexOption.IGNORE_CASE)
         val statements =
-            statementsOf(File(V64_ENTITY_SCHEMA_SCRIPT).readText())
+            statementsOf(ENTITY_SCHEMA_SCRIPT.readText())
                 .filter { target.containsMatchIn(it) && !FOREIGN_KEY.containsMatchIn(it) }
-                .distinct() // Hibernate가 실행마다 스크립트 파일에 이어 쓴다
                 .sortedBy { if (it.startsWith("create table", ignoreCase = true)) 0 else 1 }
         assertThat(statements).anyMatch { it.startsWith("create table $table", ignoreCase = true) }
         return statements
@@ -282,10 +282,26 @@ class V64NoticesMigrationIntegrationTest {
 
         private val FOREIGN_KEY = Regex("foreign key", RegexOption.IGNORE_CASE)
 
+        /**
+         * Hibernate가 만들 DDL을 받을 파일. 실행마다 새 경로를 쓴다 —
+         * Hibernate는 고정 경로에 **이어 쓰기** 때문에, 엔티티 선언이 바뀌면 옛 CREATE TABLE과
+         * 새 CREATE TABLE이 한 파일에 쌓인다. 그러면 둘 다 실행되어 "이미 있는 테이블"로 깨지거나,
+         * 이번 실행이 DDL을 쓰지 못했는데도 지난 실행의 파일로 비교가 통과한다.
+         */
+        private val ENTITY_SCHEMA_SCRIPT: File =
+            File("build/v64-entity-schema-${UUID.randomUUID()}.sql").also {
+                it.parentFile.mkdirs()
+                it.delete()
+                it.deleteOnExit()
+            }
+
         @JvmStatic
         @DynamicPropertySource
-        fun containers(registry: DynamicPropertyRegistry) = IntegrationTestConfig.registerContainers(registry)
+        fun schemaScript(registry: DynamicPropertyRegistry) {
+            IntegrationTestConfig.registerContainers(registry)
+            registry.add("spring.jpa.properties.jakarta.persistence.schema-generation.scripts.create-target") {
+                ENTITY_SCHEMA_SCRIPT.absolutePath
+            }
+        }
     }
 }
-
-private const val V64_ENTITY_SCHEMA_SCRIPT = "build/v64-entity-schema.sql"
