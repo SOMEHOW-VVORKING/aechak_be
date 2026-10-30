@@ -120,16 +120,18 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
     }
 
     @Test
-    fun `대표 펫이 있으면 작성 당시 종과 체중, 체급 묶음 키를 리뷰에 남긴다`() {
+    fun `대표 펫이 있으면 작성 당시 종, 품종, 생년월, 체중과 체급 묶음 키를 리뷰에 남긴다`() {
         val buyerId = createActiveUser()
-        registerPet(buyerId, weight = BigDecimal("4.2"), isDefault = true)
-        registerPet(buyerId, weight = BigDecimal("30.0"), isDefault = false)
+        val defaultBreedId = registerPet(buyerId, weight = BigDecimal("4.2"), isDefault = true, birthYearMonth = "2022-03")
+        registerPet(buyerId, weight = BigDecimal("30.0"), isDefault = false, birthYearMonth = "2019-11")
         val fixture = persistReviewableOrderItem(buyerId)
 
         val reviewId = postReviewAndGetId(buyerId, fixture.orderItemId)
 
         val snapshot = petSnapshotOf(reviewId)
         assertEquals("DOG", snapshot["pet_species"], "대표 펫이 둘 이상이어도 기본 펫을 남긴다")
+        assertEquals(defaultBreedId, (snapshot["pet_breed_id"] as Number).toLong())
+        assertEquals("2022-03", snapshot["pet_birth_year_month"])
         assertEquals(0, BigDecimal("4.2").compareTo(snapshot["pet_weight"] as BigDecimal))
         assertEquals("DOG:DOG_UNDER_5", snapshot["pet_segment_key"], "AI 서버 selection.py와 같은 체급 키여야 묶음 요약이 맞는다")
     }
@@ -492,16 +494,17 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
         userId: Long,
         weight: BigDecimal?,
         isDefault: Boolean,
-    ) {
+        birthYearMonth: String = "2022-03",
+    ): Long =
         tx.execute {
             val breed = Breed.of(Species.DOG, "말티즈-$userId-$isDefault").also { em.persist(it) }
-            em.persist(PetProfile.register(em.find(User::class.java, userId), breed, "코코", "2022-03", weight, isDefault = isDefault))
-        }
-    }
+            em.persist(PetProfile.register(em.find(User::class.java, userId), breed, "코코", birthYearMonth, weight, isDefault = isDefault))
+            breed.id
+        }!!
 
     private fun petSnapshotOf(reviewId: Long): Map<String, Any?> =
         db
-            .sql("SELECT pet_species, pet_weight, pet_segment_key FROM reviews WHERE id = :id")
+            .sql("SELECT pet_species, pet_breed_id, pet_birth_year_month, pet_weight, pet_segment_key FROM reviews WHERE id = :id")
             .param("id", reviewId)
             .query()
             .singleRow()
