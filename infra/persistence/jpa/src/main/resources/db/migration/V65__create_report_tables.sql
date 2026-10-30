@@ -1,6 +1,7 @@
 -- 신고 3종 테이블(product_reports, review_reports, user_reports)과 같은 대상에 대한 신고자별 중복 신고를 막는 UNIQUE.
 -- UNIQUE 이름은 엔티티 @Table 선언과 같다.
--- 엔티티 자동 생성으로 테이블이 먼저 있던 DB(dev, local)는 CREATE를 건너뛰므로 아래 ALTER로 UNIQUE와 컬럼 타입을 맞춘다.
+-- 테이블이 먼저 있으면 CREATE를 건너뛰므로 아래 ALTER로 UNIQUE와 컬럼 타입을 맞춘다.
+-- review_reports는 V55가 먼저 만들고 나머지 둘은 엔티티 자동 생성으로 테이블이 먼저 있던 DB(dev, local)에서 건너뛴다.
 -- 기존 테이블에 같은 대상과 신고자의 행이 둘 이상 있으면 UNIQUE 추가가 실패한다. 지우고 다시 돌린다.
 -- created_at/updated_at은 BaseEntity가 채우므로 DB 기본값 없음.
 
