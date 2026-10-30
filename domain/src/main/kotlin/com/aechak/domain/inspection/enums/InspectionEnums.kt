@@ -46,6 +46,7 @@ enum class InspectionPerspectiveKind {
     DISPLAY_ADS,
     CONDUCT_TRADE,
     RULE,
+    TRIAGE,
 }
 
 /** 관점별 결과. 통과와 미검사를 반드시 구분한다 */
@@ -53,4 +54,19 @@ enum class PerspectiveOutcome {
     VIOLATION,
     CLEAR,
     UNCHECKED,
+}
+
+/** 관리자 검토 큐 행의 처리 상태 */
+enum class ReviewQueueStatus {
+    PENDING_REVIEW,
+    APPROVED,
+    REJECTED,
+
+    /** 셀러가 고친 내용이 AI를 통과해 관리자 확인 없이 닫힘 */
+    SUPERSEDED,
+}
+
+/** 큐에 들어온 경로. 신고 누적 유입은 아직 없음 */
+enum class ReviewQueueBlockSource {
+    AI_DETECTION,
 }

@@ -1,6 +1,7 @@
 package com.aechak.application.product.product.port
 
 import com.aechak.application.product.product.port.view.ProductCatalogView
+import com.aechak.application.product.product.port.view.ProductRefView
 import java.time.LocalDateTime
 
 /** 공개 카탈로그 목록 조회 포트 (상품, 카테고리 계층, 셀러 상태를 조합하는 교차 BC read projection) */
@@ -11,6 +12,9 @@ interface ProductCatalogQueryPort {
 
     /** 노출 상품의 내부 id만 조회(상세 전체 로딩 회피). */
     fun findVisibleIdByPublicId(publicId: String): Long?
+
+    /** 노출 상품의 식별 정보만 조회 — 다른 BC가 접수 시점 값을 복사할 때 쓴다. */
+    fun findVisibleRefByPublicId(publicId: String): ProductRefView?
 
     /** 인기순 상위 목록 */
     fun findPopular(

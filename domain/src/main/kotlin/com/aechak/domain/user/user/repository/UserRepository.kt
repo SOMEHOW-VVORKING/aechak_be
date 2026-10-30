@@ -6,6 +6,11 @@ import com.aechak.domain.user.user.enums.UserRole
 interface UserRepository {
     fun findById(id: Long): User?
 
+    /** 상태 판정과 변경이 한 트랜잭션에서 직렬화돼야 하는 경로용 — 행을 잠그고 읽는다. */
+    fun findByIdForUpdate(id: Long): User?
+
+    fun findByPublicId(publicId: String): User?
+
     fun save(user: User): User
 
     /** 적립금 잔액 캐시를 원자 증감한다. */

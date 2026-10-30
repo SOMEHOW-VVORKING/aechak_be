@@ -1,5 +1,6 @@
 package com.aechak.application.review.port.view
 
+import com.aechak.domain.review.review.enums.ReviewBlindReason
 import com.aechak.domain.review.review.enums.ReviewStatus
 import java.time.LocalDateTime
 
@@ -9,6 +10,7 @@ data class WrittenReviewView(
     val content: String,
     val displayContent: String?,
     val reviewStatus: ReviewStatus,
+    val blindReasonCode: ReviewBlindReason?,
     val optionNameSnapshot: String,
     val productPublicId: String,
     val productNameSnapshot: String,

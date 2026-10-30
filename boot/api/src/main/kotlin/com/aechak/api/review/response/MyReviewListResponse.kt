@@ -4,6 +4,7 @@ import com.aechak.application.review.usecase.result.MyReviewListItemResult
 import com.aechak.application.review.usecase.result.UnreviewedOrderItemResult
 import com.aechak.application.review.usecase.result.WrittenReviewItemResult
 import com.aechak.application.support.CursorPageResult
+import com.aechak.domain.review.review.enums.ReviewBlindReason
 import com.aechak.domain.review.review.enums.ReviewStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -46,6 +47,8 @@ data class WrittenReviewItemResponse(
     val rating: Int,
     val content: String,
     val reviewStatus: ReviewStatus,
+    /** 블라인드된 리뷰만 채워진다 — 왜 가려졌는지 작성자가 알 수 있어야 한다 */
+    val blindReasonCode: ReviewBlindReason?,
     val optionName: String,
     val productPublicId: String,
     val productName: String,
@@ -61,6 +64,7 @@ data class WrittenReviewItemResponse(
                 rating = result.rating,
                 content = result.content,
                 reviewStatus = result.reviewStatus,
+                blindReasonCode = result.blindReasonCode,
                 optionName = result.optionName,
                 productPublicId = result.productPublicId,
                 productName = result.productName,

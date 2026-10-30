@@ -70,3 +70,40 @@ aechak:
     aes-keys:
       1: ${PII_AES_KEY_V1}
     hmac-key: ${PII_HMAC_KEY}
+
+# AI 검수 운영 지표. api 쪽 application.yml과 같은 값이어야 한다 — 한쪽만 고치면 화면과
+# 주기 로그가 다른 기준으로 경보한다. 주기 로그는 api가 찍고 어드민은 조회만 한다.
+inspection:
+  metrics:
+    window-hours: 24
+    # 손익분기 승급률. 정본은 AI 레포 측정 하네스이고, 레포 안의 사본은 InspectionTriageCostModel 하나다.
+    # 45.7%·88%는 폐기된 계산이다 — 낮은 값을 쓰면 아직 이득인 구간에서 "선별을 끄라"는 거짓 경보가 난다.
+    # 기본값이 없으므로 이 키를 지우면 부팅이 실패한다. api 쪽과 같은 값이어야 한다.
+    promotion-breakeven-rate: 0.620
+    # 모집단은 "AI 반려 + 관리자 반려 상품의 재검수 통과"다. 판정 실패·기한 만료·모델이 읽지
+    # 않은 통과는 큐에 오르지 않는다. api 쪽과 같은 값이어야 화면과 주기 로그가 같은 기준으로 경보한다.
+    backlog-warn-count: 50
+    backlog-warn-age-minutes: 1440
+    # 모델이 읽지 않은 통과의 임계. 현 생산자에서 0이어야 하는 값이라 "0이 아니다"에 가깝게 둔다.
+    # api 쪽과 같은 값이어야 한다.
+    model-unverified-warn-count: 3
+    model-unverified-warn-percent: 1
+    max-window-days: 92
+    snapshot-cache-seconds: 60
+
+# 주문 배송 모니터링의 지연 판정 기준. 모두 서버가 쥔다 — 화면이 날짜를 빼서 세면 카드의 건수와
+# 목록 행의 신호가 다른 기준으로 갈린다.
+#
+# dispatch.sla-days는 셀러센터 application.yml과 같은 값이어야 한다. 한쪽만 고치면 같은 주문을
+# 셀러 대시보드는 정상, 어드민 모니터링은 지연으로 보고 운영자와 셀러가 다른 화면을 근거로 말한다.
+# 셀러가 신고하는 avgDispatchDays(1~7 영업일)를 쓰지 않는 이유도 같다 — 셀러마다 기준이 갈려
+# "지연 N건"이 셀러 간 비교 불가가 되고, 영업일을 날짜로 환산할 휴일 달력이 레포에 없다.
+#
+# delivery.sla-days는 셀러 화면에 없는 어드민 전용 축이다(배송중인 채로 멈춘 주문).
+# nudge-cooldown-hours는 같은 주문 반복 독촉의 최소 간격이다.
+order:
+  dispatch:
+    sla-days: 3
+    nudge-cooldown-hours: 6
+  delivery:
+    sla-days: 7

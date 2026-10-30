@@ -3,13 +3,17 @@ package com.aechak.seller.order.response
 import com.aechak.application.order.seller.usecase.result.SellerOrderClaimResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderShipmentResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderSummaryResult
+import com.aechak.domain.order.claim.enums.ClaimStatus
+import com.aechak.domain.order.claim.enums.ClaimType
+import com.aechak.domain.order.order.enums.OrderStatus
+import io.swagger.v3.oas.annotations.media.Schema
 import java.time.LocalDateTime
 
 /** 수령인명·연락처는 평문이다 — 마스킹은 화면이 한다. */
 data class SellerOrderSummaryResponse(
     val orderId: String,
     val orderGroupId: String,
-    val status: String,
+    val status: OrderStatus,
     val orderedAt: LocalDateTime,
     val buyerNickname: String,
     val recipientName: String,
@@ -59,6 +63,7 @@ data class SellerOrderShipmentResponse(
     val trackingNumber: String,
     val dispatchedAt: LocalDateTime?,
     val deliveredAt: LocalDateTime?,
+    @field:Schema(description = "택배사가 준 마지막 추적 문구. 고정 어휘가 아니라 자유 문자열이다.")
     val lastTrackingStatus: String?,
 ) {
     companion object {
@@ -76,8 +81,8 @@ data class SellerOrderShipmentResponse(
 
 data class SellerOrderClaimResponse(
     val claimId: String,
-    val claimType: String,
-    val status: String,
+    val claimType: ClaimType,
+    val status: ClaimStatus,
 ) {
     companion object {
         fun from(result: SellerOrderClaimResult): SellerOrderClaimResponse =

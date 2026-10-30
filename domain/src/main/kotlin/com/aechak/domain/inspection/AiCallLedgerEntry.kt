@@ -6,6 +6,7 @@ import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 
@@ -25,6 +26,10 @@ import jakarta.persistence.UniqueConstraint
     uniqueConstraints = [
         UniqueConstraint(name = "uk_ai_call_ledger_call", columnNames = ["call_id"]),
     ],
+    // 지표가 원장을 검수 id로 붙이기 때문에 필요하다 — 비율 전부의 앵커가 검수가 닫힌 시각이라
+    // 원장 자체의 시각으로는 진입하지 않는다. 관점을 둘째 칼럼으로 둔 것은 승급률의 분모
+    // (perspective='TRIAGE')와 단계별 비용이 그 축으로 묶기 때문이다.
+    indexes = [Index(name = "ix_ai_call_ledger_inspection", columnList = "inspection_id, perspective")],
 )
 class AiCallLedgerEntry protected constructor(
     @Column(nullable = false, length = 100, updatable = false)

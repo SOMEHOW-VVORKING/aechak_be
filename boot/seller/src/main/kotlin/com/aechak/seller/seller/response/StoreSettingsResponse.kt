@@ -5,9 +5,11 @@ import com.aechak.application.seller.usecase.result.StoreSettingsResult
 import com.aechak.domain.seller.application.enums.ApplicationStatus
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import com.aechak.domain.seller.seller.enums.TelesalesNoticeStatus
+import com.fasterxml.jackson.annotation.JsonProperty
 
 /** 아직 셀러가 아니면 store = null이고 applicationStatus로 입점 신청 단계를 그린다. */
 data class StoreSettingsResponse(
+    @get:JsonProperty("isSeller")
     val isSeller: Boolean,
     val applicationStatus: ApplicationStatus?,
     val store: StoreResponse?,

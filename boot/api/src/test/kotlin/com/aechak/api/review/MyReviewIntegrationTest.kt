@@ -15,6 +15,7 @@ import com.aechak.domain.product.version.ProductVersion
 import com.aechak.domain.product.version.enums.VersionChangedBy
 import com.aechak.domain.review.review.Review
 import com.aechak.domain.review.review.ReviewImage
+import com.aechak.domain.review.review.enums.ReviewBlindReason
 import com.aechak.domain.review.review.enums.ReviewStatus
 import com.aechak.domain.seller.seller.Seller
 import com.jayway.jsonpath.JsonPath
@@ -283,6 +284,47 @@ class MyReviewIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `운영자가 블라인드한 내 리뷰는 상태와 사유를 함께 내린다`() {
+        val buyerId = createActiveUser()
+        val fixture = persistOrder(buyerId, productName = "블라인드", confirmedAt = LocalDateTime.now())
+        tx.execute {
+            val review = persistReview(fixture, buyerId, content = "블라인드된 원문")
+            em.flush()
+            review.blindByAdmin(adminId = 999L, reasonCode = ReviewBlindReason.AD_SPAM, reasonText = "내부 메모")
+            em.flush()
+        }
+
+        val body = getMyReviews(buyerId, tab = "written")
+
+        assertEquals(
+            listOf("블라인드된 원문"),
+            JsonPath.read<List<String>>(body, "$.data.items[*].content"),
+            "본인이 쓴 문장은 그대로 보여야 한다",
+        )
+        assertEquals(listOf("BLOCKED"), JsonPath.read<List<String>>(body, "$.data.items[*].reviewStatus"))
+        assertEquals(
+            listOf("AD_SPAM"),
+            JsonPath.read<List<String>>(body, "$.data.items[*].blindReasonCode"),
+            "왜 가려졌는지 알 수 있게 사유 코드를 내려야 한다",
+        )
+        assertFalse(body.contains("내부 메모"), "운영자 내부 메모는 작성자에게 내리지 않는다")
+    }
+
+    @Test
+    fun `노출 중인 내 리뷰에는 블라인드 사유가 실리지 않는다`() {
+        val buyerId = createActiveUser()
+        val fixture = persistOrder(buyerId, productName = "노출", confirmedAt = LocalDateTime.now())
+        tx.execute { persistReview(fixture, buyerId, content = "노출 중인 원문") }
+
+        val body = getMyReviews(buyerId, tab = "written")
+
+        assertNull(
+            JsonPath.read<List<String?>>(body, "$.data.items[*].blindReasonCode").first(),
+            "가려지지 않은 리뷰에 사유가 붙으면 화면이 블라인드로 읽는다",
+        )
+    }
+
+    @Test
     fun `HIDDEN 리뷰도 목록에 남겨 본인이 상태를 확인하고 지울 수 있게 한다`() {
         val buyerId = createActiveUser()
         val fixture = persistOrder(buyerId, productName = "숨김", confirmedAt = LocalDateTime.now())
@@ -370,6 +412,30 @@ class MyReviewIntegrationTest : IntegrationTestBase() {
     fun `토큰이 없으면 401을 준다`() {
         mockMvc.perform(get(PATH).param("tab", "written")).andExpect(status().isUnauthorized)
     }
+
+    /** 다른 조회 경로는 누락과 잘못된 값을 가려 주는데 이 탭만 "잘못된 요청입니다"로 뭉개던 자리다. */
+    @Test
+    fun `tab 누락은 파라미터 이름을 싣고 잘못된 값과 구별된다`() {
+        val buyerId = createActiveUser()
+
+        val missing = badRequestBody(buyerId, tab = null)
+        assertEquals(90001, JsonPath.read<Int>(missing, "$.errorCode"))
+        assertEquals("tab: 필수 파라미터가 누락되었습니다.", JsonPath.read<String>(missing, "$.message"))
+
+        val invalid = badRequestBody(buyerId, tab = "nope")
+        assertEquals(90001, JsonPath.read<Int>(invalid, "$.errorCode"))
+        assertEquals("tab: 잘못된 값입니다.", JsonPath.read<String>(invalid, "$.message"))
+    }
+
+    private fun badRequestBody(
+        userId: Long,
+        tab: String?,
+    ): String =
+        performGet(userId, tab)
+            .andExpect(status().isBadRequest)
+            .andReturn()
+            .response
+            .getContentAsString(Charsets.UTF_8)
 
     private fun performGet(
         userId: Long,

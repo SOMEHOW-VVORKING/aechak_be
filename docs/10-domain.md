@@ -20,7 +20,7 @@ domain/src/main/kotlin/com/aechak/domain/
 │   │   └── repository/         # A-1 결정(L2) — 포트 인터페이스 (구현은 infra/persistence)
 │   ├── cart/ · group/ · stock/ · shipment/ · claim/   # 위성 애그리거트(군) — 동일 내부 구조
 │   └── error/                  # error만 BC 레벨 — 대역(50000번대)은 BC 소유, 100번대 구분이 애그리거트 (05 §0-4)
-├── user/ ...                   # 동일 구조 반복 (user/·social/·pet/·term/·privacy/·report/·point/·address/)
+├── user/ ...                   # 동일 구조 반복 (user/·social/·pet/·term/·privacy/·report/·sanction/·point/·address/)
 └── support/
     └── AggregateRoot.kt        # 이벤트 수집 베이스 (아래 §3)
 ```
@@ -95,6 +95,15 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
 엔티티 로드만으로는 둘 다 성공한다. 기대 상태를 조건으로 건 UPDATE가 선점 심판이고, 애그리거트 메서드는
 선점한 전이를 반영한다(전이 규칙과 이력 기록이 살아 있어야 하므로 메서드를 지우지 않는다).
 
+**한 행에 쓰기 경로가 둘이면 컬럼 주인을 매핑으로 못박는다**: 더티체킹 UPDATE는 변경된 컬럼만 쓰지 않고
+행 전체를 자기 스냅샷으로 다시 쓴다. 그래서 같은 행에 서로 다른 컬럼을 쓰는 경로가 둘 있으면, 먼저 읽고
+나중에 플러시한 쪽이 그 사이 커밋된 상대의 컬럼을 **읽은 시점의 옛 값(흔히 null)으로 되돌린다.** 잠금으로
+막으려면 두 경로가 모두 잠가야 하는데, 선점 심판이 조건부 UPDATE인 전이 경로에 행 잠금을 끼우면 두 요청이
+심판에 닿지 못해 선점 자체가 사라진다. 그래서 주인이 하나뿐인 컬럼은 `@Column(updatable = false)`로
+더티체킹 UPDATE에서 빼고, 그 주인만 리포지토리의 원자 UPDATE로 짚어 쓴다 — 발송의 추적 상태·조회 시각이
+그렇게 갈려 있다(배송완료 시각은 전이가, 추적 두 컬럼은 추적 갱신이 쓴다).
+기록이 엔티티 메서드가 아니므로 다듬기 규칙은 애그리거트에 순수 함수로 남긴다(컬럼 길이·공백 정리).
+
 **같은 종료 상태라도 게이트가 다르면 메서드를 나눈다**: 주문의 즉시취소는 결제완료·준비중까지만 열리지만,
 클레임 승인에 따른 취소는 발송 대기 건까지 열려야 한다. 한 메서드로 묶으면 즉시취소 금지가 승인 경로까지 막는다.
 전이 가능 여부는 enum이, 그 전이를 누가 일으킬 수 있는지는 메서드가 가른다.
@@ -102,6 +111,13 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
 **Claim 애그리거트**는 주문 애그리거트 중 유일하게 `@Version`을 든다. 셀러 승인과 자동승인 배치가 같은
 클레임을 동시에 집을 수 있고, 둘 다 같은 전이(`CLAIM_REQUESTED → APPROVED`)를 요구해 기대 상태 조건만으로는
 가려지지 않는다. 그래서 선점 심판이 조건부 UPDATE가 아니라 버전 충돌이다.
+
+**ProductInquiry는 세 번째 방식 — 쓰기 경로의 조회를 행 잠금으로 읽는다**(`findByPublicIdForUpdate`).
+`RECEIVED`에서 갈리는 전이가 둘(셀러 답변·구매자 철회)이고 **서로 다른 전이**라서 기대 상태 조건부 UPDATE로는
+한쪽만 심판할 수 있다. `@Version`으로도 부족하다: 답변은 자식 행 INSERT를 함께 하는데 Hibernate가 자식 INSERT를
+루트 UPDATE보다 먼저 플러시하므로, 답변 두 건이 경합하면 버전 검사에 닿기 전에 `UNIQUE(inquiry_id)`가 터져
+패자가 409 대신 500을 받는다. 두 경로 모두 로드 시점에 잠그면 패자가 커밋된 상태를 보고 자기 상태 가드로
+거절되므로, 계약에 적어 둔 코드(철회된 문의 120114·이미 답변함 120109·답변된 문의 철회 120111)가 그대로 나간다.
 
 상태는 4축으로 갈라져 있다 — `ClaimStatus`(진행), `RefundStatus`(환불), `SellerApprovalStatus`(셀러 응답),
 `ClaimSettlementStatus`(정산 차감). 서버는 네 축을 그대로 내리고 화면 어휘로 접는 책임은 클라이언트에 둔다.
@@ -111,6 +127,12 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
 대상 주문품목을 붙잡는 상태(`ClaimStatus.HOLDING`)와 풀어주는 상태(`RELEASED` — 거부·철회)를 enum이 가른다.
 중복 클레임 차단 질의가 이 집합을 그대로 쓰므로, 상태를 더할 때 어느 쪽인지 정하지 않으면 같은 품목에
 클레임이 두 번 걸린다.
+
+**요청 사유는 고정 어휘다** — `ClaimReasonCode`가 코드와 화면 문구(`label`)를 함께 들고, 유형별로 받을 수 있는
+사유는 `selectableFor(claimType)`가 가른다(교환에 가격 조건이 없고 취소에 불량이 없다). 셀러가 반품비 부담 주체를
+직접 지정하고 서버는 사유로 유도하지 않으므로, 셀러는 코드만 보고 변심(구매자 부담)과 불량·오배송(셀러 부담)을
+가를 수 있어야 한다 — 자유 문자열이면 그 판단 근거가 사라진다. `OTHER`는 코드만으로 근거가 되지 않아 상세 입력을
+요구한다. 두 규칙 모두 생성 팩토리(`Claim.request`)가 강제하고, 어기면 400(50412·50413)으로 거절한다.
 
 **자동승인은 셀러 승인과 같은 전이를 탄다** — `approveByTimeout()`이 `sellerApprovalStatus`를 APPROVED로 올린다.
 클레임에 "누가 승인했는가"를 담는 컬럼이 없어 셀러 승인과 자동승인이 클레임만 보고는 구별되지 않는다 —
@@ -128,6 +150,30 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
 **거부·철회된 반품·교환은 주문품목을 되돌린다** — `OrderItemStatus`에 `RETURN_REQUESTED → ORDERED`,
 `EXCHANGE_REQUESTED → ORDERED`가 열려 있는 이유다. 되돌리지 않으면 클레임 상태는 품목을 풀어줬는데(`RELEASED`)
 품목 상태가 그대로라 같은 품목에 다시 반품을 걸 수 없다.
+
+**운영자 개입은 셀러 처리를 덮는 별도 전이다** — `ADMIN_OVERRIDDEN`은 살아 있는 모든 상태에서 들어오고
+아무 데로도 나가지 않는 종결 상태다. 셀러 거부(`REJECTED`)에서도 열려 있다: 거부는 셀러에게만 종결이고,
+운영자가 뒤집을 길이 없으면 구매자와의 분쟁이 끝나지 않는다. 승인으로 되살리는 경로는 열지 않는다 —
+거부는 대상 품목을 풀어 줘(`RELEASED`) 그 사이 다른 클레임이 걸릴 수 있고, 그 확인은 품목 단위 질의라
+도메인이 아니라 application이 한다(걸려 있으면 409·50403).
+
+개입은 **반품비 부담 주체(`returnCostBearer`)까지만 정하고 환불 축은 건드리지 않는다.** 그래서 환불이 한 번이라도
+움직인 건(`refundStatus != NONE`)은 받지 않고, 종결 상태가 환불 집행 스캔 조건(`APPROVED` + `NONE`)에서 벗어나
+뒤집은 뒤에도 집행이 걸리지 않는다. 환불 실패로 멈춘 건의 운영 경로는 개입이 아니라 재집행(`retryRefund`)이다.
+결제 취소와 환불액 재계산을 개입에 묶으면 판정 버튼 하나가 PG 호출·재고·적립금 복원까지 끌고 간다.
+부담 주체도 **반품 발송이 없는 자리에서는 명시값까지 비운다** — 취소 클레임과 클레임 불가 판정(`CLAIM_DISMISSED`)이
+그 자리다. 남기면 "요청이 성립하지 않았다"와 "누가 반품비를 낸다"가 한 기록에 함께 남고, 기록은 고칠 수 없다.
+
+개입 가능 판정(`isAdminOverridable`)이 상태·환불 두 축으로 끝나지 않는 이유는 **교환**이다. 교환은 환불이 없어
+재발송으로 종결돼도(`completeExchange`) 상태가 `APPROVED`·환불 축이 `NONE`에 머물고 종결 시각만 찍힌다.
+그래서 `isExchangeSettled`가 셋째 축으로 붙는다 — 없으면 끝난 교환이 운영자의 작업 목록에 영구히 남고
+개입이 그 종결 시각을 덮어쓴다. 목록 질의와 읽기 모델도 같은 세 축을 쓴다.
+
+**개입 사유도 고정 어휘다**(`ClaimInterventionReason`) — 요청 사유와 같은 이유에서다. 판정별로 고를 수 있는 사유는
+`selectableFor(faultDecision)`가 가르고(셀러 귀책에 "구매자 악성 요청"이 없다), `OTHER`는 상세를 요구한다(400·50415·50416).
+그리고 **뒤집기와 기록은 한 호출로 묶인다** — `Claim.overrideByAdmin`이 `ClaimIntervention`을 반환값으로 내므로
+"개입했는데 기록이 없다"가 호출 순서 실수로 생기지 않는다. 기록은 직전 상태·직전 셀러 판단·직전 종결 시각을 담는다:
+개입이 `resolved_at`을 자기 시각으로 덮고 종결 시각 칼럼이 한 칸뿐이라, 담지 않으면 셀러가 언제 거부했는지가 사라진다.
 
 **셀러 운영 메모는 상태 기계 밖이다** — `updateSellerMemo`는 전이 규칙을 거치지 않아 종결된 클레임에도 쓸 수 있다.
 구매자에게 그대로 노출되는 `rejectionReason`이나 운영자 개입 사유 `adminReason`과 달리 셀러 내부 기록이라
@@ -173,13 +219,14 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
    common에 두지 않는 이유: common은 무의존 모듈이라 jakarta.persistence 반입 불가(05 문서).
 2. **publicId(ULID)**: 내부 bigint id의 열거(enumeration) 노출이 치명적인 애그리거트는
    `@Column(nullable=false, updatable=false, length=26) val publicId: String = Ulid.generate()` + UNIQUE.
-   생성기는 `support/Ulid` 파사드(ulid-creator 위임 — 엔티티가 라이브러리를 직접 부르지 않는다). 현재 적용: Product·OrderGroup(주문번호 역할)·Order·Claim.
+   생성기는 `support/Ulid` 파사드(ulid-creator 위임 — 엔티티가 라이브러리를 직접 부르지 않는다). 현재 적용: Product·OrderGroup(주문번호 역할)·Order·Claim·User·ProductInquiry.
    외부 API·URL에는 publicId만 노출하고 내부 id는 응답에 싣지 않는다.
    - 채번은 필드 초기화식(생성 시점 신원 확보 — DDD identity-at-creation). 엔티티를 도메인 밖에서
      new로 재구성해 detached merge하면 재채번되므로 **재구성 merge 금지, 항상 load 후 수정**.
    - 어노테이션은 필드에 직접 = **field access 전제** — property access로 바꾸면 `val` 주입이 깨진다.
-   - MySQL 전환(DDL 확정) 시 publicId 컬럼은 `CHARACTER SET ascii` 지정 — utf8mb4 CHAR(26)은
-     UNIQUE 인덱스 키 폭이 4배(104바이트)가 된다. 적재 후 ALTER는 인덱스 리빌드라 그때 하면 비싸다.
+   - publicId 컬럼은 문자셋을 따로 지정하지 않고 테이블 기본값(utf8mb4, utf8mb4_0900_ai_ci)을 따른다.
+     VARCHAR(26) UNIQUE 키는 최대 104바이트라 InnoDB 키 한도 3072바이트보다 훨씬 작다.
+     ULID는 대문자로만 채번하고 조회는 동등 비교뿐이라 ascii로 바꿀 이유가 없다.
    - publicId는 추측 불가를 담보할 뿐 **인가를 대체하지 않는다** — 조회 API마다 소유권 검증(BOLA/IDOR 방지) 필수.
 
 ## 3. 이벤트 수집 패턴 (도메인은 발행 메커니즘을 모른다)

@@ -4,6 +4,8 @@ import com.aechak.application.order.usecase.result.OrderGroupItemResult
 import com.aechak.application.order.usecase.result.OrderLineItemResult
 import com.aechak.application.order.usecase.result.OrderListResult
 import com.aechak.application.order.usecase.result.SellerOrderItemResult
+import com.aechak.domain.order.order.enums.OrderItemStatus
+import com.aechak.domain.order.order.enums.OrderStatus
 import java.time.OffsetDateTime
 import java.time.ZoneId
 
@@ -52,7 +54,7 @@ data class OrderGroupItemResponse(
 data class SellerOrderItemResponse(
     val orderId: String,
     val sellerName: String?,
-    val status: String,
+    val status: OrderStatus,
     val itemCount: Int,
     val representativeItem: OrderLineItemResponse?,
 ) {
@@ -76,7 +78,7 @@ data class OrderLineItemResponse(
     val optionName: String,
     val quantity: Int,
     val unitPrice: Long,
-    val itemStatus: String,
+    val itemStatus: OrderItemStatus,
 ) {
     companion object {
         fun from(result: OrderLineItemResult): OrderLineItemResponse =

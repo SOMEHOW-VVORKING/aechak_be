@@ -3,6 +3,7 @@ package com.aechak.application.order.claim.usecase
 import com.aechak.application.order.claim.usecase.command.RequestClaimCommand
 import com.aechak.application.order.claim.usecase.command.WithdrawClaimCommand
 import com.aechak.application.order.claim.usecase.result.ClaimListResult
+import com.aechak.application.order.claim.usecase.result.ClaimReasonCatalogResult
 import com.aechak.application.order.claim.usecase.result.RequestClaimResult
 
 /**
@@ -12,6 +13,9 @@ import com.aechak.application.order.claim.usecase.result.RequestClaimResult
 interface ClaimUseCase {
     /** 클레임 요청 — 환불액을 확정해 claim_items에 저장하고 자동승인 기한을 부여한다. */
     fun requestClaim(command: RequestClaimCommand): RequestClaimResult
+
+    /** 유형별로 선택할 수 있는 사유 어휘 — 요청 전에 선택지를 받아 가는 경로다. */
+    fun getClaimReasons(): ClaimReasonCatalogResult
 
     fun getClaims(
         orderPublicId: String,

@@ -71,6 +71,62 @@ class InspectionVerdictIntegrationTest : KafkaIntegrationTestBase() {
         assertNotNull(byPerspective[InspectionPerspectiveKind.DISPLAY_ADS]?.violations)
     }
 
+    /**
+     * 선별 관점과 뒤집힘 표시는 계약에만 더했고 AI는 아직 보내지 않는다. 매핑이 실제로
+     * 한 행으로 내려가는지와 뒤집힘 표시가 판정 적용을 막지 않는지를 지금 못박아,
+     * 선별 계층을 켤 때 이 자리를 다시 의심하지 않게 한다.
+     */
+    @Test
+    fun `선별 관점과 비평 뒤집힘 표시를 받아도 판정은 그대로 적용된다`() {
+        val inspection = givenQueued(productId = 52L, hash = "4".repeat(64))
+        val promoted =
+            verdictFor(inspection, InspectionVerdict.PASS).copy(
+                perspectives =
+                    listOf(
+                        PerspectiveResult(
+                            InspectionPerspective.TRIAGE,
+                            ContractOutcome.UNCHECKED,
+                            skipReason = "PROMOTED",
+                        ),
+                        PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.VIOLATION),
+                    ),
+                // 비평이 모델 위반을 지우고 통과로 바꾼 모양이다
+                violations = emptyList(),
+                sellerNotice = null,
+                calls = listOf(triageCall(inspection.id)),
+                criticOverturned = true,
+            )
+
+        inspectionUseCase.applyVerdict(ApplyVerdictCommand(promoted))
+
+        val reloaded = tx.execute { inspections.findById(inspection.id) }!!
+        assertEquals(InspectionJudgment.PASS, reloaded.judgment, "뒤집힘 표시가 판정 적용을 막으면 안 된다")
+        assertEquals(InspectionProcessingState.SETTLED, reloaded.processingState)
+
+        val recorded = tx.execute { findings.findByInspectionId(inspection.id) }!!
+        val triage = recorded.first { it.perspective == InspectionPerspectiveKind.TRIAGE }
+        assertEquals(
+            PerspectiveOutcome.UNCHECKED,
+            triage.outcome,
+            "승급은 내용을 판정한 것이 아니라 더 보라고 넘긴 것이므로 CLEAR로 적으면 거짓이 된다",
+        )
+        assertEquals("PROMOTED", triage.skipReason)
+
+        val ledgerPerspective =
+            tx.execute {
+                db
+                    .sql("select perspective from ai_call_ledger where inspection_id = :id")
+                    .param("id", inspection.id)
+                    .query(String::class.java)
+                    .single()
+            }
+        assertEquals(
+            "TRIAGE",
+            ledgerPerspective,
+            "선별 호출을 ALL로 적으면 비평·수정문구와 한 덩어리가 되어 승급률을 셀 수 없다",
+        )
+    }
+
     @Test
     fun `호출 원장에 토큰과 비용이 적힌다`() {
         val inspection = givenQueued(productId = 50L, hash = "2".repeat(64))
@@ -274,6 +330,22 @@ class InspectionVerdictIntegrationTest : KafkaIntegrationTestBase() {
             promptVersion = "inspection-v1+$POLICY_VERSION",
             schemaVersion = ContentVerdictMessage.SCHEMA_VERSION,
             decidedAt = Instant.parse("2026-10-19T03:00:05Z"),
+        )
+
+    /** 선별 호출 한 건. 비용은 레포의 단가표(haiku 입력 1.0 / 출력 5.0, 캐시읽기 0.1배)로 맞춰 둔다 */
+    private fun triageCall(inspectionId: Long): CallUsage =
+        CallUsage(
+            requestId = "insp-$inspectionId",
+            callId = "insp-$inspectionId-triage-1",
+            perspective = InspectionPerspective.TRIAGE,
+            modelId = "claude-haiku-4-5-20251001",
+            inputTokens = 300,
+            cacheReadInputTokens = 1_200,
+            cacheCreationInputTokens = 0,
+            outputTokens = 100,
+            costMicroUsd = 920,
+            latencyMs = 410,
+            outcome = "SUCCESS",
         )
 
     companion object {

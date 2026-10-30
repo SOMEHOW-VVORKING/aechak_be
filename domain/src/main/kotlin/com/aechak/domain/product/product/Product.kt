@@ -18,6 +18,7 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.OneToMany
@@ -30,6 +31,12 @@ import java.time.LocalDateTime
 @Table(
     name = "products",
     uniqueConstraints = [UniqueConstraint(name = "uk_product_public_id", columnNames = ["public_id"])],
+    // 셀러센터 조회는 전부 "내 상품"으로 먼저 좁힌다.
+    // products는 아직 Flyway 관리 밖(ddl-auto=update)이라 이 선언이 실제 인덱스를 만드는 곳은
+    // 개발·테스트 스키마뿐이다 — ddl-auto=none인 운영에는 products DDL 이관 마이그레이션이
+    // 같은 이름으로 넣어야 붙는다. 조건부 ALTER를 V59에 넣었다가 뺐다: products가 없는 분기가
+    // 어느 테스트에서도 실행되지 않아 검증되지 않는 코드가 된다.
+    indexes = [Index(name = "ix_products_seller_id", columnList = "seller_id, id")],
 )
 class Product protected constructor(
     category: Category,
@@ -207,6 +214,21 @@ class Product protected constructor(
                 Unit
             }
         }
+    }
+
+    /**
+     * 검수에서 위반으로 판정되어 노출을 멈춘다.
+     *
+     * 판매 상태는 건드리지 않는다. 셀러가 판매중으로 둔 의사와 플랫폼이 노출을 막은 사실은
+     * 다른 축이고, 함께 바꾸면 되돌릴 때 셀러의 의사를 복원할 방법이 없어진다.
+     */
+    fun rejectByInspection() {
+        inspectionStatus = InspectionStatus.REJECTED
+    }
+
+    /** 재검수가 통과해 노출을 되돌린다. */
+    fun approveByInspection() {
+        inspectionStatus = InspectionStatus.APPROVED
     }
 
     /** 가격 계산 정책(정가/할인가/기간) */

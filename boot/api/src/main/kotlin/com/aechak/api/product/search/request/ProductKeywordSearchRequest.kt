@@ -6,6 +6,7 @@ import com.aechak.application.support.CursorPageSize
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.webcommon.validation.NotBlankUnicode
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.DecimalMax
 import jakarta.validation.constraints.DecimalMin
@@ -42,6 +43,7 @@ data class ProductKeywordSearchRequest(
     val size: Int = CursorPageSize.DEFAULT,
 ) {
     @get:AssertTrue(message = "minPrice는 maxPrice 이하여야 합니다.")
+    @get:Schema(hidden = true)
     val isPriceRangeValid: Boolean
         get() = minPrice == null || maxPrice == null || minPrice <= maxPrice
 

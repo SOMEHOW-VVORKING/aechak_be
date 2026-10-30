@@ -30,11 +30,19 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.application.user.term", // UserFacade의 온보딩 동의 검증
         "com.aechak.application.user.verification", // 전화 인증
         "com.aechak.application.file", // 서류 승격
+        // 셀러가 받은 상품 문의 — 상위 application.inquiry(앱 서비스 문의)의 메일 발송 조립은 끌고 오지 않는다
+        "com.aechak.application.inquiry.product",
         "com.aechak.application.product", // 상품 등록·카테고리 조회
+        // 셀러 리뷰 관리·답글 — 리뷰 작성·금칙어 판정(application.review 상위)은 구매자 경로의 것이고
+        // 금칙어 스캐너 구현과 메시지 발행이 api 모듈에만 있어 끌고 오면 부팅이 깨진다
+        "com.aechak.application.review.seller",
         "com.aechak.application.order.seller", // 셀러 주문 관리 — 구매자 주문서·장바구니 조립은 끌고 오지 않는다
         "com.aechak.application.order.claim", // 클레임 승인·거부 — 구매자 요청 계약과 파사드를 공유한다. 환불 집행은 아래 제외 필터로 뺀다
         "com.aechak.application.order.delivery", // 배송완료 전이 — 셀러 수동 처리와 배치 자동 전이가 공유하는 묶음
         "com.aechak.application.order.shipment", // 택배사 마스터 조회 — order BC 중 이 하위만 쓴다
+        // 정산은 셀러가 조회하는 하위만 — 원장 생성·계좌 등록(application.settlement 상위)은 구매확정·심사 승인 경로의 것이다
+        "com.aechak.application.settlement.seller",
+        "com.aechak.application.dashboard", // 셀러센터 첫 화면 집계 — 위 네 BC 진입점을 모아 조립한다
         // 검수 요청 발행. service 패키지만 넣는다 — facade(판정 적용·기한 정리)는 api가 소유한다.
         "com.aechak.application.inspection.service",
         "com.aechak.infra.persistence", // JPA 어댑터 (QuerydslConfig 포함)
