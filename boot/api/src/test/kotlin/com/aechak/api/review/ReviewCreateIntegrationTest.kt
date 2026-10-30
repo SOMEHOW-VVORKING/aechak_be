@@ -29,7 +29,6 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
-import org.springframework.kafka.test.context.EmbeddedKafka
 import org.springframework.security.oauth2.jwt.JwtClaimsSet
 import org.springframework.security.oauth2.jwt.JwtEncoder
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters
@@ -50,17 +49,8 @@ import java.util.UUID
 /**
  * 리뷰 작성 API(POST /reviews) 통합 테스트.
  * 아웃박스 발행을 타므로 Flyway가 켜진 KafkaIntegrationTestBase를 상속한다.
- * REVIEW 토픽을 선언해 컨슈머(평점 투영, 적립)까지 도는 e2e도 함께 검증한다.
+ * 컨슈머(평점 투영, 적립)까지 도는 e2e도 함께 검증한다 — 토픽은 베이스가 모아 선언한다.
  */
-@EmbeddedKafka(
-    partitions = 1,
-    topics = [
-        com.aechak.infra.kafka.Topics.ORDER,
-        com.aechak.infra.kafka.Topics.ORDER_DLT,
-        com.aechak.infra.kafka.Topics.REVIEW,
-        com.aechak.infra.kafka.Topics.REVIEW_DLT,
-    ],
-)
 class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
     @Autowired
     private lateinit var context: WebApplicationContext
