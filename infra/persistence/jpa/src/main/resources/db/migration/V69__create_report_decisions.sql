@@ -13,10 +13,11 @@
 --  - enum 컬럼은 VARCHAR로 둔다.
 --  - 인덱스·UNIQUE 이름은 엔티티 @Table 선언과 일치시킨다(ReportDecision.UK_TARGET).
 --
--- 번호 실측(2026-10-30 재측정): develop 최고 V61. 열린 PR이 V62(#173)·V63(#172)·V64(#168)·
--- V65(#100)·V66(#101)·V67(#177)을 들고 있어 다음 빈 번호인 V68을 쓴다.
--- 처음에 V64로 적었던 것은 측정 시점이 #168의 재배번(V56->V64)보다 빨랐던 탓이다 —
--- 그대로 두면 develop에서 같은 번호 두 파일이 되어 부팅 검증이 깨진다.
+-- 번호: V69. 이 표가 읽는 product_reports·user_reports 를 Flyway 로 올리는 것이 신고 접수(#100)라
+-- 그 PR 뒤에 와야 하고, #100 이 V68 로 비켜 왔으므로 그보다 한 칸 뒤를 쓴다.
+-- 두 번 옮겼다. 처음 V64 는 측정 시점이 #168 의 재채번(V56->V64)보다 빨라 겹쳤고,
+-- 다음 V68 은 #100 이 그 자리로 오면서 다시 겹쳤다. 내용은 두 번 다 손대지 않고 이름만 바꿨다.
+-- 같은 번호 둘이 develop 에 들어가면 Found more than one migration with version 으로 부팅이 거부된다.
 
 CREATE TABLE IF NOT EXISTS report_decisions
 (
