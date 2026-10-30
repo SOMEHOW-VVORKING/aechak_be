@@ -56,11 +56,19 @@ class NoticeReadQueryAdapter(
             .from(notice)
             .where(visibleTo(condition.reader), categoryEq(condition.category))
 
-    /** 게시된 공지 중 그 독자 대상에 해당하는 것 — 전체 대상(ALL)과 자기 대상. */
+    /**
+     * 게시된 공지 중 그 독자 대상에 해당하는 것 — 전체 대상(ALL)과 자기 대상.
+     *
+     * 게시 시각이 비어 있는 행은 제외한다. 애그리거트는 게시 전이에서 반드시 시각을 채우므로
+     * 정상 경로에는 그런 행이 없지만, 손으로 심은 행이 하나 섞이면 읽기 모델의 non-null
+     * 생성자에서 NPE가 터져 목록 전체가 500이 된다 — 그 행만 안 보이는 쪽이 낫다.
+     * 정렬 키이기도 해서 null이 섞이면 페이지 경계도 어긋난다.
+     */
     private fun visibleTo(reader: NoticeAudience): Predicate =
         notice.status
             .eq(NoticeStatus.PUBLISHED)
             .and(notice.audience.`in`(reader.visibleTo()))
+            .and(notice.publishedAt.isNotNull)
 
     private fun categoryEq(category: NoticeCategory?): Predicate? = category?.let { notice.category.eq(it) }
 

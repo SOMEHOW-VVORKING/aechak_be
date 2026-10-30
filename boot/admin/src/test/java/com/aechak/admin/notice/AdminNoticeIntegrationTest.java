@@ -253,22 +253,31 @@ class AdminNoticeIntegrationTest extends IntegrationTestBase {
         assertThat(noticeOf(publicId).getStatus()).isEqualTo(NoticeStatus.DRAFT);
     }
 
+    /**
+     * 게시 시각은 서버 시계로 찍히므로 첫 게시와 재게시가 같은 마이크로초에 떨어질 수 있다 —
+     * 그 상태로 "갱신됐다"를 느슨하게 단언하면 갱신을 지워도 통과한다. 첫 시각을 과거로 밀어 두고
+     * 재게시 뒤 그보다 뒤인지를 엄격히 본다.
+     */
     @Test
     void 내린_공지는_게시_기록을_남기고_다시_게시하면_시각이_갱신된다() throws Exception {
         String publicId = createDraft("점검 안내", "본문", "MAINTENANCE", "ALL", false, null);
         publish(publicId).andExpect(status().isOk());
-        java.time.LocalDateTime firstPublishedAt = noticeOf(publicId).getPublishedAt();
+        java.time.LocalDateTime firstPublishedAt = java.time.LocalDateTime.now().minusDays(3);
+        backdatePublishedAt(publicId, firstPublishedAt);
 
         mockMvc.perform(bearer(post(BASE + "/" + publicId + "/unpublish"), actorToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("UNPUBLISHED"))
                 .andExpect(jsonPath("$.data.publishedAt").exists());
 
+        // 내림이 게시 기록을 지우지 않았는지 먼저 본다 — 지웠다면 아래 비교가 무의미해진다.
+        assertThat(noticeOf(publicId).getPublishedAt()).isEqualTo(firstPublishedAt);
+
         publish(publicId).andExpect(status().isOk());
 
         Notice stored = noticeOf(publicId);
         assertThat(stored.getStatus()).isEqualTo(NoticeStatus.PUBLISHED);
-        assertThat(stored.getPublishedAt()).isAfterOrEqualTo(firstPublishedAt);
+        assertThat(stored.getPublishedAt()).isAfter(firstPublishedAt);
     }
 
     // --- 목록 ---
@@ -388,6 +397,18 @@ class AdminNoticeIntegrationTest extends IntegrationTestBase {
 
     private String quote(String value) {
         return value == null ? "null" : "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
+    /** 게시 시각을 과거로 밀어 둔다 — 애그리거트는 시각을 받지 않으므로 저장값을 직접 고친다. */
+    private void backdatePublishedAt(String publicId, java.time.LocalDateTime at) {
+        tx.execute(txStatus -> em.createQuery("update Notice n set n.publishedAt = :at where n.publicId = :publicId")
+                .setParameter("at", at)
+                .setParameter("publicId", publicId)
+                .executeUpdate());
+        tx.execute(txStatus -> {
+            em.clear();
+            return null;
+        });
     }
 
     private Notice noticeOf(String publicId) {

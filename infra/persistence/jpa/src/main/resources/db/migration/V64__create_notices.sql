@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS notices
     category                  VARCHAR(30)  NOT NULL,            -- SERVICE / MAINTENANCE / POLICY / EVENT / SETTLEMENT
     audience                  VARCHAR(20)  NOT NULL,            -- ALL / BUYER / SELLER. 독자를 가르는 유일한 축
     status                    VARCHAR(20)  NOT NULL,            -- DRAFT / PUBLISHED / UNPUBLISHED
-    pinned                    BOOLEAN      NOT NULL,            -- 읽는 쪽 목록 상단 고정
+    pinned                    BIT(1)       NOT NULL,            -- 읽는 쪽 목록 상단 고정. BOOLEAN(=tinyint)으로 두면 Hibernate가 만드는 bit(1)과 갈린다
     published_at              DATETIME(6)  NULL,                -- 가장 최근 게시 시각. 미게시는 NULL
     internal_memo             VARCHAR(300) NULL,                -- 운영자 내부 메모. 읽는 쪽 응답에 싣지 않는다
     created_by_admin_id       BIGINT       NOT NULL,            -- 초안을 만든 운영자. 값 참조(user BC), FK 없이 인덱스도 두지 않는다
