@@ -107,8 +107,14 @@ class AdminReportFacadeTest {
         assertEquals(1, decisions.saved.size, "조치가 필요 없었을 뿐이므로 결정 기록은 남아야 한다")
     }
 
+    /**
+     * 결정 기록이 남지 않는 것은 예외가 `decide` 밖으로 나가 트랜잭션이 되돌아가기 때문이고,
+     * 여기서는 트랜잭션이 없어 확인할 수 없다 — 그 축은 통합 테스트
+     * (`제재_위임이_거절되면_결정_기록도_대상도_되돌아간다`)가 본다.
+     * 이 테스트가 보는 것은 예외가 삼켜지지 않고 올라오는지까지다.
+     */
     @Test
-    fun `잠금 조회에서 대상이 사라졌으면 끊고 결정을 남기지 않는다`() {
+    fun `잠금 조회에서 대상이 사라졌으면 404 로 끊고 조치를 위임하지 않는다`() {
         reports.put(reviewRow())
         visibility.answer = null
 
@@ -122,23 +128,29 @@ class AdminReportFacadeTest {
         assertTrue(reviews.blinded.isEmpty())
     }
 
+    /**
+     * 계정 제재는 되돌릴 수 없는 조치다. 숨길 대상이 사라진 것을 알아낸 뒤에도 제재가 나가면
+     * 운영자는 404 를 받는데 계정은 정지된 채로 남는다. 제재 위임이 비노출 판정보다
+     * 먼저 가거나 판정 실패를 건너뛰면 이 테스트가 깨진다.
+     */
+    @Test
+    fun `대상이 사라지면 계정 제재도 위임되지 않는다`() {
+        reports.put(reviewRow())
+        visibility.answer = null
+
+        val thrown = assertFailsWith<BusinessException> { facade.decide(sanctionCommand()) }
+
+        assertEquals(ReportErrorCode.REPORT_TARGET_NOT_FOUND, thrown.errorCode)
+        assertTrue(reviews.blinded.isEmpty())
+        assertTrue(members.sanctioned.isEmpty(), "대상이 사라졌는데 계정만 제재하면 되돌릴 수 없다")
+    }
+
     @Test
     fun `계정 제재도 같은 잠금 조회를 거쳐 리뷰를 가린다`() {
         reports.put(reviewRow())
         visibility.answer = false
 
-        facade.decide(
-            hideCommand().copy(
-                decision = ReportDecisionType.SANCTION_ACCOUNT,
-                sanction =
-                    DecideReportCommand.SanctionDetail(
-                        action = SanctionAction.RESTRICT,
-                        reasonCode = SanctionReasonCode.OTHER,
-                        reasonDetail = "위반을 확인했습니다",
-                        durationDays = null,
-                    ),
-            ),
-        )
+        facade.decide(sanctionCommand())
 
         assertEquals(listOf(REVIEW_ID), visibility.lockedReviewIds)
         assertEquals(1, reviews.blinded.size)
@@ -186,6 +198,19 @@ class AdminReportFacadeTest {
             noticeToOwner = null,
             internalMemo = null,
             sanction = null,
+        )
+
+    /** 리뷰 신고의 계정 제재 — 비노출과 제재가 함께 나가는 조합. */
+    private fun sanctionCommand() =
+        hideCommand().copy(
+            decision = ReportDecisionType.SANCTION_ACCOUNT,
+            sanction =
+                DecideReportCommand.SanctionDetail(
+                    action = SanctionAction.RESTRICT,
+                    reasonCode = SanctionReasonCode.OTHER,
+                    reasonDetail = "위반을 확인했습니다",
+                    durationDays = null,
+                ),
         )
 
     private fun reviewRow() =

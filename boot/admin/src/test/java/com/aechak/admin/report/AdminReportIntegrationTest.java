@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aechak.admin.support.IntegrationTestBase;
+import com.aechak.application.report.admin.port.ReportReviewVisibilityPort;
 import com.aechak.domain.product.category.Category;
 import com.aechak.domain.product.product.Product;
 import com.aechak.domain.product.product.enums.InspectionStatus;
@@ -54,6 +55,9 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
 
     @Autowired
     private FilterChainProxy securityFilterChain;
+
+    @Autowired
+    private ReportReviewVisibilityPort reviewVisibilityPort;
 
     private MockMvc mockMvc;
     private long adminId;
@@ -529,6 +533,34 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
 
         assertThat(reviewStatusOf(reviewId)).isEqualTo(ReviewStatus.BLOCKED);
         assertThat(decisions()).hasSize(2);
+    }
+
+    /**
+     * 비노출 판정의 세 답(노출 중·이미 가려짐·대상 없음)을 실제 어댑터로 못박는다.
+     *
+     * <p>Facade 쪽 계약은 대역으로 보므로 "행이 없으면 null"을 어댑터가 지키지 않으면 아무도 잡지
+     * 못한다 — null을 true로 접어 버리면 대상이 사라진 신고가 "이미 가려짐"으로 통과해, 숨길 것이
+     * 없는데도 계정 제재까지 확정된다. 대상 없음은 조회 경로가 대상 표를 inner join해 404(140000)로
+     * 먼저 걸러지므로, HTTP 표면으로는 이 축을 태울 수 없다.
+     */
+    @Test
+    void 비노출_판정_어댑터는_노출_중과_가려짐과_대상_없음을_구분한다() throws Exception {
+        long reviewId = persistReview(1001L, "욕설이 섞인 리뷰");
+        long reportId = persistReviewReport(reviewId, ReviewReportReason.ABUSE, "욕설이에요");
+
+        assertThat(lockAndReadHidden(reviewId)).as("노출 중인 리뷰").isFalse();
+
+        decide("REVIEW", reportId, hideBody("ABUSE")).andExpect(status().isNoContent());
+
+        assertThat(lockAndReadHidden(reviewId)).as("블라인드된 리뷰").isTrue();
+        assertThat(lockAndReadHidden(reviewId + 10_000L))
+                .as("행이 없으면 null 이어야 한다 — true 로 접으면 숨길 대상 없이 제재가 나간다")
+                .isNull();
+    }
+
+    /** 잠금 조회는 트랜잭션 안에서만 할 수 있다. */
+    private Boolean lockAndReadHidden(long reviewId) {
+        return tx.execute(txStatus -> reviewVisibilityPort.lockAndReadHidden(reviewId));
     }
 
     @Test
