@@ -13,6 +13,7 @@ import org.springframework.http.MediaType
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
@@ -147,6 +148,57 @@ class SanctionedAccountGateIntegrationTest : IntegrationTestBase() {
                     .content("{}"),
             ).andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
+    }
+
+    /**
+     * 상품 문의 등록은 상품 하위 경로(`/products/{id}/inquiries`)라 제한 경로를 접두로만 적으면 빠진다.
+     * 빠져 있던 자리라서 경로를 문자열로 못박아 둔다 — 컨트롤러 매핑이 바뀌면 여기서 걸린다.
+     */
+    @Test
+    fun `이용 제한 계정의 상품 문의 등록은 403 20013으로 막힌다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        mockMvc
+            .perform(
+                bearer(post("/api/v1/products/01J0000000000000000000PROD/inquiries"), mintAccessToken(userId))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{}"),
+            ).andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.ACCOUNT_RESTRICTED.code))
+    }
+
+    @Test
+    fun `이용 제한 계정의 상품 문의 철회도 403 20013으로 막힌다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        mockMvc
+            .perform(bearer(delete("/api/v1/product-inquiries/01J0000000000000000000INQ1"), mintAccessToken(userId)))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.ACCOUNT_RESTRICTED.code))
+    }
+
+    /** 과차단 방지 — 패턴이 상품 하위의 다른 쓰기나 정상 계정까지 삼키면 안 된다. */
+    @Test
+    fun `정상 계정은 상품 문의 등록 경로에서 게이트를 통과한다`() {
+        val token = mintAccessToken(createActiveUser())
+
+        mockMvc
+            .perform(
+                bearer(post("/api/v1/products/01J0000000000000000000PROD/inquiries"), token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{}"),
+            ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
+    }
+
+    /** 제한은 쓰기만 막는다 — 제한 계정도 상품 문의 목록은 읽어야 한다. */
+    @Test
+    fun `이용 제한 계정의 상품 문의 조회는 게이트를 통과한다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        mockMvc
+            .perform(bearer(get("/api/v1/users/me/product-inquiries"), mintAccessToken(userId)))
+            .andExpect(status().isOk)
     }
 
     private fun createMember(

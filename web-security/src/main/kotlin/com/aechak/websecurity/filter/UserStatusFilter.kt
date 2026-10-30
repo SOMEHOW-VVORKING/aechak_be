@@ -11,8 +11,11 @@ import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.util.AntPathMatcher
 import org.springframework.web.filter.OncePerRequestFilter
 import tools.jackson.databind.ObjectMapper
+
+private val PATH_MATCHER = AntPathMatcher()
 
 /**
  * 인가 상태검증 필터 — BearerTokenAuthenticationFilter 바로 뒤에 배치.
@@ -31,8 +34,15 @@ class UserStatusFilter(
     private val objectMapper: ObjectMapper,
     /** PENDING_ONBOARDING 허용 경로 — 정책은 조립 지점(SecurityConfig) 소유, 이 필터는 메커니즘만 담당한다. */
     private val onboardingAllowedPaths: Set<String>,
-    /** 이용 제한(RESTRICTED) 계정에게 막을 경로 접두 — 같은 이유로 정책은 조립 지점 소유다. */
-    private val restrictedWritePathPrefixes: Set<String>,
+    /**
+     * 이용 제한(RESTRICTED) 계정에게 막을 경로 패턴 — 같은 이유로 정책은 조립 지점 소유다.
+     *
+     * 접두가 아니라 Ant 패턴인 이유: 막아야 할 쓰기가 "products/{id}/inquiries"처럼 가변 세그먼트를
+     * 중간에 끼고 있어 접두 하나로 표현되지 않는다. 접두를 "products"로 넓히면 상품 하위의 다른 쓰기까지
+     * 함께 막혀 과차단이 된다. 꼬리가 와일드카드인 패턴은 하위 경로가 없는 경로 자체도 포함한다
+     * (AntPathMatcher) — "reviews" 하나만 치는 기존 요청도 그대로 걸린다.
+     */
+    private val restrictedWritePathPatterns: Set<String>,
 ) : OncePerRequestFilter() {
     override fun doFilterInternal(
         request: HttpServletRequest,
@@ -70,7 +80,7 @@ class UserStatusFilter(
     /** 조회는 남겨 두고 쓰기만 막는다 — 제한 계정도 자기 주문·리뷰를 읽을 수는 있어야 한다. */
     private fun isRestrictedWrite(request: HttpServletRequest): Boolean {
         if (request.method.equals(HttpMethod.GET.name(), ignoreCase = true)) return false
-        return restrictedWritePathPrefixes.any { request.requestURI.startsWith(it) }
+        return restrictedWritePathPatterns.any { PATH_MATCHER.match(it, request.requestURI) }
     }
 
     private fun writeError(

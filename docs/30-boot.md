@@ -34,7 +34,7 @@ JWT에 상태를 박지 않고 매 요청 `users.status`를 프로젝션 조회�
 | SUSPENDED · BANNED · WITHDRAWN · 유저 없음 | 403(20005) |
 
 - **유효 상태**는 저장값이 아니다 — 기간이 지난 임시 정지는 ACTIVE로 본다(`UserStatus.effective`). 이 판정은 `UserStatusReader` 포트가 책임지므로 호출부(필터·토큰 회전)가 반복하지 않는다.
-- RESTRICTED의 제한 경로는 api의 `restrictedWritePathPrefixes` — 리뷰·SNS·문의 등 커뮤니티성 쓰기다. 주문·결제는 넣지 않는다: 이용 제한은 거래를 끊는 제재가 아니고, 거래를 끊어야 하는 제재는 임시/영구 정지다.
+- RESTRICTED의 제한 경로는 api의 `restrictedWritePathPatterns` — 리뷰·SNS·문의(앱 서비스 문의와 상품 문의) 등 커뮤니티성 쓰기다. 주문·결제는 넣지 않는다: 이용 제한은 거래를 끊는 제재가 아니고, 거래를 끊어야 하는 제재는 임시/영구 정지다. **접두가 아니라 Ant 패턴인 이유**는 상품 문의 등록이 `/products/{id}/inquiries`로 가변 세그먼트를 중간에 끼고 있어 접두로 표현되지 않기 때문이다 — 커뮤니티성 쓰기를 새로 열면 이 목록에 함께 넣는다(빠지면 게이트가 조용히 통과한다).
 - 게이트는 필터 하나가 아니다. 소셜 로그인(`SocialLoginService`)과 refresh 회전(`TokenService`)도 같은 상태를 보고 SUSPENDED·BANNED·WITHDRAWN을 끊는다 — 필터만 막으면 토큰 수명이 연장된다.
 
 ## 2. Controller 규칙
