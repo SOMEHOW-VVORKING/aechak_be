@@ -131,3 +131,41 @@ resource "aws_lb_listener_rule" "admin" {
     target_group_arn = aws_lb_target_group.admin.arn
   }
 }
+
+# ── AI 검수 서버: host 기반 분기 ──────────────────
+# 헬스체크 경로가 자바 세 모듈과 다르다. 액추에이터가 아니라 /health이고,
+# 소비 루프가 살아 있는지까지 보고 죽었으면 503을 준다.
+resource "aws_lb_target_group" "ai" {
+  name_prefix = "ai-" # 교체 시 이름충돌 방지 (max 6자)
+  port        = var.ai_app_port
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  deregistration_delay = 60
+
+  lifecycle { create_before_destroy = true }
+
+  health_check {
+    path                = "/health"
+    interval            = 30
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+}
+
+resource "aws_lb_listener_rule" "ai" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 30 # host 분기라 규칙 간 간섭 없음 — admin(20) 뒤 번호만 잇는다
+
+  condition {
+    host_header {
+      values = [local.ai_api_domain]
+    }
+  }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.ai.arn
+  }
+}

@@ -443,3 +443,42 @@ resource "aws_ssm_parameter" "batch_schedule_flags" {
 #   api: 부팅은 되지만 임시 키 폴백으로 갈라져 모듈 간 검증이 전부 401이 된다
 #   seller, admin: dev에서 필수라 공개키 자리에 ${AUTH_JWT_PUBLIC_KEY} 글자가 그대로 들어가 base64 해석 오류로 부팅이 실패한다
 # 검증 전용 실행 모듈이 더 늘면 그 모듈 경로에도 공개키를 같은 값으로 등재한다.
+
+# ── 검수 라인 ──────────────────
+# 셀러센터가 검수 요청을 발행하려면 브로커 주소가 필요하다. api 쪽 같은 이름 파라미터는
+# 수기 등재돼 있지만, 값이 terraform이 아는 고정 사설 IP라 새로 만드는 것은 여기서 소유한다.
+resource "aws_ssm_parameter" "seller_kafka_bootstrap" {
+  name  = "/${var.project}/${var.env}/seller/SPRING_KAFKA_BOOTSTRAP_SERVERS"
+  type  = "String"
+  value = "${local.kafka_private_ip}:9092"
+}
+
+# AI 검수 서버. 키는 terraform이 값을 알 수 없어 수기 등재한다 —
+# /aechak/dev/ai/AECHAK_AI_ANTHROPIC_API_KEY 를 SecureString으로 넣어야 태스크가 기동한다.
+resource "aws_ssm_parameter" "ai_kafka_bootstrap" {
+  name  = "/${var.project}/${var.env}/ai/AECHAK_AI_KAFKA_BOOTSTRAP_SERVERS"
+  type  = "String"
+  value = "${local.kafka_private_ip}:9092"
+}
+
+# 초안 API 주소. seller-api가 `aechak.ai.draft.base-url`로 읽는 값이고(키 이름은
+# boot/seller/src/main/resources/application.yml의 플레이스홀더와 글자까지 같아야 한다),
+# 경로는 어댑터가 붙이므로 **오리진만** 넣는다. terraform이 아는 값이라 여기서 소유한다.
+#
+# 비면 어댑터가 조립되지 않고 전건 state=UNAVAILABLE이다 — 셀러는 빈 폼을 그대로 받는다.
+# 즉 등재 누락이 등록을 막지는 않지만 기능이 조용히 꺼진다.
+resource "aws_ssm_parameter" "seller_ai_draft_base_url" {
+  name  = "/${var.project}/${var.env}/seller/AECHAK_AI_DRAFT_BASE_URL"
+  type  = "String"
+  value = "http://${aws_service_discovery_service.ai_draft.name}.${aws_service_discovery_private_dns_namespace.internal.name}:${var.ai_draft_port}"
+}
+
+# --- 초안 공유 비밀: 수기 등재, 양쪽 같은 값 ---
+# AI가 `x-aechak-draft-secret` 헤더를 상수 시간 비교하고 **비면 전건 403**이다. 두 자리에
+# 같은 값을 넣어야 한다. 어긋나도 AI는 사유를 적지 않으므로 seller-api 로그의 403 ERROR가
+# 유일한 단서다.
+#   /{project}/{env}/ai/AECHAK_AI_DRAFT_SHARED_SECRET     (SecureString) — 초안 taskdef가 참조
+#   /{project}/{env}/seller/AECHAK_AI_DRAFT_SHARED_SECRET (SecureString) — seller-api가 경로 조회
+# ai 쪽이 없으면 초안 태스크는 **기동 자체가 실패한다**(taskdef secrets 해석 실패). 인증 없는
+# 경로가 열리는 것보다 그 실패가 낫다고 보고 참조로 둔 것이다.
+
