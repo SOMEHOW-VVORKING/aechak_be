@@ -70,7 +70,7 @@ public class SecurityConfig {
                         .authenticationEntryPoint(unauthenticatedEntryPoint)
                         .accessDeniedHandler(forbiddenAccessDeniedHandler))
                 .addFilterAfter(
-                        new UserStatusFilter(userStatusReader, objectMapper, Set.of()),
+                        new UserStatusFilter(userStatusReader, objectMapper, Set.of(), Set.of()),
                         BearerTokenAuthenticationFilter.class);
         return http.build();
     }

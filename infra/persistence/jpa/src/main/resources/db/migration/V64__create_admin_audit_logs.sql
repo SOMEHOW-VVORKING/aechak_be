@@ -1,5 +1,5 @@
 -- 운영자 조치 통합 기록. 더하기만 있는 테이블이다 -- 코드에 수정·삭제 경로를 만들지 않는다.
--- 번호 주의: develop 이 V54(create_claim_interventions)까지 적용됐다. 그보다 높은 V56을 쓴다.
+-- 번호 주의: develop 이 V58(create_user_sanctions)까지 적용됐고 열린 PR 들이 V59~V63 을 점유했다. 그보다 높은 V64 를 쓴다.
 -- out-of-order가 꺼져 있어 이미 적용된 번호보다 낮은 번호를 올리면 실행 모듈이 부팅 검증에서 막힌다.
 -- 이 PR을 다른 어드민 PR 뒤에 머지하면 그 시점의 develop 최고 번호를 다시 실측해 재채번해야 한다 --
 -- 내용은 그대로 두고 git mv 로 파일 이름만 바꾸고, AdminAuditLogSchemaParityTest 의 MIGRATION 상수도 같이 바꾼다.

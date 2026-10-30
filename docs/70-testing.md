@@ -197,6 +197,9 @@ class CartPersistenceIntegrationTest : IntegrationTestBase() {
     ddl-auto가 만든 DB를 재현한 스키마와의 대조는 타입까지 엄격하게 본다 — 마이그레이션이 기존 네이티브 enum 컬럼을
     VARCHAR로 수렴시키기 때문이다. 엔티티 선언과의 대조에서만 enum↔VARCHAR을 허용하고, 이때도 VARCHAR 길이가 모든
     enum 값을 담는지 확인한다. ddl-auto가 FK 때문에 만든 보조 인덱스는 양쪽 비교에서 제외한다.
+    **ddl-auto 재현 스키마는 현재 엔티티 DDL이 아니라 변경 직전 DDL로 만든다** — 현재 DDL을 쓰면 추가하려는 컬럼과 넓히려는 enum이
+    이미 최신이라 조건부 ALTER가 한 번도 실행되지 않고, ALTER를 지워도 테스트가 통과한다. 적용 전 상태(컬럼 부재·옛 enum 값 목록)를
+    먼저 단언해 재현 픽스처가 실제로 낡았음을 고정한 뒤, 적용 후 타입과 **새 값 쓰기 성공**까지 확인한다.
 - **MockMvc**: 컨트롤러 통합 착수 시 `spring-boot-webmvc-test-autoconfigure` 배선(Boot 4에서 별도 아티팩트), `@AutoConfigureMockMvc`는 베이스에.
 - **픽스처 빌더**: 유스케이스 테스트 착수 시 `OrderFixture.aCart()` 형태의 Object Mother 도입. 그 전까지 도메인 팩토리 직접 호출 허용.
 - **인증**: Security가 컨트롤러 통합에 붙으면 `@WithMockUser`/커스텀 시큐리티 테스트 지원 구체화.
