@@ -1,6 +1,7 @@
 package com.aechak.admin.notice;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -8,14 +9,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aechak.admin.support.IntegrationTestBase;
+import com.aechak.application.notice.admin.usecase.AdminNoticeUseCase;
+import com.aechak.application.notice.admin.usecase.command.PublishNoticeCommand;
+import com.aechak.common.error.BusinessException;
+import com.aechak.domain.notice.error.NoticeErrorCode;
 import com.aechak.domain.notice.notice.Notice;
 import com.aechak.domain.notice.notice.enums.NoticeAudience;
 import com.aechak.domain.notice.notice.enums.NoticeCategory;
 import com.aechak.domain.notice.notice.enums.NoticeStatus;
 import com.aechak.domain.user.user.enums.UserRole;
 import com.jayway.jsonpath.JsonPath;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +51,9 @@ class AdminNoticeIntegrationTest extends IntegrationTestBase {
 
     @Autowired
     private FilterChainProxy securityFilterChain;
+
+    @Autowired
+    private AdminNoticeUseCase adminNoticeUseCase;
 
     private MockMvc mockMvc;
     private long actorId;
@@ -242,6 +255,59 @@ class AdminNoticeIntegrationTest extends IntegrationTestBase {
         assertThat(noticeOf(publicId).getPublishedAt()).isEqualTo(publishedAt);
     }
 
+    /**
+     * 게시가 커밋되기 전에 들어온 두 번째 게시가 앞선 게시를 덮어쓰지 못하는지 — 쓰기 경로가 공지 행을
+     * 잠가 읽지 않으면 두 요청이 같은 DRAFT를 읽어 둘 다 중복 판정을 통과하고, 나중에 쓰는 쪽이 앞선
+     * 게시 시각과 수정자를 덮어쓴다. 잠그면 두 번째 조회가 첫 커밋까지 기다렸다가 PUBLISHED를 읽고 거절한다.
+     *
+     * <p>순차 호출만 보는 위 중복 게시 테스트는 잠금을 지워도 통과한다 — 잠금의 회귀를 잡는 것은 이 테스트다.
+     *
+     * <p>첫 트랜잭션의 커밋 보류를 두 번째 요청이 출발한 뒤부터 센다. 전이 반영 직후부터 재면 두 번째
+     * 스레드가 그 사이에 밀리는 만큼 보류가 먼저 끝나, 잠금이 없어도 두 번째가 커밋된 PUBLISHED를 읽고
+     * 거절되어 테스트가 거짓 통과한다.
+     */
+    @Test
+    void 게시가_커밋되기_전에_들어온_두번째_게시는_거절되고_앞선_게시를_덮어쓰지_않는다() throws Exception {
+        String publicId = createDraft("점검 안내", "본문", "MAINTENANCE", "ALL", false, null);
+        long otherAdminId = createUser(com.aechak.domain.user.user.enums.UserStatus.ACTIVE, UserRole.ADMIN);
+        CountDownLatch publishApplied = new CountDownLatch(1);
+        CountDownLatch secondPublishStarting = new CountDownLatch(1);
+        AtomicReference<java.time.LocalDateTime> firstPublishedAt = new AtomicReference<>();
+
+        // 첫 게시 트랜잭션은 전이를 반영한 뒤, 두 번째 요청이 출발할 때까지 기다렸다가 잠금을 쥔 채로 잠시 커밋을 미룬다
+        CompletableFuture<Void> publishing = CompletableFuture.runAsync(() -> tx.executeWithoutResult(txStatus -> {
+            firstPublishedAt.set(adminNoticeUseCase
+                    .publish(new PublishNoticeCommand(actorId, publicId))
+                    .publishedAt());
+            publishApplied.countDown();
+            await(secondPublishStarting);
+            sleep(600);
+        }));
+
+        assertThat(publishApplied.await(10, TimeUnit.SECONDS))
+                .as("첫 게시 전이가 반영되어야 한다")
+                .isTrue();
+        BusinessException rejected = assertThrows(
+                BusinessException.class,
+                () -> {
+                    secondPublishStarting.countDown();
+                    adminNoticeUseCase.publish(new PublishNoticeCommand(otherAdminId, publicId));
+                },
+                "첫 게시가 커밋된 뒤의 두 번째 게시는 거절되어야 한다");
+
+        publishing.join();
+        assertThat(rejected.getErrorCode()).isEqualTo(NoticeErrorCode.NOTICE_ALREADY_PUBLISHED);
+
+        Notice stored = noticeOf(publicId);
+        // DATETIME(6)은 마이크로초까지만 담는다 — 첫 게시가 메모리에서 들고 있던 나노초를 그대로 비교하면 정상 구현도 실패한다.
+        assertThat(stored.getPublishedAt())
+                .as("두 번째 게시가 앞선 게시 시각을 덮어써서는 안 된다")
+                .isEqualTo(firstPublishedAt.get().truncatedTo(ChronoUnit.MICROS));
+        assertThat(stored.getLastModifiedByAdminId())
+                .as("거절된 게시의 운영자가 수정자로 남아서는 안 된다")
+                .isEqualTo(actorId);
+    }
+
     @Test
     void 초안을_내리면_409_150007_이고_상태가_초안으로_남는다() throws Exception {
         String publicId = createDraft("점검 안내", "본문", "MAINTENANCE", "ALL", false, null);
@@ -367,6 +433,27 @@ class AdminNoticeIntegrationTest extends IntegrationTestBase {
     }
 
     // --- 헬퍼 ---
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** 래치를 기다린다. 시간 안에 열리지 않으면 테스트가 조용히 통과하지 않도록 끊는다. */
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("래치가 시간 안에 열리지 않았습니다.");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
 
     private String createDraft(String title, String content, String category, String audience, boolean pinned)
             throws Exception {
