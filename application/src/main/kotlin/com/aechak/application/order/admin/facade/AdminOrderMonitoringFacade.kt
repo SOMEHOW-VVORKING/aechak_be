@@ -82,7 +82,7 @@ class AdminOrderMonitoringFacade(
         val orderIds = orders.map { it.orderId }
         return OrderBundle(
             lines = (lines ?: adminOrderMonitoringService.getLines(orderIds)).groupBy { it.orderId },
-            shipments = adminOrderMonitoringService.getLatestShipments(orderIds),
+            shipments = adminOrderMonitoringService.getShipments(orderIds),
             claims = adminOrderMonitoringService.getOpenClaims(orderIds),
             nicknames = userUseCase.getAuthors(orders.map { it.buyerId }).mapValues { it.value.nickname },
             deadlines = deadlines,
@@ -91,7 +91,7 @@ class AdminOrderMonitoringFacade(
 
     private class OrderBundle(
         private val lines: Map<Long, List<AdminOrderLineView>>,
-        private val shipments: Map<Long, AdminOrderShipmentView>,
+        private val shipments: Map<Long, List<AdminOrderShipmentView>>,
         private val claims: Map<Long, AdminOrderClaimView>,
         private val nicknames: Map<Long, String>,
         private val deadlines: OrderDelayDeadlines,
@@ -101,9 +101,19 @@ class AdminOrderMonitoringFacade(
                 view = view,
                 buyerNickname = nicknames.getValue(view.buyerId),
                 lines = lines[view.orderId].orEmpty(),
-                shipment = shipments[view.orderId],
+                shipment = currentShipmentOf(view.orderId),
                 claim = claims[view.orderId],
-                delayReason = deadlines.reasonFor(view.status, view.orderedAt),
+                delayReason = deadlines.reasonFor(view.status, view.orderedAt, dispatchedAtOf(view.orderId)),
             )
+
+        /** 교환 재발송이 붙으면 나중 행이 현재 배송이다. 회수 송장은 포트가 이미 뺀다 */
+        private fun currentShipmentOf(orderId: Long): AdminOrderShipmentView? = shipments[orderId]?.maxByOrNull { it.shipmentId }
+
+        /**
+         * 배송 지연 시계의 시작점 — 주문의 출고 배송 중 가장 늦은 발송 시각. 표시용 배송 행의
+         * 발송 시각이 아니라 최댓값을 쓴다. 집계 SQL도 같은 모수에서 같은 최댓값을 집어야
+         * 카드 건수와 목록 신호가 어긋나지 않는다.
+         */
+        private fun dispatchedAtOf(orderId: Long): LocalDateTime? = shipments[orderId]?.mapNotNull { it.dispatchedAt }?.maxOrNull()
     }
 }

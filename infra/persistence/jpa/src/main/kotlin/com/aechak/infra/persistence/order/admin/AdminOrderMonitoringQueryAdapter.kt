@@ -17,6 +17,7 @@ import com.aechak.domain.order.order.QOrderStatusHistory
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.aechak.domain.order.shipment.QCourierMaster
 import com.aechak.domain.order.shipment.QShipment
+import com.aechak.domain.order.shipment.enums.ShipmentType
 import com.aechak.domain.product.product.QProduct
 import com.aechak.domain.product.version.QProductVersion
 import com.querydsl.core.types.Expression
@@ -44,6 +45,9 @@ private val statusHistory = QOrderStatusHistory.orderStatusHistory
  *
  * 주문 시각으로 `orders.created_at`을 쓴다. 주문그룹과 같은 트랜잭션에서 persist되어 사실상 같은
  * 시각인데, 같은 테이블에 있어 정렬 인덱스가 걸린다(V53의 `idx_orders_created_at_id` 등).
+ *
+ * 다만 배송 지연 판정만은 `orders` 밖을 본다 — 배송중 주문의 시계는 발송 시각부터 세야 하고
+ * 그 값은 `shipments.dispatched_at`에만 있다(지연 술어의 상관 서브쿼리).
  */
 @Repository
 class AdminOrderMonitoringQueryAdapter(
@@ -119,8 +123,12 @@ class AdminOrderMonitoringQueryAdapter(
                 ),
             ).from(shipment)
             .join(shipment.courier, courier)
-            .where(shipment.order.id.`in`(orderIds))
-            .orderBy(shipment.order.id.asc(), shipment.id.asc())
+            .where(
+                shipment.order.id.`in`(orderIds),
+                // 회수 송장은 구매자에서 셀러로 가는 역방향이다 — 섞으면 반품을 시작한 주문의 "배송"이
+                // 회수 송장으로 바뀌어 운영자가 출고 배송으로 읽는다
+                shipment.shipmentType.`in`(ShipmentType.OUTBOUND),
+            ).orderBy(shipment.order.id.asc(), shipment.id.asc())
             .fetch()
     }
 
@@ -212,7 +220,7 @@ class AdminOrderMonitoringQueryAdapter(
             ).exists()
     }
 
-    /** OrderDelayDeadlines.reasonFor와 같은 두 축이다 — 한쪽만 고치면 카드 건수와 목록 신호가 어긋난다 */
+    /** OrderDelayDeadlines.reasonFor와 같은 두 축이다 — 한쪽만 고치면 "지연만" 필터와 행의 신호가 어긋난다 */
     private fun delayed(
         delayedOnly: Boolean,
         deadlines: OrderDelayDeadlines,

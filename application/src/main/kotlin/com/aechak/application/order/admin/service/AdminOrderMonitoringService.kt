@@ -76,12 +76,12 @@ class AdminOrderMonitoringService(
 
     fun getLines(orderIds: Collection<Long>): List<AdminOrderLineView> = queryPort.findLines(orderIds)
 
-    /** 주문당 최신 배송 한 건 — 교환 재발송이 붙으면 나중 행이 현재 배송이다 */
-    fun getLatestShipments(orderIds: Collection<Long>): Map<Long, AdminOrderShipmentView> =
-        queryPort
-            .findShipments(orderIds)
-            .groupBy { it.orderId }
-            .mapValues { (_, shipments) -> shipments.maxBy { it.shipmentId } }
+    /**
+     * 주문당 배송 전부. 최신 한 건만 돌려주지 않는다 — 호출자가 표시할 배송(가장 나중 행)과
+     * 배송 지연 시계의 시작점(가장 늦은 발송 시각)을 같은 목록에서 뽑아야 둘이 갈리지 않는다.
+     */
+    fun getShipments(orderIds: Collection<Long>): Map<Long, List<AdminOrderShipmentView>> =
+        queryPort.findShipments(orderIds).groupBy { it.orderId }
 
     /** 주문당 최신 진행 클레임 한 건 */
     fun getOpenClaims(orderIds: Collection<Long>): Map<Long, AdminOrderClaimView> =
@@ -99,7 +99,7 @@ class AdminOrderMonitoringService(
         val condition =
             AdminOrderMetricsCondition(
                 countedStatuses = MONITORED_STATUSES,
-                amountStatuses = PAYMENT_EFFECTIVE_STATUSES,
+                amountStatuses = ORDER_AMOUNT_STATUSES,
                 sellerId = query.sellerId,
                 orderedFrom = query.orderedFrom?.atStartOfDay(),
                 orderedToExclusive = query.orderedTo?.let(::nextDayStart),
@@ -127,13 +127,13 @@ class AdminOrderMonitoringService(
         private val MONITORED_STATUSES = OrderStatus.entries.toSet() - OrderStatus.PENDING_PAYMENT
 
         /**
-         * 결제액 합의 모수 — 취소 주문을 뺀다.
+         * 주문 금액 합의 모수 — 취소 주문을 뺀다.
          *
          * 결제 창이 만료된 미결제 주문은 결제대기가 아니라 취소로 남는다(만료 배치가 그렇게 전이시킨다).
-         * 취소를 넣으면 돈이 한 번도 움직이지 않은 주문의 주문금액이 "조회 범위 결제액"에 쌓이고,
-         * 미결제 주문이 많은 기간일수록 카드가 더 크게 거짓말한다. 결제 후 전액취소도 환불로 되돌아간
-         * 건이라 같이 뺀다. 건수 카드 셋은 취소를 술어에서 이미 배제하므로 이 집합과 무관하다.
+         * 취소를 넣으면 돈이 한 번도 움직이지 않은 주문의 주문금액이 카드에 쌓이고, 미결제 주문이 많은
+         * 기간일수록 카드가 더 크게 거짓말한다. 결제 후 전액취소도 환불로 되돌아간 건이라 같이 뺀다.
+         * 건수 카드 셋은 취소를 술어에서 이미 배제하므로 이 집합과 무관하다.
          */
-        private val PAYMENT_EFFECTIVE_STATUSES = MONITORED_STATUSES - OrderStatus.CANCELLED
+        private val ORDER_AMOUNT_STATUSES = MONITORED_STATUSES - OrderStatus.CANCELLED
     }
 }

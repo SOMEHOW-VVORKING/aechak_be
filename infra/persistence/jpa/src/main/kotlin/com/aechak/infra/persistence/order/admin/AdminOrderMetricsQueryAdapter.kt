@@ -5,6 +5,7 @@ import com.aechak.application.order.admin.port.AdminOrderMetricsQueryPort
 import com.aechak.application.order.admin.port.view.AdminOrderMetricsCountView
 import com.aechak.domain.order.order.QOrder
 import com.aechak.domain.order.order.QOrderItem
+import com.aechak.domain.order.order.enums.OrderItemStatus
 import com.aechak.domain.order.order.enums.OrderStatus
 import com.querydsl.core.types.Predicate
 import com.querydsl.core.types.Projections
@@ -46,13 +47,17 @@ class AdminOrderMetricsQueryAdapter(
             .where(*filters(condition))
             .fetchOne()!!
 
+    /** 취소·반품으로 종결된 품목은 뺀다 — 환불된 돈을 주문 금액에 남기면 부분 클레임이 일어난 만큼 카드가 커진다 */
     override fun sumProductAmount(condition: AdminOrderMetricsCondition): Long =
         queryFactory
             .select(sumOf(orderItem.unitPriceSnapshot.multiply(orderItem.quantity)))
             .from(order)
             .join(order._items, orderItem)
-            .where(*filters(condition), order.status.`in`(condition.amountStatuses))
-            .fetchOne() ?: 0L
+            .where(
+                *filters(condition),
+                order.status.`in`(condition.amountStatuses),
+                orderItem.itemStatus.notIn(OrderItemStatus.RESOLVED),
+            ).fetchOne() ?: 0L
 
     private fun filters(condition: AdminOrderMetricsCondition): Array<Predicate?> =
         arrayOf(
