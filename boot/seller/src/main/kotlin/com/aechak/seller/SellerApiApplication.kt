@@ -30,6 +30,8 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.application.user.term", // UserFacade의 온보딩 동의 검증
         "com.aechak.application.user.verification", // 전화 인증
         "com.aechak.application.file", // 서류 승격
+        // 셀러가 받은 상품 문의 — 상위 application.inquiry(앱 서비스 문의)의 메일 발송 조립은 끌고 오지 않는다
+        "com.aechak.application.inquiry.product",
         "com.aechak.application.product", // 상품 등록·카테고리 조회
         // 셀러 리뷰 관리·답글 — 리뷰 작성·금칙어 판정(application.review 상위)은 구매자 경로의 것이고
         // 금칙어 스캐너 구현과 메시지 발행이 api 모듈에만 있어 끌고 오면 부팅이 깨진다
