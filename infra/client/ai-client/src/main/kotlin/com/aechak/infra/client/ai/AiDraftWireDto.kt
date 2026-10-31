@@ -1,12 +1,10 @@
 package com.aechak.infra.client.ai
 
 /**
- * AI 초안 계약의 와이어 모양. **이 모듈 밖으로 새지 않는다.**
+ * AI 초안 계약의 와이어 모양. 이 모듈 밖으로 새지 않는다.
  *
- * 응답 쪽은 전 필드에 기본값을 준다 — AI가 usage·guardDrops·itemSignal·image처럼 우리가 읽지
- * 않는 운영 축을 늘 함께 보내고, 그쪽에 필드가 하나 더 붙는 날 역직렬화가 터지면 셀러 화면이
- * 깨진다. 우리가 읽는 다섯(state·draft·fieldStatus·basis·sellerNotice)과 로그에만 쓰는
- * 넷(requestId·skipReason·modelCalled·usage)만 선언한다.
+ * 응답은 우리가 읽는 다섯과 로그용 넷만 선언하고 전 필드에 기본값을 준다 — 모르는 필드나
+ * 빠진 필드에 역직렬화가 터지면 셀러 화면이 깨진다.
  */
 internal data class AiDraftRequestBody(
     val requestId: String,

@@ -4,11 +4,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import java.time.Duration
 
 /**
- * AI 초안 서버 접속 설정.
- *
- * base-url이나 shared-secret이 비면 어댑터를 조립하지 않는다(AiDraftClientEnabled) —
- * 포트가 null이 되어 파사드가 UNAVAILABLE을 돌린다. 비용 kill switch는 돈이 나가는 쪽,
- * 즉 AI의 AECHAK_AI_ENABLE_DRAFT다.
+ * AI 초안 서버 접속 설정. base-url 이나 shared-secret 이 비면 어댑터를 조립하지 않는다 —
+ * 포트가 null 이 되어 파사드가 UNAVAILABLE 을 돌린다.
  */
 @ConfigurationProperties("aechak.ai.draft")
 data class AiDraftProperties(

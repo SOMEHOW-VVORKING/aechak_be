@@ -17,20 +17,14 @@ import java.time.Duration
 import java.util.UUID
 
 /**
- * 초안 받기 유스케이스 구현. **저장하지 않는다** — 셀러가 받은 값을 받아들이면 기존 임시저장
- * 버튼이 저장한다. 자동완성이 행을 만들면 초안 10개를 든 셀러가 "초안 받기"를 눌렀을 때
- * 상한(40401)에 걸려 보조 기능이 셀러를 막는다.
+ * 초안 받기 유스케이스 구현. 아무것도 저장하지 않는다 — 셀러가 값을 받아들이면 기존 임시저장
+ * 버튼이 저장한다.
  *
- * **클래스 레벨 @Transactional 이 없다.** AI 호출이 최악 30초고 그것을 트랜잭션 안에 넣으면
- * 커넥션을 그만큼 잡는다(ShipmentTrackingFacade 가 포트 호출을 트랜잭션 밖에 둔 것과 같은
- * 이유다). 여기서 DB 를 보는 것은 자격 확인 한 번뿐이고 그 경계는 SellerFacade 가 자기
- * @Transactional(readOnly = true) 로 이미 들고 있다.
+ * 트랜잭션을 열지 않는다. AI 호출이 최악 30초라 그 안에 넣으면 커넥션을 그만큼 잡고, DB 를
+ * 보는 것은 자격 확인 한 번뿐인데 그 경계는 SellerFacade 가 이미 들고 있다.
  *
- * autofillPort 는 **선택 주입**이다. ApiApplication 이 com.aechak 루트를 필터 없이 스캔해
- * 이 파사드를 api 도 조립하는데 :api 에는 :ai-client 가 없다 — 비널로 받으면 api 부팅이
- * NoSuchBeanDefinition 으로 깨진다(ShipmentTrackingFacade 선례). throttle 은 비널이다:
- * 어댑터가 infra/redis 에 살고 :api·:seller-api 둘 다 :redis 를 가지며, batch·admin 은 이
- * 패키지를 스캔하지 않아 이 파사드를 조립하지 않는다.
+ * autofillPort 는 선택 주입이다 — ApiApplication 이 루트를 필터 없이 스캔해 이 파사드를 api 도
+ * 조립하는데 :api 에는 :ai-client 가 없다. throttle 은 비널이다(api·seller 둘 다 :redis 보유).
  */
 @Service
 class ProductDraftAutofillFacade(

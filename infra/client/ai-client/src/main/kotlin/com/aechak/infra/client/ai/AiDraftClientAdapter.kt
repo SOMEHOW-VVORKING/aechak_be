@@ -16,13 +16,11 @@ import org.springframework.web.client.RestClientException
 import java.io.UncheckedIOException
 
 /**
- * 셀러 폼 초안 포트의 AI 서버 어댑터. 동기 HTTP 한 번이다.
+ * 셀러 폼 초안 포트의 AI 서버 어댑터. 동기 HTTP 한 번이고 BusinessException 을 던지지 않는다 —
+ * 전 실패 경로가 UNAVAILABLE 결과다.
  *
- * **BusinessException을 던지지 않는다.** 이 어댑터의 전 실패 경로는 결과값(UNAVAILABLE)이다 —
- * 초안은 보조 기능이고, 셀러 잘못이 아닌 실패로 등록 화면에 5xx를 띄우면 등록이 깨진 것처럼 보인다.
- *
- * 비밀 헤더는 설정이 아니라 여기서 싣는다. 요청마다 붙는 그 한 줄이 이 기능의 유일한 인증이고
- * (AI는 비밀이 비면 전건 403이다), 어댑터가 싣는 쪽이어야 목 서버로 동봉을 단언할 수 있다.
+ * 공유 비밀 헤더는 설정이 아니라 여기서 싣는다. 어댑터가 싣는 쪽이어야 목 서버로 동봉을
+ * 단언할 수 있고, 그 한 줄이 이 기능의 유일한 인증이다.
  */
 @Component
 @Conditional(AiDraftClientEnabled::class)
