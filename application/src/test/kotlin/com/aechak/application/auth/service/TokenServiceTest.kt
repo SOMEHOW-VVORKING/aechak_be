@@ -16,6 +16,7 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
@@ -140,7 +141,6 @@ class TokenServiceTest {
 
         // 가짜 코덱이 역할을 문자열에 담으므로 발급된 역할을 그대로 들여다볼 수 있다.
         assertTrue(rotated.accessToken.contains(":ADMIN:"), rotated.accessToken)
-        assertTrue(rotated.refreshToken.contains(":ADMIN:"), rotated.refreshToken)
     }
 
     @Test
@@ -152,7 +152,6 @@ class TokenServiceTest {
 
         // 이쪽이 보안상 중요한 방향이다 — 복사하면 회수가 refresh TTL(30일) 내내 반영되지 않는다.
         assertTrue(rotated.accessToken.contains(":GENERAL:"), rotated.accessToken)
-        assertTrue(rotated.refreshToken.contains(":GENERAL:"), rotated.refreshToken)
     }
 
     @Test
@@ -163,9 +162,8 @@ class TokenServiceTest {
 
         val second = service.rotate(issued.refreshToken)
 
-        // refresh는 저장된 successor 클레임으로 재현하는 것이라 역할을 바꾸면 멱등이 깨진다.
+        // refresh는 저장된 successor 클레임으로 재현하는 것이라 입력이 하나라도 흔들리면 멱등이 깨진다.
         assertEquals(first.refreshToken, second.refreshToken)
-        assertTrue(second.refreshToken.contains(":GENERAL:"), second.refreshToken)
         // access는 발급 시각이 매번 달라 애초에 멱등이 아니므로 현재 역할을 싣는다.
         assertTrue(second.accessToken.contains(":ADMIN:"), second.accessToken)
     }
@@ -180,6 +178,54 @@ class TokenServiceTest {
         val exception = assertFailsWith<BusinessException> { service.rotate(issued.refreshToken) }
 
         assertEquals(AuthErrorCode.ACCOUNT_BLOCKED, exception.errorCode)
+    }
+
+    @Test
+    fun `역할이 첫 회전 전에 바뀐 유예 재시도 - 돌려받은 refresh로 다음 회전이 된다`() {
+        val issued = service.issue(USER_ID, UserRole.GENERAL)
+        // 승격을 첫 회전 '전'에 넣는다 — 위 테스트는 회전 뒤에 넣어 반대 순서만 덮는다.
+        roleReader.role = UserRole.ADMIN
+
+        val first = service.rotate(issued.refreshToken)
+        val retried = service.rotate(issued.refreshToken) // 회전 응답 유실 → 유예 안에 재시도
+
+        // 재시도로 돌려준 refresh가 Active 엔트리에 저장된 해시의 원문이어야 한다.
+        assertEquals(first.refreshToken, retried.refreshToken)
+
+        // 그 토큰으로 다음 회전이 통과한다 — 해시가 어긋나면 reportReuse가 전 세션을 지운다.
+        val next = service.rotate(retried.refreshToken)
+
+        assertIs<RefreshTokenEntry.Active>(store.find(USER_ID, next.refreshTokenId))
+    }
+
+    @Test
+    fun `refresh에는 역할이 실리지 않는다 - 역할만 다른 두 회전이 같은 토큰을 만든다`() {
+        val general = service.issue(USER_ID, UserRole.GENERAL)
+        roleReader.role = UserRole.ADMIN
+
+        val rotated = service.rotate(general.refreshToken)
+
+        // 역할이 서명 입력에 남아 있으면 이 단언이 깨진다 — 유예 재현이 성립하는 근거다.
+        assertFalse(rotated.refreshToken.contains("ADMIN"), rotated.refreshToken)
+        assertFalse(rotated.refreshToken.contains("GENERAL"), rotated.refreshToken)
+    }
+
+    @Test
+    fun `jti는 맞고 원문이 다른 토큰 - 해시 대조에서 재사용으로 판정한다`() {
+        val issued = service.issue(USER_ID, UserRole.GENERAL)
+        // 저장소에는 해시만 남는다. jti를 알아낸 공격자가 원문 없이 통과하지 못해야 한다.
+        val forged = withShiftedIssuedAt(issued.refreshToken)
+
+        val exception = assertFailsWith<BusinessException> { service.rotate(forged) }
+
+        assertEquals(AuthErrorCode.REFRESH_TOKEN_REUSED, exception.errorCode)
+        assertNull(store.find(USER_ID, issued.refreshTokenId))
+    }
+
+    /** jti는 그대로 두고 발급 시각만 1초 당겨 바이트만 다른 토큰을 만든다(가짜 코덱 형식에 의존). */
+    private fun withShiftedIssuedAt(refreshToken: String): String {
+        val parts = refreshToken.split(":")
+        return (parts.take(3) + (parts[3].toLong() - 1).toString() + parts.drop(4)).joinToString(":")
     }
 
     companion object {
@@ -212,22 +258,20 @@ private class FakeTokenCodec : TokenCodec {
 
     override fun encodeRefreshToken(
         userId: Long,
-        role: String,
         tokenId: String,
         issuedAt: Instant,
         expiresAt: Instant,
-    ): String = "refresh:$userId:$role:$tokenId:${issuedAt.epochSecond}:${expiresAt.epochSecond}"
+    ): String = "refresh:$userId:$tokenId:${issuedAt.epochSecond}:${expiresAt.epochSecond}"
 
     override fun decodeRefreshToken(token: String): RefreshTokenClaims? {
         val parts = token.split(":")
-        if (parts.size != 6 || parts[0] != "refresh") return null
-        val expiresAt = Instant.ofEpochSecond(parts[5].toLong())
+        if (parts.size != 5 || parts[0] != "refresh") return null
+        val expiresAt = Instant.ofEpochSecond(parts[4].toLong())
         if (expiresAt.isBefore(Instant.now())) return null
         return RefreshTokenClaims(
             userId = parts[1].toLong(),
-            role = parts[2],
-            tokenId = parts[3],
-            issuedAt = Instant.ofEpochSecond(parts[4].toLong()),
+            tokenId = parts[2],
+            issuedAt = Instant.ofEpochSecond(parts[3].toLong()),
             expiresAt = expiresAt,
         )
     }
