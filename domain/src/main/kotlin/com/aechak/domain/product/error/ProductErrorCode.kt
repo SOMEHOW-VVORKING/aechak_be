@@ -33,6 +33,7 @@ enum class ProductErrorCode(
     // 임시저장
     PRODUCT_DRAFT_NOT_FOUND(40400, "임시저장한 상품을 찾을 수 없습니다.", 404),
     PRODUCT_DRAFT_LIMIT_EXCEEDED(40401, "임시저장은 최대 10개까지 보관할 수 있습니다.", 422),
+    PRODUCT_DRAFT_AUTOFILL_COOLDOWN(40402, "초안 받기는 잠시 뒤에 다시 시도해 주세요.", 429),
 
     // 검수 큐
     PRODUCT_INSPECTION_NOT_PENDING(40500, "관리자 확인을 기다리는 상품 검수가 없습니다.", 409),
