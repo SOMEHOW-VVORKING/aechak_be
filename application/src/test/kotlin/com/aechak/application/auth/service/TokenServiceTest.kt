@@ -199,7 +199,7 @@ class TokenServiceTest {
     }
 
     @Test
-    fun `refresh에는 역할이 실리지 않는다 - 역할만 다른 두 회전이 같은 토큰을 만든다`() {
+    fun `회전으로 받은 refresh에는 역할이 실리지 않는다`() {
         val general = service.issue(USER_ID, UserRole.GENERAL)
         roleReader.role = UserRole.ADMIN
 
@@ -213,7 +213,8 @@ class TokenServiceTest {
     @Test
     fun `jti는 맞고 원문이 다른 토큰 - 해시 대조에서 재사용으로 판정한다`() {
         val issued = service.issue(USER_ID, UserRole.GENERAL)
-        // 저장소에는 해시만 남는다. jti를 알아낸 공격자가 원문 없이 통과하지 못해야 한다.
+        // 서명이 유효해도 우리가 이 jti로 발급한 원문과 바이트가 다르면 통과하지 못해야 한다.
+        // 실물에서는 서명 검증이 변조를 먼저 막으므로, 가짜 코덱으로 그 뒤의 해시 분기만 떼어 본다.
         val forged = withShiftedIssuedAt(issued.refreshToken)
 
         val exception = assertFailsWith<BusinessException> { service.rotate(forged) }
