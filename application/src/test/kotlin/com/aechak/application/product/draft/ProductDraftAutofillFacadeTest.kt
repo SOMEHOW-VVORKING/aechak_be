@@ -96,6 +96,8 @@ class ProductDraftAutofillFacadeTest {
         var status: SellerStatus = SellerStatus.ACTIVE
 
         override fun requireSellerStatus(userId: Long): SellerStatus = status
+
+        override fun findSellerStatus(userId: Long): SellerStatus? = status
     }
 
     private class StubThrottle : ProductDraftAutofillThrottle {
