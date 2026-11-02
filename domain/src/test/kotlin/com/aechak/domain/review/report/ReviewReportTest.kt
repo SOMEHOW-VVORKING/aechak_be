@@ -1,0 +1,74 @@
+package com.aechak.domain.review.report
+
+import com.aechak.common.error.BusinessException
+import com.aechak.domain.review.error.ReviewErrorCode
+import com.aechak.domain.review.report.enums.ReviewReportReason
+import com.aechak.domain.review.report.enums.ReviewReportStatus
+import com.aechak.domain.review.report.event.ReviewReportReceivedEvent
+import com.aechak.domain.review.review.Review
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+
+/**
+ * 계약 테스트. 리뷰 신고 팩토리 규칙(본인 리뷰 차단, 기타 사유의 상세 사유 필수, 상세 사유 정규화)과 접수 이벤트 내용을 고정한다.
+ * 깨지면 작성자가 자기 리뷰를 신고하거나 공백 상세 사유가 그대로 저장되거나 운영팀 메일에 엉뚱한 리뷰가 실린다.
+ */
+class ReviewReportTest {
+    private val authorUserId = 7L
+    private val review =
+        Review.write(
+            productId = 1L,
+            optionNameSnapshot = "블랙 / L",
+            orderItemId = 1L,
+            authorUserId = authorUserId,
+            rating = 5,
+            content = "좋은 상품입니다",
+        )
+
+    @Test
+    fun `본인 리뷰는 신고할 수 없다`() {
+        val e =
+            assertFailsWith<BusinessException>("작성자가 자기 리뷰를 신고하면 거절해야 한다") {
+                ReviewReport.report(review, authorUserId, ReviewReportReason.SPAM, null)
+            }
+
+        assertEquals(ReviewErrorCode.REVIEW_SELF_REPORT_NOT_ALLOWED, e.errorCode, "본인 리뷰 신고 코드여야 한다")
+    }
+
+    @Test
+    fun `기타 사유는 상세 사유가 없거나 공백뿐이면 접수할 수 없다`() {
+        listOf(null, "   ").forEach { text ->
+            val e =
+                assertFailsWith<BusinessException>("상세 사유가 [$text]이면 거절해야 한다") {
+                    ReviewReport.report(review, 1L, ReviewReportReason.OTHER, text)
+                }
+
+            assertEquals(ReviewErrorCode.REVIEW_REPORT_REASON_TEXT_REQUIRED, e.errorCode, "상세 사유 필수 코드여야 한다")
+        }
+    }
+
+    @Test
+    fun `상세 사유는 앞뒤 공백을 지우고 공백뿐이면 null로 둔다`() {
+        val trimmed = ReviewReport.report(review, 1L, ReviewReportReason.OTHER, "  광고  ")
+        val blank = ReviewReport.report(review, 1L, ReviewReportReason.FRAUD, "   ")
+
+        assertEquals("광고", trimmed.reasonText, "앞뒤 공백을 지워 저장해야 한다")
+        assertNull(blank.reasonText, "공백뿐인 상세 사유는 null로 저장해야 한다")
+    }
+
+    @Test
+    fun `접수하면 PENDING 상태이고 접수 이벤트에 리뷰 id와 정규화한 사유를 담는다`() {
+        val report = ReviewReport.report(review, 1L, ReviewReportReason.OTHER, " 허위 리뷰 ")
+
+        report.registerReceived()
+
+        assertEquals(ReviewReportStatus.PENDING, report.status, "접수 직후에는 PENDING이어야 한다")
+        val event = assertIs<ReviewReportReceivedEvent>(report.events.single(), "접수 이벤트 하나만 등록해야 한다")
+        assertEquals(review.id, event.reviewId, "이벤트에 리뷰 id를 담아야 한다")
+        assertEquals(ReviewReportReason.OTHER, event.reasonCode, "이벤트에 사유 코드를 담아야 한다")
+        assertEquals("허위 리뷰", event.reasonText, "이벤트에 정규화한 상세 사유를 담아야 한다")
+    }
+}

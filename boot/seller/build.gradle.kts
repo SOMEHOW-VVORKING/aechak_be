@@ -12,6 +12,7 @@ dependencies {
     implementation(project(":sms-client"))              // application.user 스캔이 전화 인증(SmsSender)을 포함
     implementation(project(":redis"))                   // 인증 코드 저장소 어댑터
     implementation(project(":s3-client"))               // 서류 승격 어댑터
+    implementation(project(":ai-client"))               // AI 폼 초안 호출 어댑터
     implementation(project(":kafka"))                   // 검수 요청 발행 — 아웃박스 경유(MessagePublisher 어댑터)
     implementation(project(":message"))                 // 검수 요청 메시지 계약
     implementation(libs.spring.boot.starter.kafka)      // KafkaTemplate 자동 구성. 테스트는 api testFixtures가 끌고 와 빠져도 통과함
