@@ -1,5 +1,7 @@
 package com.aechak.infra.kafka
 
+import com.aechak.message.review.ReviewSummaryRequestedMessage
+
 /**
  * 토픽 이름 규칙 관리
  */
@@ -25,8 +27,16 @@ object Topics {
     const val VERDICT = "$PREFIX.verdict.$SUFFIX"
     const val VERDICT_DLT = "$VERDICT$DLT_SUFFIX"
 
+    /** 리뷰 요약 요청(백엔드 → AI 서버). 이름은 AI 서버가 정한 것이라 events 규칙을 따르지 않음 */
+    const val REVIEW_SUMMARY_REQUEST = "$PREFIX.summary.requests"
+
+    /** 리뷰 요약 결과(AI 서버 → 백엔드) */
+    const val REVIEW_SUMMARY_RESULT = "$PREFIX.summary.results"
+    const val REVIEW_SUMMARY_RESULT_DLT = "$REVIEW_SUMMARY_RESULT$DLT_SUFFIX"
+
     /** 릴레이가 아웃박스 행의 aggregate_type으로 목적지 토픽 이름을 만든다. */
-    fun of(aggregateType: String) = "$PREFIX.$aggregateType.$SUFFIX"
+    fun of(aggregateType: String) =
+        if (aggregateType == ReviewSummaryRequestedMessage.AGGREGATE_TYPE) REVIEW_SUMMARY_REQUEST else "$PREFIX.$aggregateType.$SUFFIX"
 
     /** 처리에 실패한 메시지를 격리할 토픽 이름. 원본 토픽 이름 뒤에 접미사만 붙인다. */
     fun dltOf(topic: String) = "$topic$DLT_SUFFIX"

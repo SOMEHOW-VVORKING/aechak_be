@@ -27,6 +27,7 @@ import org.springframework.context.annotation.FilterType
         "com.aechak.application.payment", // 결제 확정 본체·대사
         "com.aechak.application.order", // 확정의 주문 전이(OrderUseCase) — 장바구니 파사드가 딸려와 file·s3가 필요하다
         "com.aechak.application.product.option", // 만료·환불 복원이 경유하는 재고 변이(OptionStockUseCase)
+        "com.aechak.application.review.summary.request", // 리뷰 요약 요청. 결과 반영과 조회는 api 몫이라 하위 패키지만 스캔
         "com.aechak.application.user.address", // OrderFacade의 배송지 의존
         "com.aechak.application.user.point", // OrderFacade의 적립금 의존
         "com.aechak.application.settlement", // OrderFacade의 구매확정 정산 원장 의존

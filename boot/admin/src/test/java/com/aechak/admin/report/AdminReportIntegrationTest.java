@@ -736,7 +736,8 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
 
     private long persistReview(long orderItemId, String content) {
         return Objects.requireNonNull(tx.execute(txStatus -> {
-            Review review = Review.Companion.write(productId, "5kg / 1개", orderItemId, authorId, 2, content, List.of());
+            Review review =
+                    Review.Companion.write(productId, "5kg / 1개", orderItemId, authorId, 2, content, List.of(), null);
             em.persist(review);
             em.flush();
             return review.getId();
@@ -745,7 +746,8 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
 
     private long persistReviewBy(long author, long orderItemId, String content) {
         return Objects.requireNonNull(tx.execute(txStatus -> {
-            Review review = Review.Companion.write(productId, "5kg / 1개", orderItemId, author, 2, content, List.of());
+            Review review =
+                    Review.Companion.write(productId, "5kg / 1개", orderItemId, author, 2, content, List.of(), null);
             em.persist(review);
             em.flush();
             return review.getId();
