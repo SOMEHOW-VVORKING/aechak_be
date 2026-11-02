@@ -629,8 +629,8 @@ resource "aws_ecs_task_definition" "ai_draft" {
 
     environment = [
       { name = "PORT", value = tostring(var.ai_draft_port) },
-      # 비용 kill switch는 BE가 아니라 돈이 나가는 이쪽에 둔다. 기본 꺼짐이고, 켜는 순서는
-      # 이쪽을 먼저 켠 뒤 seller-api의 PRODUCT_DRAFT_AUTOFILL_ENABLED다.
+      # 비용 kill switch는 BE가 아니라 돈이 나가는 이쪽에 둔다. 기본 꺼짐이다.
+      # 꺼져 있으면 초안 API가 503을 돌리고 seller-api는 그것을 UNAVAILABLE 상태로 번역한다.
       { name = "AECHAK_AI_ENABLE_DRAFT", value = tostring(var.ai_draft_enabled) },
       { name = "LANGSMITH_TRACING", value = "false" },
       { name = "LANGCHAIN_TRACING_V2", value = "false" },

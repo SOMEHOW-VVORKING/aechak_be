@@ -150,8 +150,9 @@ variable "ai_draft_desired_count" {
   default     = 0
 }
 
-# 모델 비용이 나가는 토글이라 기본 꺼짐이다. 이쪽을 먼저 켜고 그다음 seller-api의
-# PRODUCT_DRAFT_AUTOFILL_ENABLED를 켠다 — 반대 순서면 셀러 요청이 503으로 돌아온다.
+# 모델 비용이 나가는 토글이라 기본 꺼짐이다. seller-api 쪽에는 별도 토글이 없다 —
+# 주소와 공유 비밀이 SSM에 있으면 어댑터가 조립되고, 이 값이 꺼져 있는 동안은
+# 초안 API의 503을 UNAVAILABLE 상태로 번역해 돌려준다.
 variable "ai_draft_enabled" {
   description = "AI 초안 생성 기능(AECHAK_AI_ENABLE_DRAFT). 켜면 호출마다 모델 비용이 난다"
   type        = bool
