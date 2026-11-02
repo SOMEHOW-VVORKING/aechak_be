@@ -213,12 +213,28 @@ abstract class OrderMonitoringTestBase extends IntegrationTestBase {
     }
 
     protected void seedShipment(long orderId, String trackingNumber) {
+        seedShipment(orderId, trackingNumber, LocalDateTime.now());
+    }
+
+    /** 발송 시각을 지정한 배송 한 건 — 배송중 주문의 지연 시계가 이 값에서 떨어진다. */
+    protected void seedShipment(long orderId, String trackingNumber, LocalDateTime dispatchedAt) {
+        seedShipment(orderId, trackingNumber, dispatchedAt, ShipmentType.INITIAL);
+    }
+
+    /** 회수 송장(RETURN_COLLECT)처럼 종류가 다른 배송도 같은 주문에 붙는다. */
+    protected void seedShipment(
+            long orderId, String trackingNumber, LocalDateTime dispatchedAt, ShipmentType shipmentType) {
         tx.executeWithoutResult(txStatus -> {
             Order order = em.find(Order.class, orderId);
             CourierMaster courier = em.find(CourierMaster.class, COURIER_CODE);
-            em.persist(Shipment.Companion.dispatch(
-                    courier, order, trackingNumber, ShipmentType.INITIAL, null, LocalDateTime.now()));
+            em.persist(Shipment.Companion.dispatch(courier, order, trackingNumber, shipmentType, null, dispatchedAt));
         });
+    }
+
+    /** 부분 클레임 환불로 품목 하나가 종결된 상태 — 금액 집계가 그 품목을 빼는지 보는 재료다. */
+    protected void cancelFirstItem(long orderId) {
+        tx.executeWithoutResult(
+                txStatus -> em.find(Order.class, orderId).getItems().get(0).markCancelled());
     }
 
     /** created_at은 updatable=false라 JPA로는 못 옮긴다 — 지연 판정이 이 값으로 떨어지므로 직접 쓴다. */
