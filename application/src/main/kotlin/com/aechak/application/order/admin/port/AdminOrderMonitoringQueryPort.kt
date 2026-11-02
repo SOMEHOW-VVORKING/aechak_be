@@ -18,6 +18,11 @@ interface AdminOrderMonitoringQueryPort {
 
     fun findLines(orderIds: Collection<Long>): List<AdminOrderLineView>
 
+    /**
+     * **출고 배송만 돌려준다** — 반품·교환 회수 송장은 구매자에서 셀러로 가는 역방향이라 이 화면이
+     * 말하는 "배송"이 아니고, 배송 지연 시계도 되돌리면 안 된다. 뷰에 종류가 없으니 호출자는
+     * 걸러진 것을 전제한다. 주문당 여러 행일 수 있어 표시할 한 건은 호출자가 고른다.
+     */
     fun findShipments(orderIds: Collection<Long>): List<AdminOrderShipmentView>
 
     /** 종결 시각이 없고 더 진행될 수 있는 클레임만 — 주문당 여러 행일 수 있어 호출자가 최신 한 건을 고른다 */

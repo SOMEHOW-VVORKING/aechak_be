@@ -275,6 +275,7 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 ```
 boot/admin/src/main/java/com/aechak/admin/
 ├── AdminApplication.java
+├── audit/           # 감사 로그 조회 컨트롤러 + 기록 인터셉터·@AdminAudited/@AdminAuditExempt
 ├── claim/           # 클레임 조회·개입 컨트롤러 + request/response
 ├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config} · InspectionScanConfig · ClaimAmountScanConfig · AdminReviewScanConfig
 ├── inspection/      # AI 검수 지표 컨트롤러 + response
@@ -317,9 +318,38 @@ boot/admin/src/main/java/com/aechak/admin/
   `order.dispatch.sla-days`를 그대로 읽어 같은 주문을 두 화면이 같게 본다. 셀러가 신고하는 `avgDispatchDays`는 쓰지 않는다 —
   셀러마다 기준이 갈려 "지연 N건"이 셀러 간 비교 불가가 되고, 영업일을 날짜로 환산할 휴일 달력이 없다.
   배송 정체(`order.delivery.sla-days`)는 셀러 화면에 없는 어드민 전용 축이다.
+  - **두 축의 시계가 시작하는 지점이 다르다.** 발송 축은 주문 시각(`orders.created_at`)에서, 배송 축은 발송 시각
+    (주문에 붙은 가장 늦은 `shipments.dispatched_at`, 없으면 주문 시각)에서 센다. 배송 축도 주문 시각에서 재면 발송이
+    늦은 주문이 송장을 받는 순간 발송 축에서 빠지고 배송 축에 그대로 걸려, 사유만 "배송 정체"로 바뀐 채 다시 나타난다 —
+    운영자가 셀러를 독촉해야 할 건에 택배사를 쫓는다. 발송 기록이 없는 배송중 주문의 시계를 멈추면 그 주문이 두 축
+    어디에도 안 잡혀 영구히 보이지 않으므로 주문 시각으로 되돌린다.
+  - **지표 카드의 금액(`totalOrderAmount`)은 주문 금액 합이지 실제 수납액이 아니다.** 상품금액 + 셀러배송비 - 안분
+    쿠폰할인이고 적립금은 빠지지 않는다 — 적립금은 주문그룹 단위로 쓰이는데 그룹 하나가 셀러별 주문 여럿으로 쪼개져
+    셀러별 주문에 안분할 근거가 없다. 그래서 정산·대사 숫자와 맞춰 볼 값이 아니다. 취소 주문과 취소·반품으로 종결된
+    품목은 목록 행의 금액과 같은 규칙으로 함께 빠진다.
 - **셀러 발송 독촉(`POST /admin/orders/{orderId}/dispatch-nudges`)은 기록만 남긴다.** 어드민 모듈은 발송 어댑터(`:ses-client`)를
   의존하지 않아 `EmailSender` 구현이 조립되지 않는다 — 그래서 응답에 발송을 주장하는 필드를 두지 않는다. 발송을 붙이는 시점에
   의존·스캔과 응답 계약을 함께 고친다. 같은 주문 반복 독촉은 `order.dispatch.nudge-cooldown-hours` 간격으로 묶고, 주문 행
   선점 조회로 동시 요청을 직렬화한다(409·50501).
+- **운영자 조치는 감사 로그에 남는다(SCRUM-318).** 기록은 쓰기 핸들러에 붙은 `@AdminAudited`를 보고
+  `AdminAuditInterceptor`가 핸들러가 끝난 뒤 쓴다. 유스케이스마다 기록 호출을 흩뿌리지 않는 이유는
+  그 방식이 빠뜨리기 쉽고 **빠뜨린 것이 보이지 않기** 때문이다 — 쓰기 핸들러에 `@AdminAudited`나
+  `@AdminAuditExempt`(이유 필수) 중 하나가 없으면 `AdminAuditCoverageTest`가 빌드를 끊는다.
+  - 인터셉터가 스스로 아는 것은 봉투(운영자·시각·조치·결과·IP·추적 id)까지다. 사유와 기록 시점의
+    대상 이름은 요청 본문·애그리거트에만 있으므로 그걸 아는 자리가 `AdminAuditContextHolder`로 올린다.
+  - 거부당한 시도도 남는다(결과 FAILURE + HTTP 상태). 다만 **모듈 게이트가 끊은 401·403은 남지 않는다** —
+    Security 필터 구간에서 끝나 DispatcherServlet에 닿지 않는다.
+  - **기록 실패는 조치를 되돌리지 않는다.** 쓰기는 REQUIRES_NEW로 자기 트랜잭션에서 커밋하고,
+    실패는 파사드가 삼켜 ERROR 로그로만 남긴다. 반대로 했다면 감사 테이블 사고 한 번이 모든 운영 조치를 멈춘다.
+  - **수정·삭제 경로를 만들지 않는다.** 도메인 포트는 `append`만 열고 컨트롤러에 쓰기 핸들러가 없다.
+  - 지금 기록하는 조치는 입점 심사 승인·거부, 관리자 승격·강등, 상품 검수 승인·반려, 클레임 개입,
+    **회원 제재·해제, 서비스 문의 답변, 리뷰 블라인드·해제·삭제**다. 조치를 더하는 사람이 할 일은
+    쓰기 핸들러에 애너테이션 하나를 붙이는 것뿐이고, 기록 코드를 쓰지 않는다. 면제를 고르면 `reason`에
+    그 판단을 적는다 — 커버리지 테스트는 "어느 쪽인지 정했나"만 본다. 문의의 처리중·보류 전이가
+    지금 유일한 면제다(처리 흐름 표시이고 그 결과는 문의 행이 들고 있다).
+  - 사유 칸에는 고정 어휘를 사람이 읽는 문구로 옮겨 싣는다(`SanctionReasonCode.label`·
+    `ReviewBlindReason.label`). 열거 이름을 그대로 실으면 운영자가 조치 이력마다 코드를 해독해야 한다.
+  - `X-Trace-Id` 필터를 WebConfig가 등록한다(시큐리티 체인보다 앞). 이 모듈의 로그 패턴은 전부터
+    `%X{traceId}`를 쓰는데 등록이 빠져 있었고, 감사 행의 추적 id도 같은 값이다.
 - DB 마이그레이션은 api 단일 소유 그대로 — admin은 접속만 한다.
 - 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.

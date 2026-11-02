@@ -1,5 +1,6 @@
 package com.aechak.admin.order;
 
+import com.aechak.admin.audit.AdminAudited;
 import com.aechak.admin.order.request.AdminOrderMetricsRequest;
 import com.aechak.admin.order.request.AdminOrderSearchRequest;
 import com.aechak.admin.order.request.NudgeOrderDispatchRequest;
@@ -7,7 +8,9 @@ import com.aechak.admin.order.response.AdminOrderDetailResponse;
 import com.aechak.admin.order.response.AdminOrderDispatchNudgeResponse;
 import com.aechak.admin.order.response.AdminOrderListResponse;
 import com.aechak.admin.order.response.AdminOrderMetricsResponse;
+import com.aechak.application.audit.support.AdminAuditContextHolder;
 import com.aechak.application.order.admin.usecase.AdminOrderMonitoringUseCase;
+import com.aechak.domain.audit.auditlog.enums.AdminAuditAction;
 import com.aechak.webcommon.response.ApiResponse;
 import com.aechak.websecurity.authentication.AuthPrincipal;
 import jakarta.validation.Valid;
@@ -45,7 +48,7 @@ public class AdminOrderMonitoringController {
                 AdminOrderListResponse.from(adminOrderMonitoringUseCase.getOrders(request.toQuery()))));
     }
 
-    /** 모니터링 카드 — 발송 대기·배송 중·지연·조회 범위 결제액 */
+    /** 모니터링 카드 — 발송 대기·배송 중·지연·조회 범위 주문 금액 */
     @GetMapping("/metrics")
     public ResponseEntity<ApiResponse<AdminOrderMetricsResponse>> metrics(
             @Valid @ModelAttribute AdminOrderMetricsRequest request) {
@@ -66,10 +69,16 @@ public class AdminOrderMonitoringController {
      * <p>알림은 나가지 않는다 — 어드민 실행 모듈이 발송 어댑터를 조립하지 않는다. 응답은 남은 기록이다.
      */
     @PostMapping("/{orderId}/dispatch-nudges")
+    @AdminAudited(value = AdminAuditAction.ORDER_DISPATCH_NUDGED, targetVar = "orderId")
     public ResponseEntity<ApiResponse<AdminOrderDispatchNudgeResponse>> nudgeDispatch(
             @PathVariable String orderId,
             @Valid @RequestBody NudgeOrderDispatchRequest request,
             @AuthenticationPrincipal AuthPrincipal principal) {
+        // 메모는 요청 본문에만 있다. 조치보다 먼저 올려 둬야 쿨다운에 막힌 시도의 행에도 남는다.
+        AdminAuditContextHolder.INSTANCE.reason(
+                request.memo() == null || request.memo().isBlank()
+                        ? null
+                        : request.memo().strip());
         AdminOrderDispatchNudgeResponse response = AdminOrderDispatchNudgeResponse.from(
                 adminOrderMonitoringUseCase.nudgeDispatch(request.toCommand(principal.getUserId(), orderId)));
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.Companion.of(response));

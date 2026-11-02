@@ -16,13 +16,15 @@ permissions:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15 # 누락 시 기본 6시간 — 행 걸린 잡이 러너를 그만큼 점유한다
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
+      # v6은 캐싱이 상용 컴포넌트로 분리된다(ci.yml의 같은 주석 참고) — Node 24만 확보하고 멈춘다
+      - uses: gradle/actions/setup-gradle@v5
       # --continue: ktlint가 실패해도 spotless까지 돌려 코틀린·자바 위반을 한 번에 보여준다
       - name: lint
         run: ./gradlew ktlintCheck spotlessCheck --continue
