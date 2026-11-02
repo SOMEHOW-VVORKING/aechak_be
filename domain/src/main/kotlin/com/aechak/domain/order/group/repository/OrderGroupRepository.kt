@@ -12,6 +12,12 @@ interface OrderGroupRepository {
     /** 멱등 재요청 판별용. 없으면 null. */
     fun findByIdempotencyKey(idempotencyKey: String): OrderGroup?
 
+    /** 만료 전(expiresAt >= now) 결제대기 주문그룹 수. expiresAt이 없는 행은 세지 않는다 */
+    fun countUnexpiredPendingPayment(
+        buyerId: Long,
+        now: LocalDateTime,
+    ): Long
+
     fun findByPublicId(publicId: String): OrderGroup?
 
     /** 결제 확정의 선점 — 결제대기일 때만 결제완료로. 확정·만료가 경쟁하면 먼저 전이한 쪽만 true */

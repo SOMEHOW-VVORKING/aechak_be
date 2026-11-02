@@ -39,6 +39,7 @@ include(
     "social-client",
     "tracking-client",                       // 택배사 추적 조회 어댑터 — 현재는 목 구현만
     "redis",                // 소셜 로그인(ACC-01): id_token 검증 / refresh token 저장
+    "ai-client",                             // AI 서버 셀러 폼 초안 호출 어댑터
     "s3-client",                             // 오브젝트 스토리지 어댑터
     "ses-client",                            // 이메일 발송 어댑터(SES) — 문의 통지
     "sms-client",                            // SMS 발송 어댑터(전화 인증)
@@ -53,6 +54,7 @@ project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
 project(":pg-client").projectDir = file("infra/client/pg-client")
 project(":social-client").projectDir = file("infra/client/social-client")
 project(":tracking-client").projectDir = file("infra/client/tracking-client")
+project(":ai-client").projectDir = file("infra/client/ai-client")
 project(":s3-client").projectDir = file("infra/client/s3-client")
 project(":ses-client").projectDir = file("infra/client/ses-client")
 project(":sms-client").projectDir = file("infra/client/sms-client")
