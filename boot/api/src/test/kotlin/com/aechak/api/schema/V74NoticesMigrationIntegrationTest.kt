@@ -19,7 +19,7 @@ import java.util.UUID
 import javax.sql.DataSource
 
 /**
- * V73(공지 테이블)의 안전성 검증.
+ * V74(공지 테이블)의 안전성 검증.
  * 깨지면 "dev에 적용하면 공지 스키마가 엔티티와 갈린다" 또는 "재실행이 스키마를 바꾼다"는 뜻이다.
  *
  * 두 스키마를 대조한다.
@@ -41,7 +41,7 @@ import javax.sql.DataSource
 )
 @Import(IntegrationTestConfig::class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class V73NoticesMigrationIntegrationTest {
+class V74NoticesMigrationIntegrationTest {
     @Autowired
     private lateinit var dataSource: DataSource
 
@@ -83,7 +83,7 @@ class V73NoticesMigrationIntegrationTest {
     }
 
     @Test
-    fun `V73을 다시 실행해도 스키마가 그대로다`() {
+    fun `V74를 다시 실행해도 스키마가 그대로다`() {
         val before = columnsOf(freshUrl, NOTICES_TABLE) to indexesOf(freshUrl, NOTICES_TABLE)
 
         execute(freshUrl, statementsOf(migrationSql()))
@@ -271,7 +271,7 @@ class V73NoticesMigrationIntegrationTest {
     )
 
     companion object {
-        private const val MIGRATION_NAME = "V73__create_notices.sql"
+        private const val MIGRATION_NAME = "V74__create_notices.sql"
         private const val NOTICES_TABLE = "notices"
         private const val DUPLICATE_PUBLIC_ID = "01DUPLICATE000000000000001"
         private const val LONG_BODY_PUBLIC_ID = "01LONGBODY0000000000000001"
