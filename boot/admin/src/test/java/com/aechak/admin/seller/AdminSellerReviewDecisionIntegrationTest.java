@@ -82,6 +82,25 @@ class AdminSellerReviewDecisionIntegrationTest extends SellerReviewIntegrationTe
     }
 
     @Test
+    void 탈퇴로_취소된_신청의_승인은_409_10101_를_반환한다() throws Exception {
+        long userId = createUser();
+        long applicationId = seedApplication(userId, true);
+        tx.executeWithoutResult(
+                txStatus -> em.find(SellerApplication.class, applicationId).cancel());
+
+        mockMvc.perform(bearer(post(BASE + "/" + applicationId + "/approve"), adminToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(10101));
+
+        tx.executeWithoutResult(txStatus -> {
+            Long sellerCount = em.createQuery("select count(s) from Seller s where s.userId = :userId", Long.class)
+                    .setParameter("userId", userId)
+                    .getSingleResult();
+            assertEquals(0L, sellerCount, "취소된 신청으로 셀러가 개점됐다");
+        });
+    }
+
+    @Test
     void 동시_승인_두_건은_한쪽만_성공하고_셀러는_하나만_생긴다() throws Exception {
         long userId = createUser();
         long applicationId = seedApplication(userId, true);

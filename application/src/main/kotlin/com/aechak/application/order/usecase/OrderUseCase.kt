@@ -24,6 +24,9 @@ interface OrderUseCase {
         buyerId: Long,
     ): OrderItemForReviewResult?
 
+    /** 만료 전 결제대기 주문그룹 수 */
+    fun countPendingPaymentOrderGroups(buyerId: Long): Long
+
     /**
      * 결제 확정에 따른 주문 전이 — 그룹 선점(결제대기→결제완료 조건부)과 셀러 주문 일괄 전이.
      * 호출 트랜잭션에 참여한다(REQUIRED) — 결제 기록과 주문 전이가 한 트랜잭션이어야 하는 확정 흐름 전제.
