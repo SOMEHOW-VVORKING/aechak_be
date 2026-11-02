@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aechak.domain.order.order.enums.OrderStatus;
+import com.aechak.domain.order.shipment.enums.ShipmentType;
 import com.aechak.domain.user.user.enums.UserRole;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
@@ -181,6 +182,9 @@ class AdminOrderMonitoringIntegrationTest extends OrderMonitoringTestBase {
     /**
      * 지연 기준은 서버가 쥔다(order.dispatch.sla-days=3 / order.delivery.sla-days=7).
      * 발송 전 상태만 발송 기한으로 재고, 배송중은 더 긴 기한으로 잰다.
+     *
+     * <p>여기 배송중 주문에는 배송 행이 없다 — 발송 기록이 없으면 시계가 주문 시각으로 되돌아간다.
+     * 발송 시각이 있는 경로는 별도 테스트가 고정한다.
      */
     @Test
     void 지연_신호는_상태별로_다른_기한으로_판정한다() throws Exception {
@@ -241,27 +245,22 @@ class AdminOrderMonitoringIntegrationTest extends OrderMonitoringTestBase {
                 .andExpect(status().isOk())
                 .andReturn());
 
-        long delayedRows = 0;
-        for (JsonNode row : listed.get("items")) {
-            if (row.get("delayed").asBoolean()) {
-                delayedRows++;
-            }
-        }
+        long delayedRows = delayedRowsOf(listed);
         assertEquals(3, delayedRows, "지연 행은 셋이어야 한다 — 발송 지연 둘 + 배송 정체 하나");
         assertEquals(delayedRows, metrics.get("delayedCount").asLong(), "집계 술어와 행 판정이 같은 기준이어야 한다");
         assertEquals(3, metrics.get("awaitingDispatchCount").asLong(), "결제완료·상품준비·발송대기를 모두 센다");
         assertEquals(1, metrics.get("shippingCount").asLong());
         // 주문 다섯 건 × (39,000 × 2 + 3,000)
-        assertEquals(405_000, metrics.get("totalPaymentAmount").asLong(), "조회 범위 결제액은 상품금액 + 배송비 - 쿠폰할인");
+        assertEquals(405_000, metrics.get("totalOrderAmount").asLong(), "조회 범위 주문 금액은 상품금액 + 배송비 - 쿠폰할인");
     }
 
     /**
      * 결제 창이 만료된 미결제 주문은 결제대기가 아니라 취소로 남는다(만료 배치가 그 전이를 낸다).
-     * 결제액 모수에 취소를 넣으면 돈이 한 번도 움직이지 않은 주문의 주문금액이 카드에 쌓이고,
-     * 미결제 주문을 반복 생성·만료하는 것만으로 "조회 범위 결제액"이 계속 커진다.
+     * 금액 모수에 취소를 넣으면 돈이 한 번도 움직이지 않은 주문의 주문금액이 카드에 쌓이고,
+     * 미결제 주문을 반복 생성·만료하는 것만으로 "조회 범위 주문 금액"이 계속 커진다.
      */
     @Test
-    void 미결제_만료로_취소된_주문은_결제액에_들어가지_않는다() throws Exception {
+    void 미결제_만료로_취소된_주문은_주문_금액에_들어가지_않는다() throws Exception {
         seedOrder(sellerUserId, "멍멍마켓", OrderStatus.PAID, LocalDateTime.now().minusHours(1));
         seedOrder(
                 sellerUserId, "멍멍마켓", OrderStatus.CANCELLED, LocalDateTime.now().minusHours(2));
@@ -271,7 +270,7 @@ class AdminOrderMonitoringIntegrationTest extends OrderMonitoringTestBase {
         mockMvc.perform(bearer(get(BASE + "/metrics")))
                 .andExpect(status().isOk())
                 // 결제된 한 건만 — 39,000 × 2 + 배송비 3,000
-                .andExpect(jsonPath("$.data.totalPaymentAmount").value(81_000))
+                .andExpect(jsonPath("$.data.totalOrderAmount").value(81_000))
                 .andExpect(jsonPath("$.data.awaitingDispatchCount").value(1))
                 .andExpect(jsonPath("$.data.shippingCount").value(0))
                 .andExpect(jsonPath("$.data.delayedCount").value(0));
@@ -328,7 +327,7 @@ class AdminOrderMonitoringIntegrationTest extends OrderMonitoringTestBase {
                 .andExpect(jsonPath("$.data.items[0].payableAmount").value(154_000));
 
         mockMvc.perform(bearer(get(BASE + "/metrics")))
-                .andExpect(jsonPath("$.data.totalPaymentAmount").value(154_000));
+                .andExpect(jsonPath("$.data.totalOrderAmount").value(154_000));
     }
 
     /** 카드는 상태로 좁히지 않는다 — 좁히면 카드 넷 중 셋이 0이 되어 축으로서 쓸모가 없다. */
@@ -352,7 +351,172 @@ class AdminOrderMonitoringIntegrationTest extends OrderMonitoringTestBase {
                                 LocalDateTime.now().minusDays(3).toLocalDate().toString())))
                 .andExpect(jsonPath("$.data.awaitingDispatchCount").value(1))
                 .andExpect(jsonPath("$.data.shippingCount").value(1))
-                .andExpect(jsonPath("$.data.totalPaymentAmount").value(162_000));
+                .andExpect(jsonPath("$.data.totalOrderAmount").value(162_000));
+    }
+
+    /**
+     * 발송이 늦었던 주문은 송장이 붙는 순간 발송 축에서 빠진다. 배송 축이 주문 시각으로 재면 그
+     * 주문이 사유만 "배송 정체"로 바꿔 다시 나타나고, 운영자는 셀러를 독촉해야 할 건에 택배사를 쫓는다.
+     */
+    @Test
+    void 발송이_늦었어도_방금_발송된_주문은_배송_정체가_아니다() throws Exception {
+        var seeded = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.SHIPPING, LocalDateTime.now().minusDays(20));
+        seedShipment(seeded.orderId(), "6381-2049-1182", LocalDateTime.now().minusHours(2));
+
+        mockMvc.perform(bearer(get(BASE + "/" + seeded.publicId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.order.delayed").value(false))
+                .andExpect(jsonPath("$.data.order.delayReason").doesNotExist());
+
+        mockMvc.perform(bearer(get(BASE).param("delayedOnly", "true")))
+                .andExpect(jsonPath("$.data.items.length()").value(0));
+        mockMvc.perform(bearer(get(BASE + "/metrics")))
+                .andExpect(jsonPath("$.data.delayedCount").value(0));
+    }
+
+    /** 배송 정체는 주문이 최근이어도 발송이 오래됐으면 걸려야 한다 — 시계가 발송 시각에서 떨어진다는 증거다. */
+    @Test
+    void 발송한_지_기한을_넘긴_주문은_주문이_최근이어도_배송_정체다() throws Exception {
+        var seeded = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.SHIPPING, LocalDateTime.now().minusHours(3));
+        seedShipment(seeded.orderId(), "2210-7741-8890", LocalDateTime.now().minusDays(9));
+
+        mockMvc.perform(bearer(get(BASE + "/" + seeded.publicId())))
+                .andExpect(jsonPath("$.data.order.delayed").value(true))
+                .andExpect(jsonPath("$.data.order.delayReason").value("DELIVERY_OVERDUE"));
+
+        mockMvc.perform(bearer(get(BASE).param("delayedOnly", "true")))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].orderId").value(seeded.publicId()));
+        mockMvc.perform(bearer(get(BASE + "/metrics")))
+                .andExpect(jsonPath("$.data.delayedCount").value(1));
+    }
+
+    /**
+     * 기한 경계. 발송 기한(7일)을 막 안 넘긴 건과 막 넘긴 건이 갈려야 하고, 목록 행의 판정과 카드의
+     * 집계 술어가 같은 쪽으로 갈려야 한다 — 한쪽만 경계를 포함하면 카드와 목록의 건수가 1건씩 어긋난다.
+     */
+    @Test
+    void 배송_기한_경계에서_행_판정과_카드_집계가_같이_갈린다() throws Exception {
+        var justInside = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.SHIPPING, LocalDateTime.now().minusDays(30));
+        seedShipment(
+                justInside.orderId(),
+                "1111-1111-1111",
+                LocalDateTime.now().minusDays(7).plusMinutes(5));
+        var justOutside = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.SHIPPING, LocalDateTime.now().minusDays(30));
+        seedShipment(
+                justOutside.orderId(),
+                "2222-2222-2222",
+                LocalDateTime.now().minusDays(7).minusMinutes(5));
+
+        mockMvc.perform(bearer(get(BASE + "/" + justInside.publicId())))
+                .andExpect(jsonPath("$.data.order.delayed").value(false));
+        mockMvc.perform(bearer(get(BASE + "/" + justOutside.publicId())))
+                .andExpect(jsonPath("$.data.order.delayed").value(true));
+
+        JsonNode metrics = body(mockMvc.perform(bearer(get(BASE + "/metrics")))
+                .andExpect(status().isOk())
+                .andReturn());
+        JsonNode listed = body(mockMvc.perform(bearer(get(BASE).param("size", "100")))
+                .andExpect(status().isOk())
+                .andReturn());
+
+        assertEquals(1, delayedRowsOf(listed), "경계 바로 지난 한 건만 지연이어야 한다");
+        assertEquals(delayedRowsOf(listed), metrics.get("delayedCount").asLong(), "집계 술어와 행 판정이 같은 경계 시각을 써야 한다");
+    }
+
+    /**
+     * 교환 재발송이 붙으면 배송 행이 여럿이다. 시계는 가장 늦은 발송에서 떨어져야 한다 —
+     * 첫 발송에서 재면 재발송된 주문이 영구히 배송 정체로 남는다.
+     */
+    @Test
+    void 재발송이_붙은_주문은_가장_늦은_발송_시각으로_센다() throws Exception {
+        var seeded = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.SHIPPING, LocalDateTime.now().minusDays(30));
+        seedShipment(seeded.orderId(), "3333-3333-3333", LocalDateTime.now().minusDays(20));
+        seedShipment(seeded.orderId(), "4444-4444-4444", LocalDateTime.now().minusHours(1));
+
+        mockMvc.perform(bearer(get(BASE + "/" + seeded.publicId())))
+                .andExpect(jsonPath("$.data.order.delayed").value(false))
+                .andExpect(jsonPath("$.data.order.shipment.trackingNumber").value("4444-4444-4444"));
+        mockMvc.perform(bearer(get(BASE + "/metrics")))
+                .andExpect(jsonPath("$.data.delayedCount").value(0));
+    }
+
+    /** 발송 기록이 없는 배송중 주문의 시계를 멈추면 두 축 어디에도 안 잡혀 영구히 보이지 않는다. */
+    @Test
+    void 발송_기록이_없는_배송중은_주문_시각으로_센다() throws Exception {
+        var seeded = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.SHIPPING, LocalDateTime.now().minusDays(9));
+
+        mockMvc.perform(bearer(get(BASE + "/" + seeded.publicId())))
+                .andExpect(jsonPath("$.data.order.delayed").value(true))
+                .andExpect(jsonPath("$.data.order.delayReason").value("DELIVERY_OVERDUE"))
+                .andExpect(jsonPath("$.data.order.shipment").doesNotExist());
+        mockMvc.perform(bearer(get(BASE + "/metrics")))
+                .andExpect(jsonPath("$.data.delayedCount").value(1));
+    }
+
+    /**
+     * 부분 클레임으로 환불된 품목이 금액에 남으면 카드가 환불분만큼 계속 커진다. 행의 주문 금액과
+     * 카드의 합이 같은 규칙으로 세는지도 함께 본다 — 한쪽만 빼면 운영자가 둘을 비교할 수 없다.
+     */
+    @Test
+    void 환불로_종결된_품목은_행과_카드의_금액에서_함께_빠진다() throws Exception {
+        var seeded = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.PAID, LocalDateTime.now().minusHours(1), 2, 39_000L, 2, 0L);
+        cancelFirstItem(seeded.orderId());
+
+        // 살아 있는 품목 한 줄(39,000 × 2) + 배송비 3,000 — 취소된 줄은 금액에서 빠지고 품목 수에는 남는다
+        mockMvc.perform(bearer(get(BASE)))
+                .andExpect(jsonPath("$.data.items[0].itemCount").value(2))
+                .andExpect(jsonPath("$.data.items[0].totalProductAmount").value(78_000))
+                .andExpect(jsonPath("$.data.items[0].payableAmount").value(81_000));
+
+        mockMvc.perform(bearer(get(BASE + "/metrics")))
+                .andExpect(jsonPath("$.data.totalOrderAmount").value(81_000));
+    }
+
+    /**
+     * 회수 송장은 구매자에서 셀러로 가는 역방향이다. 종류를 가리지 않고 가장 나중 행을 고르면 반품을
+     * 시작한 주문의 "배송"이 회수 송장으로 바뀌어, 운영자가 그 송장번호를 출고 배송으로 읽는다.
+     */
+    @Test
+    void 회수_송장은_주문의_배송으로_표시되지_않는다() throws Exception {
+        var seeded = seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.DELIVERED, LocalDateTime.now().minusDays(10));
+        seedShipment(seeded.orderId(), "5555-5555-5555", LocalDateTime.now().minusDays(9));
+        seedShipment(
+                seeded.orderId(), "9999-9999-9999", LocalDateTime.now().minusHours(1), ShipmentType.RETURN_COLLECT);
+
+        mockMvc.perform(bearer(get(BASE + "/" + seeded.publicId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.order.shipment.trackingNumber").value("5555-5555-5555"));
+    }
+
+    /**
+     * 취소된 주문은 카드의 금액 모수에서 빠진다. 행이 배송비를 그대로 남기면 돈이 한 번도 움직이지
+     * 않은 주문이 금액을 가진 것처럼 보이고, 카드 합과 행 합을 더해 비교할 수 없다.
+     */
+    @Test
+    void 취소된_주문의_행_금액은_카드와_같이_0이다() throws Exception {
+        seedOrder(
+                sellerUserId, "멍멍마켓", OrderStatus.CANCELLED, LocalDateTime.now().minusHours(2));
+
+        mockMvc.perform(bearer(get(BASE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].status").value("CANCELLED"))
+                .andExpect(jsonPath("$.data.items[0].totalProductAmount").value(0))
+                .andExpect(jsonPath("$.data.items[0].payableAmount").value(0))
+                // 스냅샷 컬럼은 그대로 남는다 — 파생 금액만 0이다
+                .andExpect(jsonPath("$.data.items[0].sellerShippingFee").value(3_000));
+
+        mockMvc.perform(bearer(get(BASE + "/metrics")))
+                .andExpect(jsonPath("$.data.totalOrderAmount").value(0));
     }
 
     @Test
@@ -362,7 +526,7 @@ class AdminOrderMonitoringIntegrationTest extends OrderMonitoringTestBase {
                 .andExpect(jsonPath("$.data.awaitingDispatchCount").value(0))
                 .andExpect(jsonPath("$.data.shippingCount").value(0))
                 .andExpect(jsonPath("$.data.delayedCount").value(0))
-                .andExpect(jsonPath("$.data.totalPaymentAmount").value(0));
+                .andExpect(jsonPath("$.data.totalOrderAmount").value(0));
     }
 
     /** 타임라인의 재료는 상태 전이 이력이다 — 전이 시각 오름차순이어야 화면이 단계를 순서대로 그린다. */
@@ -415,5 +579,16 @@ class AdminOrderMonitoringIntegrationTest extends OrderMonitoringTestBase {
 
     private JsonNode body(MvcResult result) throws Exception {
         return MAPPER.readTree(result.getResponse().getContentAsString()).get("data");
+    }
+
+    /** 목록이 실제로 지연으로 표시한 행 수 — 카드의 집계 건수와 대조할 기준이다. */
+    private long delayedRowsOf(JsonNode listed) {
+        long delayed = 0;
+        for (JsonNode row : listed.get("items")) {
+            if (row.get("delayed").asBoolean()) {
+                delayed++;
+            }
+        }
+        return delayed;
     }
 }

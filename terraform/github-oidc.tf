@@ -141,10 +141,15 @@ data "aws_iam_policy_document" "github_assume_ai" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # 신규 레포는 sub 에 소유자·레포 ID 가 붙는 불변 형식(use_immutable_subject)이 기본이고
+    # 레포 설정으로 끌 수 없어 두 형식을 모두 허용한다. 와일드카드는 '@' 뒤 숫자 ID 자리에만 온다.
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo_ai}:ref:refs/heads/main"]
+      values = [
+        "repo:${var.github_repo_ai}:ref:refs/heads/main",
+        "repo:${replace(var.github_repo_ai, "/", "@*/")}@*:ref:refs/heads/main",
+      ]
     }
   }
 }
