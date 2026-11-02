@@ -210,8 +210,13 @@ class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
         /** 초안 페이로드는 request·response 패키지 밖에 있어 따로 지목한다. */
         private val DTO_PACKAGES = setOf("com.aechak.seller.product.support")
 
-        /** 택배사가 주는 자유 문구라서 고정할 허용값이 없다. */
-        private val FREE_FORM_STATUS_PROPERTIES = setOf("lastTrackingStatus")
+        /**
+         * 허용값을 못박지 않는 자리.
+         * - lastTrackingStatus: 택배사가 주는 자유 문구다.
+         * - fieldStatus: AI 초안의 필드별 사유 지도다. AI 쪽 열거가 16값이고 개발 중 셋이 늘었다 —
+         *   BE 열거로 거울질하면 AI 가 값을 하나 더하는 날 역직렬화가 터져 셀러가 500 을 본다.
+         */
+        private val FREE_FORM_STATUS_PROPERTIES = setOf("lastTrackingStatus", "fieldStatus")
         private val DUMP_PATH: Path = Path.of("build", "openapi", "seller-api-docs.json")
     }
 }
