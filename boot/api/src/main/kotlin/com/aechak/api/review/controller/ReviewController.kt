@@ -34,11 +34,11 @@ class ReviewController(
     @GetMapping("/products/{productId}/review-summary")
     fun getProductReviewSummary(
         @PathVariable("productId") productPublicId: String,
-        @AuthenticationPrincipal principal: AuthPrincipal,
+        @AuthenticationPrincipal principal: AuthPrincipal?,
     ): ResponseEntity<ApiResponse<ProductReviewSummaryResponse>> =
         ResponseEntity.ok(
             ApiResponse.of(
-                ProductReviewSummaryResponse.from(reviewSummaryUseCase.getProductReviewSummary(productPublicId, principal.userId)),
+                ProductReviewSummaryResponse.from(reviewSummaryUseCase.getProductReviewSummary(productPublicId, principal?.userId)),
             ),
         )
 
