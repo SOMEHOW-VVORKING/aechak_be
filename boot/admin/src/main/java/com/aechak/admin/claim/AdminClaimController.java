@@ -1,14 +1,17 @@
 package com.aechak.admin.claim;
 
+import com.aechak.admin.audit.AdminAudited;
 import com.aechak.admin.claim.request.InterveneClaimRequest;
 import com.aechak.admin.claim.response.AdminClaimDetailResponse;
 import com.aechak.admin.claim.response.AdminClaimListResponse;
 import com.aechak.admin.claim.response.ClaimInterventionReasonCatalogResponse;
 import com.aechak.admin.claim.response.InterveneClaimResponse;
+import com.aechak.application.audit.support.AdminAuditContextHolder;
 import com.aechak.application.order.claim.admin.port.AdminClaimSort;
 import com.aechak.application.order.claim.admin.usecase.AdminClaimUseCase;
 import com.aechak.application.order.claim.admin.usecase.query.AdminClaimSearchQuery;
 import com.aechak.application.support.CursorPageSize;
+import com.aechak.domain.audit.auditlog.enums.AdminAuditAction;
 import com.aechak.domain.order.claim.enums.ClaimStatus;
 import com.aechak.domain.order.claim.enums.ClaimType;
 import com.aechak.webcommon.response.ApiResponse;
@@ -96,12 +99,27 @@ public class AdminClaimController {
      * 응답의 refundStatus/refundSettled가 환불이 그대로임을 보여 준다.
      */
     @PostMapping("/{claimPublicId}/intervention")
+    @AdminAudited(value = AdminAuditAction.CLAIM_INTERVENED, targetVar = "claimPublicId")
     public ResponseEntity<ApiResponse<InterveneClaimResponse>> intervene(
             @PathVariable String claimPublicId,
             @Valid @RequestBody InterveneClaimRequest request,
             @AuthenticationPrincipal AuthPrincipal principal) {
+        // 사유는 요청 본문에만 있다. 조치보다 먼저 올려 둬야 개입할 수 없는 상태로 거부된(409) 시도의
+        // 행에도 "무엇을 하려 했나"가 남는다.
+        AdminAuditContextHolder.INSTANCE.reason(auditReason(request));
         return ResponseEntity.ok(ApiResponse.Companion.of(InterveneClaimResponse.from(
                 adminClaimUseCase.interveneClaim(request.toCommand(principal.getUserId(), claimPublicId)))));
+    }
+
+    /**
+     * 감사 행의 사유 칸에 적을 문구. 사유는 고정 어휘라 코드만 적으면 감사 화면에서 다시 번역해야 하고,
+     * 상세를 버리면 기타 판정의 근거가 사라진다 — 둘을 한 줄로 붙인다. 길이는 애그리거트가 자른다.
+     */
+    private static String auditReason(InterveneClaimRequest request) {
+        String label = request.reason().getLabel();
+        String detail =
+                request.reasonDetail() == null ? "" : request.reasonDetail().strip();
+        return detail.isEmpty() ? label : label + " — " + detail;
     }
 
     /** 형식 오류는 보정한다 — 목록 크기는 업무 규칙이 아니라 표시 선택이다. */

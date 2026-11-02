@@ -1,5 +1,6 @@
 package com.aechak.application.seller.facade;
 
+import com.aechak.application.audit.support.AdminAuditContextHolder;
 import com.aechak.application.file.port.enums.UploadPurpose;
 import com.aechak.application.file.usecase.FileUseCase;
 import com.aechak.application.seller.service.AdminSellerReviewService;
@@ -105,6 +106,7 @@ public class AdminSellerReviewFacade implements AdminSellerReviewUseCase {
     public void approve(long adminId, long applicationId) {
         decideTranslatingConflicts(() -> tx.executeWithoutResult(txStatus -> {
             SellerApplication application = adminSellerReviewService.approve(adminId, applicationId);
+            recordAuditLabel(application);
             Seller seller = sellerService.open(
                     checkState(application.getUserId(), "신청서에 신청자가 없습니다 (applicationId=" + application.getId() + ")"),
                     // 상호명이 없는 개인 일반은 대표자명이 스토어명이 된다 — 제출 검증을 통과한 신청이라 null일 수 없다
@@ -124,8 +126,21 @@ public class AdminSellerReviewFacade implements AdminSellerReviewUseCase {
 
     @Override
     public void reject(long adminId, long applicationId, String reason) {
-        decideTranslatingConflicts(() ->
-                tx.executeWithoutResult(txStatus -> adminSellerReviewService.reject(adminId, applicationId, reason)));
+        decideTranslatingConflicts(() -> tx.executeWithoutResult(
+                txStatus -> recordAuditLabel(adminSellerReviewService.reject(adminId, applicationId, reason))));
+    }
+
+    /**
+     * 감사 기록에 남길 <b>그 시점의</b> 대상 이름. 상호명이 없는 개인 일반은 대표자명이 스토어명이 된다.
+     *
+     * <p>이름만 올린다 — 누가·언제·무슨 조치·결과·IP·추적 id는 요청 경계가 알고, 대상 식별자는
+     * 경로 변수에 있다. 여기서 올리는 건 나중에 신청서가 지워지거나 상호명이 바뀌면 복원할 수 없는 값뿐이다.
+     */
+    private void recordAuditLabel(SellerApplication application) {
+        AdminAuditContextHolder.INSTANCE.label(
+                application.getBusinessName() != null
+                        ? application.getBusinessName()
+                        : application.getRepresentativeName());
     }
 
     /**

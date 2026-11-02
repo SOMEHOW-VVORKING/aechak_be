@@ -17,6 +17,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
             "com.aechak.websecurity", // RS256 디코더 조립(JwtConfig)·프린시펄 변환
             "com.aechak.pii", // PII 암호화 엔진·키 조립(PiiCryptoConfig) — 계좌번호 복호에 필요
             "com.aechak.application.pii", // 암호문 Base64 왕복 부품(PiiStringCodec) — 계좌번호 복호가 경유
+            "com.aechak.application.audit", // 감사 로그 기록·조회 — 어드민 전용 BC라 포트 어댑터는 persistence뿐이다
             "com.aechak.application.seller", // 심사 유스케이스 (신청자측 파사드도 딸려온다 — 아래 user·file 스캔 이유)
             "com.aechak.application.settlement", // 승인 tx의 정산계좌 이관 진입점
             "com.aechak.application.file", // 서류 다운로드 URL 발급(FileUseCase)
