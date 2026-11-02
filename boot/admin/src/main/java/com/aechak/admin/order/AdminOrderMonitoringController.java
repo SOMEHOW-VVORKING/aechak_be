@@ -45,7 +45,7 @@ public class AdminOrderMonitoringController {
                 AdminOrderListResponse.from(adminOrderMonitoringUseCase.getOrders(request.toQuery()))));
     }
 
-    /** 모니터링 카드 — 발송 대기·배송 중·지연·조회 범위 결제액 */
+    /** 모니터링 카드 — 발송 대기·배송 중·지연·조회 범위 주문 금액 */
     @GetMapping("/metrics")
     public ResponseEntity<ApiResponse<AdminOrderMetricsResponse>> metrics(
             @Valid @ModelAttribute AdminOrderMetricsRequest request) {
