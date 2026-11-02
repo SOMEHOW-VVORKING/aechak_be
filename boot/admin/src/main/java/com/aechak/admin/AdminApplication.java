@@ -17,6 +17,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
             "com.aechak.websecurity", // RS256 디코더 조립(JwtConfig)·프린시펄 변환
             "com.aechak.pii", // PII 암호화 엔진·키 조립(PiiCryptoConfig) — 계좌번호 복호에 필요
             "com.aechak.application.pii", // 암호문 Base64 왕복 부품(PiiStringCodec) — 계좌번호 복호가 경유
+            "com.aechak.application.audit", // 감사 로그 기록·조회 — 어드민 전용 BC라 포트 어댑터는 persistence뿐이다
             "com.aechak.application.seller", // 심사 유스케이스 (신청자측 파사드도 딸려온다 — 아래 user·file 스캔 이유)
             "com.aechak.application.settlement", // 승인 tx의 정산계좌 이관 진입점
             "com.aechak.application.file", // 서류 다운로드 URL 발급(FileUseCase)
@@ -28,6 +29,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
             // 인증(Redis·SMS 포트) 조립까지 요구해 하위로 좁힌다
             "com.aechak.application.user.term", // UserFacade의 약관 동의 의존(ConsentService)
             "com.aechak.application.user.sanction", // 일반 회원 조회·제재 유스케이스
+            // 공지 작성·게시. admin 하위만 넣는다 — notice 상위를 넣으면 독자측 읽기 파사드(read·seller)가
+            // 딸려오고 그 중 셀러측은 seller BC의 자격 게이트를 요구해 어드민이 쓰지 않는 조립이 늘어난다.
+            "com.aechak.application.notice.admin",
             // 배송 정책 파사드의 택배사 검증 의존(CourierUseCase) — 어드민이 쓰는 기능은 아니지만
             // 그 파사드가 application.seller에 살아 패키지 단위 스캔으로는 가릴 수 없다. order BC 중 이 하위만 쓴다
             "com.aechak.application.order.shipment",

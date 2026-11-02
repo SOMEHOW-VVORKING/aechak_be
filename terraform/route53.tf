@@ -25,6 +25,9 @@ locals {
   # admin API — admin-<env>는 어드민 웹(아래 admin_domain) 몫이라 api 레이블을 붙인다 (SCRUM-229)
   admin_api_domain = var.env == "prod" ? "admin-api.aechak.co.kr" : "admin-api-${var.env}.aechak.co.kr"
 
+  # AI 검수 서버 — 같은 한 레이블 규칙. 헬스체크 확인용이고 공개 API는 없다.
+  ai_api_domain = var.env == "prod" ? "ai-api.aechak.co.kr" : "ai-api-${var.env}.aechak.co.kr"
+
   # 프론트는 서비스 얼굴이라 서비스명을 빼고 env만 쓴다.
   # prod는 apex가 되는데 CNAME을 못 걸어서 그때 방식을 다시 정해야 한다.
   web_domain = var.env == "prod" ? "aechak.co.kr" : "${var.env}.aechak.co.kr"
@@ -111,4 +114,16 @@ resource "aws_route53_record" "admin_web" {
   type    = "CNAME"
   ttl     = 300
   records = ["aechak-admin.pages.dev"]
+}
+
+resource "aws_route53_record" "ai_api" {
+  zone_id = data.aws_route53_zone.root.zone_id
+  name    = local.ai_api_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = false
+  }
 }

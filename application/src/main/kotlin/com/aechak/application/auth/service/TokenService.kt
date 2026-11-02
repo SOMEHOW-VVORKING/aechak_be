@@ -6,6 +6,7 @@ import com.aechak.application.auth.port.RefreshTokenEntry
 import com.aechak.application.auth.port.RefreshTokenRef
 import com.aechak.application.auth.port.RefreshTokenStore
 import com.aechak.application.auth.port.TokenCodec
+import com.aechak.application.auth.port.UserRoleReader
 import com.aechak.application.auth.port.UserStatusReader
 import com.aechak.application.auth.usecase.result.TokenResult
 import com.aechak.common.error.BusinessException
@@ -33,6 +34,7 @@ class TokenService(
     private val tokenCodec: TokenCodec,
     private val refreshTokenStore: RefreshTokenStore,
     private val userStatusReader: UserStatusReader,
+    private val userRoleReader: UserRoleReader,
     private val policy: TokenPolicy,
 ) {
     /** 로그인 시 최초 발급 — 이 유저의 새 refresh 사슬이 여기서 시작된다. */
@@ -70,7 +72,9 @@ class TokenService(
             }
 
             // [시나리오 C — 정상 회전] 현행 토큰이 맞다.
-            // 해시까지 대조하는 이유: jti(토큰 id)만 알아낸 공격자가 원문 없이 통과하지 못하게 하는 2중 확인.
+            // 해시까지 대조하는 이유: 위조 토큰은 앞의 서명 검증이 이미 막는다. 이 가드가 거르는 것은
+            // "서명은 유효한데 우리가 이 jti로 발급한 원문과 바이트가 다른 토큰"이다 — 서버가 같은 jti에
+            // 두 가지 원문을 내보낸 상태이므로 사슬이 갈라졌다는 신호로 보고 끊는다(SCRUM-344가 그 상태였다).
             is RefreshTokenEntry.Active -> {
                 if (entry.tokenHash != sha256(refreshToken)) {
                     reportReuse(claims.userId)
@@ -100,6 +104,23 @@ class TokenService(
         }
     }
 
+    /**
+     * 발급에 쓸 역할 — 제시된 refresh에 박힌 값이 아니라 DB를 다시 읽는다.
+     *
+     * 복사하면 한 번 시작된 사슬이 그 시점의 역할을 끝까지 번식시킨다. 승격이 재로그인 전까지
+     * 반영되지 않는 불편이 눈에 먼저 띄지만, **문제는 반대 방향이다** — 관리자 권한을 회수해도
+     * 그 계정이 쥔 사슬은 refresh TTL(30일) 내내 ADMIN access를 계속 발급한다.
+     * 정지·탈퇴는 [ensureAccountUsable]이 회전 자체를 막아 끊기지만, 역할 강등은 계정이 멀쩡히
+     * ACTIVE라 그 저지선에 걸리지 않는다.
+     *
+     * null은 차단이다. [ensureAccountUsable]이 앞에서 유저 없음을 이미 걸렀으므로 여기 null은
+     * 그 사이에 유저가 사라진 경합인데, 그때 토큰의 역할로 되돌아가면 삭제된 계정의 권한이
+     * 되살아난다. 토큰 수명 연장을 막는 쪽이 맞다.
+     */
+    private fun currentRole(userId: Long): String =
+        userRoleReader.roleOf(userId)?.name
+            ?: throw BusinessException(AuthErrorCode.ACCOUNT_BLOCKED)
+
     /** 멱등 폐기(로그아웃) — 식별 불가 토큰(위조·만료)은 조용히 무시한다. 이미 없어도 성공. */
     fun revoke(refreshToken: String) {
         val claims = tokenCodec.decodeRefreshToken(refreshToken) ?: return
@@ -126,7 +147,7 @@ class TokenService(
         val tokenId = Ulid.generate()
         val refreshExpiresAt = issuedAt + policy.refreshTtl
         val accessToken = tokenCodec.encodeAccessToken(userId, role, issuedAt, issuedAt + policy.accessTtl)
-        val refreshToken = tokenCodec.encodeRefreshToken(userId, role, tokenId, issuedAt, refreshExpiresAt)
+        val refreshToken = tokenCodec.encodeRefreshToken(userId, tokenId, issuedAt, refreshExpiresAt)
         refreshTokenStore.save(userId, tokenId, sha256(refreshToken), policy.refreshTtl)
         return Issued(
             TokenResult(accessToken, refreshToken, tokenId, policy.accessTtl.seconds),
@@ -139,7 +160,7 @@ class TokenService(
      * 순서 주의 — 새것 저장이 먼저다: 강등 후 저장 전에 죽으면 유저의 유효 토큰이 하나도 안 남는다.
      */
     private fun rotateActive(claims: RefreshTokenClaims): TokenResult {
-        val issued = issueAt(claims.userId, claims.role, now())
+        val issued = issueAt(claims.userId, currentRole(claims.userId), now())
         refreshTokenStore.markRotated(claims.userId, claims.tokenId, issued.refreshRef, policy.rotationGrace)
         return issued.result
     }
@@ -148,17 +169,25 @@ class TokenService(
      * 유예 재시도 응답: 안내판에 적힌 successor 클레임(jti·발급/만료 시각)을 그대로 다시 인코딩한다.
      * RS256 서명은 같은 입력에 항상 같은 출력(결정적)이라, 원문을 저장하지 않고도
      * 처음 발급됐던 것과 바이트까지 동일한 refresh가 재현된다. access는 단명이라 그냥 새로 굽는다.
+     *
+     * **재현이 성립하는 조건은 서명 입력이 전부 제시 토큰과 안내판에 적혀 있는 것이다.**
+     * 역할이 refresh의 클레임이던 동안에는 그게 깨져 있었다 — [rotateActive]는 DB 역할로 굽는데
+     * 여기서는 제시된 토큰의 옛 역할로 되살려, 역할이 바뀐 직후 재시도가 바이트가 다른 refresh를
+     * 받았다. 그 토큰으로 다음 회전을 하면 `Active` 해시와 어긋나 [reportReuse]가 돌아 멀쩡한
+     * 사용자의 세션이 전부 삭제됐다. 역할을 뺀 지금 서명 입력은 userId와 jti, 발급·만료 시각뿐이고
+     * (token_type은 상수) 그 넷이 전부 여기 있어 구조적으로 바이트가 같아진다.
+     * access는 멱등 대상이 아니므로 현재 역할로 굽는다.
      */
     private fun reissueSuccessor(
         claims: RefreshTokenClaims,
         successor: RefreshTokenRef,
     ): TokenResult {
         val issuedAt = now()
-        val accessToken = tokenCodec.encodeAccessToken(claims.userId, claims.role, issuedAt, issuedAt + policy.accessTtl)
+        val accessToken =
+            tokenCodec.encodeAccessToken(claims.userId, currentRole(claims.userId), issuedAt, issuedAt + policy.accessTtl)
         val refreshToken =
             tokenCodec.encodeRefreshToken(
                 claims.userId,
-                claims.role,
                 successor.tokenId,
                 successor.issuedAt,
                 successor.expiresAt,

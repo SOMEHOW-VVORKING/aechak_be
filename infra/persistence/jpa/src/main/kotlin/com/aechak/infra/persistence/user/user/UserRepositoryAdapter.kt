@@ -27,6 +27,12 @@ interface UserJpaRepository : JpaRepository<User, Long> {
         @Param("id") id: Long,
     ): UserAccessStatusProjection?
 
+    /** 토큰 발급용 프로젝션 — 회전 시점에 현재 역할을 다시 읽는다(SCRUM-329). */
+    @Query("select u.role from User u where u.id = :id")
+    fun findRoleById(
+        @Param("id") id: Long,
+    ): UserRole?
+
     /** 작성자 표시용 배치 프로젝션 — 프로필 없어도 포함되도록 left join. */
     @Query(
         "select new com.aechak.application.user.user.port.view.UserAuthorView(u.id, u.status, p.nickname, p.profileImageKey) " +

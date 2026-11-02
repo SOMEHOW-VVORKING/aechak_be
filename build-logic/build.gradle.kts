@@ -10,4 +10,5 @@ dependencies {
     implementation(libs.gradleplugin.ktlint)
     implementation(libs.gradleplugin.spotless)          // java-common 컨벤션이 자바 포맷(palantir) 적용
     implementation(libs.gradleplugin.ksp)               // domain 컨벤션이 QueryDSL Q클래스 생성을 적용
+    implementation(libs.gradleplugin.test.retry)        // 공통 테스트 컨벤션이 CI 재시도를 적용
 }

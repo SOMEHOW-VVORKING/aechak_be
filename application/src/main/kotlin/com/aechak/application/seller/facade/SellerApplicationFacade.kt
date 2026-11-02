@@ -5,6 +5,7 @@ import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.seller.service.SellerApplicationService
 import com.aechak.application.seller.usecase.SellerApplicationUseCase
+import com.aechak.application.seller.usecase.command.CancelApplicationCommand
 import com.aechak.application.seller.usecase.command.SaveDraftCommand
 import com.aechak.application.seller.usecase.result.ApplicationResult
 import com.aechak.application.user.user.usecase.UserUseCase
@@ -74,6 +75,11 @@ class SellerApplicationFacade(
     @Transactional
     override fun submit(userId: Long) {
         sellerApplicationService.submit(userId)
+    }
+
+    @Transactional
+    override fun cancel(command: CancelApplicationCommand) {
+        sellerApplicationService.cancel(command.userId)
     }
 
     /** 신청 전제 — 휴대폰 점유 인증. 타 도메인 상태라 UseCase 경유로만 읽는다. */
