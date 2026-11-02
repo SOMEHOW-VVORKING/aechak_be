@@ -66,7 +66,7 @@ class SecurityConfig {
                     .permitAll()
                     .requestMatchers(HttpMethod.POST, "$basePath/webhooks/portone") // 신원은 JWT가 아니라 포트원 서명이 보증
                     .permitAll()
-                    // 게스트 카탈로그. 와일드카드는 세그먼트 한 칸이라 상품 상세는 열리고,
+                    // 게스트 카탈로그. 와일드카드는 세그먼트 한 칸이라 상품 상세와 리뷰 요약은 열리고,
                     // 로그인을 요구하는 /products/{productId}/reviews 는 닫힌 채로 남는다.
                     // 홈은 아직 비회원에게 열지 않아 여기에 넣지 않는다.
                     .requestMatchers(
@@ -74,6 +74,7 @@ class SecurityConfig {
                         "$basePath/products",
                         "$basePath/products/*",
                         "$basePath/products/*/options",
+                        "$basePath/products/*/review-summary",
                         "$basePath/search/products",
                         "$basePath/sns/users/*", // 한 칸 와일드카드라 /followers, /followings는 닫힌 채로 남는다
                     ).permitAll()

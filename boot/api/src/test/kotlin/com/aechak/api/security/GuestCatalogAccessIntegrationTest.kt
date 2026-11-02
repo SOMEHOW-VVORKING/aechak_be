@@ -5,6 +5,7 @@ import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.stats.ProductStats
 import com.aechak.domain.seller.seller.Seller
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -22,7 +23,7 @@ import org.springframework.web.context.WebApplicationContext
 /**
  * 토큰 없는 요청에 카탈로그를 어디까지 열어 주는지 고정한다.
  *
- * 상품 목록·검색·상세·옵션은 열고, 리뷰 조회와 찜하기는 닫는다. 리뷰 조회는 컨트롤러가 인증 주체를
+ * 상품 목록·검색·상세·옵션·AI 리뷰 요약은 열고, 리뷰 조회와 찜하기는 닫는다. 리뷰 조회는 컨트롤러가 인증 주체를
  * non-null로 받아 로그인을 요구하고, 찜하기는 쓰기라서 게스트에게 열 수 없다. 상세 경로를 열면서
  * 세그먼트 한 칸 와일드카드를 쓴 이유가 바로 리뷰를 함께 열지 않기 위함이라, 그 경계를 테스트가 지킨다.
  *
@@ -89,6 +90,16 @@ class GuestCatalogAccessIntegrationTest : IntegrationTestBase() {
         mockMvc
             .perform(get("/api/v1/products/01JZZZZZZZZZZZZZZZZZZZZZZZ"))
             .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `게스트도 상품 AI 리뷰 요약을 조회하고 비슷한 펫 요약은 null로 내려온다`() {
+        val publicId = seedProduct()
+
+        mockMvc
+            .perform(get("/api/v1/products/$publicId/review-summary"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.similarPetSummary").value(nullValue()))
     }
 
     @Test
