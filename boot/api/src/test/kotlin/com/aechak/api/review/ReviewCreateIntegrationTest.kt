@@ -16,6 +16,7 @@ import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.user.point.policy.ReviewRewardPolicy
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserStatus
+import com.aechak.infra.kafka.Topics
 import com.aechak.websecurity.config.JwtConfig
 import com.jayway.jsonpath.JsonPath
 import jakarta.persistence.EntityManager
@@ -29,7 +30,6 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
-import org.springframework.kafka.test.context.EmbeddedKafka
 import org.springframework.security.oauth2.jwt.JwtClaimsSet
 import org.springframework.security.oauth2.jwt.JwtEncoder
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters
@@ -50,17 +50,8 @@ import java.util.UUID
 /**
  * 리뷰 작성 API(POST /reviews) 통합 테스트.
  * 아웃박스 발행을 타므로 Flyway가 켜진 KafkaIntegrationTestBase를 상속한다.
- * REVIEW 토픽을 선언해 컨슈머(평점 투영, 적립)까지 도는 e2e도 함께 검증한다.
+ * 컨슈머(평점 투영, 적립)까지 도는 e2e도 함께 검증한다 — 토픽은 베이스가 모아 선언한다.
  */
-@EmbeddedKafka(
-    partitions = 1,
-    topics = [
-        com.aechak.infra.kafka.Topics.ORDER,
-        com.aechak.infra.kafka.Topics.ORDER_DLT,
-        com.aechak.infra.kafka.Topics.REVIEW,
-        com.aechak.infra.kafka.Topics.REVIEW_DLT,
-    ],
-)
 class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
     @Autowired
     private lateinit var context: WebApplicationContext
@@ -420,6 +411,81 @@ class ReviewCreateIntegrationTest : KafkaIntegrationTestBase() {
             assertEquals(0, count)
         }
     }
+
+    /**
+     * 비우기 전 컨슈머 소진이 실제로 막아 주는지 본다.
+     *
+     * 이 결함은 "소진을 넣었다"로는 잡히지 않는다. 소진이 헛돌아도 다른 테스트는 모두 통과한다 —
+     * 그래서 엇갈리는 순간을 손으로 만든다. 재현이 성립하지 않으면 중간 단언이 먼저 깨져
+     * 테스트가 스스로 "아무것도 증명하지 못했다"고 말한다.
+     */
+    @Test
+    fun `앞선 테스트가 남긴 리뷰 이벤트는 다음 테스트의 적립을 가로채지 못한다`() {
+        // 컨슈머를 세운 채 텍스트 리뷰를 만든다 — 이벤트는 토픽에 남고 소비되지 않는다
+        pauseReviewConsumers()
+        val staleBuyer = createActiveUser()
+        val staleFixture = persistReviewableOrderItem(staleBuyer)
+        val staleReviewId =
+            JsonPath
+                .read<Int>(
+                    postReview(staleBuyer, reviewBody(staleFixture.orderItemId, rating = 4))
+                        .andExpect(status().isCreated)
+                        .andReturn()
+                        .response
+                        .getContentAsString(Charsets.UTF_8),
+                    "$.data.reviewId",
+                ).toLong()
+        assertEquals(
+            0L,
+            processedCount("review-point-rewarder", "review-$staleReviewId:created"),
+            "컨슈머가 멈춰 있어야 가로채기를 재현한다 — 이미 소비됐다면 이 테스트는 아무것도 증명하지 않는다",
+        )
+
+        // 다음 테스트의 시작을 손으로 재현한다. 비우기 전에 소비를 기다리는 것이 방어선이다
+        resumeReviewConsumers()
+        drainConsumersThenCleanDatabase()
+        tx.executeWithoutResult { em.persist(SettlementFeePolicyFixture.global()) }
+
+        // 포토 리뷰 — TRUNCATE 가 id 를 되돌려 앞 이벤트와 같은 멱등키를 쓰게 된다
+        val buyerId = createActiveUser()
+        val fixture = persistReviewableOrderItem(buyerId)
+        val tmpKey = "${FileKey.tmpPrefixOf(buyerId, UploadPurpose.REVIEW_IMAGE)}photo.jpg"
+        val reviewId =
+            JsonPath
+                .read<Int>(
+                    postReview(buyerId, reviewBody(fixture.orderItemId, rating = 5, imageKeys = listOf(tmpKey)))
+                        .andExpect(status().isCreated)
+                        .andReturn()
+                        .response
+                        .getContentAsString(Charsets.UTF_8),
+                    "$.data.reviewId",
+                ).toLong()
+        assertEquals(staleReviewId, reviewId, "id 가 겹쳐야 가로채기가 성립한다 — 겹치지 않으면 재현이 아니다")
+
+        await().atMost(Duration.ofSeconds(20)).untilAsserted {
+            assertEquals(1L, rewardCount(reviewId))
+            // 소진이 헛돌면 앞 텍스트 리뷰의 금액이 적립돼 이 단언이 깨진다
+            assertEquals(ReviewRewardPolicy.amountFor(hasPhoto = true), pointBalance(buyerId))
+        }
+    }
+
+    private fun reviewConsumers() =
+        listenerRegistry.listenerContainers.filter {
+            Topics.REVIEW in
+                it.containerProperties.topics
+                    ?.toList()
+                    .orEmpty()
+        }
+
+    private fun pauseReviewConsumers() {
+        val containers = reviewConsumers()
+        assertTrue(containers.isNotEmpty(), "REVIEW 토픽 컨슈머를 못 찾으면 재현이 성립하지 않는다")
+        containers.forEach { it.pause() }
+        // pause 요청은 다음 poll 전에 반영된다 — 실제로 멈춘 뒤에 이벤트를 만들어야 소비되지 않는다
+        await().atMost(Duration.ofSeconds(20)).until { containers.all { it.isContainerPaused } }
+    }
+
+    private fun resumeReviewConsumers() = reviewConsumers().forEach { it.resume() }
 
     private fun postReview(
         userId: Long,
