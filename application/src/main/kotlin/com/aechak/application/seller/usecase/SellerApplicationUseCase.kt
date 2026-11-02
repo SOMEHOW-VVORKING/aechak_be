@@ -1,5 +1,6 @@
 package com.aechak.application.seller.usecase
 
+import com.aechak.application.seller.usecase.command.CancelApplicationCommand
 import com.aechak.application.seller.usecase.command.SaveDraftCommand
 import com.aechak.application.seller.usecase.result.ApplicationResult
 
@@ -24,4 +25,7 @@ interface SellerApplicationUseCase {
      * 내 신청서가 대상이라 id 불요 — 없으면 10100, DRAFT 아니면 10101.
      */
     fun submit(userId: Long)
+
+    /** 신청 취소. 승인 전 신청서만 CANCELLED가 되고 신청서가 없거나 APPROVED, CANCELLED면 그대로 둔다 */
+    fun cancel(command: CancelApplicationCommand)
 }
