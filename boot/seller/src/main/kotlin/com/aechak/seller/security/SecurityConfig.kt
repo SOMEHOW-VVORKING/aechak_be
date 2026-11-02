@@ -62,6 +62,10 @@ class SecurityConfig {
                 }
                 resourceServer.authenticationEntryPoint(unauthenticatedEntryPoint)
             }.exceptionHandling { it.authenticationEntryPoint(unauthenticatedEntryPoint) }
+            // 두 정책 목록이 빈 이유 — 온보딩 허용 경로가 없어 PENDING_ONBOARDING은 전 EP에서 막히고,
+            // 제한 경로가 없어 RESTRICTED는 통과한다. 뒤쪽은 의도다: 셀러의 문의 답변·리뷰 답글은 응대이고
+            // 답변 기한·지표가 걸려 있어, 구매자로서 받은 커뮤니티 제재로 끊으면 기다리는 구매자가 손해를 본다.
+            // 셀러의 공개 글을 끊어야 하는 제재는 임시/영구 정지이고 그것은 이 필터가 상태만으로 전면 차단한다.
             .addFilterAfter(
                 UserStatusFilter(userStatusReader, objectMapper, emptySet(), emptySet()),
                 BearerTokenAuthenticationFilter::class.java,

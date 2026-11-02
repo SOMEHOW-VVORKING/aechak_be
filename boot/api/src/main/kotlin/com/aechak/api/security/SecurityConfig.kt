@@ -91,7 +91,7 @@ class SecurityConfig {
                     userStatusReader,
                     objectMapper,
                     onboardingAllowedPaths(basePath),
-                    restrictedWritePathPrefixes(basePath),
+                    restrictedWritePathPatterns(basePath),
                 ),
                 BearerTokenAuthenticationFilter::class.java,
             )
@@ -115,17 +115,24 @@ class SecurityConfig {
         )
 
     /**
-     * 이용 제한(RESTRICTED) 계정에게 막을 경로 접두 — 쓰기 메서드에만 적용된다.
+     * 이용 제한(RESTRICTED) 계정에게 막을 경로 패턴 — 쓰기 메서드에만 적용된다.
      *
      * 화면이 약속한 제한 범위는 "일부 기능(리뷰 작성, 채팅 등)"이다. 채팅은 아직 없으므로
      * 지금 존재하는 커뮤니티성 쓰기만 담는다 — 리뷰 작성/삭제, SNS 활동, 문의 등록.
      * 주문·결제는 뺀다: 이용 제한은 거래를 끊는 제재가 아니고, 거래를 끊어야 하는 제재는 임시/영구 정지다.
+     *
+     * **커뮤니티성 쓰기를 새로 열면 여기에 함께 넣는다.** 넣지 않으면 제재가 그 경로에만 효력이 없고,
+     * 게이트는 조용히 통과하므로 테스트가 없으면 드러나지 않는다. 상품 문의가 그 자리였다.
      */
-    private fun restrictedWritePathPrefixes(basePath: String): Set<String> =
+    private fun restrictedWritePathPatterns(basePath: String): Set<String> =
         setOf(
-            "$basePath/reviews",
-            "$basePath/sns",
-            "$basePath/inquiries",
+            "$basePath/reviews/**",
+            "$basePath/sns/**",
+            // 앱 서비스 문의(계정·결제·배송). 상품 문의와 다른 BC다
+            "$basePath/inquiries/**",
+            // 상품 문의 — 등록은 상품 하위 경로, 철회는 별도 리소스라 접두 하나로 담기지 않는다
+            "$basePath/products/*/inquiries",
+            "$basePath/product-inquiries/**",
         )
 
     /**
