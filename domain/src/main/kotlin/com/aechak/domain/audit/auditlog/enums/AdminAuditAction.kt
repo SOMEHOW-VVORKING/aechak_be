@@ -32,4 +32,5 @@ enum class AdminAuditAction(
     NOTICE_UPDATED(AdminAuditTargetType.NOTICE, "서비스 공지 수정"),
     NOTICE_PUBLISHED(AdminAuditTargetType.NOTICE, "서비스 공지 게시"),
     NOTICE_UNPUBLISHED(AdminAuditTargetType.NOTICE, "서비스 공지 내림"),
+    REPORT_DECIDED(AdminAuditTargetType.REPORT, "신고 처리"),
 }
