@@ -229,7 +229,8 @@ class AdminAuditReviewRecordingIntegrationTest extends IntegrationTestBase {
     private long seedReview(String content) {
         long orderItemId = ++orderItemSeq;
         return Objects.requireNonNull(tx.execute(txStatus -> {
-            Review review = Review.Companion.write(productId, "5kg / 1개", orderItemId, authorId, 3, content, List.of());
+            Review review =
+                    Review.Companion.write(productId, "5kg / 1개", orderItemId, authorId, 3, content, List.of(), null);
             em.persist(review);
             em.flush();
             return review.getId();
