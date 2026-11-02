@@ -253,6 +253,7 @@ class SellerEligibilityContractIntegrationTest : IntegrationTestBase() {
                 "GET /api/v1/sellers/me/product-drafts/{draftId}" to null,
                 "PUT /api/v1/sellers/me/product-drafts/{draftId}" to "{}",
                 "DELETE /api/v1/sellers/me/product-drafts/{draftId}" to null,
+                "POST /api/v1/sellers/me/product-drafts/autofill" to """{"productName": "자격 게이트 확인용 상품"}""",
                 "GET /api/v1/sellers/me/orders" to null,
                 "GET /api/v1/sellers/me/orders/{orderPublicId}" to null,
                 "POST /api/v1/sellers/me/orders/{orderPublicId}/accept" to null,
@@ -276,6 +277,8 @@ class SellerEligibilityContractIntegrationTest : IntegrationTestBase() {
                 "POST /api/v1/sellers/me/reviews/{reviewId}/reply" to REPLY_BODY,
                 "PUT /api/v1/sellers/me/reviews/{reviewId}/reply" to REPLY_BODY,
                 "DELETE /api/v1/sellers/me/reviews/{reviewId}/reply" to null,
+                "GET /api/v1/sellers/me/notices" to null,
+                "GET /api/v1/sellers/me/notices/{noticeId}" to null,
             )
 
         /** 자격 게이트를 두지 않는 경로와 그 이유. */

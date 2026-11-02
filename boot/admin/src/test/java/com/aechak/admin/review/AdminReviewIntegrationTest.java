@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aechak.admin.support.IntegrationTestBase;
+import com.aechak.admin.support.LockWaitProbe;
 import com.aechak.application.review.admin.usecase.AdminReviewUseCase;
 import com.aechak.application.review.admin.usecase.command.DeleteReviewCommand;
 import com.aechak.application.review.admin.usecase.command.UnblindReviewCommand;
@@ -34,6 +35,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +56,7 @@ import org.springframework.web.context.WebApplicationContext;
 class AdminReviewIntegrationTest extends IntegrationTestBase {
 
     private static final String BASE = "/api/v1/admin/reviews";
+    private static final String REVIEWS_TABLE = "reviews";
 
     @Autowired
     private WebApplicationContext context;
@@ -63,6 +66,9 @@ class AdminReviewIntegrationTest extends IntegrationTestBase {
 
     @Autowired
     private AdminReviewUseCase adminReviewUseCase;
+
+    @Autowired
+    private DataSource dataSource;
 
     private MockMvc mockMvc;
     private String adminToken;
@@ -420,6 +426,10 @@ class AdminReviewIntegrationTest extends IntegrationTestBase {
      * 삭제가 커밋되기 전에 들어온 해제 요청이 종결을 되살리지 못하는지 — 전이 대상을 잠가 읽지 않으면
      * 두 요청이 같은 BLOCKED 상태를 읽어 둘 다 성공하고, 나중에 쓰는 해제가 DELETED를 PUBLIC으로 덮어쓴다.
      * 잠그면 해제의 조회 자체가 삭제 커밋까지 기다렸다가 DELETED를 읽고 409로 거절된다.
+     *
+     * <p>커밋 보류를 고정 시간으로 재지 않는다 — 해제 요청이 실제로 리뷰 행의 잠금을 기다리는 것을
+     * DB에서 확인한 뒤 풀어 준다. 시간으로 재면 느린 러너에서 보류가 해제의 잠금 조회보다 먼저 끝나,
+     * 잠금이 없어도 해제가 커밋된 DELETED를 읽고 거절되어 테스트가 거짓 통과한다.
      */
     @Test
     void 삭제가_커밋되기_전에_들어온_해제는_종결을_되살리지_못한다() throws Exception {
@@ -427,11 +437,11 @@ class AdminReviewIntegrationTest extends IntegrationTestBase {
         blind(target, "ABUSE", "욕설");
         CountDownLatch deleteApplied = new CountDownLatch(1);
 
-        // 삭제 트랜잭션은 전이를 반영한 뒤 잠금을 쥔 채로 잠시 커밋을 미룬다
+        // 삭제 트랜잭션은 전이를 반영한 뒤, 해제 요청이 잠금 대기에 들어간 것을 보고 나서 커밋을 푼다
         CompletableFuture<Void> deleting = CompletableFuture.runAsync(() -> tx.executeWithoutResult(txStatus -> {
             adminReviewUseCase.delete(new DeleteReviewCommand(adminId, target, ReviewBlindReason.AD_SPAM, null));
             deleteApplied.countDown();
-            sleep(600);
+            LockWaitProbe.awaitLockWaitOn(dataSource, REVIEWS_TABLE);
         }));
 
         assertTrue(deleteApplied.await(10, TimeUnit.SECONDS), "삭제 전이가 반영되어야 한다");
@@ -447,15 +457,6 @@ class AdminReviewIntegrationTest extends IntegrationTestBase {
     }
 
     // --- 고정 장치 ---
-
-    private static void sleep(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(e);
-        }
-    }
 
     private MockHttpServletRequestBuilder bearer(MockHttpServletRequestBuilder builder) {
         return builder.header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken);

@@ -10,6 +10,12 @@ seller_frontend_origins = ["http://localhost:5173"] # 셀러센터 웹 dev
 
 admin_frontend_origins = ["http://localhost:5174"] # 어드민 웹 dev
 
+# AI 검수 컨슈머와 셀러 폼 초안 API. 첫 이미지가 ECR에 올라간 뒤에만 1로 둔다 —
+# 이미지 없이 1이면 존재하지 않는 태그를 받으려는 태스크가 실패 루프에 빠진다.
+ai_desired_count       = 1
+ai_draft_desired_count = 1
+ai_draft_enabled       = true # 호출마다 모델 비용이 난다. 셀러별 20초 쿨다운이 BE에 있다
+
 # 배치 스케줄 — 전제가 충족된 넷만 켠다. 적지 않은 넷은 기본값 false로 등재되고,
 # 켜지 못하는 근거는 variables.tf 의 해당 필드 주석에 적혀 있다.
 batch_schedules_enabled = {
