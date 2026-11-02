@@ -197,6 +197,12 @@ class SellerApplication protected constructor(
         decidedAt = LocalDateTime.now()
     }
 
+    /** 승인 전 신청을 CANCELLED로 바꾼다. APPROVED와 CANCELLED는 그대로 둔다 */
+    fun cancel() {
+        if (status == ApplicationStatus.APPROVED || status == ApplicationStatus.CANCELLED) return
+        status = ApplicationStatus.CANCELLED
+    }
+
     private fun requireDraft() {
         if (status != ApplicationStatus.DRAFT) {
             throw BusinessException(SellerErrorCode.APPLICATION_STATUS_TRANSITION_NOT_ALLOWED)
