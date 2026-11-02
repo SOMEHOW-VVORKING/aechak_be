@@ -17,6 +17,9 @@ import java.time.Instant
 /**
  * TokenCodec 포트의 Nimbus(Spring Security oauth2-jose) 어댑터 — Spring Security 타입을 application 밖(boot:api)에 격리한다.
  * RS256 서명은 결정적이라 동일 클레임 인코딩 = 동일 토큰 — 회전 유예의 멱등 재발급이 성립하는 전제다.
+ *
+ * refresh는 역할 클레임을 굽지도, 읽지도 않는다. 굽지 않는 이유는 [TokenCodec] 주석에 있고,
+ * 읽지 않는 이유는 호환이다 — 배포 전에 발급돼 역할이 박혀 있는 refresh도 그대로 통과해야 한다.
  */
 @Component
 class TokenCodecAdapter(
@@ -47,7 +50,6 @@ class TokenCodecAdapter(
 
     override fun encodeRefreshToken(
         userId: Long,
-        role: String,
         tokenId: String,
         issuedAt: Instant,
         expiresAt: Instant,
@@ -56,7 +58,6 @@ class TokenCodecAdapter(
             JwtClaimsSet
                 .builder()
                 .subject(userId.toString())
-                .claim(JwtConfig.ROLE_CLAIM, role)
                 .id(tokenId)
                 .claim(JwtConfig.TOKEN_TYPE_CLAIM, JwtConfig.REFRESH_TOKEN_TYPE)
                 .issuedAt(issuedAt)
@@ -75,7 +76,6 @@ class TokenCodecAdapter(
 
         return RefreshTokenClaims(
             userId = jwt.subject?.toLongOrNull() ?: return null,
-            role = jwt.getClaimAsString(JwtConfig.ROLE_CLAIM) ?: return null,
             tokenId = jwt.id ?: return null,
             issuedAt = jwt.issuedAt ?: return null,
             expiresAt = jwt.expiresAt ?: return null,
