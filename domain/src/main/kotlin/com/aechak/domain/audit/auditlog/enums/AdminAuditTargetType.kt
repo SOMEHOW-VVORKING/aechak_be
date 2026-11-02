@@ -4,8 +4,8 @@ package com.aechak.domain.audit.auditlog.enums
  * 운영 조치가 가리키는 대상의 종류.
  *
  * 종류마다 **식별자 종류를 선언**한다. 규칙은 하나다 — 어드민 API가 그 대상을 가리키는 데 쓰는
- * 식별자를 그대로 적는다. 상품·클레임·주문은 어드민 경로가 공개 ULID로 가리키니 ULID이고, 입점 신청·
- * 관리자·회원·서비스 문의·리뷰는 내부 id로 가리키니 내부 id다.
+ * 식별자를 그대로 적는다. 상품·클레임·주문·서비스 공지는 어드민 경로가 공개 ULID로 가리키니 ULID이고,
+ * 입점 신청·관리자·회원·서비스 문의·리뷰는 내부 id로 가리키니 내부 id다.
  *
  * 공개 식별자로 통일하지 않은 이유는 **실패 행**이다. 공개 식별자는 애그리거트를 읽어야 나오고,
  * 거부된 시도는 바로 그 읽기나 그 다음 검증에서 끊긴다 — 통일하면 "누가 무엇을 하려다 거부당했나"의
@@ -39,5 +39,6 @@ enum class AdminAuditTargetType(
     INQUIRY(AdminAuditTargetIdKind.INTERNAL_ID, "서비스 문의"),
     REVIEW(AdminAuditTargetIdKind.INTERNAL_ID, "리뷰"),
     ORDER(AdminAuditTargetIdKind.PUBLIC_ULID, "주문"),
+    NOTICE(AdminAuditTargetIdKind.PUBLIC_ULID, "서비스 공지"),
     REPORT(AdminAuditTargetIdKind.TYPED_INTERNAL_ID, "신고"),
 }

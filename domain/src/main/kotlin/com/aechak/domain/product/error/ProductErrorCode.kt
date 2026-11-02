@@ -29,10 +29,13 @@ enum class ProductErrorCode(
     // 신고
     PRODUCT_REPORT_REASON_TEXT_REQUIRED(40300, "기타 사유 신고는 상세 사유가 필요합니다.", 400),
     INVALID_PRODUCT_REPORT_STATUS_TRANSITION(40301, "허용되지 않는 신고 처리 상태 전이입니다.", 400),
+    PRODUCT_SELF_REPORT_NOT_ALLOWED(40302, "본인 상품은 신고할 수 없습니다.", 400),
+    PRODUCT_ALREADY_REPORTED(40303, "이미 신고한 상품입니다.", 409),
 
     // 임시저장
     PRODUCT_DRAFT_NOT_FOUND(40400, "임시저장한 상품을 찾을 수 없습니다.", 404),
     PRODUCT_DRAFT_LIMIT_EXCEEDED(40401, "임시저장은 최대 10개까지 보관할 수 있습니다.", 422),
+    PRODUCT_DRAFT_AUTOFILL_COOLDOWN(40402, "초안 받기는 잠시 뒤에 다시 시도해 주세요.", 429),
 
     // 검수 큐
     PRODUCT_INSPECTION_NOT_PENDING(40500, "관리자 확인을 기다리는 상품 검수가 없습니다.", 409),

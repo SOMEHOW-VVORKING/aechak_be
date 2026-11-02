@@ -37,4 +37,18 @@ class AsyncConfig {
             setAwaitTerminationSeconds(10)
             initialize()
         }
+
+    @Bean
+    fun reportNotificationTaskExecutor(): Executor =
+        ThreadPoolTaskExecutor().apply {
+            corePoolSize = 1
+            maxPoolSize = 2
+            queueCapacity = 100
+            setThreadNamePrefix("report-noti-")
+            // 과부하 시 호출 스레드에서 발송하도록 설정(CallerRuns)
+            setRejectedExecutionHandler(ThreadPoolExecutor.CallerRunsPolicy())
+            setWaitForTasksToCompleteOnShutdown(true)
+            setAwaitTerminationSeconds(10)
+            initialize()
+        }
 }
