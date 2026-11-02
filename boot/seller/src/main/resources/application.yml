@@ -59,6 +59,13 @@ auth:
     private-key: ${AUTH_JWT_PRIVATE_KEY:}
     public-key: ${AUTH_JWT_PUBLIC_KEY:}
 
+product:
+  draft:
+    autofill:
+      # 셀러당 초안 받기 쿨다운. 연타가 모델을 여러 번 부르는 것을 막는 유일한 BE 장치다.
+      # 비용 천장은 여기가 아니라 Anthropic 워크스페이스 spend limit 이다.
+      cooldown: 20s
+
 order:
   # 발송 기한. 주문일로부터 이 일수(역일)가 지나도 발송되지 않은 건을 대시보드가 배송 지연으로 센다.
   dispatch:
@@ -68,6 +75,15 @@ order:
 
 # PII 암호화 키 — api와 동일 키(같은 DB의 같은 암호문을 복호). 미주입이면 부팅 실패(fail-fast).
 aechak:
+  # AI 폼 초안 서버. base-url 또는 shared-secret 이 비면 어댑터를 조립하지 않는다 -> 전건 UNAVAILABLE.
+  # 즉 값이 없는 local·test 는 그대로 뜨고, 셀러는 빈 폼을 그대로 받는다.
+  # 비용 kill switch 는 여기가 아니라 AI 쪽 AECHAK_AI_ENABLE_DRAFT 다 — 돈이 나가는 쪽에 둔다.
+  ai:
+    draft:
+      base-url: ${AECHAK_AI_DRAFT_BASE_URL:}
+      shared-secret: ${AECHAK_AI_DRAFT_SHARED_SECRET:}
+      connect-timeout: 2s
+      read-timeout: 30s        # AI 쪽 draft_timeout_seconds=25 보다 넉넉히 — 그쪽이 먼저 끊고 사유를 적게 둔다
   pii:
     active-version: 1
     aes-keys:
