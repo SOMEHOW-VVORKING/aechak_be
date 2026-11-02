@@ -1,6 +1,7 @@
 package com.aechak.admin.notice;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -287,6 +288,7 @@ class AdminNoticeIntegrationTest extends IntegrationTestBase {
         assertThat(publishApplied.await(10, TimeUnit.SECONDS))
                 .as("첫 게시 전이가 반영되어야 한다")
                 .isTrue();
+        java.time.LocalDateTime secondAttemptAt = java.time.LocalDateTime.now();
         BusinessException rejected = assertThrows(
                 BusinessException.class,
                 () -> {
@@ -299,10 +301,18 @@ class AdminNoticeIntegrationTest extends IntegrationTestBase {
         assertThat(rejected.getErrorCode()).isEqualTo(NoticeErrorCode.NOTICE_ALREADY_PUBLISHED);
 
         Notice stored = noticeOf(publicId);
-        // DATETIME(6)은 마이크로초까지만 담는다 — 첫 게시가 메모리에서 들고 있던 나노초를 그대로 비교하면 정상 구현도 실패한다.
+        // 덮어쓰기 여부는 **부등식으로** 본다 — 두 번째 게시가 썼다면 그 시각은 이 시점보다 뒤다.
+        // 허용 오차를 쓰면 "얼마까지 허용할 것인가"가 다시 판단 거리가 되는데, 부등식은 정밀도와
+        // 무관하다.
         assertThat(stored.getPublishedAt())
                 .as("두 번째 게시가 앞선 게시 시각을 덮어써서는 안 된다")
-                .isEqualTo(firstPublishedAt.get().truncatedTo(ChronoUnit.MICROS));
+                .isBefore(secondAttemptAt);
+        // 그 값이 첫 게시가 반환한 시각인지도 함께 고정한다. DATETIME(6)은 나노초를 마이크로초로
+        // **반올림**해 담으므로 메모리 값을 내려 정확히 비교하면 나노초 끝자리가 500 이상인 절반에서
+        // 1마이크로초가 어긋나 정상 구현도 실패한다. 1마이크로초는 그 반올림의 물리적 상한이다.
+        assertThat(stored.getPublishedAt())
+                .as("저장된 시각은 첫 게시가 돌려준 시각이어야 한다")
+                .isCloseTo(firstPublishedAt.get(), within(1, ChronoUnit.MICROS));
         assertThat(stored.getLastModifiedByAdminId())
                 .as("거절된 게시의 운영자가 수정자로 남아서는 안 된다")
                 .isEqualTo(actorId);
