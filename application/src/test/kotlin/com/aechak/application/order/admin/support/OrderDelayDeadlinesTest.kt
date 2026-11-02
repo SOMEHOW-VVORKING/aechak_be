@@ -21,7 +21,7 @@ class OrderDelayDeadlinesTest {
         listOf(OrderStatus.PAID, OrderStatus.PREPARING, OrderStatus.DISPATCH_PENDING).forEach { status ->
             assertEquals(
                 AdminOrderDelayReason.DISPATCH_OVERDUE,
-                deadlines.reasonFor(status, dispatchDeadline.minusSeconds(1)),
+                deadlines.reasonFor(status, dispatchDeadline.minusSeconds(1), null),
                 "$status 는 발송 전 구간이라 발송 기한을 넘기면 지연이다",
             )
         }
@@ -30,21 +30,62 @@ class OrderDelayDeadlinesTest {
     @Test
     fun `발송 기한 경계의 주문은 아직 지연이 아니다`() {
         assertNull(
-            deadlines.reasonFor(OrderStatus.PAID, dispatchDeadline),
+            deadlines.reasonFor(OrderStatus.PAID, dispatchDeadline, null),
             "경계는 포함하지 않는다 — 포함하면 기한 당일 주문이 즉시 지연으로 집계된다",
         )
     }
 
+    /** 송장이 붙기 전 상태에 발송 시각이 실릴 일은 없지만, 실려도 발송 축의 판정을 흔들지 않아야 한다. */
     @Test
-    fun `배송중은 더 긴 배송 기한으로 판정한다`() {
+    fun `발송 전 상태의 판정은 발송 시각을 보지 않는다`() {
+        assertEquals(
+            AdminOrderDelayReason.DISPATCH_OVERDUE,
+            deadlines.reasonFor(OrderStatus.PREPARING, dispatchDeadline.minusSeconds(1), LocalDateTime.of(2026, 10, 30, 0, 0)),
+        )
+    }
+
+    /**
+     * 배송중의 시계는 **발송 시각**부터 센다. 주문 시각에서 재면 발송이 늦은 주문이 송장을 받는
+     * 순간 발송 축에서 빠지고 배송 축에 그대로 걸려, 운영자가 셀러를 독촉해야 할 건에 택배사를 쫓는다.
+     */
+    @Test
+    fun `배송중은 발송 시각부터 배송 기한을 센다`() {
         assertNull(
-            deadlines.reasonFor(OrderStatus.SHIPPING, dispatchDeadline.minusSeconds(1)),
-            "발송 기한을 넘겼더라도 송장이 붙었으면 발송 지연이 아니다",
+            deadlines.reasonFor(
+                OrderStatus.SHIPPING,
+                deliveryDeadline.minusYears(1),
+                deliveryDeadline.plusSeconds(1),
+            ),
+            "주문이 아무리 오래됐어도 방금 발송됐으면 배송 정체가 아니다",
         )
         assertEquals(
             AdminOrderDelayReason.DELIVERY_OVERDUE,
-            deadlines.reasonFor(OrderStatus.SHIPPING, deliveryDeadline.minusSeconds(1)),
-            "배송중인 채로 배송 기한을 넘기면 배송 정체다",
+            deadlines.reasonFor(
+                OrderStatus.SHIPPING,
+                LocalDateTime.of(2026, 10, 30, 0, 0),
+                deliveryDeadline.minusSeconds(1),
+            ),
+            "발송한 지 기한을 넘겼으면 주문이 최근이어도 배송 정체다",
+        )
+    }
+
+    @Test
+    fun `배송 기한 경계에 발송된 주문은 아직 지연이 아니다`() {
+        assertNull(
+            deadlines.reasonFor(OrderStatus.SHIPPING, deliveryDeadline.minusYears(1), deliveryDeadline),
+            "경계는 포함하지 않는다 — 발송 축과 같은 규칙이어야 두 축이 같은 뜻으로 읽힌다",
+        )
+    }
+
+    /** 송장만 있고 발송 기록이 없는 배송중 주문의 시계를 멈추면 두 축 어디에도 안 잡혀 영구히 안 보인다. */
+    @Test
+    fun `발송 시각이 없는 배송중은 주문 시각으로 센다`() {
+        assertEquals(
+            AdminOrderDelayReason.DELIVERY_OVERDUE,
+            deadlines.reasonFor(OrderStatus.SHIPPING, deliveryDeadline.minusSeconds(1), null),
+        )
+        assertNull(
+            deadlines.reasonFor(OrderStatus.SHIPPING, deliveryDeadline, null),
         )
     }
 
@@ -56,7 +97,7 @@ class OrderDelayDeadlinesTest {
             OrderStatus.CANCELLED,
         ).forEach { status ->
             assertNull(
-                deadlines.reasonFor(status, deliveryDeadline.minusYears(1)),
+                deadlines.reasonFor(status, deliveryDeadline.minusYears(1), deliveryDeadline.minusYears(1)),
                 "$status 는 운영자가 더 할 일이 없는 상태라 지연 신호를 띄우면 카드가 영구히 빨갛다",
             )
         }
