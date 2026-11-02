@@ -26,5 +26,5 @@ batch_schedules_enabled = {
   # delivery_tracking  : 목 어댑터뿐이라 켜면 '[모의]' 가짜 상태가 dev DB에 쌓인다
   # claim_refund       : /aechak/dev/batch 에 PORTONE_API_SECRET·PORTONE_STORE_ID 가 아직 없다(수기 등재 대상)
   # claim_auto_approve : claim_refund 가 전제다
-  # review_summary     : AI 서버의 리뷰 요약이 dev에 아직 배포되지 않았다
+  review_summary = true # AI 검수 컨슈머(요약 러너 포함)와 결과를 받는 api가 dev에 떠 있다
 }
