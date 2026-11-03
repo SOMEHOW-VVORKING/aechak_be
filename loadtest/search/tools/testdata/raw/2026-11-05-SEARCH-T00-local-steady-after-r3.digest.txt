@@ -1,0 +1,4 @@
+rank	count_star	sum_timer_wait_ms	avg_timer_wait_ms	sum_rows_examined	sum_sort_rows	sum_rows_sent	digest_text
+1	540	81000.5	150.0	54000000	10800	10800	SELECT `p1_0` . `id` , `p1_0` . `name` FROM `products` `p1_0` JOIN `product_stats` `ps1_0` ON ... ORDER BY ... LIMIT ?
+2	420	58000.2	138.1	42000000	0	420	SELECT COUNT ( `p1_0` . `id` ) FROM `products` `p1_0` WHERE ...
+3	960	900.0	0.9	960	0	960	SELECT `s1_0` . `id` FROM `sellers` `s1_0` WHERE `s1_0` . `id` IN (...)
