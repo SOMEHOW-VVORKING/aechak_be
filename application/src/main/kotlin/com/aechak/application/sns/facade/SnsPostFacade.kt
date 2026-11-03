@@ -7,11 +7,14 @@ import com.aechak.application.file.usecase.command.DeleteFileCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.moderation.usecase.ModerationUseCase
 import com.aechak.application.moderation.usecase.result.ModerationDecision
+import com.aechak.application.sns.service.PostAccessService
 import com.aechak.application.sns.service.PostCommandService
 import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.application.sns.usecase.command.CreatePostCommand
 import com.aechak.application.sns.usecase.result.CreatePostResult
+import com.aechak.application.sns.usecase.result.SnsPostDetailResult
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
+import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.post.Post
@@ -20,6 +23,7 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 
 /**
@@ -29,7 +33,9 @@ import org.springframework.transaction.support.TransactionTemplate
 @Service
 class SnsPostFacade(
     private val postCommandService: PostCommandService,
+    private val postAccessService: PostAccessService,
     private val moderationUseCase: ModerationUseCase,
+    private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
     private val fileUseCase: FileUseCase,
     transactionManager: PlatformTransactionManager,
@@ -84,6 +90,34 @@ class SnsPostFacade(
             }
         deleteTmpKeys(command)
         return result
+    }
+
+    @Transactional(readOnly = true)
+    override fun getPost(
+        publicId: String,
+        viewerId: Long?,
+    ): SnsPostDetailResult {
+        val post = postAccessService.requirePublished(publicId)
+        val author = postAccessService.requireActiveAuthor(userUseCase.findPublicProfileById(post.authorId))
+        val pair = postAccessService.requireNotBlocked(post.authorId, viewerId)
+        val pet = post.petId?.let { petId -> petProfileUseCase.getPets(post.authorId).pets.firstOrNull { it.petId == petId } }
+        return SnsPostDetailResult(
+            publicId = post.publicId,
+            author = author,
+            pet = pet,
+            caption = post.caption,
+            hashtags = emptyList(),
+            photoUrls = post.media.mapNotNull { fileUseCase.resolveMediaUrl(it.storageKey) },
+            // 좋아요, 댓글, 리포스트는 아직 없어 0이다
+            likeCount = 0,
+            commentCount = 0,
+            repostCount = 0,
+            edited = post.editedAt != null,
+            createdAt = post.createdAt,
+            isMine = post.authorId == viewerId,
+            following = pair.following,
+            mutedByMe = pair.mutedByMe,
+        )
     }
 
     private fun findIdempotent(command: CreatePostCommand): CreatePostResult? =

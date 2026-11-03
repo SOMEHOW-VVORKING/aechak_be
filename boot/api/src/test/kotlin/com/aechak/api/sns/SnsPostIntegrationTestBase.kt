@@ -20,6 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
@@ -70,12 +71,18 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
             user.id
         }!!
 
-    /** 대표 펫 하나를 심고 id를 돌려준다. */
-    protected fun defaultPet(userId: Long): Long =
+    /** 펫 하나를 심고 id를 돌려준다. 기본은 대표 펫이다. */
+    protected fun defaultPet(
+        userId: Long,
+        breedLabel: String = "말티즈${sequence.incrementAndGet()}",
+        birthYearMonth: String? = null,
+        isDefault: Boolean = true,
+    ): Long =
         tx.execute {
-            val breed = Breed.of(Species.DOG, "말티즈${sequence.incrementAndGet()}")
+            val breed = Breed.of(Species.DOG, breedLabel)
             em.persist(breed)
-            val pet = PetProfile.register(em.find(User::class.java, userId), breed, "코코", isDefault = true)
+            val user = em.find(User::class.java, userId)
+            val pet = PetProfile.register(user, breed, "코코", birthYearMonth = birthYearMonth, isDefault = isDefault)
             em.persist(pet)
             em.flush()
             pet.id
@@ -127,6 +134,45 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
                 .response
                 .getContentAsString(Charsets.UTF_8)
         return JsonPath.read(json, "$.data.publicId")
+    }
+
+    protected fun publicIdOf(userId: Long): String =
+        jdbcTemplate.queryForObject("select public_id from users where id = ?", String::class.java, userId)!!
+
+    protected fun getPost(
+        publicId: String,
+        viewerId: Long? = null,
+    ): ResultActions {
+        val request = get("/api/v1/sns/posts/$publicId")
+        if (viewerId != null) request.header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}")
+        return mockMvc.perform(request)
+    }
+
+    /** 상세를 200으로 받고 data 객체를 돌려준다. */
+    protected fun postDetail(
+        publicId: String,
+        viewerId: Long? = null,
+    ): Map<String, Any?> {
+        val json =
+            getPost(publicId, viewerId)
+                .andExpect(status().isOk)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        return JsonPath.read(json, "$.data")
+    }
+
+    /** actor가 target에게 차단, 뮤트, 팔로우(block, mute, follow) 중 하나를 건다. */
+    protected fun relate(
+        actorId: Long,
+        targetId: Long,
+        action: String,
+    ) {
+        mockMvc
+            .perform(
+                post("/api/v1/sns/users/${publicIdOf(targetId)}/$action")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(actorId)}"),
+            ).andExpect(status().is2xxSuccessful)
     }
 
     protected fun postRow(publicId: String): Map<String, Any?> =
