@@ -131,4 +131,59 @@ class PostTest {
         assertEquals(PostDeletionReason.AUTHOR, post.deletionReason)
         assertEquals(deletedAt, post.deletedAt)
     }
+
+    @Test
+    fun `같은 캡션으로 고치면 false이고 수정 시각이 그대로다`() {
+        val post = aPost(caption = "산책 다녀왔어요")
+
+        assertFalse(post.update("산책 다녀왔어요"))
+
+        assertNull(post.editedAt)
+    }
+
+    @Test
+    fun `다른 캡션으로 고치면 true이고 캡션과 수정 시각이 바뀐다`() {
+        val post = aPost(caption = "산책 다녀왔어요")
+
+        assertTrue(post.update("공원 다녀왔어요"))
+
+        assertEquals("공원 다녀왔어요", post.caption)
+        assertNotNull(post.editedAt)
+    }
+
+    @Test
+    fun `정규화하면 지금과 같아지는 캡션은 바뀐 것이 없다`() {
+        val post = aPost(caption = "산책\n다녀왔어요")
+
+        assertFalse(post.update("  산책\r\n다녀왔어요 "))
+
+        assertNull(post.editedAt)
+    }
+
+    @Test
+    fun `텍스트 게시물의 캡션을 비우면 130402이고 캡션이 그대로다`() {
+        val post = aPost(caption = "산책 다녀왔어요")
+
+        val e = assertFailsWith<BusinessException> { post.update(" ") }
+
+        assertEquals(SnsErrorCode.SNS_POST_EMPTY, e.errorCode)
+        assertEquals("산책 다녀왔어요", post.caption)
+    }
+
+    @Test
+    fun `사진 게시물은 캡션을 지울 수 있고 미디어는 그대로다`() {
+        val post = aPost(photoKeys = photoKeys(2))
+
+        assertTrue(post.update(null))
+
+        assertNull(post.caption)
+        assertEquals(photoKeys(2), post.media.map { it.storageKey })
+    }
+
+    @Test
+    fun `고치는 캡션도 코드 포인트 2,200자를 넘으면 130403이다`() {
+        val e = assertFailsWith<BusinessException> { aPost().update("🐶".repeat(2_201)) }
+
+        assertEquals(SnsErrorCode.SNS_POST_CAPTION_TOO_LONG, e.errorCode)
+    }
 }

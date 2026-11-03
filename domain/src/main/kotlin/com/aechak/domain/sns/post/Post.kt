@@ -78,6 +78,16 @@ class Post protected constructor(
     private val _media: MutableList<PostMedia> = mutableListOf()
     val media: List<PostMedia> get() = _media.toList()
 
+    /** 캡션을 통째로 바꾼다. 정규화한 캡션이 지금과 같으면 아무것도 바꾸지 않고 false를 돌려준다 */
+    fun update(caption: String?): Boolean {
+        val normalized = normalizeCaption(caption)
+        if (normalized == this.caption) return false
+        if (normalized == null && mediaType == PostMediaType.TEXT) throw BusinessException(SnsErrorCode.SNS_POST_EMPTY)
+        this.caption = normalized
+        editedAt = LocalDateTime.now()
+        return true
+    }
+
     /** 게시물을 지운다. 이미 지운 게시물이면 아무것도 바꾸지 않고 false를 돌려준다 */
     fun delete(reason: PostDeletionReason): Boolean {
         if (status == PostStatus.DELETED) return false
@@ -121,8 +131,8 @@ class Post protected constructor(
             return normalized
         }
 
-        // NFC로 정규화하고 줄바꿈을 \n으로 맞춘 뒤 앞뒤 공백을 지운다. 남은 글이 없으면 캡션이 없는 것이다
-        private fun normalizeCaption(caption: String?): String? {
+        /** NFC로 정규화하고 줄바꿈을 \n으로 맞춘 뒤 앞뒤 공백을 지운다. 남은 글이 없으면 캡션이 없는 것이다 */
+        fun normalizeCaption(caption: String?): String? {
             val normalized = caption?.let { Normalizer.normalize(it, Normalizer.Form.NFC).replace("\r\n", "\n").trim() }
             if (normalized.isNullOrBlank()) return null
             if (normalized.codePointCount(0, normalized.length) > CAPTION_MAX_CODE_POINTS) {

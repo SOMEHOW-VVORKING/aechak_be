@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
@@ -156,6 +157,26 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         mockMvc.perform(
             delete("/api/v1/sns/posts/$publicId")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
+    protected fun updateBody(
+        caption: String? = "공원 다녀왔어요",
+        hashtags: List<String> = emptyList(),
+    ): String {
+        val captionJson = caption?.let { "\"$it\"" } ?: "null"
+        return """{"caption":$captionJson,"hashtags":${jsonArray(hashtags)}}"""
+    }
+
+    protected fun updatePost(
+        publicId: String,
+        userId: Long,
+        body: String,
+    ): ResultActions =
+        mockMvc.perform(
+            patch("/api/v1/sns/posts/$publicId")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
         )
 
     /** 상세를 200으로 받고 data 객체를 돌려준다. */

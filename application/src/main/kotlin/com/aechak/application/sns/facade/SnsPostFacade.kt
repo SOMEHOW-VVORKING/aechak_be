@@ -11,6 +11,7 @@ import com.aechak.application.sns.service.PostAccessService
 import com.aechak.application.sns.service.PostCommandService
 import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.application.sns.usecase.command.CreatePostCommand
+import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.application.sns.usecase.result.CreatePostResult
 import com.aechak.application.sns.usecase.result.SnsPostDetailResult
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
@@ -90,6 +91,11 @@ class SnsPostFacade(
             }
         deleteTmpKeys(command)
         return result
+    }
+
+    override fun updatePost(command: UpdatePostCommand) {
+        val caption = Post.normalizeCaption(command.caption)?.let(::moderate)
+        tx.execute { postCommandService.update(command.publicId, command.userId, caption) }
     }
 
     @Transactional(readOnly = true)

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -39,5 +40,39 @@ class PostModerationIntegrationTest : SnsPostIntegrationTestBase() {
         assertEquals(0, postCountOf(userId))
         assertEquals(0, mediaRowCount())
         assertTrue(fakeFileStorage.promotedKeys.isEmpty())
+    }
+
+    @Test
+    fun `수정 캡션도 금지어 비율이 절반 이하이면 가린 글로 저장한다`() {
+        val userId = onboardedUser()
+        val publicId = createdPublicId(userId)
+
+        updatePost(publicId, userId, updateBody(caption = "시발 산책은 좋아요")).andExpect(status().isNoContent)
+
+        assertEquals("** 산책은 좋아요", postRow(publicId)["caption"])
+    }
+
+    @Test
+    fun `가린 캡션을 원문이나 가린 글로 다시 저장하면 바뀐 것이 없다`() {
+        val userId = onboardedUser()
+        val publicId = createdPublicId(userId, postBody(caption = "시발 산책은 좋아요"))
+
+        updatePost(publicId, userId, updateBody(caption = "시발 산책은 좋아요")).andExpect(status().isNoContent)
+        updatePost(publicId, userId, updateBody(caption = "** 산책은 좋아요")).andExpect(status().isNoContent)
+
+        assertNull(postRow(publicId)["edited_at"])
+    }
+
+    @Test
+    fun `수정 캡션의 금지어 비율이 절반을 넘으면 130405이고 캡션이 그대로다`() {
+        val userId = onboardedUser()
+        val publicId = createdPublicId(userId)
+
+        updatePost(publicId, userId, updateBody(caption = "시발 씨발 좆!!!"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(130405))
+
+        assertEquals("산책 다녀왔어요", postRow(publicId)["caption"])
+        assertNull(postRow(publicId)["edited_at"])
     }
 }

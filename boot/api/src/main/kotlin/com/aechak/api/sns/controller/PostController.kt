@@ -1,6 +1,7 @@
 package com.aechak.api.sns.controller
 
 import com.aechak.api.sns.request.CreatePostRequest
+import com.aechak.api.sns.request.UpdatePostRequest
 import com.aechak.api.sns.response.CreatePostResponse
 import com.aechak.api.sns.response.PostDetailResponse
 import com.aechak.application.sns.postdeletion.usecase.SnsPostDeletionUseCase
@@ -16,6 +17,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -48,6 +50,17 @@ class PostController(
         @AuthenticationPrincipal principal: AuthPrincipal?,
     ): ResponseEntity<ApiResponse<PostDetailResponse>> =
         ResponseEntity.ok(ApiResponse.of(PostDetailResponse.from(snsPostUseCase.getPost(publicId, principal?.userId))))
+
+    @PatchMapping("/{publicId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun updatePost(
+        @PathVariable publicId: String,
+        @RequestBody request: UpdatePostRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<Void> {
+        snsPostUseCase.updatePost(request.toCommand(principal.userId, publicId))
+        return ResponseEntity.noContent().build()
+    }
 
     @DeleteMapping("/{publicId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

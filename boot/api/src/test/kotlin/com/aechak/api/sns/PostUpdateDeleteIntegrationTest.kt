@@ -1,6 +1,8 @@
 package com.aechak.api.sns
 
 import com.aechak.application.sns.postdeletion.usecase.SnsPostDeletionUseCase
+import com.aechak.application.sns.usecase.SnsPostUseCase
+import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -10,7 +12,9 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -21,6 +25,9 @@ import kotlin.test.assertTrue
 class PostUpdateDeleteIntegrationTest : SnsPostIntegrationTestBase() {
     @Autowired
     private lateinit var snsPostDeletionUseCase: SnsPostDeletionUseCase
+
+    @Autowired
+    private lateinit var snsPostUseCase: SnsPostUseCase
 
     @Test
     fun `작성자가 지우면 204이고 상태와 사유와 시각을 남기고 캡션을 지운다`() {
@@ -123,6 +130,125 @@ class PostUpdateDeleteIntegrationTest : SnsPostIntegrationTestBase() {
         assertTrue(photoKey in fakeFileStorage.deletedKeys)
     }
 
+    @Test
+    fun `캡션을 고치면 204이고 상세의 edited가 true다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+
+        updatePost(publicId, authorId, updateBody(caption = "공원 다녀왔어요")).andExpect(status().isNoContent)
+
+        val detail = postDetail(publicId)
+        assertEquals("공원 다녀왔어요", detail["caption"])
+        assertEquals(true, detail["edited"])
+    }
+
+    @Test
+    fun `바뀐 것 없이 저장하면 204이고 edited_at이 그대로다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        updatePost(publicId, authorId, updateBody(caption = "공원 다녀왔어요")).andExpect(status().isNoContent)
+        val editedAt = assertNotNull(postRow(publicId)["edited_at"])
+
+        updatePost(publicId, authorId, updateBody(caption = " 공원 다녀왔어요 ")).andExpect(status().isNoContent)
+
+        assertEquals(editedAt, postRow(publicId)["edited_at"])
+    }
+
+    @Test
+    fun `다른 사람 게시물을 고치면 403 130401이고 캡션이 그대로다`() {
+        val publicId = createdPublicId(onboardedUser())
+
+        updatePost(publicId, onboardedUser(), updateBody())
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(130401))
+        assertEquals("산책 다녀왔어요", postRow(publicId)["caption"])
+    }
+
+    @Test
+    fun `지운 게시물을 고치면 404 130400이다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        deletePost(publicId, authorId).andExpect(status().isNoContent)
+
+        updatePost(publicId, authorId, updateBody())
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(130400))
+        assertNull(postRow(publicId)["caption"])
+    }
+
+    @Test
+    fun `없는 게시물을 고치면 404 130400이지만 규칙을 어긴 수정은 400이 먼저다`() {
+        val userId = onboardedUser()
+
+        updatePost("01JF9W3Q6R8T2V4X7Z9B1C3D5J", userId, updateBody())
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(130400))
+        updatePost("01JF9W3Q6R8T2V4X7Z9B1C3D5J", userId, updateBody(caption = "가".repeat(2_201)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(130403))
+    }
+
+    @Test
+    fun `텍스트 게시물의 캡션을 비우면 400 130402이고 캡션이 그대로다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+
+        updatePost(publicId, authorId, updateBody(caption = null))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(130402))
+        assertEquals("산책 다녀왔어요", postRow(publicId)["caption"])
+    }
+
+    @Test
+    fun `caption이나 hashtags를 빠뜨리면 90001이고 캡션이 그대로다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId, postBody(photoKeys = listOf(tmpPhotoKey(authorId))))
+
+        updatePost(publicId, authorId, """{"hashtags":[]}""")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+        updatePost(publicId, authorId, """{"caption":"공원 다녀왔어요"}""")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+        assertEquals("산책 다녀왔어요", postRow(publicId)["caption"])
+    }
+
+    @Test
+    fun `caption이 null이면 사진 게시물의 캡션을 지운다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId, postBody(photoKeys = listOf(tmpPhotoKey(authorId))))
+
+        updatePost(publicId, authorId, updateBody(caption = null)).andExpect(status().isNoContent)
+
+        assertNull(postRow(publicId)["caption"])
+        assertEquals(true, postDetail(publicId)["edited"])
+    }
+
+    @Test
+    fun `사진을 함께 보내도 작성 시각과 미디어는 그대로다`() {
+        val authorId = onboardedUser()
+        val tmpKeys = List(2) { tmpPhotoKey(authorId) }
+        val publicId = createdPublicId(authorId, postBody(photoKeys = tmpKeys))
+        val createdAt = postRow(publicId)["created_at"]
+        val body = """{"caption":"공원 다녀왔어요","hashtags":[],"photoKeys":["${tmpPhotoKey(authorId)}"]}"""
+
+        updatePost(publicId, authorId, body).andExpect(status().isNoContent)
+
+        assertEquals(createdAt, postRow(publicId)["created_at"])
+        assertEquals(tmpKeys.map(::promotedKeyOf), mediaKeysOf(publicId))
+    }
+
+    @Test
+    fun `해시태그를 보내면 아직 90001이다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+
+        updatePost(publicId, authorId, updateBody(hashtags = listOf("산책")))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+        assertNull(postRow(publicId)["edited_at"])
+    }
+
     @Nested
     inner class Concurrency {
         @Test
@@ -157,6 +283,31 @@ class PostUpdateDeleteIntegrationTest : SnsPostIntegrationTestBase() {
 
             assertTrue(errors.isEmpty(), "동시 삭제는 둘 다 성공해야 한다: $errors")
             assertEquals(1, statsPostCount(authorId))
+        }
+
+        @Test
+        fun `같은 게시물 수정은 앞 요청의 잠금이 풀린 뒤 실행하고 나중 요청의 캡션이 남는다`() {
+            val authorId = onboardedUser()
+            val publicId = createdPublicId(authorId)
+            val pool = Executors.newSingleThreadExecutor()
+            try {
+                val later =
+                    tx.execute {
+                        // 앞 요청처럼 게시물 행을 잠그고 캡션을 바꾼 채 커밋을 미룬다
+                        jdbcTemplate.queryForList("select id from sns_posts where public_id = ? for update", publicId)
+                        jdbcTemplate.update("update sns_posts set caption = ? where public_id = ?", "앞 요청 캡션", publicId)
+                        // 나중 요청은 원래 캡션으로 되돌린다. 잠그지 않고 읽으면 바뀐 것이 없다고 보고 앞 요청의 캡션이 남는다
+                        val future = pool.submit { snsPostUseCase.updatePost(UpdatePostCommand(authorId, publicId, "산책 다녀왔어요")) }
+                        assertFailsWith<TimeoutException> { future.get(1, TimeUnit.SECONDS) }
+                        future
+                    }!!
+                later.get(30, TimeUnit.SECONDS)
+            } finally {
+                pool.shutdownNow()
+            }
+
+            assertEquals("산책 다녀왔어요", postRow(publicId)["caption"])
+            assertNotNull(postRow(publicId)["edited_at"])
         }
     }
 }
