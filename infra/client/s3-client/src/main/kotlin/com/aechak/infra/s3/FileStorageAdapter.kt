@@ -26,6 +26,7 @@ class FileStorageAdapter(
         purpose: UploadPurpose,
         fileType: FileType,
         userId: Long,
+        contentLength: Long?,
     ): IssueFileUrl {
         val key = tmpKeyOf(userId, purpose, fileType)
         val bucket = bucketOf(purpose.category)
@@ -36,6 +37,7 @@ class FileStorageAdapter(
                     request
                         .bucket(bucket)
                         .contentType(fileType.mimeType)
+                        .contentLength(contentLength)
                         .key(key)
                         .build()
                 }

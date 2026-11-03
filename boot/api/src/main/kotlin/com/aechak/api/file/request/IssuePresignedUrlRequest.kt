@@ -3,6 +3,7 @@ package com.aechak.api.file.request
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
 import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 
 data class IssuePresignedUrlRequest(
@@ -13,11 +14,18 @@ data class IssuePresignedUrlRequest(
         example = "image/png",
     )
     val contentType: String,
+    @field:Min(value = 1, message = "contentLength는 1 이상이어야 합니다.")
+    @field:Schema(
+        description = "올릴 파일의 바이트 수. SNS_POST_IMAGE는 필수이고 이 길이 그대로 PUT해야 한다",
+        example = "1843200",
+    )
+    val contentLength: Long? = null,
 ) {
     fun toCommand(userId: Long): IssuePresignedUrlCommand =
         IssuePresignedUrlCommand(
             purpose = purpose,
             contentType = contentType,
             userId = userId,
+            contentLength = contentLength,
         )
 }

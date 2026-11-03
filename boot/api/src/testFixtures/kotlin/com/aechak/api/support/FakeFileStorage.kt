@@ -26,6 +26,7 @@ class FakeFileStorage : FileStorage {
         purpose: UploadPurpose,
         fileType: FileType,
         userId: Long,
+        contentLength: Long?,
     ): IssueFileUrl {
         val key = "${FileKey.tmpPrefixOf(userId, purpose)}${Ulid.generate()}.${fileType.extension}"
         return IssueFileUrl("https://fake-presigned.local/$key", key)

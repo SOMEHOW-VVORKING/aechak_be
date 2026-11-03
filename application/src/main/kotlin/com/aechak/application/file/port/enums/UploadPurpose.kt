@@ -4,6 +4,8 @@ enum class UploadPurpose(
     val prefix: String,
     val category: StorageCategory,
     val allowedFileTypes: Set<FileType>,
+    // 업로드 길이 상한(바이트). 있으면 발급 요청에 길이가 필수이고 그 길이를 PUT 서명에 넣는다
+    val maxBytes: Long? = null,
 ) {
     USER_PROFILE(
         "users/profile",
@@ -39,5 +41,11 @@ enum class UploadPurpose(
         "reviews/images",
         StorageCategory.MEDIA,
         setOf(FileType.PNG, FileType.JPEG, FileType.WEBP),
+    ),
+    SNS_POST_IMAGE(
+        "sns/posts/images",
+        StorageCategory.MEDIA,
+        setOf(FileType.PNG, FileType.JPEG, FileType.WEBP),
+        maxBytes = 10_485_760,
     ),
 }

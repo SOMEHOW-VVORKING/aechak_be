@@ -4,10 +4,12 @@ import com.aechak.application.file.port.enums.FileType
 import com.aechak.application.file.port.enums.UploadPurpose
 
 interface FileStorage {
+    /** contentLength가 있으면 PUT 서명에 넣어 길이가 다른 업로드를 S3가 거부하게 한다 */
     fun issueUploadUrl(
         purpose: UploadPurpose,
         fileType: FileType,
         userId: Long,
+        contentLength: Long?,
     ): IssueFileUrl
 
     /**
