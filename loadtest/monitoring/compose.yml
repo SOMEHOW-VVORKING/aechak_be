@@ -1,0 +1,93 @@
+# 러너 모니터링 스택. Prometheus, Grafana, 렌더러, mysqld_exporter, node_exporter, mysql 클라이언트.
+# 먼저 targets.sh로 상태 디렉터리에 대상과 비밀번호를 만든 뒤 띄운다. 사용법은 README.md.
+# AWS는 기본값(/opt/perf/state, 127.0.0.1:3000, 127.0.0.1:9090), 노트북은 targets.sh --local이 만든 --env-file로 바꾼다.
+name: aechak-perf-mon
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      # k6 -o experimental-prometheus-rw를 받는다
+      - --web.enable-remote-write-receiver
+    ports:
+      - "${PROM_BIND:-127.0.0.1:9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${PERF_STATE_DIR:-/opt/perf/state}/prom-targets:/etc/prometheus/targets:ro
+      - prometheus-data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    ports:
+      - "${GRAFANA_BIND:-127.0.0.1:3000}:3000"
+    env_file:
+      # GF_SECURITY_ADMIN_PASSWORD 한 줄. targets.sh가 만든다
+      - ${PERF_STATE_DIR:-/opt/perf/state}/grafana.env
+      # 렌더러 토큰. targets.sh가 만든다
+      - ${PERF_STATE_DIR:-/opt/perf/state}/renderer.env
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_RENDERING_SERVER_URL: http://renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://grafana:3000/
+      # CloudWatch 데이터소스는 인스턴스 역할(기본 SDK 체인)을 쓴다
+      AWS_REGION: ap-northeast-2
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - renderer
+    restart: unless-stopped
+
+  renderer:
+    image: grafana/grafana-image-renderer:v5.12.7
+    env_file:
+      - ${PERF_STATE_DIR:-/opt/perf/state}/renderer.env
+    restart: unless-stopped
+
+  mysqld-exporter:
+    image: prom/mysqld-exporter:v0.20.0
+    command:
+      - --config.my-cnf=/etc/mysqld-exporter/my.cnf
+      - --collect.global_status
+      - --collect.global_variables
+      - --collect.info_schema.processlist
+      - --collect.info_schema.innodb_metrics
+      - --collect.perf_schema.eventsstatements
+      - --collect.perf_schema.eventsstatementssum
+    volumes:
+      # 데이터셋의 RDS 주소와 exporter 계정. targets.sh가 만든다
+      - ${PERF_STATE_DIR:-/opt/perf/state}/mysqld-exporter.cnf:/etc/mysqld-exporter/my.cnf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    # shortcut: 호스트 루트를 마운트하지 않아 CPU와 메모리만 정확하다(/proc/stat, /proc/meminfo는 호스트 값). 디스크 패널이 필요해지면 /:/host:ro,rslave와 --path.rootfs=/host를 더한다
+    pid: host
+    restart: unless-stopped
+
+  perf-mysqlcli:
+    image: mysql:8.4.10
+    container_name: perf-mysqlcli
+    entrypoint: ["sleep", "infinity"]
+    init: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:
