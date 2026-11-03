@@ -45,7 +45,8 @@ resource "aws_instance" "host" {
   })
 
   lifecycle {
-    ignore_changes = [ami, user_data]
+    # 멈춘 인스턴스는 refresh에서 associate_public_ip_address가 false로 읽혀 교체 plan이 나온다
+    ignore_changes = [ami, user_data, associate_public_ip_address]
   }
 
   tags = { Name = "aechak-perf-${each.key}" }
