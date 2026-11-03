@@ -18,20 +18,23 @@ import java.util.concurrent.CopyOnWriteArrayList
  */
 class FakeFileStorage : FileStorage {
     // 동시 승격과 동시 삭제에서도 기록을 잃지 않게 한다
-    private val promoted = CopyOnWriteArrayList<String>()
+    private val promotions = CopyOnWriteArrayList<Pair<String, String>>()
     private val deleted = CopyOnWriteArrayList<String>()
     private val failingDeleteKeys = ConcurrentHashMap.newKeySet<String>()
 
-    val promotedKeys: List<String> get() = promoted.toList()
+    val promotedKeys: List<String> get() = promotions.map { it.second }
 
     /** 테스트 중 삭제된 스토리지 키. */
     val deletedKeys: List<String> get() = deleted.toList()
 
-    fun clearPromoted() = promoted.clear()
+    fun clearPromoted() = promotions.clear()
+
+    /** 이 tmp 키를 마지막으로 승격한 영구 키. 게시물 사진처럼 승격마다 새 키를 만드는 용도에서 쓴다. */
+    fun promotedKeyOf(tmpKey: String): String = promotions.last { it.first == tmpKey }.second
 
     /** 승격 기록, 삭제 기록, 삭제 실패 키를 모두 비운다. */
     fun reset() {
-        promoted.clear()
+        promotions.clear()
         deleted.clear()
         failingDeleteKeys.clear()
     }
@@ -58,8 +61,8 @@ class FakeFileStorage : FileStorage {
     ): String {
         // 운영에서도 지운 tmp 키를 복사하면 S3가 NoSuchKey를 주고 어댑터가 100001로 바꾼다
         if (tmpKey in deleted) throw BusinessException(FileErrorCode.FILE_NOT_FOUND)
-        val key = "${purpose.prefix}/${tmpKey.substringAfterLast('/')}"
-        promoted += key
+        val key = FileKey.promotedKeyOf(tmpKey, purpose)
+        promotions += tmpKey to key
         return key
     }
 

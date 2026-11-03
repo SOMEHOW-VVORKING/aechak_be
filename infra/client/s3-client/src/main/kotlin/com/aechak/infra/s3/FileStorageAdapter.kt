@@ -92,7 +92,7 @@ class FileStorageAdapter(
         purpose: UploadPurpose,
     ): String {
         val bucket = bucketOf(purpose.category)
-        val promotedKey = "${purpose.prefix}/${tmpKey.substringAfterLast('/')}"
+        val promotedKey = FileKey.promotedKeyOf(tmpKey, purpose)
 
         try {
             s3Client.copyObject { copy ->

@@ -42,7 +42,7 @@ class Post protected constructor(
     @Column(updatable = false)
     val petId: Long?,
     // 바이트 그대로 비교한다. 기본 콜레이션이면 대소문자만 다른 키가 같은 게시물로 묶인다
-    @Column(nullable = false, updatable = false, columnDefinition = "varchar(100) collate utf8mb4_bin")
+    @Column(nullable = false, updatable = false, columnDefinition = "varchar($IDEMPOTENCY_KEY_MAX_LENGTH) collate utf8mb4_bin")
     val idempotencyKey: String,
 ) : AggregateRoot() {
     @Id
@@ -92,6 +92,7 @@ class Post protected constructor(
         const val UK_AUTHOR_IDEMPOTENCY = "uk_sns_posts_author_idempotency"
         const val CAPTION_MAX_CODE_POINTS = 2_200
         const val MAX_PHOTOS = 10
+        const val IDEMPOTENCY_KEY_MAX_LENGTH = 100
 
         fun create(
             authorId: Long,

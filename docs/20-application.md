@@ -70,6 +70,8 @@ package com.aechak.application.order.usecase
  *   예외: 소비 모듈이 다르고 **주입 의존까지 겹치지 않으면** 같은 BC에 Facade를 하나 더 둘 수 있다 —
  *   조회 전용(OrderQueryFacade), 배치 전용(PaymentReconciliationFacade — 확정 파사드의 웹훅 검증기 등을
  *   배치가 끌고 오지 않게). 트랜잭션 경계·Service 호출 규칙은 그대로다.
+ *   같은 소비 모듈이라도 한쪽 기능만 쓰는 무거운 의존(금지어 판정)이 있으면 Facade를 나눌 수 있다 —
+ *   SNS 관계(SnsFacade)와 게시물(SnsPostFacade). 금지어 판정과 게시물 리포지토리는 게시물 쪽만 쓴다.
  * - 이 인터페이스만이 외부(Controller / Consumer / Batch / 타 도메인 Facade)에 노출된다.
  * - 타 도메인이 order를 부를 때도 반드시 이 인터페이스로만 — OrderService 직접 호출 금지.
  *

@@ -66,6 +66,19 @@ interface SnsUserStatsJpaRepository : JpaRepository<SnsUserStats, Long> {
     fun decreaseFollowingCount(
         @Param("userId") userId: Long,
     ): Int
+
+    @Modifying
+    @Query(
+        value =
+            "INSERT INTO sns_user_stats " +
+                "(user_id, follower_count, following_count, post_count, created_at, updated_at) " +
+                "VALUES (:userId, 0, 0, 1, NOW(6), NOW(6)) " +
+                "ON DUPLICATE KEY UPDATE post_count = post_count + 1, updated_at = NOW(6)",
+        nativeQuery = true,
+    )
+    fun increasePostCount(
+        @Param("userId") userId: Long,
+    ): Int
 }
 
 // shortcut: 인기 사용자 한 명에게 오는 팔로우, 언팔로우, 차단은 그 사용자의 통계 행 잠금 하나를 차례로 기다린다.
@@ -91,4 +104,6 @@ class SnsUserStatsRepositoryAdapter(
     override fun increaseFollowingCount(userId: Long): Int = jpaRepository.increaseFollowingCount(userId)
 
     override fun decreaseFollowingCount(userId: Long): Int = jpaRepository.decreaseFollowingCount(userId)
+
+    override fun increasePostCount(userId: Long): Int = jpaRepository.increasePostCount(userId)
 }
