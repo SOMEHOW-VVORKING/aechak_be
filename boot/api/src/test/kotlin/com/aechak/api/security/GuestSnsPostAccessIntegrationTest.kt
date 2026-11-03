@@ -5,6 +5,7 @@ import com.aechak.domain.user.user.User
 import com.aechak.webcommon.http.CustomHttpHeaders
 import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -23,6 +24,16 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(postBody()),
             ).andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
+    fun `토큰 없이 지우면 401 20004다`() {
+        val publicId = createdPublicId(onboardedUser())
+
+        mockMvc
+            .perform(delete("/api/v1/sns/posts/$publicId"))
+            .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.errorCode").value(20004))
     }
 

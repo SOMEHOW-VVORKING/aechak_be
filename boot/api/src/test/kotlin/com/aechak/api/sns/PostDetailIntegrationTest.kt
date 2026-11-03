@@ -1,10 +1,13 @@
 package com.aechak.api.sns
 
+import com.aechak.application.sns.postdeletion.service.PostDeletionService
+import com.aechak.domain.sns.post.enums.PostDeletionReason
 import com.aechak.domain.user.pet.Breed
 import com.aechak.domain.user.pet.enums.Species
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserStatus
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -16,6 +19,9 @@ import kotlin.test.assertNull
  * 통합 — 게시물 상세가 볼 수 없는 경우를 계약 순서대로 거르고 작성자, 펫 태그, 미디어, 관계 상태를 싣는지.
  */
 class PostDetailIntegrationTest : SnsPostIntegrationTestBase() {
+    @Autowired
+    private lateinit var postDeletionService: PostDeletionService
+
     @Test
     fun `없는 publicId와 형식이 틀린 publicId는 404 130400이다`() {
         val viewerId = onboardedUser()
@@ -240,6 +246,37 @@ class PostDetailIntegrationTest : SnsPostIntegrationTestBase() {
         assertEquals(publicId, detail["publicId"])
         assertEquals(emptyList<Any>(), detail["hashtags"])
         assertNotNull(detail["createdAt"])
+    }
+
+    @Test
+    fun `작성자가 지운 게시물은 130400이다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        deletePost(publicId, authorId).andExpect(status().isNoContent)
+
+        expectUnavailable(getPost(publicId, onboardedUser()))
+        expectUnavailable(getPost(publicId))
+    }
+
+    @Test
+    fun `운영자가 지운 게시물은 작성자 본인에게도 130400이다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        tx.execute { postDeletionService.delete(postDeletionService.lock(publicId), PostDeletionReason.OPERATOR) }
+
+        expectUnavailable(getPost(publicId, authorId))
+        assertEquals("OPERATOR", postRow(publicId)["deletion_reason"])
+    }
+
+    @Test
+    fun `나를 차단한 작성자가 차단 뒤 지운 게시물도 130400이다`() {
+        val authorId = onboardedUser()
+        val viewerId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        relate(authorId, viewerId, "block")
+        deletePost(publicId, authorId).andExpect(status().isNoContent)
+
+        expectUnavailable(getPost(publicId, viewerId))
     }
 
     private fun expectUnavailable(result: ResultActions) {

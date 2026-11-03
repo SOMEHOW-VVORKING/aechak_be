@@ -3,6 +3,7 @@ package com.aechak.api.sns.controller
 import com.aechak.api.sns.request.CreatePostRequest
 import com.aechak.api.sns.response.CreatePostResponse
 import com.aechak.api.sns.response.PostDetailResponse
+import com.aechak.application.sns.postdeletion.usecase.SnsPostDeletionUseCase
 import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
@@ -13,6 +14,7 @@ import com.aechak.websecurity.authentication.AuthPrincipal
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/sns/posts")
 class PostController(
     private val snsPostUseCase: SnsPostUseCase,
+    private val snsPostDeletionUseCase: SnsPostDeletionUseCase,
 ) {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -45,6 +48,16 @@ class PostController(
         @AuthenticationPrincipal principal: AuthPrincipal?,
     ): ResponseEntity<ApiResponse<PostDetailResponse>> =
         ResponseEntity.ok(ApiResponse.of(PostDetailResponse.from(snsPostUseCase.getPost(publicId, principal?.userId))))
+
+    @DeleteMapping("/{publicId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun deletePost(
+        @PathVariable publicId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<Void> {
+        snsPostDeletionUseCase.deleteByAuthor(principal.userId, publicId)
+        return ResponseEntity.noContent().build()
+    }
 
     /** 헤더는 본문 밖이라 Bean Validation이 못 닿음 — 컬럼 길이 초과가 DB까지 가기 전에 자름 */
     private fun validateIdempotencyKey(key: String) {

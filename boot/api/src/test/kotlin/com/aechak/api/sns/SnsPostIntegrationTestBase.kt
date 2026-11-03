@@ -20,6 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -147,6 +148,15 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         if (viewerId != null) request.header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}")
         return mockMvc.perform(request)
     }
+
+    protected fun deletePost(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            delete("/api/v1/sns/posts/$publicId")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
 
     /** 상세를 200으로 받고 data 객체를 돌려준다. */
     protected fun postDetail(
