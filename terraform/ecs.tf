@@ -58,6 +58,12 @@ data "aws_iam_policy_document" "ecs_task_runtime" {
     ]
   }
 
+  # 없는 media 키를 403 대신 404(NoSuchKey)로 받는다
+  statement {
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.media.arn]
+  }
+
   statement {
     actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
     resources = [aws_kms_key.docs.arn]
