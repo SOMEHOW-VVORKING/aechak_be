@@ -18,6 +18,9 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter
 import org.springframework.security.web.AuthenticationEntryPoint
 import org.springframework.security.web.SecurityFilterChain
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
+import org.springframework.security.web.util.matcher.AndRequestMatcher
+import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
@@ -42,6 +45,7 @@ class SecurityConfig {
         userStatusReader: UserStatusReader,
         objectMapper: ObjectMapper,
         @Value("\${api.base-path}") basePath: String,
+        @Value("\${management.server.port:#{null}}") managementPort: Int?,
     ): SecurityFilterChain {
         http
             .cors { } // corsConfigurationSource 빈 자동 적용
@@ -64,6 +68,13 @@ class SecurityConfig {
                     ).permitAll()
                     .requestMatchers("/actuator/health")
                     .permitAll()
+                    // prometheus는 management.server.port로 들어온 요청만 연다
+                    .requestMatchers(
+                        AndRequestMatcher(
+                            PathPatternRequestMatcher.pathPattern("/actuator/prometheus"),
+                            RequestMatcher { managementPort != null && it.localPort == managementPort },
+                        ),
+                    ).permitAll()
                     .requestMatchers(HttpMethod.POST, "$basePath/webhooks/portone") // 신원은 JWT가 아니라 포트원 서명이 보증
                     .permitAll()
                     // 게스트 카탈로그. 와일드카드는 세그먼트 한 칸이라 상품 상세와 리뷰 요약은 열리고,

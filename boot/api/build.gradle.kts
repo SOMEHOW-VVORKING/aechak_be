@@ -33,6 +33,7 @@ dependencies {
     runtimeOnly(libs.spring.boot.starter.flyway)        // API 모듈만 DB 마이그레이션을 수행
     runtimeOnly(libs.flyway.mysql)                      // Flyway 10+ MySQL 지원 모듈
     runtimeOnly(libs.mysql.connector.j)                 // 실 DB(MySQL 8.4) 드라이버 — 접속정보는 프로파일/env가 주입
+    runtimeOnly(libs.micrometer.registry.prometheus)    // /actuator/prometheus 지표 형식. 노출은 perf 스택만 환경변수로 켠다
     // 통합 테스트 공용 지원(IntegrationTestBase 등) — testFixtures 소스셋 소유, 소비자는 testFixtures(project(":api"))
     testFixturesImplementation(platform(libs.spring.boot.bom)) // 컨벤션의 BOM은 testFixtures 구성까지 닿지 않는다
     testFixturesApi(project(":application"))            // FakeFileStorage(FileStorage)·고정 코드 생성기 — domain은 api 전이

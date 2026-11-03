@@ -87,6 +87,7 @@ spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-start
 spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
 spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" } # ALB 헬스체크(/actuator/health) — 배포 전제조건
+micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" } # /actuator/prometheus 노출. 버전은 Boot BOM이 해석, 노출 여부는 환경변수로 켠다
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 
 # --- api: API 문서화 (OpenAPI 3 / Swagger UI) ---
