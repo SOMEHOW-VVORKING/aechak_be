@@ -87,6 +87,17 @@ resource "aws_security_group" "kafka" {
     security_groups = [aws_security_group.app.id]
   }
 
+  # Kafka에 AI 서버를 들인다. 검수 요청과 판정이 오가는 유일한 통로다.
+  # MySQL·Redis 쪽에는 같은 규칙을 넣지 않는다 — 넣으면 '판정기는 DB를 모른다'가 깨진다.
+  # 인라인으로 둔다. 이 SG에 aws_security_group_rule을 섞으면 apply마다 규칙이 지워졌다 다시 생긴다.
+  ingress {
+    from_port       = 9092
+    to_port         = 9092
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ai.id]
+    description     = "ai inspection service" # AWS가 설명에 ASCII만 허용한다
+  }
+
   # docker pull 등
   egress {
     from_port   = 0
@@ -149,16 +160,13 @@ resource "aws_security_group" "ai" {
   lifecycle { create_before_destroy = true }
 }
 
-# Kafka에 AI 서버를 들인다. 검수 요청과 판정이 오가는 유일한 통로다.
-# MySQL·Redis 쪽에는 같은 규칙을 넣지 않는다 — 넣으면 '판정기는 DB를 모른다'가 깨진다.
-resource "aws_security_group_rule" "kafka_from_ai" {
-  type                     = "ingress"
-  from_port                = 9092
-  to_port                  = 9092
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.kafka.id
-  source_security_group_id = aws_security_group.ai.id
-  description              = "ai inspection service" # AWS가 설명에 ASCII만 허용한다
+# kafka_from_ai는 kafka SG의 인라인 ingress로 옮겼다. state에서만 빼고 AWS의 규칙은 그대로 둔다.
+removed {
+  from = aws_security_group_rule.kafka_from_ai
+
+  lifecycle {
+    destroy = false
+  }
 }
 
 # 초안 API 전용 SG. 공개 ALB가 아니라 **BE 앱 SG에서만** 받는다 — 그 한 줄이
