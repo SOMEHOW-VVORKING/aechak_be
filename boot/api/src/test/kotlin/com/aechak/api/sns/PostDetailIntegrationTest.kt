@@ -16,7 +16,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
- * 통합 — 게시물 상세가 볼 수 없는 경우를 계약 순서대로 거르고 작성자, 펫 태그, 미디어, 리포스트 수, 보는 사람 상태를 싣는지.
+ * 통합 — 게시물 상세가 볼 수 없는 경우를 계약 순서대로 거르고 작성자, 펫 태그, 미디어, 리포스트 수, 좋아요 수, 보는 사람 상태를 싣는지.
  */
 class PostDetailIntegrationTest : SnsPostIntegrationTestBase() {
     @Autowired
@@ -289,6 +289,49 @@ class PostDetailIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `두 사람이 좋아요하면 좋아요 수가 2이고 좋아요한 사람만 liked가 true다`() {
+        val publicId = createdPublicId(onboardedUser())
+        val likerId = onboardedUser()
+        like(publicId, likerId).andExpect(status().isCreated)
+        like(publicId, onboardedUser()).andExpect(status().isCreated)
+
+        val detail = postDetail(publicId, likerId)
+
+        assertEquals(2, detail["likeCount"])
+        assertEquals(true, detail["liked"])
+        assertEquals(false, postDetail(publicId, onboardedUser())["liked"], "좋아요하지 않은 사람은 liked가 false여야 한다")
+    }
+
+    @Test
+    fun `다른 게시물만 좋아요한 사람은 liked가 false다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        val otherPublicId = createdPublicId(authorId)
+        val viewerId = onboardedUser()
+        like(otherPublicId, viewerId).andExpect(status().isCreated)
+
+        val detail = postDetail(publicId, viewerId)
+
+        assertEquals(false, detail["liked"])
+        assertEquals(0, detail["likeCount"])
+    }
+
+    @Test
+    fun `보는 사람과 차단 관계인 사용자와 보는 사람이 뮤트한 사용자의 좋아요도 수에 들어간다`() {
+        val publicId = createdPublicId(onboardedUser())
+        val viewerId = onboardedUser()
+        val blockedByViewer = onboardedUser()
+        val blockingViewer = onboardedUser()
+        val mutedByViewer = onboardedUser()
+        listOf(blockedByViewer, blockingViewer, mutedByViewer).forEach { like(publicId, it).andExpect(status().isCreated) }
+        relate(viewerId, blockedByViewer, "block")
+        relate(blockingViewer, viewerId, "block")
+        relate(viewerId, mutedByViewer, "mute")
+
+        assertEquals(3, postDetail(publicId, viewerId)["likeCount"], "좋아요 수는 보는 사람의 차단과 뮤트로 줄지 않아야 한다")
+    }
+
+    @Test
     fun `작성자 본인이 보면 isMine이 true다`() {
         val authorId = onboardedUser()
         val publicId = createdPublicId(authorId)
@@ -311,7 +354,7 @@ class PostDetailIntegrationTest : SnsPostIntegrationTestBase() {
         val contractFields =
             (
                 "publicId author pet caption hashtags photoUrls video likeCount commentCount repostCount " +
-                    "edited createdAt isMine following mutedByMe reposted saved"
+                    "edited createdAt isMine following mutedByMe reposted saved liked"
             ).split(" ").toSet()
         assertEquals(contractFields, detail.keys)
         assertEquals(setOf("publicId", "nickname", "profileImageUrl"), (detail["author"] as Map<*, *>).keys)

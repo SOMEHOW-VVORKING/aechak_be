@@ -16,8 +16,9 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.LocalDateTime
 
 /**
- * 통합: 게시물 좋아요 켜기와 끄기가 실 보안 필터체인과 MySQL을 지나 계약대로 멱등하게 동작하고 지금의 좋아요 수를 돌려주는지.
- * 깨지면 반복 요청이나 동시 요청이 좋아요 행을 겹치거나 교착으로 실패하거나, 볼 수 없는 게시물의 좋아요가 바뀌거나 그 수가 응답에 실리거나, 오류 코드가 계약과 달라진다.
+ * 통합: 게시물 좋아요 켜기와 끄기가 실 보안 필터체인과 MySQL을 지나 계약대로 멱등하게 동작하고 지금의 좋아요 수를 돌려주며 피드 카드의 수와 liked에 보이는지.
+ * 깨지면 반복 요청이나 동시 요청이 좋아요 행을 겹치거나 교착으로 실패하거나, 볼 수 없는 게시물의 좋아요가 바뀌거나 그 수가 응답에 실리거나,
+ * 카드가 다른 게시물의 수를 싣거나, 오류 코드가 계약과 달라진다.
  */
 class PostLikeIntegrationTest : SnsPostIntegrationTestBase() {
     @Autowired
@@ -165,6 +166,27 @@ class PostLikeIntegrationTest : SnsPostIntegrationTestBase() {
         }
     }
 
+    @Test
+    fun `탐색 피드 카드의 좋아요 수와 liked는 게시물마다 채우고 비로그인은 liked가 false다`() {
+        val viewerId = onboardedUser()
+        val authorId = onboardedUser()
+        val likedByMe = createdPublicId(authorId)
+        val likedByOthers = createdPublicId(authorId)
+        like(likedByMe, viewerId).andExpect(status().isCreated)
+        repeat(2) { like(likedByOthers, onboardedUser()).andExpect(status().isCreated) }
+
+        assertEquals(
+            mapOf(likedByMe to (1 to true), likedByOthers to (2 to false)),
+            likesOfCards(feedPage("explore", viewerId)),
+            "카드마다 자기 게시물의 좋아요 수와 내 좋아요 여부가 실려야 한다",
+        )
+        assertEquals(
+            mapOf(likedByMe to (1 to false), likedByOthers to (2 to false)),
+            likesOfCards(feedPage("explore")),
+            "비로그인 카드는 수는 같고 liked가 false여야 한다",
+        )
+    }
+
     @Nested
     inner class Concurrency {
         @Test
@@ -241,6 +263,10 @@ class PostLikeIntegrationTest : SnsPostIntegrationTestBase() {
                 .executeUpdate()
         }
     }
+
+    /** 피드 페이지 카드마다 게시물 publicId와 좋아요 수, liked. */
+    private fun likesOfCards(page: Map<String, Any?>): Map<Any?, Pair<Any?, Any?>> =
+        page.feedItems().map { it["post"] as Map<*, *> }.associate { it["publicId"] to (it["likeCount"] to it["liked"]) }
 
     private fun ResultActions.data(): Map<String, Any?> = JsonPath.read(andReturn().response.getContentAsString(Charsets.UTF_8), "$.data")
 

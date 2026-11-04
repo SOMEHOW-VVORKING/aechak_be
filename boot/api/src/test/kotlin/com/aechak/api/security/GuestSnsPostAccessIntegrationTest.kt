@@ -85,6 +85,17 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `토큰 없이 상세를 부르면 liked는 false이고 좋아요 수는 실제 값이다`() {
+        val publicId = createdPublicId(onboardedUser())
+        like(publicId, onboardedUser()).andExpect(status().isCreated)
+
+        val detail = postDetail(publicId)
+
+        assertEquals(false, detail["liked"])
+        assertEquals(1, detail["likeCount"])
+    }
+
+    @Test
     fun `온보딩 전 사용자가 토큰을 붙여 상세를 부르면 403 20006이다`() {
         val publicId = createdPublicId(onboardedUser())
         val pendingId = tx.execute { User.preRegister().also { em.persist(it) }.id }!!

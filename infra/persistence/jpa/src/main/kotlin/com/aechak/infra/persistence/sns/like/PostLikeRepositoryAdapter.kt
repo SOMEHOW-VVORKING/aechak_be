@@ -34,6 +34,12 @@ interface PostLikeJpaRepository : JpaRepository<PostLike, Long> {
     fun countGroupedByPostId(
         @Param("postIds") postIds: Collection<Long>,
     ): List<Array<Any>>
+
+    @Query("select l.postId from PostLike l where l.userId = :userId and l.postId in :postIds")
+    fun findPostIds(
+        @Param("userId") userId: Long,
+        @Param("postIds") postIds: Collection<Long>,
+    ): List<Long>
 }
 
 @Repository
@@ -58,4 +64,9 @@ class PostLikeRepositoryAdapter(
         val counts = jpaRepository.countGroupedByPostId(postIds).associate { (it[0] as Long) to (it[1] as Long) }
         return postIds.associateWith { counts[it] ?: 0L }
     }
+
+    override fun findLikedPostIdsAmong(
+        userId: Long,
+        postIds: Collection<Long>,
+    ): Set<Long> = jpaRepository.findPostIds(userId, postIds).toSet()
 }

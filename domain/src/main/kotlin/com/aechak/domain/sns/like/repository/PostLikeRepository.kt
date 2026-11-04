@@ -16,4 +16,10 @@ interface PostLikeRepository {
 
     /** 게시물 id마다 좋아요 수. 좋아요가 없는 게시물은 0이다 */
     fun countByPostIds(postIds: Collection<Long>): Map<Long, Long>
+
+    /** postIds 중 user가 좋아요한 게시물 id */
+    fun findLikedPostIdsAmong(
+        userId: Long,
+        postIds: Collection<Long>,
+    ): Set<Long>
 }
