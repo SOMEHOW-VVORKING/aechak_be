@@ -76,6 +76,7 @@ package com.aechak.application.order.usecase
  *   admin과 batch가 이 패키지만 스캔하면 된다.
  *   피드와 프로필 탭 목록(SnsFeedUseCase, SnsFeedFacade)은 게시물 유스케이스에 넣으면 메서드가 열 개를 넘어 나눈다.
  *   금지어 판정과 파일 승격 없이 목록 조회 포트와 카드 조립만 쓴다.
+ *   좋아요(SnsLikeUseCase, SnsLikeFacade)도 같은 이유로 나눈다. 금지어 판정 없이 게시물 판정과 좋아요 행만 쓴다.
  * - 이 인터페이스만이 외부(Controller / Consumer / Batch / 타 도메인 Facade)에 노출된다.
  * - 타 도메인이 order를 부를 때도 반드시 이 인터페이스로만 — OrderService 직접 호출 금지.
  *

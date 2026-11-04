@@ -54,6 +54,18 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `토큰 없이 좋아요를 켜거나 끄면 401 20004다`() {
+        val publicId = createdPublicId(onboardedUser())
+
+        listOf(post("/api/v1/sns/posts/$publicId/like"), delete("/api/v1/sns/posts/$publicId/like")).forEach {
+            mockMvc
+                .perform(it)
+                .andExpect(status().isUnauthorized)
+                .andExpect(jsonPath("$.errorCode").value(20004))
+        }
+    }
+
+    @Test
     fun `토큰 없이 해시태그 자동완성을 부르면 401 20004다`() {
         mockMvc
             .perform(get("/api/v1/sns/hashtags").param("query", "산책"))
