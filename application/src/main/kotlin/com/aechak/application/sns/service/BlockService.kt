@@ -4,6 +4,8 @@ import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.block.repository.BlockRepository
 import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.follow.repository.FollowRepository
+import com.aechak.domain.sns.repost.repository.RepostRepository
+import com.aechak.domain.sns.stats.repository.SnsPostStatsRepository
 import com.aechak.domain.sns.stats.repository.SnsUserStatsRepository
 import org.springframework.stereotype.Service
 
@@ -12,8 +14,13 @@ class BlockService(
     private val blockRepository: BlockRepository,
     private val followRepository: FollowRepository,
     private val snsUserStatsRepository: SnsUserStatsRepository,
+    private val repostRepository: RepostRepository,
+    private val snsPostStatsRepository: SnsPostStatsRepository,
 ) {
-    /** 상대가 나를 이미 차단했어도 진행한다. 통계 행은 팔로우와 같은 순서로 잠그고 두 방향 팔로우를 지운다 */
+    /**
+     * 상대가 나를 이미 차단했어도 진행한다. 통계 행은 팔로우와 같은 순서로 잠그고 두 방향 팔로우와
+     * 두 사람이 서로의 글에 한 리포스트를 지운다
+     */
     fun block(
         userId: Long,
         targetUserId: Long,
@@ -23,6 +30,10 @@ class BlockService(
         blockRepository.insertIfAbsent(userId, targetUserId)
         deleteFollow(userId, targetUserId)
         deleteFollow(targetUserId, userId)
+        // 원글 수는 post_id 오름차순으로 내려 여러 통계 행을 늘 같은 순서로 잠근다
+        (repostRepository.deleteBetween(userId, targetUserId) + repostRepository.deleteBetween(targetUserId, userId))
+            .sorted()
+            .forEach { snsPostStatsRepository.decreaseRepostCount(it) }
     }
 
     /** 내가 건 차단만 지우고 팔로우는 되살리지 않는다 */
