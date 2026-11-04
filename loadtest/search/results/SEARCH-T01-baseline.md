@@ -1,6 +1,6 @@
 # SEARCH-T01 검색 기준 성능 재측정
 
-2026-11-04에 AWS perf 스택에서 키워드 상품 검색 `GET /api/v1/search/products`의 개선 전 성능을 잰 기록이다. 시리즈의 출발점이고 단계마다의 판정은 같은 세션에서 잰 before와 after로 한다. T01과 누적 비교할 때는 기준 jar를 같은 세션에서 T01 기준 부하로 다시 재서 함께 비교한다. 지연은 ms, 요청률은 초당 HTTP 요청 수(req/s)다. run별 전체 표는 `SEARCH-T01.md`, 그래프는 `graphs/`의 SEARCH-T01 파일이다.
+2026-11-04에 AWS perf 스택에서 키워드 상품 검색 `GET /api/v1/search/products`의 개선 전 성능을 잰 기록이다. 단계마다의 판정은 같은 세션에서 잰 before와 after로 한다. T01과 누적 비교할 때는 기준 jar를 같은 세션에서 T01 기준 부하로 다시 재서 함께 비교한다. 지연은 ms, 요청률은 초당 HTTP 요청 수(req/s)다. run별 전체 표는 `SEARCH-T01.md`, 그래프는 `graphs/`의 SEARCH-T01 파일이다.
 
 ## 요약
 
