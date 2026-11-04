@@ -84,6 +84,15 @@ class SnsFeedFacade(
         return cellPage(page.items.map { it.postId }, page)
     }
 
+    @Transactional(readOnly = true)
+    override fun mySaves(query: SnsFeedQuery): CursorPageResult<SnsPostGridItemResult> {
+        val viewerId = checkNotNull(query.viewerId) { "저장됨 탭은 로그인한 사용자만 부른다" }
+        val me = snsProfileService.requireExists(userUseCase.findPublicProfileById(viewerId))
+        val hidden = snsVisibilityService.findViewerFilter(viewerId) + snsVisibilityService.findMutedIds(viewerId)
+        val page = snsFeedService.mySavesPage(query, viewerId, me.publicId, hidden)
+        return cellPage(page.items.map { it.postId }, page)
+    }
+
     private fun postTabPage(
         query: SnsPostTabQuery,
         tab: SnsPostTab,

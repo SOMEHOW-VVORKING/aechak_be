@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 /**
- * 계약: 피드 커서가 기준 시각과 마지막 게시물 공개 ID를 마이크로초까지 왕복하고 다른 목록의 커서, 다른 주인의 프로필 탭 커서,
+ * 계약: 피드 커서가 기준 시각과 마지막 게시물 공개 ID를 마이크로초까지 왕복하고 다른 목록의 커서, 다른 주인의 프로필 탭이나 저장됨 탭 커서,
  * 깨진 커서를 90002로 거절하는지.
  * 깨지면 다음 페이지가 다른 기준 시각으로 잘리거나 다른 목록이나 다른 주인의 커서로 페이지를 넘긴다.
  */
@@ -175,6 +175,28 @@ class SnsFeedCursorCodecTest {
         listOf("0", "-1", "abc").forEach { id ->
             val raw = decodeRaw(cursor).removeSuffix(":1") + ":$id"
             assertCursorRejected { SnsFeedCursorCodec.decodeUserReposts(encodeRaw(raw), OWNER_PUBLIC_ID) }
+        }
+    }
+
+    @Test
+    fun `저장됨 탭 커서를 왕복하면 마지막 저장 행 id가 보존된다`() {
+        val cursor = SnsFeedCursorCodec.encodeMySaves(OWNER_PUBLIC_ID, 318L)
+
+        assertEquals(318L, SnsFeedCursorCodec.decodeMySaves(cursor, OWNER_PUBLIC_ID), "마지막 저장 행 id가 보존되어야 한다")
+        assertEquals("sv", decodeRaw(cursor).substringBefore(":"), "저장됨 탭 커서는 sv 태그여야 한다")
+    }
+
+    @Test
+    fun `저장됨 탭은 다른 사용자의 커서, 리포스트 탭 커서, 양수가 아닌 행 id를 거절한다`() {
+        val cursor = SnsFeedCursorCodec.encodeMySaves(OWNER_PUBLIC_ID, 1L)
+        val reposts = SnsFeedCursorCodec.encodeUserReposts(OWNER_PUBLIC_ID, 1L)
+
+        assertCursorRejected { SnsFeedCursorCodec.decodeMySaves(cursor, OTHER_OWNER_PUBLIC_ID) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeMySaves(reposts, OWNER_PUBLIC_ID) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeUserReposts(cursor, OWNER_PUBLIC_ID) }
+        listOf("0", "-1", "abc").forEach { id ->
+            val raw = decodeRaw(cursor).removeSuffix(":1") + ":$id"
+            assertCursorRejected { SnsFeedCursorCodec.decodeMySaves(encodeRaw(raw), OWNER_PUBLIC_ID) }
         }
     }
 

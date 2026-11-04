@@ -48,4 +48,11 @@ class SnsPostTabController(
         ResponseEntity.ok(
             ApiResponse.of(SnsPostGridPageResponse.from(snsFeedUseCase.userReposts(request.toTabQuery(principal?.userId, publicId)))),
         )
+
+    @GetMapping("/me/saves")
+    fun mySaves(
+        @Valid @ModelAttribute request: SnsFeedRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<SnsPostGridPageResponse>> =
+        ResponseEntity.ok(ApiResponse.of(SnsPostGridPageResponse.from(snsFeedUseCase.mySaves(request.toQuery(principal.userId)))))
 }

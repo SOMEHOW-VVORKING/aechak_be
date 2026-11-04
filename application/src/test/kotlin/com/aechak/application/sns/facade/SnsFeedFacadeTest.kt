@@ -17,6 +17,7 @@ import com.aechak.application.sns.port.view.SnsPairStateView
 import com.aechak.application.sns.port.view.SnsPostCardView
 import com.aechak.application.sns.port.view.SnsPostHashtagView
 import com.aechak.application.sns.port.view.SnsPostMediaView
+import com.aechak.application.sns.port.view.SnsSaveView
 import com.aechak.application.sns.port.view.SnsUserRepostView
 import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.SnsFeedService
@@ -203,6 +204,13 @@ private class FakeFeedQueryPort(
         lastRepostId: Long?,
         limit: Int,
     ): List<SnsUserRepostView> = throw UnsupportedOperationException()
+
+    override fun findSavePage(
+        userId: Long,
+        hiddenUserIds: Set<Long>,
+        lastSaveId: Long?,
+        limit: Int,
+    ): List<SnsSaveView> = throw UnsupportedOperationException()
 
     override fun findVisiblePostIds(
         postIds: Collection<Long>,
