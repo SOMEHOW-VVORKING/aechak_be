@@ -1,6 +1,7 @@
 package com.aechak.infra.persistence.sns.feed
 
 import com.aechak.application.sns.port.SnsFeedQueryPort
+import com.aechak.application.sns.port.SnsPostTab
 import com.aechak.application.sns.port.view.SnsFeedEntryView
 import com.aechak.application.sns.port.view.SnsFeedRepostView
 import com.aechak.application.sns.port.view.SnsPostCardView
@@ -11,6 +12,7 @@ import com.aechak.domain.sns.hashtag.QHashtag
 import com.aechak.domain.sns.post.QPost
 import com.aechak.domain.sns.post.QPostHashtag
 import com.aechak.domain.sns.post.QPostMedia
+import com.aechak.domain.sns.post.enums.PostMediaType
 import com.aechak.domain.sns.post.enums.PostStatus
 import com.aechak.domain.sns.stats.QSnsPostStats
 import com.aechak.domain.user.user.QUser
@@ -217,6 +219,7 @@ class SnsFeedQueryAdapter(
 
     override fun findUserPostPage(
         authorId: Long,
+        tab: SnsPostTab,
         lastCreatedAt: LocalDateTime?,
         lastPostId: Long?,
         limit: Int,
@@ -226,6 +229,7 @@ class SnsFeedQueryAdapter(
             .from(post)
             .where(
                 post.authorId.eq(authorId),
+                post.mediaType.eq(PostMediaType.VIDEO).takeIf { tab == SnsPostTab.VIDEOS },
                 post.status.eq(PostStatus.PUBLISHED),
                 lastCreatedAt?.let {
                     post.createdAt.lt(it).or(post.createdAt.eq(it).and(post.id.lt(lastPostId)))

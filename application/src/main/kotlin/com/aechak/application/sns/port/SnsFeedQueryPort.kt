@@ -56,9 +56,10 @@ interface SnsFeedQueryPort {
         limit: Int,
     ): List<Long>
 
-    /** 프로필 그리드 한 페이지. 작성자의 PUBLISHED 원글을 (created_at, id) 내림차순으로 last 뒤부터 limit개 읽는다 */
+    /** 프로필 그리드나 영상 탭 한 페이지. 작성자의 PUBLISHED 원글을 (created_at, id) 내림차순으로 last 뒤부터 limit개 읽는다 */
     fun findUserPostPage(
         authorId: Long,
+        tab: SnsPostTab,
         lastCreatedAt: LocalDateTime?,
         lastPostId: Long?,
         limit: Int,

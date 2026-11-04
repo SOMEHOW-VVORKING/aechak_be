@@ -13,9 +13,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * 통합: 프로필 그리드 탭이 주인의 지우지 않은 원글을 최신순 칸으로 주고 팔로워 목록과 같은 주인 판정을 하는지,
+ * 통합: 프로필 그리드 탭이 주인의 지우지 않은 원글을, 영상 탭이 그중 영상 원글만 최신순 칸으로 주고 팔로워 목록과 같은 주인 판정을 하는지,
  * 칸의 썸네일, 사진 수, 텍스트 미리보기가 게시물 종류에 맞는지.
- * 깨지면 차단 관계인 사용자의 글이 프로필에 보이거나 지운 글과 리포스트가 그리드에 섞이거나 텍스트 칸의 글자가 반으로 잘린다.
+ * 깨지면 차단 관계인 사용자의 글이 프로필에 보이거나 지운 글과 리포스트가 그리드에 섞이거나 영상 탭에 다른 글이 나오거나
+ * 텍스트 칸의 글자가 반으로 잘린다.
  */
 class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
     @Test
@@ -101,19 +102,53 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
         relate(blockingMe, viewerId, "block")
         relate(viewerId, blockedByMe, "block")
 
-        getTab("posts", publicIdOf(blockingMe), viewerId)
-            .andExpect(status().isNotFound)
-            .andExpect(jsonPath("$.errorCode").value(130000))
-        getTab("posts", publicIdOf(blockedByMe), viewerId)
-            .andExpect(status().isForbidden)
-            .andExpect(jsonPath("$.errorCode").value(130001))
+        TABS.forEach { tab ->
+            getTab(tab, publicIdOf(blockingMe), viewerId)
+                .andExpect(status().isNotFound)
+                .andExpect(jsonPath("$.errorCode").value(130000))
+            getTab(tab, publicIdOf(blockedByMe), viewerId)
+                .andExpect(status().isForbidden)
+                .andExpect(jsonPath("$.errorCode").value(130001))
+        }
     }
 
     @Test
     fun `없는 주인은 404 130000이다`() {
-        getTab("posts", "01JF9W3Q6R8T2V4X7Z9B1C3D5J", onboardedUser())
-            .andExpect(status().isNotFound)
-            .andExpect(jsonPath("$.errorCode").value(130000))
+        TABS.forEach { tab ->
+            getTab(tab, "01JF9W3Q6R8T2V4X7Z9B1C3D5J", onboardedUser())
+                .andExpect(status().isNotFound)
+                .andExpect(jsonPath("$.errorCode").value(130000))
+        }
+    }
+
+    @Test
+    fun `영상 탭은 영상 원글만 최신순으로 주고 커서로 이어진다`() {
+        val ownerId = onboardedUser()
+        val older = videoPost(ownerId)
+        createdPublicId(ownerId, postBody(photoKeys = listOf(tmpPhotoKey(ownerId))))
+        createdPublicId(ownerId, postBody(caption = "텍스트 글"))
+        val deleted = videoPost(ownerId)
+        deletePost(deleted, ownerId).andExpect(status().isNoContent)
+        val newer = videoPost(ownerId, caption = "영상 글")
+
+        val first = tabPage("videos", ownerId, size = 1)
+        val second = tabPage("videos", ownerId, cursor = first["nextCursor"] as String, size = 1)
+
+        assertEquals(listOf(newer), first.cellIds(), "첫 페이지는 가장 최근 영상 글이어야 한다")
+        assertEquals("VIDEO", first.feedItems().single()["mediaType"], "영상 칸이어야 한다")
+        assertEquals(listOf(older), second.cellIds(), "사진, 텍스트, 지운 글을 건너뛰고 다음 영상 글이 이어져야 한다")
+        assertEquals(false, second["hasNext"], "마지막 페이지여야 한다")
+    }
+
+    @Test
+    fun `그리드 커서를 영상 탭에 보내면 90002다`() {
+        val ownerId = onboardedUser()
+        repeat(2) { videoPost(ownerId) }
+        val cursor = tabPage("posts", ownerId, size = 1)["nextCursor"] as String
+
+        getTab("videos", publicIdOf(ownerId), cursor = cursor)
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90002))
     }
 
     @Test
@@ -189,7 +224,13 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
         assertEquals(false, second["hasNext"], "마지막 페이지여야 한다")
     }
 
-    /** 프로필 탭(posts)을 부른다. */
+    /** 영상 게시물을 게시하고 publicId를 돌려준다. */
+    private fun videoPost(
+        ownerId: Long,
+        caption: String? = null,
+    ): String = createdPublicId(ownerId, postBody(caption = caption, video = videoJson(tmpVideoKey(ownerId), tmpPhotoKey(ownerId))))
+
+    /** 프로필 탭(posts, videos)을 부른다. */
     private fun getTab(
         tab: String,
         ownerPublicId: String,
@@ -223,4 +264,9 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
 
     /** 탭 페이지 칸의 게시물 publicId를 순서대로 돌려준다. */
     private fun Map<String, Any?>.cellIds(): List<String> = feedItems().map { it["publicId"] as String }
+
+    companion object {
+        // 주인 판정이 같은 탭
+        private val TABS = listOf("posts", "videos")
+    }
 }

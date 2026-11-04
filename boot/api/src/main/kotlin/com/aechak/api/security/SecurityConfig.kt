@@ -92,6 +92,7 @@ class SecurityConfig {
                         "$basePath/sns/feeds/explore",
                         "$basePath/sns/feeds/popular",
                         "$basePath/sns/users/*/posts",
+                        "$basePath/sns/users/*/videos",
                     ).permitAll()
                     .anyRequest()
                     .authenticated()

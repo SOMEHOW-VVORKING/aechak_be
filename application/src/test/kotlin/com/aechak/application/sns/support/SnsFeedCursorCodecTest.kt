@@ -1,5 +1,6 @@
 package com.aechak.application.sns.support
 
+import com.aechak.application.sns.port.SnsPostTab
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import java.time.Instant
@@ -120,20 +121,39 @@ class SnsFeedCursorCodecTest {
 
     @Test
     fun `그리드 커서를 왕복하면 마지막 게시물 공개 ID가 보존된다`() {
-        val cursor = SnsFeedCursorCodec.encodeUserPosts(OWNER_PUBLIC_ID, lastPostPublicId)
+        val cursor = SnsFeedCursorCodec.encodeUserPosts(SnsPostTab.POSTS, OWNER_PUBLIC_ID, lastPostPublicId)
 
-        assertEquals(lastPostPublicId, SnsFeedCursorCodec.decodeUserPosts(cursor, OWNER_PUBLIC_ID), "마지막 게시물 공개 ID가 보존되어야 한다")
+        assertEquals(
+            lastPostPublicId,
+            SnsFeedCursorCodec.decodeUserPosts(cursor, SnsPostTab.POSTS, OWNER_PUBLIC_ID),
+            "마지막 게시물 공개 ID가 보존되어야 한다",
+        )
         assertEquals("gp", decodeRaw(cursor).substringBefore(":"), "그리드 커서는 gp 태그여야 한다")
     }
 
     @Test
     fun `다른 주인의 그리드 커서와 다른 목록의 커서는 거절한다`() {
-        val cursor = SnsFeedCursorCodec.encodeUserPosts(OWNER_PUBLIC_ID, lastPostPublicId)
+        val cursor = SnsFeedCursorCodec.encodeUserPosts(SnsPostTab.POSTS, OWNER_PUBLIC_ID, lastPostPublicId)
         val explore = SnsFeedCursorCodec.encodeExplore(LocalDateTime.of(2026, 11, 5, 9, 30), lastPostPublicId)
 
-        assertCursorRejected { SnsFeedCursorCodec.decodeUserPosts(cursor, OTHER_OWNER_PUBLIC_ID) }
-        assertCursorRejected { SnsFeedCursorCodec.decodeUserPosts(explore, OWNER_PUBLIC_ID) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeUserPosts(cursor, SnsPostTab.POSTS, OTHER_OWNER_PUBLIC_ID) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeUserPosts(explore, SnsPostTab.POSTS, OWNER_PUBLIC_ID) }
         assertCursorRejected { SnsFeedCursorCodec.decodeExplore(cursor) }
+    }
+
+    @Test
+    fun `영상 탭 커서를 왕복하면 마지막 게시물 공개 ID가 보존되고 그리드 커서와 서로 거절한다`() {
+        val videos = SnsFeedCursorCodec.encodeUserPosts(SnsPostTab.VIDEOS, OWNER_PUBLIC_ID, lastPostPublicId)
+        val posts = SnsFeedCursorCodec.encodeUserPosts(SnsPostTab.POSTS, OWNER_PUBLIC_ID, lastPostPublicId)
+
+        assertEquals(
+            lastPostPublicId,
+            SnsFeedCursorCodec.decodeUserPosts(videos, SnsPostTab.VIDEOS, OWNER_PUBLIC_ID),
+            "마지막 게시물 공개 ID가 보존되어야 한다",
+        )
+        assertEquals("gv", decodeRaw(videos).substringBefore(":"), "영상 탭 커서는 gv 태그여야 한다")
+        assertCursorRejected { SnsFeedCursorCodec.decodeUserPosts(posts, SnsPostTab.VIDEOS, OWNER_PUBLIC_ID) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeUserPosts(videos, SnsPostTab.POSTS, OWNER_PUBLIC_ID) }
     }
 
     private fun encodeRaw(payload: String): String =

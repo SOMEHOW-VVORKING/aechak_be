@@ -1,6 +1,7 @@
 package com.aechak.application.sns.service
 
 import com.aechak.application.sns.port.SnsFeedQueryPort
+import com.aechak.application.sns.port.SnsPostTab
 import com.aechak.application.sns.port.view.SnsFeedEntryView
 import com.aechak.application.sns.support.PopularScore
 import com.aechak.application.sns.support.SnsFeedCursorCodec
@@ -131,15 +132,18 @@ class SnsFeedService(
         return CursorPageResult(picked, null, nextCursor, nextCursor != null)
     }
 
-    /** 프로필 그리드 한 페이지. 주인의 PUBLISHED 원글을 최신순으로 고르고 뮤트는 거르지 않는다 */
+    /** 프로필 그리드나 영상 탭 한 페이지. 주인의 PUBLISHED 원글을 최신순으로 고르고 뮤트는 거르지 않는다 */
     fun userPostsPage(
         query: SnsPostTabQuery,
+        tab: SnsPostTab,
         ownerId: Long,
         ownerPublicId: String,
     ): CursorPageResult<SnsFeedEntryView> {
-        val last = query.cursor?.let { findLastPost(SnsFeedCursorCodec.decodeUserPosts(it, ownerPublicId)) }
-        val fetched = feedQueryPort.findUserPostPage(ownerId, last?.createdAt, last?.id, CursorPageSize.fetchLimit(query.size))
-        return CursorPageResult.of(fetched = fetched, size = query.size) { SnsFeedCursorCodec.encodeUserPosts(ownerPublicId, it.publicId) }
+        val last = query.cursor?.let { findLastPost(SnsFeedCursorCodec.decodeUserPosts(it, tab, ownerPublicId)) }
+        val fetched = feedQueryPort.findUserPostPage(ownerId, tab, last?.createdAt, last?.id, CursorPageSize.fetchLimit(query.size))
+        return CursorPageResult.of(fetched = fetched, size = query.size) {
+            SnsFeedCursorCodec.encodeUserPosts(tab, ownerPublicId, it.publicId)
+        }
     }
 
     /** 커서의 마지막 게시물. 그사이 지운 게시물도 위치로 쓰므로 상태를 보지 않는다 */

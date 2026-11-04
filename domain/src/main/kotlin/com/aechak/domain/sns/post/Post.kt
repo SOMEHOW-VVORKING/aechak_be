@@ -38,6 +38,8 @@ import java.time.LocalDateTime
         Index(name = "ix_sns_posts_created", columnList = "status, created_at"),
         // 팔로잉 피드 원천의 글과 프로필 그리드
         Index(name = "ix_sns_posts_author", columnList = "author_id, status, created_at"),
+        // 프로필 영상 탭
+        Index(name = "ix_sns_posts_author_media", columnList = "author_id, media_type, status, created_at"),
     ],
 )
 class Post protected constructor(

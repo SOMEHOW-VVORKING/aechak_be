@@ -19,4 +19,7 @@ interface SnsFeedUseCase {
 
     // 프로필 그리드 탭. 주인의 원글 전체를 최신순 칸으로 주고 뮤트는 거르지 않는다. 주인 판정은 팔로워 목록과 같다
     fun userPosts(query: SnsPostTabQuery): CursorPageResult<SnsPostGridItemResult>
+
+    // 프로필 영상 탭. 그리드 탭과 같고 영상 원글만 준다
+    fun userVideos(query: SnsPostTabQuery): CursorPageResult<SnsPostGridItemResult>
 }

@@ -1,5 +1,6 @@
 package com.aechak.application.sns.support
 
+import com.aechak.application.sns.port.SnsPostTab
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import java.security.MessageDigest
@@ -18,13 +19,13 @@ import java.util.Base64
  *  - 탐색 ex:{anchor}:{lastPostPublicId}
  *  - 인기 pp:{epochMinute}:{offset}
  *  - 그리드 gp:{scopeHash}:{lastPostPublicId}
+ *  - 영상 탭 gv:{scopeHash}:{lastPostPublicId}
  */
 object SnsFeedCursorCodec {
     private const val SEPARATOR = ":"
     private const val FOLLOWING_TAG = "fl"
     private const val EXPLORE_TAG = "ex"
     private const val POPULAR_TAG = "pp"
-    private const val USER_POSTS_TAG = "gp"
 
     // 해시 입력 필드 구분자 (제어 문자 U+001F)
     private const val CANONICAL_SEPARATOR = "\u001F"
@@ -86,17 +87,19 @@ object SnsFeedCursorCodec {
     }
 
     fun encodeUserPosts(
+        tab: SnsPostTab,
         ownerPublicId: String,
         lastPostPublicId: String,
-    ): String = encode(USER_POSTS_TAG, scopeHash(ownerPublicId, USER_POSTS_TAG), lastPostPublicId)
+    ): String = encode(tab.tag(), scopeHash(ownerPublicId, tab.tag()), lastPostPublicId)
 
-    /** 그리드 커서의 마지막 게시물 공개 ID. 형식, 태그, 범위 해시가 요청과 다르면 INVALID_CURSOR */
+    /** 그리드나 영상 탭 커서의 마지막 게시물 공개 ID. 형식, 태그, 범위 해시가 요청과 다르면 INVALID_CURSOR */
     fun decodeUserPosts(
         cursor: String,
+        tab: SnsPostTab,
         ownerPublicId: String,
     ): String {
-        val (hash, lastPostPublicId) = decode(cursor, USER_POSTS_TAG, 2)
-        if (hash != scopeHash(ownerPublicId, USER_POSTS_TAG)) invalidCursor()
+        val (hash, lastPostPublicId) = decode(cursor, tab.tag(), 2)
+        if (hash != scopeHash(ownerPublicId, tab.tag())) invalidCursor()
         return lastPostPublicId.toTokenOrInvalid()
     }
 
@@ -133,6 +136,12 @@ object SnsFeedCursorCodec {
         val digest = MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))
         return Base64.getUrlEncoder().withoutPadding().encodeToString(digest)
     }
+
+    private fun SnsPostTab.tag(): String =
+        when (this) {
+            SnsPostTab.POSTS -> "gp"
+            SnsPostTab.VIDEOS -> "gv"
+        }
 
     private fun LocalDateTime.toEpochMicros(): Long = ChronoUnit.MICROS.between(Instant.EPOCH, toInstant(ZoneOffset.UTC))
 

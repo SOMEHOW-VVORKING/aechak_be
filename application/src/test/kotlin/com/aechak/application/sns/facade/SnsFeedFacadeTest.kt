@@ -9,6 +9,7 @@ import com.aechak.application.file.usecase.result.IssuePresignedUrlResult
 import com.aechak.application.file.usecase.result.PromoteFileResult
 import com.aechak.application.sns.port.SnsFeedQueryPort
 import com.aechak.application.sns.port.SnsPopularSnapshotStore
+import com.aechak.application.sns.port.SnsPostTab
 import com.aechak.application.sns.port.SnsVisibilityQueryPort
 import com.aechak.application.sns.port.view.SnsFeedEntryView
 import com.aechak.application.sns.port.view.SnsFeedRepostView
@@ -181,6 +182,7 @@ private class FakeFeedQueryPort(
 
     override fun findUserPostPage(
         authorId: Long,
+        tab: SnsPostTab,
         lastCreatedAt: LocalDateTime?,
         lastPostId: Long?,
         limit: Int,

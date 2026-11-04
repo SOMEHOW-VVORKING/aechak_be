@@ -1,6 +1,7 @@
 package com.aechak.application.sns.facade
 
 import com.aechak.application.sns.port.SnsPopularSnapshotStore
+import com.aechak.application.sns.port.SnsPostTab
 import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.SnsFeedService
 import com.aechak.application.sns.service.SnsProfileService
@@ -68,9 +69,17 @@ class SnsFeedFacade(
     }
 
     @Transactional(readOnly = true)
-    override fun userPosts(query: SnsPostTabQuery): CursorPageResult<SnsPostGridItemResult> {
+    override fun userPosts(query: SnsPostTabQuery): CursorPageResult<SnsPostGridItemResult> = postTabPage(query, SnsPostTab.POSTS)
+
+    @Transactional(readOnly = true)
+    override fun userVideos(query: SnsPostTabQuery): CursorPageResult<SnsPostGridItemResult> = postTabPage(query, SnsPostTab.VIDEOS)
+
+    private fun postTabPage(
+        query: SnsPostTabQuery,
+        tab: SnsPostTab,
+    ): CursorPageResult<SnsPostGridItemResult> {
         val owner = requireVisibleOwner(query)
-        val page = snsFeedService.userPostsPage(query, owner.userId, owner.publicId)
+        val page = snsFeedService.userPostsPage(query, tab, owner.userId, owner.publicId)
         return CursorPageResult(postCardAssembler.assembleCells(page.items.map { it.postId }), null, page.nextCursor, page.hasNext)
     }
 
