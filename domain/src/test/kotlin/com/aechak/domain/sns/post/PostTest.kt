@@ -301,6 +301,16 @@ class PostTest {
     }
 
     @Test
+    fun `영상 게시물도 캡션을 지울 수 있고 미디어는 그대로다`() {
+        val post = aPost(video = aVideo())
+
+        assertTrue(post.update(null, emptyList()))
+
+        assertNull(post.caption)
+        assertEquals(listOf("sns/posts/videos/video.mp4"), post.media.map { it.storageKey })
+    }
+
+    @Test
     fun `고치는 캡션도 코드 포인트 2,200자를 넘으면 130403이다`() {
         val e = assertFailsWith<BusinessException> { aPost().update("🐶".repeat(2_201), emptyList()) }
 
