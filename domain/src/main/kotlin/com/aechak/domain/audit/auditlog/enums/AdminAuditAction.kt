@@ -17,6 +17,9 @@ enum class AdminAuditAction(
 ) {
     SELLER_APPLICATION_APPROVED(AdminAuditTargetType.SELLER_APPLICATION, "셀러 입점 승인"),
     SELLER_APPLICATION_REJECTED(AdminAuditTargetType.SELLER_APPLICATION, "셀러 입점 거부"),
+    SELLER_SUSPENDED(AdminAuditTargetType.SELLER, "셀러 판매정지"),
+    SELLER_SUSPENSION_RELEASED(AdminAuditTargetType.SELLER, "셀러 판매정지 해제"),
+    SELLER_MEMO_UPDATED(AdminAuditTargetType.SELLER, "셀러 내부 메모 수정"),
     ADMIN_PROMOTED(AdminAuditTargetType.ADMIN_USER, "관리자 권한 부여"),
     ADMIN_DEMOTED(AdminAuditTargetType.ADMIN_USER, "관리자 권한 회수"),
     PRODUCT_INSPECTION_APPROVED(AdminAuditTargetType.PRODUCT, "상품 검수 승인"),
