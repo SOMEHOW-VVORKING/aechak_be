@@ -61,6 +61,40 @@ class SnsFeedCursorCodecTest {
         assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("ex:1:")) }
     }
 
+    @Test
+    fun `인기 커서를 왕복하면 순위를 정한 분과 다음에 읽을 자리가 보존된다`() {
+        val cursor = SnsFeedCursorCodec.encodePopular(29_897_280L, 20)
+
+        val decoded = SnsFeedCursorCodec.decodePopular(cursor)
+
+        assertEquals("pp:29897280:20", decodeRaw(cursor), "인기 커서는 분과 자리만 담아야 한다")
+        assertEquals(29_897_280L, decoded.epochMinute, "순위를 정한 분이 보존되어야 한다")
+        assertEquals(20, decoded.offset, "다음에 읽을 자리가 보존되어야 한다")
+    }
+
+    @Test
+    fun `인기 커서의 자리가 음수거나 1,000 이상이면 거절한다`() {
+        assertCursorRejected { SnsFeedCursorCodec.decodePopular(encodeRaw("pp:29897280:-1")) }
+        assertCursorRejected { SnsFeedCursorCodec.decodePopular(encodeRaw("pp:29897280:1000")) }
+        assertEquals(999, SnsFeedCursorCodec.decodePopular(encodeRaw("pp:29897280:999")).offset, "999는 받아야 한다")
+        assertEquals(0, SnsFeedCursorCodec.decodePopular(encodeRaw("pp:29897280:0")).offset, "0은 받아야 한다")
+    }
+
+    @Test
+    fun `인기 커서의 분이 숫자가 아니거나 양수가 아니면 거절한다`() {
+        assertCursorRejected { SnsFeedCursorCodec.decodePopular(encodeRaw("pp:minute:0")) }
+        assertCursorRejected { SnsFeedCursorCodec.decodePopular(encodeRaw("pp:0:0")) }
+        assertCursorRejected { SnsFeedCursorCodec.decodePopular(encodeRaw("pp:-5:0")) }
+    }
+
+    @Test
+    fun `탐색 커서와 인기 커서는 서로의 목록에서 거절한다`() {
+        val explore = SnsFeedCursorCodec.encodeExplore(LocalDateTime.of(2026, 11, 5, 9, 30), lastPostPublicId)
+
+        assertCursorRejected { SnsFeedCursorCodec.decodePopular(explore) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(SnsFeedCursorCodec.encodePopular(29_897_280L, 0)) }
+    }
+
     private fun encodeRaw(payload: String): String =
         Base64
             .getUrlEncoder()

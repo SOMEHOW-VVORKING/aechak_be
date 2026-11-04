@@ -24,4 +24,11 @@ class FeedController(
         @AuthenticationPrincipal principal: AuthPrincipal?,
     ): ResponseEntity<ApiResponse<SnsFeedPageResponse>> =
         ResponseEntity.ok(ApiResponse.of(SnsFeedPageResponse.from(snsFeedUseCase.explore(request.toQuery(principal?.userId)))))
+
+    @GetMapping("/popular")
+    fun popular(
+        @Valid @ModelAttribute request: SnsFeedRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal?,
+    ): ResponseEntity<ApiResponse<SnsFeedPageResponse>> =
+        ResponseEntity.ok(ApiResponse.of(SnsFeedPageResponse.from(snsFeedUseCase.popular(request.toQuery(principal?.userId)))))
 }

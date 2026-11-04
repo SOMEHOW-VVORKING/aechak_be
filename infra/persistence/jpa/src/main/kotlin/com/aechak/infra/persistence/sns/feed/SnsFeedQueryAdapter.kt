@@ -79,6 +79,43 @@ class SnsFeedQueryAdapter(
             .limit(limit.toLong())
             .fetch()
 
+    override fun findPopularRanking(
+        from: LocalDateTime,
+        to: LocalDateTime,
+        repostWeight: Int,
+        limit: Int,
+    ): List<Long> {
+        val score = stats.repostCount.multiply(repostWeight)
+        return queryFactory
+            .select(post.id)
+            .from(post)
+            .join(stats)
+            .on(stats.postId.eq(post.id))
+            .where(
+                post.status.eq(PostStatus.PUBLISHED),
+                post.createdAt.between(from, to),
+                visibleUser(post.authorId),
+                score.gt(0),
+            ).orderBy(score.desc(), post.createdAt.desc(), post.id.desc())
+            .limit(limit.toLong())
+            .fetch()
+    }
+
+    override fun findVisiblePostIds(
+        postIds: Collection<Long>,
+        hiddenUserIds: Set<Long>,
+    ): Set<Long> =
+        queryFactory
+            .select(post.id)
+            .from(post)
+            .where(
+                post.id.`in`(postIds),
+                post.status.eq(PostStatus.PUBLISHED),
+                visibleUser(post.authorId),
+                hiddenUserIds.takeIf { it.isNotEmpty() }?.let { post.authorId.notIn(it) },
+            ).fetch()
+            .toSet()
+
     override fun findCards(postIds: Collection<Long>): List<SnsPostCardView> =
         queryFactory
             .select(

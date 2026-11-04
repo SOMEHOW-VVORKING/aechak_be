@@ -1,14 +1,22 @@
 package com.aechak.application.sns.facade
 
+import com.aechak.application.sns.port.SnsPopularSnapshotStore
 import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.SnsFeedService
 import com.aechak.application.sns.service.SnsVisibilityService
+import com.aechak.application.sns.support.SnsFeedCursorCodec
 import com.aechak.application.sns.usecase.SnsFeedUseCase
 import com.aechak.application.sns.usecase.query.SnsFeedQuery
 import com.aechak.application.sns.usecase.result.SnsFeedItemResult
 import com.aechak.application.support.CursorPageResult
+import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
+import org.slf4j.LoggerFactory
+import org.springframework.dao.DataAccessException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 
 /** SNS 피드 진입점. 금지어 판정과 파일 승격을 쓰지 않아 게시물 쪽 SnsPostFacade와 나눠 둔다 */
 @Service
@@ -16,12 +24,89 @@ class SnsFeedFacade(
     private val snsFeedService: SnsFeedService,
     private val snsVisibilityService: SnsVisibilityService,
     private val postCardAssembler: PostCardAssembler,
+    private val snapshotStore: SnsPopularSnapshotStore,
+    transactionManager: PlatformTransactionManager,
 ) : SnsFeedUseCase {
+    private val log = LoggerFactory.getLogger(javaClass)
+
+    // 인기 피드는 순위 저장소(Redis)를 트랜잭션 밖에서 부르고 DB 읽기만 이 트랜잭션으로 감싼다
+    private val readTx = TransactionTemplate(transactionManager).apply { isReadOnly = true }
+
     @Transactional(readOnly = true)
     override fun explore(query: SnsFeedQuery): CursorPageResult<SnsFeedItemResult> {
         val mutedIds = snsVisibilityService.findMutedIds(query.viewerId)
         val page = snsFeedService.explorePage(query, snsVisibilityService.findViewerFilter(query.viewerId) + mutedIds)
-        val cards = postCardAssembler.assemble(page.items.map { it.postId }, query.viewerId, mutedIds)
+        return cardPage(page.items.map { it.postId }, page, query.viewerId, mutedIds)
+    }
+
+    override fun popular(query: SnsFeedQuery): CursorPageResult<SnsFeedItemResult> {
+        val cursor = query.cursor?.let(SnsFeedCursorCodec::decodePopular)
+        val ranking = if (cursor == null) firstRanking() else nextRanking(cursor)
+        return readTx.execute {
+            val mutedIds = snsVisibilityService.findMutedIds(query.viewerId)
+            val hidden = snsVisibilityService.findViewerFilter(query.viewerId) + mutedIds
+            val cursorOf = ranking.epochMinute?.let { minute -> { offset: Int -> SnsFeedCursorCodec.encodePopular(minute, offset) } }
+            val page = snsFeedService.popularPage(ranking.postIds, cursor?.offset ?: 0, query.size, hidden, cursorOf)
+            cardPage(page.items, page, query.viewerId, mutedIds)
+        }!!
+    }
+
+    /** 지금 분의 순위. 없으면 계산해 남기고 같은 분에 먼저 남긴 순위가 있으면 그 순위를 따른다 */
+    private fun firstRanking(): PopularRanking {
+        val minute = snsFeedService.currentMinute()
+        val stored =
+            try {
+                snapshotStore.find(minute)
+            } catch (e: DataAccessException) {
+                return unsavedRanking(minute, e, readTx.execute { snsFeedService.popularRanking() }!!)
+            }
+        if (stored != null) return PopularRanking(minute, stored)
+        val computed = readTx.execute { snsFeedService.popularRanking() }!!
+        return try {
+            snapshotStore.saveIfAbsent(minute, computed)
+            // 남긴 직후 키가 없으면(메모리 부족으로 지워짐, Redis 재시작) 다음 페이지에 쓸 순위가 없다
+            snapshotStore.find(minute)?.let { PopularRanking(minute, it) } ?: unsavedRanking(minute, null, computed)
+        } catch (e: DataAccessException) {
+            unsavedRanking(minute, e, computed)
+        }
+    }
+
+    /** 순위를 남기거나 읽지 못하면 계산한 순위로 첫 페이지만 커서 없이 준다 */
+    private fun unsavedRanking(
+        minute: Long,
+        e: DataAccessException?,
+        computed: List<Long>,
+    ): PopularRanking {
+        log.error("SNS 인기 순위 저장소 오류로 첫 페이지만 커서 없이 준다 (minute={})", minute, e)
+        return PopularRanking(epochMinute = null, postIds = computed)
+    }
+
+    /** 커서의 분에 남긴 순위. 만료됐거나 읽지 못하면 첫 페이지부터 다시 부르도록 90002다 */
+    private fun nextRanking(cursor: SnsFeedCursorCodec.PopularCursor): PopularRanking {
+        val stored =
+            try {
+                snapshotStore.find(cursor.epochMinute)
+            } catch (e: DataAccessException) {
+                log.error("SNS 인기 순위 저장소 오류로 다음 페이지를 90002로 돌려보낸다 (minute={})", cursor.epochMinute, e)
+                throw BusinessException(CommonErrorCode.INVALID_CURSOR, e)
+            }
+        if (stored == null || cursor.offset >= stored.size) throw BusinessException(CommonErrorCode.INVALID_CURSOR)
+        return PopularRanking(cursor.epochMinute, stored)
+    }
+
+    private fun cardPage(
+        postIds: List<Long>,
+        page: CursorPageResult<*>,
+        viewerId: Long?,
+        mutedIds: Set<Long>,
+    ): CursorPageResult<SnsFeedItemResult> {
+        val cards = postCardAssembler.assemble(postIds, viewerId, mutedIds)
         return CursorPageResult(cards.map { SnsFeedItemResult(it, repostedBy = null) }, null, page.nextCursor, page.hasNext)
     }
+
+    /** 인기 순위와 그 순위를 남긴 분. 분이 null이면 남기지 못한 순위라 다음 페이지가 없다 */
+    private data class PopularRanking(
+        val epochMinute: Long?,
+        val postIds: List<Long>,
+    )
 }

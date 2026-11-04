@@ -22,6 +22,23 @@ interface SnsFeedQueryPort {
         limit: Int,
     ): List<SnsFeedEntryView>
 
+    /**
+     * 인기 순위. from과 to 사이의 PUBLISHED 원글 중 점수가 0보다 큰 글의 id를 점수, created_at, id 내림차순으로 limit개 읽는다.
+     * 점수는 리포스트 수에 repostWeight를 곱한 값이고 보는 사람의 숨김 집합은 넣지 않는다.
+     */
+    fun findPopularRanking(
+        from: LocalDateTime,
+        to: LocalDateTime,
+        repostWeight: Int,
+        limit: Int,
+    ): List<Long>
+
+    /** postIds 중 지금 볼 수 있는 글. PUBLISHED이고 작성자 프로필이 있으며 작성자가 숨김 사용자가 아니다 */
+    fun findVisiblePostIds(
+        postIds: Collection<Long>,
+        hiddenUserIds: Set<Long>,
+    ): Set<Long>
+
     /** 게시물과 작성자, 리포스트 수. 상태는 보지 않는다 */
     fun findCards(postIds: Collection<Long>): List<SnsPostCardView>
 
