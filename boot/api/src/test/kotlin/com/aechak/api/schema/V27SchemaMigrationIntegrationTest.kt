@@ -27,7 +27,7 @@ import javax.sql.DataSource
  *  - legacy : dev 재현 — ddl-auto가 V10 전에 테이블을 만들고 FK까지 걸어 둔 DB
  *  - late   : V10 이후에 ddl-auto가 테이블을 만든 DB(그 뒤 새로 만든 환경이 이 모양이다)
  *
- * 대조 대상 목록에는 이관 대상만이 아니라 이미 Flyway가 소유한 테이블(orders, payments, product_drafts, sns_user_stats, sns_blocks, sns_mutes, sns_follows)도 둔다 —
+ * 대조 대상 목록에는 이관 대상만이 아니라 이미 Flyway가 소유한 테이블(orders, payments, product_drafts, sns_user_stats, sns_blocks, sns_mutes, sns_follows, sns_posts, sns_post_media, sns_hashtags, sns_post_hashtags)도 둔다 —
  * 그 테이블에 컬럼을 더할 때 엔티티 선언과 어긋나는 것을 같은 자리에서 잡는다.
  *
  * `ddl-auto=validate` 부팅으로는 이 정합을 볼 수 없다. users, products 등 엔티티 테이블 상당수가
@@ -180,6 +180,39 @@ class V27SchemaMigrationIntegrationTest {
         // V10이 세운 결정(행 재사용 모델의 방어선). 엔티티 선언은 nullable이라 모양 비교에서 예외로 둔다.
         listOf(freshUrl, legacyUrl, lateUrl).forEach { url ->
             assertThat(snapshot(url, "seller_applications").columns.getValue("user_id").nullable).isFalse()
+        }
+    }
+
+    @Test
+    fun `해시태그 이름은 Flyway와 엔티티 모두 utf8mb4_bin으로 비교한다`() {
+        // 모양 비교는 COLUMN_TYPE만 봐서 콜레이션이 달라도 통과한다
+        listOf(freshUrl, entityUrl).forEach { url ->
+            val collation =
+                query(
+                    url,
+                    """
+                    SELECT COLLATION_NAME FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sns_hashtags' AND COLUMN_NAME = 'name'
+                    """.trimIndent(),
+                ) { it.getString(1) }
+            assertThat(collation).describedAs("%s sns_hashtags.name 콜레이션", url).containsExactly("utf8mb4_bin")
+        }
+    }
+
+    @Test
+    fun `해시태그 수 인덱스는 Flyway와 엔티티 모두 post_count가 내림차순이다`() {
+        // 모양 비교는 인덱스의 열 순서만 봐서 방향이 달라도 통과한다
+        listOf(freshUrl, entityUrl).forEach { url ->
+            val direction =
+                query(
+                    url,
+                    """
+                    SELECT COLLATION FROM information_schema.STATISTICS
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sns_hashtags'
+                      AND INDEX_NAME = 'ix_sns_hashtags_post_count' AND COLUMN_NAME = 'post_count'
+                    """.trimIndent(),
+                ) { it.getString(1) }
+            assertThat(direction).describedAs("%s ix_sns_hashtags_post_count.post_count 방향", url).containsExactly("D")
         }
     }
 
@@ -535,15 +568,20 @@ class V27SchemaMigrationIntegrationTest {
                 "sns_mutes",
                 "sns_follows",
                 "claim_interventions",
+                "sns_posts",
+                "sns_post_media",
+                "sns_hashtags",
+                "sns_post_hashtags",
             )
 
         /**
          * orders는 V21이, payments는 V24가, product_drafts는 V31이, sns_user_stats는 V35가, sns_blocks는 V48이, sns_mutes는 V49가,
-         * sns_follows는 V50이, claim_interventions는 V54가 이미 만든다 — ddl-auto만으로 존재하던 테이블은 나머지 10개다.
+         * sns_follows는 V50이, claim_interventions는 V54가, sns_posts는 V78이, sns_post_media는 V79가, sns_hashtags는 V80이, sns_post_hashtags는 V81이 이미 만든다 —
+         * ddl-auto만으로 존재하던 테이블은 나머지 10개다.
          */
         private val DDL_AUTO_TABLES =
             TARGET_TABLES - "orders" - "payments" - "product_drafts" - "sns_user_stats" - "sns_blocks" - "sns_mutes" -
-                "sns_follows" - "claim_interventions"
+                "sns_follows" - "claim_interventions" - "sns_posts" - "sns_post_media" - "sns_hashtags" - "sns_post_hashtags"
 
         @JvmStatic
         @DynamicPropertySource

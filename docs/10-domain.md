@@ -212,6 +212,8 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
    - `ProductStats.productId` — PK=FK 식별자 공유(assigned PK). 연관보다 강한 결합이 이미 있어 그대로 둔다.
    - **review는 별도 BC로 취급** — ERD가 리뷰→상품을 "작성 시점 복사(값참조)"로 명시, 리뷰는 order도 참조.
      대외 참조(product·order·user행 4건)만 값참조이고, review BC 내부(ReviewReport→Review)는 규칙 2대로 연관.
+   - `PostHashtag.hashtagId`는 같은 sns BC의 `Hashtag`를 연관과 FK 없이 값참조한다. 태그 행은 여러 게시물이 함께 쓰는
+     게시글 수 행이라 저장소의 upsert와 조건부 감소로만 바꾸고 게시물이 태그 행을 로딩하거나 잠그지 않게 한다.
 
 ## 2-2. 공통 시각 컬럼과 외부 노출 식별자 (2026-07-10 결정)
 
@@ -222,7 +224,7 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
    common에 두지 않는 이유: common은 무의존 모듈이라 jakarta.persistence 반입 불가(05 문서).
 2. **publicId(ULID)**: 내부 bigint id의 열거(enumeration) 노출이 치명적인 애그리거트는
    `@Column(nullable=false, updatable=false, length=26) val publicId: String = Ulid.generate()` + UNIQUE.
-   생성기는 `support/Ulid` 파사드(ulid-creator 위임 — 엔티티가 라이브러리를 직접 부르지 않는다). 현재 적용: Product·OrderGroup(주문번호 역할)·Order·Claim·User·ProductInquiry·Notice.
+   생성기는 `support/Ulid` 파사드(ulid-creator 위임 — 엔티티가 라이브러리를 직접 부르지 않는다). 현재 적용: Product·OrderGroup(주문번호 역할)·Order·Claim·User·ProductInquiry·Notice·Post.
    외부 API·URL에는 publicId만 노출하고 내부 id는 응답에 싣지 않는다.
    - 채번은 필드 초기화식(생성 시점 신원 확보 — DDD identity-at-creation). 엔티티를 도메인 밖에서
      new로 재구성해 detached merge하면 재채번되므로 **재구성 merge 금지, 항상 load 후 수정**.

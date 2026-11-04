@@ -11,7 +11,7 @@ import com.aechak.domain.support.Ulid;
 public class FakeFileStorage implements FileStorage {
 
     @Override
-    public IssueFileUrl issueUploadUrl(UploadPurpose purpose, FileType fileType, long userId) {
+    public IssueFileUrl issueUploadUrl(UploadPurpose purpose, FileType fileType, long userId, Long contentLength) {
         String key = FileKey.INSTANCE.tmpPrefixOf(userId, purpose) + Ulid.INSTANCE.generate() + "."
                 + fileType.getExtension();
         return new IssueFileUrl("https://fake-presigned.local/" + key, key);

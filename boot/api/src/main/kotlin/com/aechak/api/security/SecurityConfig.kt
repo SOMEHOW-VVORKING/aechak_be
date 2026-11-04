@@ -88,6 +88,7 @@ class SecurityConfig {
                         "$basePath/products/*/review-summary",
                         "$basePath/search/products",
                         "$basePath/sns/users/*", // 한 칸 와일드카드라 /followers, /followings는 닫힌 채로 남는다
+                        "$basePath/sns/posts/*", // 게시물 상세. 하위 경로는 닫힌 채로 남는다
                     ).permitAll()
                     .anyRequest()
                     .authenticated()

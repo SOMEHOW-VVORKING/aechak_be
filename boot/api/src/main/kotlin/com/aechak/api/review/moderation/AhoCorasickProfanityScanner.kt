@@ -1,7 +1,7 @@
 package com.aechak.api.review.moderation
 
-import com.aechak.application.review.moderation.port.ProfanityScanResult
-import com.aechak.application.review.moderation.port.ProfanityScanner
+import com.aechak.application.moderation.port.ProfanityScanResult
+import com.aechak.application.moderation.port.ProfanityScanner
 import org.ahocorasick.trie.Trie
 import org.springframework.stereotype.Component
 import java.text.Normalizer
