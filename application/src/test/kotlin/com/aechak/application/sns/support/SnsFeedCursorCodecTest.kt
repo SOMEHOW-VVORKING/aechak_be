@@ -10,8 +10,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 /**
- * 계약: 피드 커서가 기준 시각과 마지막 게시물 공개 ID를 마이크로초까지 왕복하고 다른 목록의 커서와 깨진 커서를 90002로 거절하는지.
- * 깨지면 다음 페이지가 다른 기준 시각으로 잘리거나 다른 목록의 커서로 페이지를 넘긴다.
+ * 계약: 피드 커서가 기준 시각과 마지막 게시물 공개 ID를 마이크로초까지 왕복하고 다른 목록의 커서, 다른 주인의 프로필 탭 커서,
+ * 깨진 커서를 90002로 거절하는지.
+ * 깨지면 다음 페이지가 다른 기준 시각으로 잘리거나 다른 목록이나 다른 주인의 커서로 페이지를 넘긴다.
  */
 class SnsFeedCursorCodecTest {
     private val lastPostPublicId = "01JG3A5C7E9G1J3K5M7P9R1T3V"
@@ -117,6 +118,24 @@ class SnsFeedCursorCodecTest {
         assertCursorRejected { SnsFeedCursorCodec.decodeFollowing(encodeRaw("fl:1:2")) }
     }
 
+    @Test
+    fun `그리드 커서를 왕복하면 마지막 게시물 공개 ID가 보존된다`() {
+        val cursor = SnsFeedCursorCodec.encodeUserPosts(OWNER_PUBLIC_ID, lastPostPublicId)
+
+        assertEquals(lastPostPublicId, SnsFeedCursorCodec.decodeUserPosts(cursor, OWNER_PUBLIC_ID), "마지막 게시물 공개 ID가 보존되어야 한다")
+        assertEquals("gp", decodeRaw(cursor).substringBefore(":"), "그리드 커서는 gp 태그여야 한다")
+    }
+
+    @Test
+    fun `다른 주인의 그리드 커서와 다른 목록의 커서는 거절한다`() {
+        val cursor = SnsFeedCursorCodec.encodeUserPosts(OWNER_PUBLIC_ID, lastPostPublicId)
+        val explore = SnsFeedCursorCodec.encodeExplore(LocalDateTime.of(2026, 11, 5, 9, 30), lastPostPublicId)
+
+        assertCursorRejected { SnsFeedCursorCodec.decodeUserPosts(cursor, OTHER_OWNER_PUBLIC_ID) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeUserPosts(explore, OWNER_PUBLIC_ID) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(cursor) }
+    }
+
     private fun encodeRaw(payload: String): String =
         Base64
             .getUrlEncoder()
@@ -128,5 +147,10 @@ class SnsFeedCursorCodecTest {
     private fun assertCursorRejected(block: () -> Unit) {
         val exception = assertFailsWith<BusinessException>(block = block)
         assertEquals(CommonErrorCode.INVALID_CURSOR, exception.errorCode, "거절한 커서는 90002로 실패해야 한다")
+    }
+
+    companion object {
+        private const val OWNER_PUBLIC_ID = "01JG2K7M9P3R5T8V1X4Z6B8D0F"
+        private const val OTHER_OWNER_PUBLIC_ID = "01JG4B6D8F0H2K4M6P8R0T2W4Y"
     }
 }

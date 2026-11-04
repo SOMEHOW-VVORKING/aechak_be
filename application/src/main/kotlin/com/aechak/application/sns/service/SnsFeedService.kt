@@ -5,6 +5,7 @@ import com.aechak.application.sns.port.view.SnsFeedEntryView
 import com.aechak.application.sns.support.PopularScore
 import com.aechak.application.sns.support.SnsFeedCursorCodec
 import com.aechak.application.sns.usecase.query.SnsFeedQuery
+import com.aechak.application.sns.usecase.query.SnsPostTabQuery
 import com.aechak.application.sns.usecase.result.SnsFeedReposterResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.support.CursorPageSize
@@ -18,7 +19,7 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
-/** 피드 커서를 풀고 목록 포트로 한 페이지의 게시물을 고른다 */
+/** 피드와 프로필 탭 커서를 풀고 목록 포트로 한 페이지의 게시물을 고른다 */
 @Service
 class SnsFeedService(
     private val feedQueryPort: SnsFeedQueryPort,
@@ -128,6 +129,17 @@ class SnsFeedService(
         }
         val nextCursor = cursorOf?.takeIf { ranking.subList(next, ranking.size).any { it in visible } }?.invoke(next)
         return CursorPageResult(picked, null, nextCursor, nextCursor != null)
+    }
+
+    /** 프로필 그리드 한 페이지. 주인의 PUBLISHED 원글을 최신순으로 고르고 뮤트는 거르지 않는다 */
+    fun userPostsPage(
+        query: SnsPostTabQuery,
+        ownerId: Long,
+        ownerPublicId: String,
+    ): CursorPageResult<SnsFeedEntryView> {
+        val last = query.cursor?.let { findLastPost(SnsFeedCursorCodec.decodeUserPosts(it, ownerPublicId)) }
+        val fetched = feedQueryPort.findUserPostPage(ownerId, last?.createdAt, last?.id, CursorPageSize.fetchLimit(query.size))
+        return CursorPageResult.of(fetched = fetched, size = query.size) { SnsFeedCursorCodec.encodeUserPosts(ownerPublicId, it.publicId) }
     }
 
     /** 커서의 마지막 게시물. 그사이 지운 게시물도 위치로 쓰므로 상태를 보지 않는다 */

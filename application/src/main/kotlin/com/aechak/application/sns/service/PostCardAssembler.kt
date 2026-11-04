@@ -4,14 +4,16 @@ import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.sns.port.SnsFeedQueryPort
 import com.aechak.application.sns.usecase.result.SnsPostAuthorResult
 import com.aechak.application.sns.usecase.result.SnsPostDetailResult
+import com.aechak.application.sns.usecase.result.SnsPostGridItemResult
 import com.aechak.application.sns.usecase.result.SnsPostVideoResult
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.domain.sns.follow.repository.FollowRepository
 import com.aechak.domain.sns.post.enums.PostMediaKind
+import com.aechak.domain.sns.post.enums.PostMediaType
 import com.aechak.domain.sns.repost.repository.RepostRepository
 import org.springframework.stereotype.Service
 
-/** 게시물을 상세와 같은 카드로 조립한다. 피드 카드와 상세가 이 매핑 하나를 쓴다 */
+/** 게시물을 상세와 같은 카드나 프로필 탭 칸으로 조립한다. 피드 카드와 상세가 카드 매핑 하나를 쓴다 */
 @Service
 class PostCardAssembler(
     private val feedQueryPort: SnsFeedQueryPort,
@@ -76,5 +78,30 @@ class PostCardAssembler(
                 saved = false,
             )
         }
+    }
+
+    /** postIds 순서대로 프로필 탭 칸을 만든다. 카드 행과 미디어만 읽는다 */
+    fun assembleCells(postIds: List<Long>): List<SnsPostGridItemResult> {
+        if (postIds.isEmpty()) return emptyList()
+        val cards = feedQueryPort.findCards(postIds).associateBy { it.postId }
+        val media = feedQueryPort.findMedia(postIds).groupBy { it.postId }
+        return postIds.mapNotNull { postId ->
+            val card = cards[postId] ?: return@mapNotNull null
+            val (photos, videos) = media[postId].orEmpty().partition { it.mediaKind == PostMediaKind.IMAGE }
+            SnsPostGridItemResult(
+                publicId = card.publicId,
+                mediaType = card.mediaType,
+                thumbnailUrl = fileUseCase.resolveMediaUrl(photos.firstOrNull()?.storageKey ?: videos.firstOrNull()?.thumbnailKey),
+                photoCount = photos.size,
+                captionPreview = card.caption?.takeIf { card.mediaType == PostMediaType.TEXT }?.takeCodePoints(CAPTION_PREVIEW_CODE_POINTS),
+            )
+        }
+    }
+
+    // 글자 수로 자르면 이모지 같은 서로게이트 쌍이 반으로 잘린다
+    private fun String.takeCodePoints(count: Int): String = substring(0, offsetByCodePoints(0, minOf(count, codePointCount(0, length))))
+
+    companion object {
+        private const val CAPTION_PREVIEW_CODE_POINTS = 100
     }
 }

@@ -56,6 +56,14 @@ interface SnsFeedQueryPort {
         limit: Int,
     ): List<Long>
 
+    /** 프로필 그리드 한 페이지. 작성자의 PUBLISHED 원글을 (created_at, id) 내림차순으로 last 뒤부터 limit개 읽는다 */
+    fun findUserPostPage(
+        authorId: Long,
+        lastCreatedAt: LocalDateTime?,
+        lastPostId: Long?,
+        limit: Int,
+    ): List<SnsFeedEntryView>
+
     /** postIds 중 지금 볼 수 있는 글. PUBLISHED이고 작성자 프로필이 있으며 작성자가 숨김 사용자가 아니다 */
     fun findVisiblePostIds(
         postIds: Collection<Long>,

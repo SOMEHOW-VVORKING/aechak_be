@@ -18,6 +18,7 @@ import com.aechak.application.sns.port.view.SnsPostHashtagView
 import com.aechak.application.sns.port.view.SnsPostMediaView
 import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.SnsFeedService
+import com.aechak.application.sns.service.SnsProfileService
 import com.aechak.application.sns.service.SnsVisibilityService
 import com.aechak.application.sns.support.SnsFeedCursorCodec
 import com.aechak.application.sns.usecase.query.SnsFeedQuery
@@ -31,12 +32,23 @@ import com.aechak.application.user.pet.usecase.result.PetProfileResult
 import com.aechak.application.user.pet.usecase.result.RegisterPetProfileResult
 import com.aechak.application.user.pet.usecase.result.RepresentativePetResult
 import com.aechak.application.user.pet.usecase.result.SetDefaultPetResult
+import com.aechak.application.user.user.usecase.UserUseCase
+import com.aechak.application.user.user.usecase.command.SetNicknameCommand
+import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
+import com.aechak.application.user.user.usecase.query.UserSearchQuery
+import com.aechak.application.user.user.usecase.result.UserAuthorResult
+import com.aechak.application.user.user.usecase.result.UserMeResult
+import com.aechak.application.user.user.usecase.result.UserPublicProfileResult
+import com.aechak.application.user.user.usecase.result.UserSummaryResult
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.sns.follow.repository.FollowRepository
 import com.aechak.domain.sns.post.Post
+import com.aechak.domain.sns.post.enums.PostMediaType
 import com.aechak.domain.sns.post.repository.PostRepository
 import com.aechak.domain.sns.repost.repository.RepostRepository
+import com.aechak.domain.sns.stats.SnsUserStats
+import com.aechak.domain.sns.stats.repository.SnsUserStatsRepository
 import org.springframework.dao.DataAccessResourceFailureException
 import org.springframework.dao.QueryTimeoutException
 import org.springframework.transaction.TransactionDefinition
@@ -100,8 +112,10 @@ class SnsFeedFacadeTest {
         SnsFeedFacade(
             SnsFeedService(port, UnusedPostRepository()),
             SnsVisibilityService(UnusedVisibilityQueryPort()),
+            SnsProfileService(UnusedUserStatsRepository()),
             PostCardAssembler(port, UnusedRepostRepository(), UnusedFollowRepository(), NoPetProfileUseCase(), KeyUrlFileUseCase()),
             store,
+            UnusedUserUseCase(),
             NoOpTransactionManager(),
         )
 }
@@ -165,6 +179,13 @@ private class FakeFeedQueryPort(
         limit: Int,
     ): List<Long> = ranking
 
+    override fun findUserPostPage(
+        authorId: Long,
+        lastCreatedAt: LocalDateTime?,
+        lastPostId: Long?,
+        limit: Int,
+    ): List<SnsFeedEntryView> = throw UnsupportedOperationException()
+
     override fun findVisiblePostIds(
         postIds: Collection<Long>,
         hiddenUserIds: Set<Long>,
@@ -180,6 +201,7 @@ private class FakeFeedQueryPort(
                 authorNickname = "집사$it",
                 authorProfileImageKey = null,
                 petId = null,
+                mediaType = PostMediaType.TEXT,
                 caption = "캡션",
                 editedAt = null,
                 createdAt = LocalDateTime.of(2026, 11, 5, 9, 0),
@@ -293,6 +315,50 @@ private class UnusedFollowRepository : FollowRepository {
         followerId: Long,
         followeeIds: Collection<Long>,
     ): Set<Long> = throw UnsupportedOperationException()
+}
+
+private class UnusedUserStatsRepository : SnsUserStatsRepository {
+    override fun findByUserId(userId: Long): SnsUserStats? = throw UnsupportedOperationException()
+
+    override fun lockInUserIdOrder(
+        userId: Long,
+        otherUserId: Long,
+    ) = throw UnsupportedOperationException()
+
+    override fun increaseFollowerCount(userId: Long): Int = throw UnsupportedOperationException()
+
+    override fun decreaseFollowerCount(userId: Long): Int = throw UnsupportedOperationException()
+
+    override fun increaseFollowingCount(userId: Long): Int = throw UnsupportedOperationException()
+
+    override fun decreaseFollowingCount(userId: Long): Int = throw UnsupportedOperationException()
+
+    override fun increasePostCount(userId: Long): Int = throw UnsupportedOperationException()
+
+    override fun decreasePostCount(userId: Long): Int = throw UnsupportedOperationException()
+}
+
+private class UnusedUserUseCase : UserUseCase {
+    override fun checkNickname(
+        userId: Long,
+        nickname: String,
+    ): Boolean = throw UnsupportedOperationException()
+
+    override fun setNickname(command: SetNicknameCommand): UserMeResult = throw UnsupportedOperationException()
+
+    override fun getMe(userId: Long): UserMeResult = throw UnsupportedOperationException()
+
+    override fun updateProfile(command: UpdateProfileCommand): UserMeResult = throw UnsupportedOperationException()
+
+    override fun searchUsers(query: UserSearchQuery): List<UserSummaryResult> = throw UnsupportedOperationException()
+
+    override fun getAuthors(userIds: Collection<Long>): Map<Long, UserAuthorResult> = throw UnsupportedOperationException()
+
+    override fun findPublicProfile(publicId: String): UserPublicProfileResult? = throw UnsupportedOperationException()
+
+    override fun findPublicProfileById(userId: Long): UserPublicProfileResult? = throw UnsupportedOperationException()
+
+    override fun registerFromSocial(): Long = throw UnsupportedOperationException()
 }
 
 private class NoOpTransactionManager : AbstractPlatformTransactionManager() {

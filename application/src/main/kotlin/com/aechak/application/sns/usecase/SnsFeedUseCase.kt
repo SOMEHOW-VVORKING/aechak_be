@@ -1,7 +1,9 @@
 package com.aechak.application.sns.usecase
 
 import com.aechak.application.sns.usecase.query.SnsFeedQuery
+import com.aechak.application.sns.usecase.query.SnsPostTabQuery
 import com.aechak.application.sns.usecase.result.SnsFeedItemResult
+import com.aechak.application.sns.usecase.result.SnsPostGridItemResult
 import com.aechak.application.support.CursorPageResult
 
 /** SNS 피드 진입점. 응답 페이지에는 totalCount가 없다 */
@@ -14,4 +16,7 @@ interface SnsFeedUseCase {
 
     // 인기 피드. 72시간 안의 원글을 점수순으로 주고 첫 페이지를 부른 분의 순위를 다음 페이지가 30분 동안 따른다
     fun popular(query: SnsFeedQuery): CursorPageResult<SnsFeedItemResult>
+
+    // 프로필 그리드 탭. 주인의 원글 전체를 최신순 칸으로 주고 뮤트는 거르지 않는다. 주인 판정은 팔로워 목록과 같다
+    fun userPosts(query: SnsPostTabQuery): CursorPageResult<SnsPostGridItemResult>
 }

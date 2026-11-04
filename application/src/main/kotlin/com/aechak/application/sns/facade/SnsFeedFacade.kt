@@ -3,13 +3,18 @@ package com.aechak.application.sns.facade
 import com.aechak.application.sns.port.SnsPopularSnapshotStore
 import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.SnsFeedService
+import com.aechak.application.sns.service.SnsProfileService
 import com.aechak.application.sns.service.SnsVisibilityService
 import com.aechak.application.sns.support.SnsFeedCursorCodec
 import com.aechak.application.sns.usecase.SnsFeedUseCase
 import com.aechak.application.sns.usecase.query.SnsFeedQuery
+import com.aechak.application.sns.usecase.query.SnsPostTabQuery
 import com.aechak.application.sns.usecase.result.SnsFeedItemResult
 import com.aechak.application.sns.usecase.result.SnsFeedReposterResult
+import com.aechak.application.sns.usecase.result.SnsPostGridItemResult
 import com.aechak.application.support.CursorPageResult
+import com.aechak.application.user.user.usecase.UserUseCase
+import com.aechak.application.user.user.usecase.result.UserPublicProfileResult
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import org.slf4j.LoggerFactory
@@ -19,13 +24,15 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 
-/** SNS 피드 진입점. 금지어 판정과 파일 승격을 쓰지 않아 게시물 쪽 SnsPostFacade와 나눠 둔다 */
+/** SNS 피드와 프로필 탭 진입점. 금지어 판정과 파일 승격을 쓰지 않아 게시물 쪽 SnsPostFacade와 나눠 둔다 */
 @Service
 class SnsFeedFacade(
     private val snsFeedService: SnsFeedService,
     private val snsVisibilityService: SnsVisibilityService,
+    private val snsProfileService: SnsProfileService,
     private val postCardAssembler: PostCardAssembler,
     private val snapshotStore: SnsPopularSnapshotStore,
+    private val userUseCase: UserUseCase,
     transactionManager: PlatformTransactionManager,
 ) : SnsFeedUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -58,6 +65,22 @@ class SnsFeedFacade(
             val page = snsFeedService.popularPage(ranking.postIds, cursor?.offset ?: 0, query.size, hidden, cursorOf)
             cardPage(page.items, page, query.viewerId, mutedIds)
         }!!
+    }
+
+    @Transactional(readOnly = true)
+    override fun userPosts(query: SnsPostTabQuery): CursorPageResult<SnsPostGridItemResult> {
+        val owner = requireVisibleOwner(query)
+        val page = snsFeedService.userPostsPage(query, owner.userId, owner.publicId)
+        return CursorPageResult(postCardAssembler.assembleCells(page.items.map { it.postId }), null, page.nextCursor, page.hasNext)
+    }
+
+    /** 프로필 탭 주인. 팔로워 목록과 같이 볼 수 없는 사용자와 나를 차단한 주인은 130000, 내가 차단한 주인은 130001이다 */
+    private fun requireVisibleOwner(query: SnsPostTabQuery): UserPublicProfileResult {
+        val owner = snsProfileService.requireVisible(userUseCase.findPublicProfile(query.ownerPublicId))
+        val pair = snsVisibilityService.findPairState(query.viewerId, owner.userId)
+        snsProfileService.requireNotBlockedByTarget(pair)
+        snsProfileService.requireNotBlockedByViewer(pair)
+        return owner
     }
 
     /** 지금 분의 순위. 없으면 계산해 남기고 같은 분에 먼저 남긴 순위가 있으면 그 순위를 따른다 */

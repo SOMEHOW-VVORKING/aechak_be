@@ -2,6 +2,7 @@ package com.aechak.application.sns.support
 
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
@@ -12,15 +13,21 @@ import java.util.Base64
  * 피드와 프로필 탭 목록의 keyset 커서.
  * 페이로드는 태그로 시작하는 `:` 구분 값을 base64url(패딩 없음)로 감싼 값이고 사용자 id는 싣지 않는다.
  * 시각은 오프셋 없는 LocalDateTime을 UTC 기준 epoch 마이크로초로 담는다.
+ * 프로필 탭 커서의 범위 해시는 목록 주인 publicId와 태그로 만들어 다른 주인의 목록에서 거절한다.
  *  - 팔로잉 fl:{anchor}:{lastTime}:{lastPostPublicId}
  *  - 탐색 ex:{anchor}:{lastPostPublicId}
  *  - 인기 pp:{epochMinute}:{offset}
+ *  - 그리드 gp:{scopeHash}:{lastPostPublicId}
  */
 object SnsFeedCursorCodec {
     private const val SEPARATOR = ":"
     private const val FOLLOWING_TAG = "fl"
     private const val EXPLORE_TAG = "ex"
     private const val POPULAR_TAG = "pp"
+    private const val USER_POSTS_TAG = "gp"
+
+    // 해시 입력 필드 구분자 (제어 문자 U+001F)
+    private const val CANONICAL_SEPARATOR = "\u001F"
 
     /** 팔로잉 피드 커서. anchor는 첫 페이지의 기준 시각이고 lastTime은 마지막 카드의 정렬 시각이다 */
     data class FollowingCursor(
@@ -78,6 +85,21 @@ object SnsFeedCursorCodec {
         )
     }
 
+    fun encodeUserPosts(
+        ownerPublicId: String,
+        lastPostPublicId: String,
+    ): String = encode(USER_POSTS_TAG, scopeHash(ownerPublicId, USER_POSTS_TAG), lastPostPublicId)
+
+    /** 그리드 커서의 마지막 게시물 공개 ID. 형식, 태그, 범위 해시가 요청과 다르면 INVALID_CURSOR */
+    fun decodeUserPosts(
+        cursor: String,
+        ownerPublicId: String,
+    ): String {
+        val (hash, lastPostPublicId) = decode(cursor, USER_POSTS_TAG, 2)
+        if (hash != scopeHash(ownerPublicId, USER_POSTS_TAG)) invalidCursor()
+        return lastPostPublicId.toTokenOrInvalid()
+    }
+
     private fun encode(
         tag: String,
         vararg values: String,
@@ -101,6 +123,15 @@ object SnsFeedCursorCodec {
             }
         if (parts.size != valueCount + 1 || parts[0] != tag) invalidCursor()
         return parts.drop(1)
+    }
+
+    private fun scopeHash(
+        ownerPublicId: String,
+        tag: String,
+    ): String {
+        val canonical = listOf(ownerPublicId, tag).joinToString(CANONICAL_SEPARATOR)
+        val digest = MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(digest)
     }
 
     private fun LocalDateTime.toEpochMicros(): Long = ChronoUnit.MICROS.between(Instant.EPOCH, toInstant(ZoneOffset.UTC))

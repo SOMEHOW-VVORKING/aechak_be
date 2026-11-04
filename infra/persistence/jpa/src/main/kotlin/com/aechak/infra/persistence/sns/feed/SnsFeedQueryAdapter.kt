@@ -215,6 +215,25 @@ class SnsFeedQueryAdapter(
             .fetch()
     }
 
+    override fun findUserPostPage(
+        authorId: Long,
+        lastCreatedAt: LocalDateTime?,
+        lastPostId: Long?,
+        limit: Int,
+    ): List<SnsFeedEntryView> =
+        queryFactory
+            .select(Projections.constructor(SnsFeedEntryView::class.java, post.id, post.publicId, post.createdAt))
+            .from(post)
+            .where(
+                post.authorId.eq(authorId),
+                post.status.eq(PostStatus.PUBLISHED),
+                lastCreatedAt?.let {
+                    post.createdAt.lt(it).or(post.createdAt.eq(it).and(post.id.lt(lastPostId)))
+                },
+            ).orderBy(post.createdAt.desc(), post.id.desc())
+            .limit(limit.toLong())
+            .fetch()
+
     override fun findVisiblePostIds(
         postIds: Collection<Long>,
         hiddenUserIds: Set<Long>,
@@ -242,6 +261,7 @@ class SnsFeedQueryAdapter(
                     profile.nickname,
                     profile.profileImageKey,
                     post.petId,
+                    post.mediaType,
                     post.caption,
                     post.editedAt,
                     post.createdAt,
