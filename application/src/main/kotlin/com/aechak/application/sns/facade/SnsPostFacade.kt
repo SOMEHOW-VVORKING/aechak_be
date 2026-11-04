@@ -10,8 +10,10 @@ import com.aechak.application.moderation.usecase.result.ModerationDecision
 import com.aechak.application.sns.service.HashtagService
 import com.aechak.application.sns.service.PostAccessService
 import com.aechak.application.sns.service.PostCommandService
+import com.aechak.application.sns.service.RepostService
 import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.application.sns.usecase.command.CreatePostCommand
+import com.aechak.application.sns.usecase.command.RepostPostCommand
 import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.application.sns.usecase.result.CreatePostResult
 import com.aechak.application.sns.usecase.result.SnsHashtagSearchResult
@@ -24,6 +26,7 @@ import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.hashtag.Hashtag
 import com.aechak.domain.sns.post.Post
 import com.aechak.domain.sns.post.enums.PostMediaKind
+import com.aechak.domain.sns.post.repository.PostRepository
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -31,6 +34,7 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
+import java.time.LocalDateTime
 
 /**
  * SNS 게시물 진입점. 금지어 판정은 게시물만 쓰므로 관계 쪽 SnsFacade와 나눠 둔다.
@@ -41,6 +45,8 @@ class SnsPostFacade(
     private val postCommandService: PostCommandService,
     private val postAccessService: PostAccessService,
     private val hashtagService: HashtagService,
+    private val repostService: RepostService,
+    private val postRepository: PostRepository,
     private val moderationUseCase: ModerationUseCase,
     private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
@@ -170,6 +176,23 @@ class SnsPostFacade(
     ): SnsHashtagSearchResult {
         val cleaned = Hashtag.clean(query.orEmpty())
         return hashtagService.search(cleaned, moderationUseCase.containsBannedWord(cleaned), size)
+    }
+
+    override fun repost(command: RepostPostCommand) {
+        tx.execute {
+            val post = postAccessService.requirePublished(command.publicId)
+            if (post.authorId == command.userId) throw BusinessException(SnsErrorCode.SNS_REPOST_OWN_POST)
+            postAccessService.requireActiveAuthor(userUseCase.findPublicProfileById(post.authorId))
+            repostService.repost(command.userId, post.id, post.authorId, LocalDateTime.now())
+        }
+    }
+
+    // 끄기는 상태, 작성자, 관계를 보지 않아 볼 수 없게 된 원글의 리포스트도 지운다
+    override fun unrepost(command: RepostPostCommand) {
+        tx.execute {
+            val post = postRepository.findByPublicId(command.publicId) ?: throw BusinessException(SnsErrorCode.SNS_POST_UNAVAILABLE)
+            repostService.unrepost(command.userId, post.id)
+        }
     }
 
     private fun findIdempotent(command: CreatePostCommand): CreatePostResult? =

@@ -35,4 +35,7 @@ enum class SnsErrorCode(
     SNS_HASHTAG_INVALID(130500, "해시태그에 쓸 수 없는 글자가 있습니다.", 400),
     SNS_HASHTAG_TOO_LONG(130501, "해시태그는 30자까지 쓸 수 있습니다.", 400),
     SNS_HASHTAG_BANNED_WORD(130502, "해시태그에 쓸 수 없는 단어가 있습니다.", 400),
+
+    // Repost 130600번대
+    SNS_REPOST_OWN_POST(130600, "본인 게시물은 리포스트할 수 없습니다.", 400),
 }

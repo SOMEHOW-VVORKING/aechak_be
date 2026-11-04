@@ -1,6 +1,7 @@
 package com.aechak.application.sns.usecase
 
 import com.aechak.application.sns.usecase.command.CreatePostCommand
+import com.aechak.application.sns.usecase.command.RepostPostCommand
 import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.application.sns.usecase.result.CreatePostResult
 import com.aechak.application.sns.usecase.result.SnsHashtagSearchResult
@@ -24,4 +25,10 @@ interface SnsPostUseCase {
         query: String?,
         size: Int,
     ): SnsHashtagSearchResult
+
+    // 원글을 리포스트한다. 이미 리포스트 중이면 그대로 둔다
+    fun repost(command: RepostPostCommand)
+
+    // 리포스트를 취소한다. 게시물은 publicId로만 찾고 상태와 관계는 보지 않는다
+    fun unrepost(command: RepostPostCommand)
 }

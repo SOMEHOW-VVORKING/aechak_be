@@ -172,6 +172,24 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
         )
 
+    protected fun repost(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            post("/api/v1/sns/posts/$publicId/repost")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
+    protected fun unrepost(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            delete("/api/v1/sns/posts/$publicId/repost")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
     protected fun updateBody(
         caption: String? = "공원 다녀왔어요",
         hashtags: List<String> = emptyList(),
@@ -240,6 +258,27 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         jdbcTemplate
             .queryForList("select post_count from sns_user_stats where user_id = ?", Int::class.java, userId)
             .firstOrNull()
+
+    /** 원글 통계 행의 repost_count. 행이 없으면 null이다. */
+    protected fun repostCountOf(publicId: String): Int? =
+        jdbcTemplate
+            .queryForList(
+                "select s.repost_count from sns_post_stats s join sns_posts p on p.id = s.post_id where p.public_id = ?",
+                Int::class.java,
+                publicId,
+            ).firstOrNull()
+
+    /** reposter가 이 원글에 한 리포스트 행 수. */
+    protected fun repostRowCount(
+        reposterId: Long,
+        publicId: String,
+    ): Int =
+        jdbcTemplate.queryForObject(
+            "select count(*) from sns_reposts r join sns_posts p on p.id = r.post_id where r.reposter_id = ? and p.public_id = ?",
+            Int::class.java,
+            reposterId,
+            publicId,
+        )!!
 
     /** 해시태그 행마다 이름과 post_count. */
     protected fun hashtagCounts(): Map<String, Int> =
