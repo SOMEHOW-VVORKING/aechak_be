@@ -114,13 +114,14 @@ def steady_graph(step, runs, out):
 
 
 def rolling_p95(points, start, end, window):
+    """회복 판정(summarize.recovery_seconds)과 같은 창. 표본 3개 이상이고 실패가 없는 창만 값을 두고 나머지는 선을 끊는다"""
     xs, ys = [], []
     t = start + 1
-    while t <= end + 1:
-        vals = [ms for ts, ms in points if t - window < ts <= t]
-        if len(vals) >= s.RECOVERY_MIN_SAMPLES:
-            xs.append(t)
-            ys.append(s.p95(vals))
+    while t <= end:
+        win = [(ms, ok) for ts, ms, ok in points if t - window < ts <= t]
+        ok_window = len(win) >= s.RECOVERY_MIN_SAMPLES and all(ok for _, ok in win)
+        xs.append(t)
+        ys.append(s.p95([ms for ms, _ in win]) if ok_window else float('nan'))
         t += 1
     return xs, ys
 
@@ -139,10 +140,11 @@ def spike_graph(run, pool, out):
         if pts:
             ax.plot([p[0] for p in pts], [p[1] for p in pts], 'o', markersize=3, alpha=0.5,
                     color=COLORS[i], label=f'{scenario} request')
-    probe = [(ts - t0, ms) for ts, ms, sc, _ in samples if sc == 'probe']
+    probe = [(ts - t0, ms, ok) for ts, ms, sc, ok in samples if sc == 'probe']
     if probe:
-        xs, ys = rolling_p95(probe, spike_seconds, max(p[0] for p in probe), window)
-        ax.plot(xs, ys, color=COLORS[2], label=f'probe rolling {window}s p95')
+        end = min(max(p[0] for p in probe) + 1, spike_seconds + float(kit.get('probe_seconds', 90)))
+        xs, ys = rolling_p95(probe, spike_seconds, end, window)
+        ax.plot(xs, ys, color=COLORS[2], label=f'probe rolling {window}s p95 (no failures)')
     ax.axvline(spike_seconds, color=INK, linewidth=1)
     rec = s.recovery_seconds(run['points'], spike_seconds, probe_rate, threshold, kit.get('probe_seconds', 90))
     if rec is not None:
