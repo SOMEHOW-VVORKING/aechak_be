@@ -13,10 +13,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * 통합: 프로필 그리드 탭이 주인의 지우지 않은 원글을, 영상 탭이 그중 영상 원글만 최신순 칸으로 주고 팔로워 목록과 같은 주인 판정을 하는지,
- * 칸의 썸네일, 사진 수, 텍스트 미리보기가 게시물 종류에 맞는지.
+ * 통합: 프로필 그리드 탭이 주인의 지우지 않은 원글을, 영상 탭이 그중 영상 원글만 최신순 칸으로 주고 리포스트 탭이 주인이 리포스트한
+ * 원글을 최근 리포스트순으로 주는지, 세 탭이 팔로워 목록과 같은 주인 판정을 하고 칸의 썸네일, 사진 수, 텍스트 미리보기가 게시물 종류에 맞는지.
  * 깨지면 차단 관계인 사용자의 글이 프로필에 보이거나 지운 글과 리포스트가 그리드에 섞이거나 영상 탭에 다른 글이 나오거나
- * 텍스트 칸의 글자가 반으로 잘린다.
+ * 리포스트 탭에 보는 사람이 숨긴 작성자의 글이 나오거나 텍스트 칸의 글자가 반으로 잘린다.
  */
 class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
     @Test
@@ -141,6 +141,109 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `리포스트 탭은 주인이 리포스트한 원글을 최근 리포스트순 칸으로 준다`() {
+        val ownerId = onboardedUser()
+        val authorId = onboardedUser()
+        val first = createdPublicId(authorId, postBody(photoKeys = listOf(tmpPhotoKey(authorId))))
+        val second = videoPost(authorId)
+        val third = createdPublicId(authorId, postBody(caption = "텍스트 글"))
+        createdPublicId(ownerId)
+        // 게시 순서와 다르게 리포스트한다
+        listOf(second, third, first).forEach { repost(it, ownerId).andExpect(status().isCreated) }
+
+        val page = tabPage("reposts", ownerId)
+
+        assertEquals(listOf(first, third, second), page.cellIds(), "주인의 원글 없이 원글의 공개 ID가 최근 리포스트순이어야 한다")
+        assertEquals(listOf("PHOTO", "TEXT", "VIDEO"), page.feedItems().map { it["mediaType"] }, "칸은 원글 기준이어야 한다")
+    }
+
+    @Test
+    fun `뮤트한 주인의 리포스트는 나오고 그 안에서 내가 뮤트한 다른 작성자의 원글은 빠진다`() {
+        val viewerId = onboardedUser()
+        val ownerId = onboardedUser()
+        val mutedAuthor = onboardedUser()
+        val visible = createdPublicId(onboardedUser())
+        val mutedPost = createdPublicId(mutedAuthor)
+        listOf(visible, mutedPost).forEach { repost(it, ownerId).andExpect(status().isCreated) }
+        relate(viewerId, ownerId, "mute")
+        relate(viewerId, mutedAuthor, "mute")
+
+        assertEquals(listOf(visible), tabPage("reposts", ownerId, viewerId).cellIds(), "주인 뮤트는 거르지 않고 원글 작성자 뮤트만 걸러야 한다")
+    }
+
+    @Test
+    fun `주인 본인은 자기가 뮤트한 작성자의 원글도 리포스트 탭에서 본다`() {
+        val ownerId = onboardedUser()
+        val mutedAuthor = onboardedUser()
+        val publicId = createdPublicId(mutedAuthor)
+        relate(ownerId, mutedAuthor, "mute")
+        repost(publicId, ownerId).andExpect(status().isCreated)
+
+        assertEquals(listOf(publicId), tabPage("reposts", ownerId, viewerId = ownerId).cellIds(), "주인 본인에게는 뮤트를 거르지 않아야 한다")
+    }
+
+    @Test
+    fun `보는 사람과 원글 작성자가 어느 쪽으로든 차단 관계면 그 원글이 빠진다`() {
+        val viewerId = onboardedUser()
+        val ownerId = onboardedUser()
+        val blockedByMe = onboardedUser()
+        val blockingMe = onboardedUser()
+        val visible = createdPublicId(onboardedUser())
+        val blockedPost = createdPublicId(blockedByMe)
+        val blockingPost = createdPublicId(blockingMe)
+        listOf(visible, blockedPost, blockingPost).forEach { repost(it, ownerId).andExpect(status().isCreated) }
+        relate(viewerId, blockedByMe, "block")
+        relate(blockingMe, viewerId, "block")
+
+        assertEquals(listOf(visible), tabPage("reposts", ownerId, viewerId).cellIds(), "차단 관계인 작성자의 원글은 빠져야 한다")
+        assertEquals(listOf(blockingPost, blockedPost, visible), tabPage("reposts", ownerId).cellIds(), "비로그인은 모두 봐야 한다")
+    }
+
+    @Test
+    fun `지운 원글과 탈퇴한 작성자의 원글은 리포스트 탭에서 빠진다`() {
+        val ownerId = onboardedUser()
+        val authorId = onboardedUser()
+        val withdrawn = onboardedUser()
+        val deleted = createdPublicId(authorId)
+        val withdrawnPost = createdPublicId(withdrawn)
+        val visible = createdPublicId(authorId)
+        listOf(deleted, withdrawnPost, visible).forEach { repost(it, ownerId).andExpect(status().isCreated) }
+        deletePost(deleted, authorId).andExpect(status().isNoContent)
+        tx.execute { em.find(User::class.java, withdrawn).withdraw() }
+
+        assertEquals(listOf(visible), tabPage("reposts", ownerId, onboardedUser()).cellIds(), "볼 수 없는 원글은 빠져야 한다")
+    }
+
+    @Test
+    fun `첫 페이지 뒤에 취소한 리포스트는 다음 페이지에서 빠지고 본 칸이 다시 나오지 않는다`() {
+        val ownerId = onboardedUser()
+        val authorId = onboardedUser()
+        val posts = List(4) { createdPublicId(authorId) }
+        posts.forEach { repost(it, ownerId).andExpect(status().isCreated) }
+        val first = tabPage("reposts", ownerId, size = 2)
+        assertEquals(listOf(posts[3], posts[2]), first.cellIds(), "첫 페이지는 최근 리포스트 둘이어야 한다")
+
+        // 이미 본 마지막 칸과 아직 보지 않은 칸의 리포스트를 함께 취소한다
+        unrepost(posts[2], ownerId).andExpect(status().isNoContent)
+        unrepost(posts[1], ownerId).andExpect(status().isNoContent)
+        val second = tabPage("reposts", ownerId, cursor = first["nextCursor"] as String, size = 2)
+
+        assertEquals(listOf(posts[0]), second.cellIds(), "취소한 리포스트는 빠지고 남은 리포스트가 이어져야 한다")
+        assertEquals(false, second["hasNext"], "마지막 페이지여야 한다")
+    }
+
+    @Test
+    fun `리포스트가 없는 주인의 리포스트 탭은 빈 목록이다`() {
+        val ownerId = onboardedUser()
+        createdPublicId(ownerId)
+
+        val page = tabPage("reposts", ownerId, viewerId = onboardedUser())
+
+        assertEquals(emptyList(), page.cellIds(), "리포스트가 없으면 빈 목록이어야 한다")
+        assertEquals(false, page["hasNext"], "빈 목록은 다음 페이지가 없어야 한다")
+    }
+
+    @Test
     fun `그리드 커서를 영상 탭에 보내면 90002다`() {
         val ownerId = onboardedUser()
         repeat(2) { videoPost(ownerId) }
@@ -230,7 +333,7 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
         caption: String? = null,
     ): String = createdPublicId(ownerId, postBody(caption = caption, video = videoJson(tmpVideoKey(ownerId), tmpPhotoKey(ownerId))))
 
-    /** 프로필 탭(posts, videos)을 부른다. */
+    /** 프로필 탭(posts, videos, reposts)을 부른다. */
     private fun getTab(
         tab: String,
         ownerPublicId: String,
@@ -267,6 +370,6 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
 
     companion object {
         // 주인 판정이 같은 탭
-        private val TABS = listOf("posts", "videos")
+        private val TABS = listOf("posts", "videos", "reposts")
     }
 }

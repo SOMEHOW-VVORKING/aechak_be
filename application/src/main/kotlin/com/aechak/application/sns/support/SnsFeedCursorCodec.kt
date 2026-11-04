@@ -20,12 +20,14 @@ import java.util.Base64
  *  - 인기 pp:{epochMinute}:{offset}
  *  - 그리드 gp:{scopeHash}:{lastPostPublicId}
  *  - 영상 탭 gv:{scopeHash}:{lastPostPublicId}
+ *  - 리포스트 탭 gr:{scopeHash}:{lastRepostId}
  */
 object SnsFeedCursorCodec {
     private const val SEPARATOR = ":"
     private const val FOLLOWING_TAG = "fl"
     private const val EXPLORE_TAG = "ex"
     private const val POPULAR_TAG = "pp"
+    private const val USER_REPOSTS_TAG = "gr"
 
     // 해시 입력 필드 구분자 (제어 문자 U+001F)
     private const val CANONICAL_SEPARATOR = "\u001F"
@@ -97,11 +99,18 @@ object SnsFeedCursorCodec {
         cursor: String,
         tab: SnsPostTab,
         ownerPublicId: String,
-    ): String {
-        val (hash, lastPostPublicId) = decode(cursor, tab.tag(), 2)
-        if (hash != scopeHash(ownerPublicId, tab.tag())) invalidCursor()
-        return lastPostPublicId.toTokenOrInvalid()
-    }
+    ): String = decodeScoped(cursor, tab.tag(), ownerPublicId).toTokenOrInvalid()
+
+    fun encodeUserReposts(
+        ownerPublicId: String,
+        lastRepostId: Long,
+    ): String = encode(USER_REPOSTS_TAG, scopeHash(ownerPublicId, USER_REPOSTS_TAG), lastRepostId.toString())
+
+    /** 리포스트 탭 커서의 마지막 리포스트 행 id. 형식, 태그, 범위 해시가 요청과 다르거나 id가 양수가 아니면 INVALID_CURSOR */
+    fun decodeUserReposts(
+        cursor: String,
+        ownerPublicId: String,
+    ): Long = decodeScoped(cursor, USER_REPOSTS_TAG, ownerPublicId).toLongOrNull()?.takeIf { it > 0 } ?: invalidCursor()
 
     private fun encode(
         tag: String,
@@ -126,6 +135,17 @@ object SnsFeedCursorCodec {
             }
         if (parts.size != valueCount + 1 || parts[0] != tag) invalidCursor()
         return parts.drop(1)
+    }
+
+    /** 범위 해시 뒤의 마지막 항목. 태그나 범위 해시가 요청과 다르면 INVALID_CURSOR */
+    private fun decodeScoped(
+        cursor: String,
+        tag: String,
+        ownerPublicId: String,
+    ): String {
+        val (hash, last) = decode(cursor, tag, 2)
+        if (hash != scopeHash(ownerPublicId, tag)) invalidCursor()
+        return last
     }
 
     private fun scopeHash(

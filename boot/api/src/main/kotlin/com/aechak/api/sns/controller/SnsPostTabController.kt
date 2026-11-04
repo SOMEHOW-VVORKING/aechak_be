@@ -38,4 +38,14 @@ class SnsPostTabController(
         ResponseEntity.ok(
             ApiResponse.of(SnsPostGridPageResponse.from(snsFeedUseCase.userVideos(request.toTabQuery(principal?.userId, publicId)))),
         )
+
+    @GetMapping("/users/{publicId}/reposts")
+    fun userReposts(
+        @PathVariable publicId: String,
+        @Valid @ModelAttribute request: SnsFeedRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal?,
+    ): ResponseEntity<ApiResponse<SnsPostGridPageResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(SnsPostGridPageResponse.from(snsFeedUseCase.userReposts(request.toTabQuery(principal?.userId, publicId)))),
+        )
 }

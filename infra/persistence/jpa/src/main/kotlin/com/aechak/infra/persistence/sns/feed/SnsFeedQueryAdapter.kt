@@ -7,6 +7,7 @@ import com.aechak.application.sns.port.view.SnsFeedRepostView
 import com.aechak.application.sns.port.view.SnsPostCardView
 import com.aechak.application.sns.port.view.SnsPostHashtagView
 import com.aechak.application.sns.port.view.SnsPostMediaView
+import com.aechak.application.sns.port.view.SnsUserRepostView
 import com.aechak.domain.sns.follow.QFollow
 import com.aechak.domain.sns.hashtag.QHashtag
 import com.aechak.domain.sns.post.QPost
@@ -14,6 +15,7 @@ import com.aechak.domain.sns.post.QPostHashtag
 import com.aechak.domain.sns.post.QPostMedia
 import com.aechak.domain.sns.post.enums.PostMediaType
 import com.aechak.domain.sns.post.enums.PostStatus
+import com.aechak.domain.sns.repost.QRepost
 import com.aechak.domain.sns.stats.QSnsPostStats
 import com.aechak.domain.user.user.QUser
 import com.aechak.domain.user.user.QUserProfile
@@ -33,6 +35,7 @@ private val media = QPostMedia.postMedia
 private val postHashtag = QPostHashtag.postHashtag
 private val hashtag = QHashtag.hashtag
 private val stats = QSnsPostStats.snsPostStats
+private val repost = QRepost.repost
 private val follow = QFollow.follow
 private val user = QUser.user
 private val profile = QUserProfile.userProfile
@@ -235,6 +238,27 @@ class SnsFeedQueryAdapter(
                     post.createdAt.lt(it).or(post.createdAt.eq(it).and(post.id.lt(lastPostId)))
                 },
             ).orderBy(post.createdAt.desc(), post.id.desc())
+            .limit(limit.toLong())
+            .fetch()
+
+    override fun findUserRepostPage(
+        reposterId: Long,
+        hiddenUserIds: Set<Long>,
+        lastRepostId: Long?,
+        limit: Int,
+    ): List<SnsUserRepostView> =
+        queryFactory
+            .select(Projections.constructor(SnsUserRepostView::class.java, repost.id, repost.postId))
+            .from(repost)
+            .join(post)
+            .on(post.id.eq(repost.postId))
+            .where(
+                repost.reposterId.eq(reposterId),
+                lastRepostId?.let { repost.id.lt(it) },
+                post.status.eq(PostStatus.PUBLISHED),
+                visibleUser(post.authorId),
+                hiddenUserIds.takeIf { it.isNotEmpty() }?.let { post.authorId.notIn(it) },
+            ).orderBy(repost.id.desc())
             .limit(limit.toLong())
             .fetch()
 

@@ -156,6 +156,28 @@ class SnsFeedCursorCodecTest {
         assertCursorRejected { SnsFeedCursorCodec.decodeUserPosts(videos, SnsPostTab.POSTS, OWNER_PUBLIC_ID) }
     }
 
+    @Test
+    fun `리포스트 탭 커서를 왕복하면 마지막 리포스트 행 id가 보존된다`() {
+        val cursor = SnsFeedCursorCodec.encodeUserReposts(OWNER_PUBLIC_ID, 318L)
+
+        assertEquals(318L, SnsFeedCursorCodec.decodeUserReposts(cursor, OWNER_PUBLIC_ID), "마지막 리포스트 행 id가 보존되어야 한다")
+        assertEquals("gr", decodeRaw(cursor).substringBefore(":"), "리포스트 탭 커서는 gr 태그여야 한다")
+    }
+
+    @Test
+    fun `리포스트 탭은 다른 주인의 커서, 다른 탭의 커서, 양수가 아닌 행 id를 거절한다`() {
+        val cursor = SnsFeedCursorCodec.encodeUserReposts(OWNER_PUBLIC_ID, 1L)
+        val grid = SnsFeedCursorCodec.encodeUserPosts(SnsPostTab.POSTS, OWNER_PUBLIC_ID, lastPostPublicId)
+
+        assertCursorRejected { SnsFeedCursorCodec.decodeUserReposts(cursor, OTHER_OWNER_PUBLIC_ID) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeUserReposts(grid, OWNER_PUBLIC_ID) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeUserPosts(cursor, SnsPostTab.POSTS, OWNER_PUBLIC_ID) }
+        listOf("0", "-1", "abc").forEach { id ->
+            val raw = decodeRaw(cursor).removeSuffix(":1") + ":$id"
+            assertCursorRejected { SnsFeedCursorCodec.decodeUserReposts(encodeRaw(raw), OWNER_PUBLIC_ID) }
+        }
+    }
+
     private fun encodeRaw(payload: String): String =
         Base64
             .getUrlEncoder()

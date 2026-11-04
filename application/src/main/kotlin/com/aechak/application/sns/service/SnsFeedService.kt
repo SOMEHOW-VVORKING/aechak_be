@@ -3,6 +3,7 @@ package com.aechak.application.sns.service
 import com.aechak.application.sns.port.SnsFeedQueryPort
 import com.aechak.application.sns.port.SnsPostTab
 import com.aechak.application.sns.port.view.SnsFeedEntryView
+import com.aechak.application.sns.port.view.SnsUserRepostView
 import com.aechak.application.sns.support.PopularScore
 import com.aechak.application.sns.support.SnsFeedCursorCodec
 import com.aechak.application.sns.usecase.query.SnsFeedQuery
@@ -143,6 +144,20 @@ class SnsFeedService(
         val fetched = feedQueryPort.findUserPostPage(ownerId, tab, last?.createdAt, last?.id, CursorPageSize.fetchLimit(query.size))
         return CursorPageResult.of(fetched = fetched, size = query.size) {
             SnsFeedCursorCodec.encodeUserPosts(tab, ownerPublicId, it.publicId)
+        }
+    }
+
+    /** 프로필 리포스트 탭 한 페이지. 주인의 리포스트를 최근순으로 고르고 숨김 사용자의 원글은 뺀다 */
+    fun userRepostsPage(
+        query: SnsPostTabQuery,
+        ownerId: Long,
+        ownerPublicId: String,
+        hiddenUserIds: Set<Long>,
+    ): CursorPageResult<SnsUserRepostView> {
+        val lastRepostId = query.cursor?.let { SnsFeedCursorCodec.decodeUserReposts(it, ownerPublicId) }
+        val fetched = feedQueryPort.findUserRepostPage(ownerId, hiddenUserIds, lastRepostId, CursorPageSize.fetchLimit(query.size))
+        return CursorPageResult.of(fetched = fetched, size = query.size) {
+            SnsFeedCursorCodec.encodeUserReposts(ownerPublicId, it.repostId)
         }
     }
 

@@ -74,14 +74,31 @@ class SnsFeedFacade(
     @Transactional(readOnly = true)
     override fun userVideos(query: SnsPostTabQuery): CursorPageResult<SnsPostGridItemResult> = postTabPage(query, SnsPostTab.VIDEOS)
 
+    @Transactional(readOnly = true)
+    override fun userReposts(query: SnsPostTabQuery): CursorPageResult<SnsPostGridItemResult> {
+        val owner = requireVisibleOwner(query)
+        // 주인 본인은 자기가 뮤트한 작성자의 원글도 본다
+        val mutedIds = if (query.viewerId == owner.userId) emptySet() else snsVisibilityService.findMutedIds(query.viewerId)
+        val hidden = snsVisibilityService.findViewerFilter(query.viewerId) + mutedIds
+        val page = snsFeedService.userRepostsPage(query, owner.userId, owner.publicId, hidden)
+        return cellPage(page.items.map { it.postId }, page)
+    }
+
     private fun postTabPage(
         query: SnsPostTabQuery,
         tab: SnsPostTab,
     ): CursorPageResult<SnsPostGridItemResult> {
         val owner = requireVisibleOwner(query)
         val page = snsFeedService.userPostsPage(query, tab, owner.userId, owner.publicId)
-        return CursorPageResult(postCardAssembler.assembleCells(page.items.map { it.postId }), null, page.nextCursor, page.hasNext)
+        return cellPage(page.items.map { it.postId }, page)
     }
+
+    /** 페이지의 게시물을 프로필 탭 칸으로 조립한다 */
+    private fun cellPage(
+        postIds: List<Long>,
+        page: CursorPageResult<*>,
+    ): CursorPageResult<SnsPostGridItemResult> =
+        CursorPageResult(postCardAssembler.assembleCells(postIds), null, page.nextCursor, page.hasNext)
 
     /** 프로필 탭 주인. 팔로워 목록과 같이 볼 수 없는 사용자와 나를 차단한 주인은 130000, 내가 차단한 주인은 130001이다 */
     private fun requireVisibleOwner(query: SnsPostTabQuery): UserPublicProfileResult {
