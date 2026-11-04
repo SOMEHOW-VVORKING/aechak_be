@@ -5,7 +5,7 @@
 set -euo pipefail
 
 KIT=${KIT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
-KIT_VERSION=2
+KIT_VERSION=3
 # k6 v2.2.0의 Prometheus remote write 출력 이름. 이름이 바뀌면 여기만 고친다
 K6_PROM_OUT=experimental-prometheus-rw
 K6_BIN=${K6_BIN:-k6}
@@ -87,6 +87,36 @@ ssm_param() { x aws ssm get-parameter --with-decryption --name "$(jq -r ".$1.val
 
 prom_query() {
   curl -sf --max-time 5 "$PROM_URL/api/v1/query" --data-urlencode "query=$1" | jq -r '.data.result[0].value[1] // empty'
+}
+
+# prom_export <start_ms> <end_ms>: run 구간의 Hikari, api CPU와 스로틀링, MySQL 실행 스레드, 서버 p95, 러너 CPU와 메모리를 JSON 한 줄로 찍는다. 없는 값은 null
+prom_export() {
+  local e=$(( $2 / 1000 )) d=$(( ($2 - $1) / 1000 )) k q v out=
+  if [ "$d" -lt 15 ]; then d=15; fi
+  while IFS='|' read -r k q; do
+    v=$(curl -sf --max-time 10 "$PROM_URL/api/v1/query" --data-urlencode "query=${q//@D/${d}s}" --data-urlencode "time=$e" \
+      | jq -r '.data.result[0].value[1] // empty' 2>/dev/null || true)
+    out="$out $(jq -nc --arg k "$k" --arg v "$v" '{($k): ($v | tonumber? // null)}')"
+  done <<'EOF'
+hikari_pending_max|max_over_time(sum(hikaricp_connections_pending{job="spring"})[@D:5s])
+hikari_active_max|max_over_time(sum(hikaricp_connections_active{job="spring"})[@D:5s])
+hikari_timeouts|sum(increase(hikaricp_connections_timeout_total{job="spring"}[@D]))
+api_cpu_avg|avg_over_time(sum(rate(container_cpu_usage_seconds_total{job="cadvisor",container_label_com_docker_compose_service="api"}[30s]))[@D:5s])
+api_cpu_max|max_over_time(sum(rate(container_cpu_usage_seconds_total{job="cadvisor",container_label_com_docker_compose_service="api"}[30s]))[@D:5s])
+api_cpu_throttled_s|sum(increase(container_cpu_cfs_throttled_seconds_total{job="cadvisor",container_label_com_docker_compose_service="api"}[@D]))
+threads_running_max|max_over_time(mysql_global_status_threads_running{job="mysqld"}[@D])
+server_p95_max_s|max_over_time(histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job="spring",uri="/api/v1/search/products"}[30s])))[@D:5s])
+runner_cpu_max|max_over_time((1 - avg(rate(node_cpu_seconds_total{job="node",host="runner",mode="idle"}[30s])))[@D:5s])
+runner_mem_available_min_mib|min_over_time(node_memory_MemAvailable_bytes{job="node",host="runner"}[@D]) / 1048576
+EOF
+  echo "$out" | jq -sc add
+}
+
+# kit_hash: kit 소스(search의 sh, js, py, sql, yml, Makefile과 monitoring의 yml)를 경로 순서로 이어 붙인 sha256 앞 12자리
+kit_hash() {
+  (cd "$KIT/.." && find search monitoring \( -path search/results -o -path search/jars -o -path search/.perf -o -path search/tools/.venv \
+    -o -path monitoring/.local \) -prune -o -type f \( -name '*.sh' -o -name '*.js' -o -name '*.py' -o -name '*.sql' -o -name '*.yml' \
+    -o -name Makefile \) -print | LC_ALL=C sort | xargs cat) | sha256 | cut -c1-12
 }
 
 # ssm_run <instance-id> <command> [timeout-seconds] [진행 로그 s3 경로]: 원격 명령을 보내고 끝날 때까지 기다려 stdout을 찍는다. 반환값은 원격 종료 코드
@@ -201,7 +231,7 @@ k6_eval() {
     | map(tostring) | join("\t")' "$1"
 }
 
-ENV_KEYS="run_id step dataset cell variant rep start_ms end_ms date_kst kit_version git_rev git_tree merge_base patch_id dirty jar jar_sha256 hibernate_core elasticsearch_java search_test_exit rds_id rds_class rds_engine_version buffer_pool_size_bytes param_max_digest_length param_perf_schema_max_digest_length param_long_query_time api_instance_type api_cpus api_mem runner_instance_type hikari_max applied_ddl schema_hash index_hash manifest_match search_env req_rate scenario max_vus k6_version bp_reads_delta bp_read_requests_delta bp_disk_read_flag dropped_iterations max_stable_rate k6_exit k6_max_rss_kb base_rate base_rate_source cw_complete skip_reason probe_rate capacity_rate request_timeout"
+ENV_KEYS="run_id step dataset cell variant rep start_ms end_ms date_kst kit_version git_rev git_tree merge_base patch_id dirty jar jar_sha256 hibernate_core elasticsearch_java search_test_exit rds_id rds_class rds_engine_version buffer_pool_size_bytes param_max_digest_length param_perf_schema_max_digest_length param_long_query_time api_instance_type api_cpus api_mem runner_instance_type hikari_max applied_ddl schema_hash index_hash manifest_match search_env req_rate scenario max_vus k6_version bp_reads_delta bp_read_requests_delta bp_disk_read_flag dropped_iterations max_stable_rate k6_exit k6_max_rss_kb base_rate base_rate_source cw_complete skip_reason probe_rate capacity_rate request_timeout kit_hash ps_history_long trace_offset"
 
 # write_env <file>: ENV_<key> 변수를 key=value로 쓴다. 비었으면 na
 write_env() {
