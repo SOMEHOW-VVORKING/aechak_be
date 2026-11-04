@@ -49,6 +49,7 @@ import com.aechak.domain.sns.post.Post
 import com.aechak.domain.sns.post.enums.PostMediaType
 import com.aechak.domain.sns.post.repository.PostRepository
 import com.aechak.domain.sns.repost.repository.RepostRepository
+import com.aechak.domain.sns.save.repository.SaveRepository
 import com.aechak.domain.sns.stats.SnsUserStats
 import com.aechak.domain.sns.stats.repository.SnsUserStatsRepository
 import org.springframework.dao.DataAccessResourceFailureException
@@ -115,7 +116,14 @@ class SnsFeedFacadeTest {
             SnsFeedService(port, UnusedPostRepository()),
             SnsVisibilityService(UnusedVisibilityQueryPort()),
             SnsProfileService(UnusedUserStatsRepository()),
-            PostCardAssembler(port, UnusedRepostRepository(), UnusedFollowRepository(), NoPetProfileUseCase(), KeyUrlFileUseCase()),
+            PostCardAssembler(
+                port,
+                UnusedRepostRepository(),
+                UnusedSaveRepository(),
+                UnusedFollowRepository(),
+                NoPetProfileUseCase(),
+                KeyUrlFileUseCase(),
+            ),
             store,
             UnusedUserUseCase(),
             NoOpTransactionManager(),
@@ -308,6 +316,23 @@ private class UnusedRepostRepository : RepostRepository {
         reposterId: Long,
         authorId: Long,
     ): List<Long> = throw UnsupportedOperationException()
+}
+
+private class UnusedSaveRepository : SaveRepository {
+    override fun insertIfAbsent(
+        userId: Long,
+        postId: Long,
+    ): Unit = throw UnsupportedOperationException()
+
+    override fun delete(
+        userId: Long,
+        postId: Long,
+    ): Int = throw UnsupportedOperationException()
+
+    override fun findSavedPostIdsAmong(
+        userId: Long,
+        postIds: Collection<Long>,
+    ): Set<Long> = throw UnsupportedOperationException()
 }
 
 private class UnusedFollowRepository : FollowRepository {

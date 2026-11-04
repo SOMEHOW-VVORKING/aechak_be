@@ -18,8 +18,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 
 /**
- * 토큰 없는 요청에 SNS 탐색과 인기 피드, 프로필 그리드, 영상, 리포스트 탭만 열고 팔로잉 피드와 리포스트는 막는지, 온보딩 전 토큰이 리포스트 경로에 닿지 못하는지 고정한다.
- * 깨지면 비로그인 사용자가 탐색 피드나 프로필 탭을 보지 못하거나 팔로잉 피드를 부르거나 로그인하지 않았거나 온보딩을 마치지 않은 사용자가 리포스트를 남긴다.
+ * 토큰 없는 요청에 SNS 탐색과 인기 피드, 프로필 그리드, 영상, 리포스트 탭만 열고 팔로잉 피드, 리포스트, 저장은 막는지, 온보딩 전 토큰이 리포스트 경로에 닿지 못하는지 고정한다.
+ * 깨지면 비로그인 사용자가 탐색 피드나 프로필 탭을 보지 못하거나 팔로잉 피드를 부르거나 리포스트나 저장을 남기거나 온보딩을 마치지 않은 사용자가 리포스트를 남긴다.
  */
 class GuestSnsFeedAccessIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -95,6 +95,18 @@ class GuestSnsFeedAccessIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(20004))
         mockMvc
             .perform(delete("/api/v1/sns/posts/$POST_PUBLIC_ID/repost"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
+    fun `토큰 없이 저장하거나 저장을 취소하면 401 20004다`() {
+        mockMvc
+            .perform(post("/api/v1/sns/posts/$POST_PUBLIC_ID/save"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        mockMvc
+            .perform(delete("/api/v1/sns/posts/$POST_PUBLIC_ID/save"))
             .andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.errorCode").value(20004))
     }
