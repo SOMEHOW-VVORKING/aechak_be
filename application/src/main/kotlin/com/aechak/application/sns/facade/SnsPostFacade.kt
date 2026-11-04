@@ -7,17 +7,20 @@ import com.aechak.application.file.usecase.command.DeleteFileCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.moderation.usecase.ModerationUseCase
 import com.aechak.application.moderation.usecase.result.ModerationDecision
+import com.aechak.application.sns.service.HashtagService
 import com.aechak.application.sns.service.PostAccessService
 import com.aechak.application.sns.service.PostCommandService
 import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.application.sns.usecase.command.CreatePostCommand
 import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.application.sns.usecase.result.CreatePostResult
+import com.aechak.application.sns.usecase.result.SnsHashtagSearchResult
 import com.aechak.application.sns.usecase.result.SnsPostDetailResult
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.error.SnsErrorCode
+import com.aechak.domain.sns.hashtag.Hashtag
 import com.aechak.domain.sns.post.Post
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
@@ -35,6 +38,7 @@ import org.springframework.transaction.support.TransactionTemplate
 class SnsPostFacade(
     private val postCommandService: PostCommandService,
     private val postAccessService: PostAccessService,
+    private val hashtagService: HashtagService,
     private val moderationUseCase: ModerationUseCase,
     private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
@@ -51,7 +55,11 @@ class SnsPostFacade(
     override fun createPost(command: CreatePostCommand): CreatePostResult {
         findIdempotent(command)?.let { return it }
 
-        val caption = Post.validateDraft(command.caption, command.photoKeys)?.let(::moderate)
+        // 캡션, 첨부, 태그의 형식 규칙을 모두 본 뒤에 금지어를 판정한다
+        val draftCaption = Post.validateDraft(command.caption, command.photoKeys)
+        val hashtags = Post.normalizeHashtags(command.hashtags)
+        val caption = draftCaption?.let(::moderate)
+        if (hashtags.any(moderationUseCase::containsBannedWord)) throw BusinessException(SnsErrorCode.SNS_HASHTAG_BANNED_WORD)
         val petId =
             petProfileUseCase
                 .getPets(command.userId)
@@ -74,7 +82,7 @@ class SnsPostFacade(
             try {
                 tx.execute {
                     postCommandService
-                        .create(command.userId, caption, photoKeys, petId, command.idempotencyKey)
+                        .create(command.userId, caption, photoKeys, hashtags, petId, command.idempotencyKey)
                         .also { committing = true }
                 }!!
             } catch (e: Exception) {
@@ -94,8 +102,12 @@ class SnsPostFacade(
     }
 
     override fun updatePost(command: UpdatePostCommand) {
-        val caption = Post.normalizeCaption(command.caption)?.let(::moderate)
-        tx.execute { postCommandService.update(command.publicId, command.userId, caption) }
+        // 규칙은 게시물 조회보다 먼저 본다. 없는 게시물이어도 규칙을 어긴 수정은 404가 아니라 400이다
+        val draftCaption = Post.normalizeCaption(command.caption)
+        val hashtags = Post.normalizeHashtags(command.hashtags)
+        val caption = draftCaption?.let(::moderate)
+        if (hashtags.any(moderationUseCase::containsBannedWord)) throw BusinessException(SnsErrorCode.SNS_HASHTAG_BANNED_WORD)
+        tx.execute { postCommandService.update(command.publicId, command.userId, caption, hashtags) }
     }
 
     @Transactional(readOnly = true)
@@ -112,7 +124,7 @@ class SnsPostFacade(
             author = author,
             pet = pet,
             caption = post.caption,
-            hashtags = emptyList(),
+            hashtags = hashtagService.namesOf(post.hashtags.map { it.hashtagId }),
             photoUrls = post.media.mapNotNull { fileUseCase.resolveMediaUrl(it.storageKey) },
             // 좋아요, 댓글, 리포스트는 아직 없어 0이다
             likeCount = 0,
@@ -124,6 +136,15 @@ class SnsPostFacade(
             following = pair.following,
             mutedByMe = pair.mutedByMe,
         )
+    }
+
+    @Transactional(readOnly = true)
+    override fun searchHashtags(
+        query: String?,
+        size: Int,
+    ): SnsHashtagSearchResult {
+        val cleaned = Hashtag.clean(query.orEmpty())
+        return hashtagService.search(cleaned, moderationUseCase.containsBannedWord(cleaned), size)
     }
 
     private fun findIdempotent(command: CreatePostCommand): CreatePostResult? =

@@ -4,4 +4,5 @@ data class UpdatePostCommand(
     val userId: Long,
     val publicId: String,
     val caption: String?,
+    val hashtags: List<String>,
 )
