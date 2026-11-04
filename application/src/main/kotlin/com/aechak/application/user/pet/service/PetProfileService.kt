@@ -23,6 +23,8 @@ class PetProfileService(
 ) {
     fun getActivePets(userId: Long): List<PetProfile> = petProfileRepository.findAllActiveByUserIdDefaultFirst(userId)
 
+    fun getActivePetsByIds(petIds: Collection<Long>): List<PetProfile> = petProfileRepository.findAllActiveByIdIn(petIds)
+
     fun register(command: RegisterPetProfileCommand): PetProfile {
         // 동시 요청 둘이 한도를 각각 통과할 수 있음. 문제 시 비관적 락.
         val activeCount = petProfileRepository.countActiveByUserId(command.userId)
