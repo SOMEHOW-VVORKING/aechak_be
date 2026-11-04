@@ -28,7 +28,8 @@ class IntegrationTestConfig {
         private const val REDIS_PORT = 6379
 
         // 운영 MySQL 버전 고정 태그. JVM당 1회만 뜨고, 두 베이스의 컨텍스트가 공유한다.
-        private val mysql = MySQLContainer("mysql:8.4").apply { start() }
+        // 데이터 디렉터리를 tmpfs에 둬서 커밋과 TRUNCATE가 디스크 동기화를 기다리지 않게 한다.
+        private val mysql = MySQLContainer("mysql:8.4").withTmpFs(mapOf("/var/lib/mysql" to "rw")).apply { start() }
 
         // 인증 코드와 발송 제한 저장소. MySQL과 같은 이유로 빈이 아니라 수동 start.
         private val redis = GenericContainer("redis:7.4").withExposedPorts(REDIS_PORT).apply { start() }

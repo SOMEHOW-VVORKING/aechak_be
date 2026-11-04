@@ -144,6 +144,7 @@ AFTER_COMMIT 리스너가 발화하지 않고, 이벤트/outbox 흐름이 조용
 세부:
 
 - 이미지 태그는 운영 DB 버전으로 고정한다(`latest` 금지). 현재 태그 값은 코드가 들고 있다.
+- 데이터 디렉터리는 tmpfs에 둔다. 커밋과 TRUNCATE마다 디스크 동기화를 기다리지 않게 하려는 것이고, binlog와 flush 같은 MySQL 설정은 운영과 같은 기본값을 유지한다.
 - 스키마는 지금 `ddl-auto=create`로 만든다(ERD 확정 전 과도기).
 - 알려진 예외: `boot/batch`는 아웃박스 스위퍼가 실 outbox 테이블을 읽어야 해서 런타임 DB가 MySQL이다(H2 제거 완료, SCRUM-143).
   batch 통합 테스트는 `boot/batch/src/test/.../support/BatchIntegrationTestBase`를 상속한다 — 컨테이너는 `:api` test-fixtures의

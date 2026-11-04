@@ -1,6 +1,7 @@
 package com.aechak.admin.support;
 
 import com.aechak.application.file.port.FileStorage;
+import java.util.Map;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -16,7 +17,9 @@ import org.testcontainers.mysql.MySQLContainer;
 public class IntegrationTestConfig {
 
     // 운영 MySQL 버전 고정 태그. JVM당 1회만 뜨고 컨텍스트들이 공유한다.
-    private static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.4");
+    // 데이터 디렉터리를 tmpfs에 둬서 커밋과 TRUNCATE가 디스크 동기화를 기다리지 않게 한다.
+    private static final MySQLContainer MYSQL =
+            new MySQLContainer("mysql:8.4").withTmpFs(Map.of("/var/lib/mysql", "rw"));
 
     static {
         MYSQL.start();
