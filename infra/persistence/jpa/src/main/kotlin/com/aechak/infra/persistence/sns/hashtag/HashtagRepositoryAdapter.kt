@@ -2,6 +2,7 @@ package com.aechak.infra.persistence.sns.hashtag
 
 import com.aechak.domain.sns.hashtag.Hashtag
 import com.aechak.domain.sns.hashtag.repository.HashtagRepository
+import org.springframework.data.domain.Limit
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -33,7 +34,20 @@ interface HashtagJpaRepository : JpaRepository<Hashtag, Long> {
     fun decreasePostCount(
         @Param("name") name: String,
     ): Int
+
+    // 이스케이프 문자를 쿼리에 적어 DB 기본값에 기대지 않는다
+    @Query(
+        "select h from Hashtag h where h.postCount > 0 and h.name like :pattern escape '\\' " +
+            "order by h.postCount desc, h.name asc",
+    )
+    fun findPopularByNameLike(
+        @Param("pattern") pattern: String,
+        limit: Limit,
+    ): List<Hashtag>
 }
+
+/** 검색어를 글자 그대로 부분 일치하는 LIKE 패턴으로 바꾼다. 이스케이프 문자를 먼저 이스케이프한다 */
+private fun nameContainsPattern(keyword: String): String = "%" + keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 // shortcut: 자동완성은 앞에 와일드카드가 붙은 LIKE라 sns_hashtags를 끝까지 읽는다.
 // 태그가 10만 개를 넘거나 자동완성 응답 P95가 100ms를 넘으면 ngram FULLTEXT 인덱스로 바꾼다.
@@ -61,4 +75,9 @@ class HashtagRepositoryAdapter(
         if (names.isEmpty()) emptyList() else jpaRepository.findAllByNameIn(names)
 
     override fun findAllById(ids: Collection<Long>): List<Hashtag> = jpaRepository.findAllById(ids)
+
+    override fun findPopular(
+        keyword: String,
+        limit: Int,
+    ): List<Hashtag> = jpaRepository.findPopularByNameLike(nameContainsPattern(keyword), Limit.of(limit))
 }

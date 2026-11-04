@@ -3,6 +3,7 @@ package com.aechak.application.sns.usecase
 import com.aechak.application.sns.usecase.command.CreatePostCommand
 import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.application.sns.usecase.result.CreatePostResult
+import com.aechak.application.sns.usecase.result.SnsHashtagSearchResult
 import com.aechak.application.sns.usecase.result.SnsPostDetailResult
 
 interface SnsPostUseCase {
@@ -17,4 +18,10 @@ interface SnsPostUseCase {
         publicId: String,
         viewerId: Long?,
     ): SnsPostDetailResult
+
+    // 해시태그 자동완성. 검색어가 글자 규칙을 어겨도 거부하지 않고 정리한 검색어의 상태로 알린다
+    fun searchHashtags(
+        query: String?,
+        size: Int,
+    ): SnsHashtagSearchResult
 }

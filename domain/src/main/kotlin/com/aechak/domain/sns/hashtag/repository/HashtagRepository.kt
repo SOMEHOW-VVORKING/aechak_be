@@ -17,4 +17,10 @@ interface HashtagRepository {
     fun findAllByNameIn(names: Collection<String>): List<Hashtag>
 
     fun findAllById(ids: Collection<Long>): List<Hashtag>
+
+    /** 이름에 keyword가 글자 그대로 든 태그 중 게시글 수가 1 이상인 것을 수가 많은 순, 같으면 이름 순으로 limit개까지. 빈 keyword는 모든 태그와 맞는다 */
+    fun findPopular(
+        keyword: String,
+        limit: Int,
+    ): List<Hashtag>
 }

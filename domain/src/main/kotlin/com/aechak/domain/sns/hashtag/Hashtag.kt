@@ -41,11 +41,20 @@ class Hashtag protected constructor(
 
         /** 앞의 # 하나와 앞뒤 공백을 떼고 NFC로 정규화한 뒤 영문을 소문자로 바꾼다. 허용 밖 글자나 빈 값은 130500, 30자 초과는 130501이다 */
         fun normalize(raw: String): String {
-            val name = Normalizer.normalize(raw.trim().removePrefix("#").trim(), Normalizer.Form.NFC).lowercase(Locale.ROOT)
-            if (!NAME_PATTERN.matches(name)) throw BusinessException(SnsErrorCode.SNS_HASHTAG_INVALID)
-            // 허용 글자가 모두 BMP 한 글자라 length가 코드 포인트 수와 같다
-            if (name.length > NAME_MAX_LENGTH) throw BusinessException(SnsErrorCode.SNS_HASHTAG_TOO_LONG)
+            val name = clean(raw)
+            if (!hasAllowedChars(name)) throw BusinessException(SnsErrorCode.SNS_HASHTAG_INVALID)
+            if (isTooLong(name)) throw BusinessException(SnsErrorCode.SNS_HASHTAG_TOO_LONG)
             return name
         }
+
+        /** normalize의 표기 정리만 하고 글자 규칙은 보지 않는다. 자동완성은 규칙을 어긴 검색어도 거부하지 않고 정리한 값으로 돌려준다 */
+        fun clean(raw: String): String =
+            Normalizer.normalize(raw.trim().removePrefix("#").trim(), Normalizer.Form.NFC).lowercase(Locale.ROOT)
+
+        /** 비어 있지 않고 허용 글자로만 됐으면 true */
+        fun hasAllowedChars(name: String): Boolean = NAME_PATTERN.matches(name)
+
+        // 허용 글자가 모두 BMP 한 글자라 length가 코드 포인트 수와 같다
+        fun isTooLong(name: String): Boolean = name.length > NAME_MAX_LENGTH
     }
 }

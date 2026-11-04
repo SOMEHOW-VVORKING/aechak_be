@@ -14,11 +14,13 @@ import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.application.sns.usecase.command.CreatePostCommand
 import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.application.sns.usecase.result.CreatePostResult
+import com.aechak.application.sns.usecase.result.SnsHashtagSearchResult
 import com.aechak.application.sns.usecase.result.SnsPostDetailResult
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.error.SnsErrorCode
+import com.aechak.domain.sns.hashtag.Hashtag
 import com.aechak.domain.sns.post.Post
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
@@ -134,6 +136,15 @@ class SnsPostFacade(
             following = pair.following,
             mutedByMe = pair.mutedByMe,
         )
+    }
+
+    @Transactional(readOnly = true)
+    override fun searchHashtags(
+        query: String?,
+        size: Int,
+    ): SnsHashtagSearchResult {
+        val cleaned = Hashtag.clean(query.orEmpty())
+        return hashtagService.search(cleaned, moderationUseCase.containsBannedWord(cleaned), size)
     }
 
     private fun findIdempotent(command: CreatePostCommand): CreatePostResult? =
