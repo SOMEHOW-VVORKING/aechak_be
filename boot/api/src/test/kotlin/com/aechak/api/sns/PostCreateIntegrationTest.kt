@@ -410,6 +410,31 @@ class PostCreateIntegrationTest : SnsPostIntegrationTestBase() {
         }
 
         @Test
+        fun `같은 키 영상 게시를 동시에 보내면 게시하지 못한 요청이 승격한 영상과 썸네일을 지운다`() {
+            val userId = onboardedUser()
+            val video = CreatePostCommand.Video(tmpVideoKey(userId), tmpPhotoKey(userId), 42_500)
+            val command = CreatePostCommand(userId, Ulid.generate(), null, emptyList(), video = video)
+            val publicIds = Collections.synchronizedList(mutableListOf<String>())
+
+            val errors = runConcurrently(List(6) { { publicIds += snsPostUseCase.createPost(command).publicId } })
+
+            assertTrue(errors.isEmpty(), "같은 키 동시 게시는 오류 없이 같은 게시물을 돌려줘야 한다: $errors")
+            assertEquals(1, publicIds.toSet().size)
+            assertEquals(1, postCountOf(userId))
+            val media =
+                jdbcTemplate.queryForMap(
+                    "select m.* from sns_post_media m join sns_posts p on p.id = m.post_id where p.public_id = ?",
+                    publicIds.first(),
+                )
+            val kept = listOf(media["storage_key"] as String, media["thumbnail_key"] as String)
+            assertTrue(kept.none { it in fakeFileStorage.deletedKeys })
+            assertTrue(
+                fakeFileStorage.deletedKeys.containsAll(fakeFileStorage.promotedKeys - kept.toSet()),
+                "게시하지 못한 요청이 승격한 영상과 썸네일은 지워야 한다",
+            )
+        }
+
+        @Test
         fun `같은 새 태그를 서로 다른 순서로 단 게시를 동시에 보내도 교착 없이 태그 행이 하나씩이고 수가 맞다`() {
             val tags = listOf("산책", "댕댕이", "골든리트리버", "ㅋㅋㅋ")
             val threads = 6
