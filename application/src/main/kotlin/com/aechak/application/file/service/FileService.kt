@@ -11,6 +11,7 @@ import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.file.usecase.result.IssuePresignedUrlResult
 import com.aechak.application.file.usecase.result.PromoteFileResult
 import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
 import org.springframework.stereotype.Service
 
 @Service
@@ -25,7 +26,15 @@ class FileService(
             throw BusinessException(FileErrorCode.UNSUPPORTED_FILE_TYPE)
         }
 
-        val issued = fileStorage.issueUploadUrl(command.purpose, fileType, command.userId)
+        // 상한이 있는 용도만 길이를 받아 서명에 넣는다
+        val contentLength =
+            command.purpose.maxBytes?.let { maxBytes ->
+                val length = command.contentLength ?: throw BusinessException(CommonErrorCode.INVALID_REQUEST)
+                if (length > maxBytes) throw BusinessException(FileErrorCode.FILE_TOO_LARGE)
+                length
+            }
+
+        val issued = fileStorage.issueUploadUrl(command.purpose, fileType, command.userId, contentLength)
         return IssuePresignedUrlResult(url = issued.url, key = issued.key)
     }
 

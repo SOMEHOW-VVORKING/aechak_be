@@ -3,7 +3,7 @@
 > 성격: 유스케이스 조율 계층. 트랜잭션 경계, 도메인 간 조합, 입출력 계약(Command/Result/View)의 소유자.
 > 허용 의존: common, domain, spring-context, spring-tx.
 > 예외 — 순수 인메모리 계산 라이브러리: I/O도 프레임워크도 없는 순수 알고리즘 라이브러리는 유스케이스 로직에서 직접 써도 된다
-> (domain의 ulid-creator와 같은 결). 다만 라이브러리를 이 모듈 밖에 두고 싶으면 포트로 감싸 실행 모듈에서 구현한다 — 리뷰 금칙어 판정은 ProfanityScanner 포트로 두고 api 모듈이 아호코라식으로 구현한다.
+> (domain의 ulid-creator와 같은 결). 다만 라이브러리를 이 모듈 밖에 두고 싶으면 포트로 감싸 실행 모듈에서 구현한다 — 금칙어 판정(`application/moderation`)은 ProfanityScanner 포트로 두고 api 모듈이 아호코라식으로 구현한다.
 > I/O가 섞이는 순간(외부 API·저장소·메시지 브로커 등)은 포트로 감싸 infra로 내린다.
 > A-1 결정(L2): 리포지토리는 domain의 포트를 주입받는다 — 이 모듈에 Spring Data 없음 (§5).
 > 금지: web-common, spring-web, infra/*. — HTTP도 기술 구현도 모른다.
@@ -45,6 +45,14 @@ application/src/main/kotlin/com/aechak/application/
   3. 에러코드를 새로 만들지 않는다 — 판정의 주인이 되는 BC의 코드를 쓴다(자격 게이트는 seller BC).
 - 조립을 컨트롤러에 두지 않는 이유는 §2 Controller 규칙과 같다. 여러 UseCase 호출을 엮는 것은 변환이 아니라 조율이다.
 
+### 1-2. 애그리거트 없는 공용 패키지
+
+> 여러 BC가 같은 기능을 쓰는데 그 기능이 **어느 BC의 애그리거트에도 속하지 않을 때** 쓴다.
+
+- 선례: `application/file`(업로드 URL 발급, 승격, 삭제), `application/moderation`(금칙어 판정. 리뷰와 SNS가 같은 기준을 쓴다).
+- 구조는 BC 패키지와 같은 usecase, facade, service, port이고 애그리거트와 리포지토리 포트는 없다. 에러코드가 필요하면 `error/`에 둔다(file).
+- 다른 BC는 이 패키지의 UseCase만 주입받는다. 판정 결과를 어떤 응답으로 바꿀지는 호출한 BC가 정한다.
+
 ## 2. UseCase / Facade / Service 역할 계약
 
 ```kotlin
@@ -62,6 +70,10 @@ package com.aechak.application.order.usecase
  *   예외: 소비 모듈이 다르고 **주입 의존까지 겹치지 않으면** 같은 BC에 Facade를 하나 더 둘 수 있다 —
  *   조회 전용(OrderQueryFacade), 배치 전용(PaymentReconciliationFacade — 확정 파사드의 웹훅 검증기 등을
  *   배치가 끌고 오지 않게). 트랜잭션 경계·Service 호출 규칙은 그대로다.
+ *   같은 소비 모듈이라도 한쪽 기능만 쓰는 무거운 의존(금지어 판정)이 있으면 Facade를 나눌 수 있다 —
+ *   SNS 관계(SnsFacade)와 게시물(SnsPostFacade). 금지어 판정과 게시물 리포지토리는 게시물 쪽만 쓴다.
+ *   게시물 삭제(SnsPostDeletionFacade)는 금지어 판정 의존이 없어 따로 둔다 — 운영자 삭제와 탈퇴 정리를 붙일
+ *   admin과 batch가 이 패키지만 스캔하면 된다.
  * - 이 인터페이스만이 외부(Controller / Consumer / Batch / 타 도메인 Facade)에 노출된다.
  * - 타 도메인이 order를 부를 때도 반드시 이 인터페이스로만 — OrderService 직접 호출 금지.
  *

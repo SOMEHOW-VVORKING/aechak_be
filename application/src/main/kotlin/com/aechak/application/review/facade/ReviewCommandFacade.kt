@@ -4,8 +4,8 @@ import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.messaging.MessagePublisher
+import com.aechak.application.moderation.usecase.ModerationUseCase
 import com.aechak.application.order.usecase.OrderUseCase
-import com.aechak.application.review.moderation.service.ReviewModerationService
 import com.aechak.application.review.service.ReviewCommandService
 import com.aechak.application.review.usecase.ReviewCommandUseCase
 import com.aechak.application.review.usecase.command.CreateReviewCommand
@@ -27,7 +27,7 @@ import org.springframework.transaction.support.TransactionTemplate
 @Service
 class ReviewCommandFacade(
     private val reviewCommandService: ReviewCommandService,
-    private val reviewModerationService: ReviewModerationService,
+    private val moderationUseCase: ModerationUseCase,
     private val orderUseCase: OrderUseCase,
     private val fileUseCase: FileUseCase,
     private val petProfileUseCase: PetProfileUseCase,
@@ -41,7 +41,7 @@ class ReviewCommandFacade(
         reviewCommandService.ensureCanCreateReview(command, orderItem)
 
         val imageKeys = reviewCommandService.resolveImageKeys(command)
-        val moderationDecision = reviewModerationService.decide(command.content)
+        val moderationDecision = moderationUseCase.decide(command.content)
         val petSnapshot =
             petProfileUseCase.findRepresentativePet(command.userId)?.let {
                 ReviewPetSnapshot.of(it.species, it.breedId, it.birthYearMonth, it.weight)

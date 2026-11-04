@@ -89,6 +89,7 @@ class WithdrawalIntegrationTest : IntegrationTestBase() {
                 .webAppContextSetup(context)
                 .addFilters<DefaultMockMvcBuilder>(securityFilterChain)
                 .build()
+        (fileStorage as FakeFileStorage).reset()
     }
 
     @Test
