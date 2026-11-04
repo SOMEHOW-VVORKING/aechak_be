@@ -294,6 +294,16 @@ class PostCreateIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `썸네일 키를 영상 용도로 발급받은 키로 보내면 400 100003이다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = videoJson(tmpVideoKey(userId), tmpVideoKey(userId))))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(100003))
+        assertEquals(0, postCountOf(userId))
+    }
+
+    @Test
     fun `썸네일 승격이 실패하면 먼저 승격한 영상 파일을 지운다`() {
         val userId = onboardedUser()
 
