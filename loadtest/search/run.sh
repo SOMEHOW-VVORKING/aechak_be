@@ -49,6 +49,8 @@ else
   IDLE_HOLD=10 IDLE_SETTLE=20 RAMP_FLOOR_RATES=${RAMP_FLOOR_RATES:-1 0.5 0.25}
   case $DATASET in 1m|mirror) SEQ_REPS=3 SEQ_KW=class ;; *) SEQ_REPS=20 SEQ_KW=all ;; esac
 fi
+# 100만 건은 기준선 첫 페이지 하나가 유휴 상태에서도 10초에 가까워 30초를 쓴다(2026-10-15 기준과 같음)
+case $DATASET in 1m) REQ_TIMEOUT_S=30 ;; *) REQ_TIMEOUT_S=10 ;; esac
 WARMUP_RATE=${WARMUP_RATE:-2}
 IDLE_RDS_CPU_MAX=${IDLE_RDS_CPU_MAX:-5}
 MAX_STABLE='' CAPACITY=''
@@ -68,7 +70,8 @@ if [ "$DATASET" = mirror ]; then PANELS="$PANELS 19" CW_EXTRA="CPUCreditBalance 
 if [ -n "$ES_URL" ]; then PANELS="$PANELS 15 16"; fi
 
 ENV_step=$STEP ENV_dataset=$DATASET ENV_variant=$VARIANT ENV_date_kst=$DATE_KST ENV_kit_version=$KIT_VERSION
-ENV_rds_id=$RDS_ID ENV_rds_class=$RDS_CLASS ENV_jar=api-$REV.jar
+ENV_rds_id=$RDS_ID ENV_rds_class=$RDS_CLASS ENV_jar=api-$REV.jar ENV_request_timeout=${REQ_TIMEOUT_S}s
+ENV_kit_hash=$(kit_hash)
 # shortcut: api 상한은 apihost compose 고정값을 적는다. 상한을 변형 변수로 바꾸게 되면 docker inspect로 읽는다
 ENV_api_cpus=1 ENV_api_mem=2g
 ENV_k6_version=$("$K6_BIN" version 2>/dev/null | awk '{print $2}' || true)
@@ -134,6 +137,8 @@ done
 
 # 2. manifest 확인
 if [ "$LOCAL" = 1 ]; then MF=$OUT/manifest/local.json; else MF=$KIT/results/manifest/$DATASET.json; fi
+# 거울층은 10만 건 기준 스냅샷에서 복원하므로 10만 건 manifest와 비교한다
+if [ "$DATASET" = mirror ]; then MF=$KIT/results/manifest/100k.json; fi
 if is_dry; then
   sql < "$KIT/sql/manifest.sql"
   log "DRY: manifest 비교 생략 ($MF)"
@@ -267,7 +272,7 @@ new_run() {  # $1 cell $2 rep: run id를 정하고 run마다 달라지는 ENV_ �
   RID=$(rid_of "$1" "$2")
   ENV_run_id=$RID ENV_cell=$1 ENV_rep=$2 ENV_req_rate='' ENV_scenario='' ENV_max_vus='' ENV_dropped_iterations=''
   ENV_k6_exit='' ENV_k6_max_rss_kb='' ENV_skip_reason='' ENV_start_ms='' ENV_end_ms=''
-  ENV_bp_reads_delta='' ENV_bp_read_requests_delta='' ENV_bp_disk_read_flag='' ENV_probe_rate=''
+  ENV_bp_reads_delta='' ENV_bp_read_requests_delta='' ENV_bp_disk_read_flag='' ENV_probe_rate='' ENV_trace_offset=''
 }
 
 begin_run() {  # $1 cell $2 rep
@@ -297,6 +302,7 @@ end_run() {
   cw_fetch "$RDS_ID" "$ENV_start_ms" "$ENV_end_ms" "$RAW/$RID.cw.csv" $CW_EXTRA
   if [ "$LOCAL" = 1 ]; then local_slow_copy "$SLOW0" "$RAW/$RID.slow.log"
   else slowlog_fetch "$RDS_ID" "$ENV_start_ms" "$ENV_end_ms" "$RAW/$RID.slow.log"; fi
+  prom_export "$ENV_start_ms" "$ENV_end_ms" > "$RAW/$RID.prom.json" || warn "Prometheus 지표 저장 실패: $RID"
   write_env "$RAW/$RID.env.txt"
   case $1 in full|small) CAPTURES="$CAPTURES $RID:$1" ;; esac
   upload_run "$RID"
@@ -323,7 +329,8 @@ k6_run() {
   K6_EXIT=0 K6_RSS=''
   c=(env "K6_PROMETHEUS_RW_SERVER_URL=$PROM_URL/api/v1/write" "K6_PROMETHEUS_RW_TREND_STATS=p(50),p(95),p(99),max"
      "$K6_BIN" run --quiet --tag "testid=$RID" -o "$K6_PROM_OUT"
-     -e "BASE_URL=$BASE_URL" -e "RUN_ID=$RID" -e "SUMMARY_FILE=$pre.json" -e "TEXT_SUMMARY_FILE=$pre.k6.txt")
+     -e "BASE_URL=$BASE_URL" -e "RUN_ID=$RID" -e "SUMMARY_FILE=$pre.json" -e "TEXT_SUMMARY_FILE=$pre.k6.txt"
+     -e "REQUEST_TIMEOUT=${REQ_TIMEOUT_S}s")
   if [ "$TIME_RSS" = 1 ]; then c=(/usr/bin/time -f %M -o "$pre.rss" "${c[@]}"); fi
   for a in "$@"; do
     case $a in
@@ -353,6 +360,7 @@ measure() {
       REQ_RATE=*) ENV_req_rate=${a#*=} ;;
       MAX_VUS=*) ENV_max_vus=${a#*=} ;;
       PROBE_RATE=*) ENV_probe_rate=${a#*=} ;;
+      TRACE_OFFSET=*) ENV_trace_offset=${a#*=} ;;
     esac
   done
   k6_run "$RAW/$RID" "$@"
@@ -361,12 +369,12 @@ measure() {
   end_run "$cap"
 }
 
-# ramp_stage <요청률>: 단계 하나를 돌려 .ramp.tsv에 한 줄을 붙인다. SLO를 지키면 0
+# ramp_stage <요청률> [길이]: 단계 하나를 돌려 .ramp.tsv에 한 줄을 붙인다. SLO를 지키면 0
 # 실패율 1% 미만, dropped 0, k6 종료 0(처리 기준)이면 RAMP_CAP_OK=1
 ramp_stage() {
-  local rate=$1 row s e d
+  local rate=$1 dur=${2:-$RAMP_DUR} row s e d
   s=$(now_ms)
-  k6_run "$RAW/$RID.s$rate" SCENARIO=rate "REQ_RATE=$rate" "DURATION=$RAMP_DUR" "MAX_VUS=$(max_vus "$rate")"
+  k6_run "$RAW/$RID.s$rate" SCENARIO=rate "REQ_RATE=$rate" "DURATION=$dur" "MAX_VUS=$(max_vus "$rate")"
   e=$(now_ms)
   row=$(k6_eval "$RAW/$RID.s$rate.json")
   if is_dry && [ ! -s "$RAW/$RID.s$rate.json" ]; then row="na	na	na	0	0	1"; fi
@@ -382,17 +390,22 @@ ramp_stage() {
   [ "$(printf '%s' "$row" | cut -f6)" = 1 ]
 }
 
+# floor_dur <요청률>: 반복이 20회 이상 들도록 늘린 바닥 단계 길이. 낮은 요청률의 45초에는 검색어 등급이 다 들지 않는다
+# 분당 반복 수는 search.js의 iterRate처럼 반올림하고 1.4는 search.js의 REQS_PER_MIXED_ITER다(ramp는 늘 MIX=mixed)
+floor_dur() {
+  awk -v r="$1" -v d="${RAMP_DUR%s}" 'BEGIN{m = int(r * 60 / 1.4 + 0.5); if (m < 1) m = 1; s = 20 * 60 / m; if (s > int(s)) s = int(s) + 1; print (s > d ? s : d) "s"}'
+}
+
 # RAMP_RATES를 올라가며 처리 기준을 처음 못 지킨 단계에서 멈춘다. 첫 SLO 실패 전까지 SLO를 지킨 마지막 단계가 최대 안정 요청률이다
-# 첫 단계부터 처리 기준을 못 지키면 RAMP_FLOOR_RATES를 내려가며 SLO를 처음 지킨 단계에서 멈추고 그 단계가 최대 안정 요청률이다
+# 첫 단계부터 SLO를 못 지키면(처리 기준 통과 여부와 무관) RAMP_FLOOR_RATES를 내려가며 SLO를 처음 지킨 단계에서 멈추고 그 단계가 최대 안정 요청률이다
 # 처리 가능 요청률은 돈 단계 중 p95를 빼고 실패율 1% 미만, dropped 0, k6 종료 0인 가장 높은 단계다
 cell_ramp() {
-  local rate t slo=1 n=0
+  local rate t slo=1
   begin_run ramp 1
   RAMP_TSV=$RAW/$RID.ramp.tsv RAMP_RAN='' RAMP_DROPPED=0
   printf 'rate\thttp_reqs_per_s\tfirst_p95_ms\tfirst_p99_ms\tfailed_pct\tdropped\tpass\tstart_ms\tend_ms\tk6_exit\n' > "$RAMP_TSV"
   MAX_STABLE=0
   for rate in $RAMP_RATES; do
-    n=$((n + 1))
     if ramp_stage "$rate"; then
       if [ "$slo" = 1 ]; then MAX_STABLE=$rate; fi
     else
@@ -400,13 +413,13 @@ cell_ramp() {
     fi
     [ "$RAMP_CAP_OK" = 1 ] || break
   done
-  if [ "$n" = 1 ] && [ "$RAMP_CAP_OK" = 0 ]; then
+  if [ "$MAX_STABLE" = 0 ]; then
     for rate in $RAMP_FLOOR_RATES; do
       # 바닥 단계마다 앞 단계가 남긴 쿼리와 Hikari 대기가 빠질 때까지 유휴 대기를 한다
       t=$SECONDS
       idle_wait
       log "ramp 바닥 단계 $rate req/s 전 유휴 대기 $((SECONDS - t))s"
-      if ramp_stage "$rate"; then MAX_STABLE=$rate; break; fi
+      if ramp_stage "$rate" "$(floor_dur "$rate")"; then MAX_STABLE=$rate; break; fi
     done
   fi
   CAPACITY=$(awk -F'\t' 'NR > 1 && $5 != "na" && $5 < 1 && $6 == 0 && $10 == 0 && $1 > c {c = $1} END {print c + 0}' "$RAMP_TSV")
@@ -509,6 +522,10 @@ for kv in $ENVS; do set -- "$@" --env "$kv"; done
 log "api 재시작 rev=$REV"
 restart_api "$@" || die "$E_API" "api가 준비되지 않았다"
 rds_idle_wait
+# explain 셀이 켜는 history_long consumer를 변형마다 끈 상태로 시작해 before와 after의 관측 부하를 맞춘다
+echo "UPDATE performance_schema.setup_consumers SET enabled = 'NO' WHERE name = 'events_statements_history_long'" | sql || true
+ENV_ps_history_long=$(echo "SELECT enabled FROM performance_schema.setup_consumers WHERE name = 'events_statements_history_long'" | sql || true)
+if ! is_dry && [ "$ENV_ps_history_long" != NO ]; then die 1 "events_statements_history_long consumer를 끄지 못했다(${ENV_ps_history_long:-읽기 실패})"; fi
 measure warmup 1 none SCENARIO=rate "REQ_RATE=$WARMUP_RATE" "DURATION=$WARM_DUR" "MAX_VUS=$(max_vus "$WARMUP_RATE")"
 
 # 5. 셀
@@ -521,8 +538,9 @@ for c in $ALL_CELLS; do
     steady)
       if ! base_rate; then skip_cell steady "$SKIP_WHY"; continue; fi
       r=$(mul "$BASE" 0.7)
+      # 반복마다 다른 고정 순서를 써서 세 run의 폭에 요청 구성의 차이도 들게 한다. before와 after는 같은 반복끼리 순서가 같다
       for rep in 1 2 3; do
-        measure steady "$rep" full SCENARIO=rate "REQ_RATE=$r" "DURATION=$STEADY_DUR" "MAX_VUS=$(max_vus "$r")"
+        measure steady "$rep" full SCENARIO=rate "REQ_RATE=$r" "DURATION=$STEADY_DUR" "MAX_VUS=$(max_vus "$r")" "TRACE_OFFSET=$(( (rep - 1) * 100000 ))"
       done ;;
     spike)
       if ! base_rate; then skip_cell spike "$SKIP_WHY"; continue; fi

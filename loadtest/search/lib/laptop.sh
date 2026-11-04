@@ -197,6 +197,8 @@ cmd_sync() {
     --exclude search/tools/.venv --exclude search/.perf --exclude monitoring/.local \
     --exclude .DS_Store --exclude __pycache__ -C "$ROOT/loadtest" search monitoring
   x aws s3 cp --only-show-errors "$PERF_DIR/kit.tgz" "s3://$BUCKET/kit/current.tgz"
+  # env.txt의 kit_hash로 그 run이 쓴 kit를 다시 받을 수 있게 해시 이름으로도 둔다
+  x aws s3 cp --only-show-errors "$PERF_DIR/kit.tgz" "s3://$BUCKET/kit/$(kit_hash).tgz"
   log "kit 업로드"
 }
 

@@ -2,16 +2,16 @@
 
 키워드 상품 검색(`GET /api/v1/search/products`)의 처리 한계와 병목을 재는 kit다. 검색 성능 개선 시리즈(SEARCH-T00부터 T10)의 모든 단계가 같은 방식으로 재고 같은 표와 같은 Grafana 캡처를 남기도록 측정 규약을 코드로 고정한다. 수치는 AWS의 전용 perf 스택에서만 낸다. dev 환경을 쓰면 팀이 쓰는 DB에 상품 100만 건을 넣고 CPU를 포화시켜야 하고, develop이 머지될 때마다 api가 다시 배포되어 before와 after를 같은 조건에서 잴 수 없다.
 
-규약(셀 집합, 반복, 인스턴스, Hikari, 인스턴스 수명 주기, manifest, 캡처 목록)을 바꾸면 `lib/common.sh`의 `KIT_VERSION`을 올린다. 이 값은 env.txt마다 `kit_version`으로 남고, 버전이 다른 결과끼리는 비교하지 않는다. 버전 2에서 바뀐 점은 셋이다. ramp는 SLO에 실패한 뒤에도 처리 기준을 지키는 동안 계속 올라가 처리 가능 요청률을 찾는다. 바닥 단계는 첫 단계부터 처리 기준을 못 지킬 때만 돈다. VU 상한은 반복 하나가 차례로 보낼 수 있는 최대 요청 수로 잡는다. 버전 1은 SEARCH-T00의 첫 AWS 측정에만 썼다.
+규약(셀 집합, 반복, 인스턴스, Hikari, 인스턴스 수명 주기, manifest, 캡처 목록)을 바꾸면 `lib/common.sh`의 `KIT_VERSION`을 올린다. 이 값은 env.txt마다 `kit_version`으로 남고, 버전이 다른 결과끼리는 비교하지 않는다. 버전 2에서 바뀐 점은 셋이다. ramp는 SLO에 실패한 뒤에도 처리 기준을 지키는 동안 계속 올라가 처리 가능 요청률을 찾는다. 바닥 단계는 첫 단계부터 처리 기준을 못 지킬 때만 돈다. VU 상한은 반복 하나가 차례로 보낼 수 있는 최대 요청 수로 잡는다. 버전 1은 SEARCH-T00의 첫 AWS 측정에만 썼고 버전 2는 SEARCH-T01에 썼다. 버전 3에서 바뀐 점은 셋이다. ramp는 첫 단계가 SLO에 실패하면 처리 기준을 지켰더라도 바닥 단계를 내려가며 SLO를 지키는 요청률을 찾고 바닥 단계는 반복이 20회 이상 들도록 늘린다. 검색어, 필터, 요청 흐름을 반복 순번으로 정한다. 변형을 시작할 때 `events_statements_history_long` consumer를 끄고 꺼진 것을 확인하지 못하면 멈춰서 before와 after의 관측 설정을 맞춘다.
 
 ## 두 층
 
 | 층 | 구성 | 쓰는 단계 |
 |---|---|---|
 | 측정층 | RDS `db.m7g.large`(데이터 크기마다 하나, `aechak-perf-100k`와 `aechak-perf-1m`), api 호스트 EC2 `m7i.large`(api 컨테이너는 dev 태스크와 같은 1 vCPU, 2GB), 러너 EC2 `c7g.large`(k6와 모니터링), T07부터 ES 호스트 `m7g.large` | 모든 단계의 수치 |
-| 운영 거울층 | 기준 스냅샷을 dev와 prod가 쓰는 `db.t4g.micro`로 복원한 `aechak-perf-mirror`. 나머지는 측정층과 같다 | T01과 T10만 |
+| 운영 거울층 | 10만 건 기준 스냅샷을 dev와 prod가 쓰는 `db.t4g.micro`로 복원한 `aechak-perf-mirror`. 나머지는 측정층과 같고 manifest는 10만 건 것과 비교한다 | T01과 T10만 |
 
-측정층은 버스트 크레딧이 없는 고정 성능 인스턴스라서 앞 측정이 쓴 크레딧이 뒤 측정에 섞이지 않는다. 운영 거울층은 실제 서비스 크기에서 같은 셀을 돌려 측정층 숫자가 현실과 얼마나 다른지 보여 준다. 거울층에서는 `CPUCreditBalance`와 `CPUSurplusCreditBalance`를 함께 기록하고 크레딧이 바닥난 상태의 셀은 무효로 한다.
+측정층은 버스트 크레딧이 없는 고정 성능 인스턴스라서 앞 측정이 쓴 크레딧이 뒤 측정에 섞이지 않는다. 운영 거울층은 실제 서비스 크기에서 같은 셀을 돌려 측정층 숫자가 현실과 얼마나 다른지 보여 준다. 거울층에서는 `CPUCreditBalance`와 `CPUSurplusCreditBalance`를 함께 기록한다. 거울층 RDS는 unlimited 모드라 크레딧이 바닥나도 CPU가 기준 성능으로 깎이지 않고 초과분 요금만 붙으므로 그 셀도 유효하다. 대신 크레딧이 바닥난 시각과 초과 크레딧 최대값, `CPUSurplusCreditsCharged`를 결과에 적어 다음 거울층 측정(T10)이 같은 상태에서 돌았는지 비교한다.
 
 api 컨테이너는 `SPRING_PROFILES_ACTIVE=local`에 환경변수로 DB, Redis, Kafka 주소를 받는다. Hikari는 기본값(최대 10)을 시리즈 내내 그대로 쓰고, `/actuator/prometheus`는 perf 호스트에서만 환경변수로 노출한다.
 
@@ -72,18 +72,18 @@ make down
 | `FORCE=1` | 꺼짐 | 이미 있는 run id를 지우고 다시 잰다(`run.sh --force`) |
 | `MAX_VUS_CAP` | 1500 | k6 VU 상한 |
 | `IDLE_RDS_CPU_MAX` | 5 | 변형 시작에서 기다리는 RDS CPU 유휴 기준(%) |
-| `RAMP_FLOOR_RATES` | `1 0.5 0.25`, QUICK은 `1 0.5` | ramp 첫 단계가 처리 기준을 못 지키면 내려가며 시도할 요청률 |
+| `RAMP_FLOOR_RATES` | `1 0.5 0.25`, QUICK은 `1 0.5` | ramp 첫 단계가 SLO를 못 지키면 내려가며 시도할 요청률 |
 | `WARMUP_RATE` | 2 | 워밍업 요청률 |
 
 ## 셀과 시간
 
-변형(코드나 DDL 상태) 하나마다 데이터 크기 하나에서 아래 순서로 돈다. 부하 수치는 모두 초당 HTTP 요청(req/s)이다. 혼합 반복 하나는 요청 약 1.4개라서 `search.js`가 반복률로 바꾸고, 결과 표에는 실제 `http_reqs` 비율을 적는다.
+변형(코드나 DDL 상태) 하나마다 데이터 크기 하나에서 아래 순서로 돈다. 부하 수치는 모두 초당 HTTP 요청(req/s)이다. 혼합 반복 하나는 요청 약 1.4개라서 `search.js`가 반복률로 바꾸고, 결과 표에는 실제 `http_reqs` 비율을 적는다. 검색어, 필터, 요청 흐름은 반복 순번에 무리수를 곱한 값의 소수 부분으로 고른다. 같은 셀은 before와 after가 같은 순서로 요청하고 반복이 24회뿐인 run도 검색어 비율이 가중치에 가깝다. 다음 페이지는 앞 응답이 성공했을 때만 보내므로 실제 요청 수는 응답에 따라 달라진다. steady는 반복마다 순번에 0, 100000, 200000을 더해서 세 run이 서로 다른 순서를 쓰고 before와 after는 같은 반복끼리 순서가 같다. 다른 셀은 순번 0부터 시작한다. 짧은 run은 검색어 비율이 맞아도 검색어와 흐름의 조합까지 고르게 들지는 않는다(24회면 강아지 두세 번이 모두 첫 페이지일 수 있다). 그래서 짧은 셀의 차이는 결과 표의 실제 요청 구성과 함께 본다.
 
 | 셀 | 내용 | 벽시계 |
 |---|---|---|
 | warmup | api 재시작 직후 2 req/s로 60초. raw는 남기지만 표와 캡처에서 뺀다 | 1분 |
 | smoke | 1 VU 30초. 응답과 오류 코드 확인 | 1분 |
-| ramp | 2, 4, 8, 16, 32, 64, 128, 256 req/s를 45초씩 올라간다. 첫 페이지 p95 500ms 미만, 실패율 1% 미만, dropped_iterations 0을 지키고 k6가 안전 중단하지 않은 단계는 SLO를 통과한다. p95는 보지 않고 실패율 1% 미만, dropped_iterations 0, k6 종료 코드 0인 단계는 처리 기준을 통과한다. 처리 기준을 지키는 동안 계속 올라가고 처리 기준을 처음 못 지킨 단계에서 멈춘다. 처음 SLO에 실패하기 전까지 SLO를 통과한 마지막 단계가 최대 안정 요청률이고 그 뒤 단계는 이 값을 올리지 않는다. 처리 기준을 통과한 가장 높은 단계가 처리 가능 요청률(`capacity_rate`)이다. 2 req/s부터 처리 기준을 못 지키면 `RAMP_FLOOR_RATES`(1, 0.5, 0.25)를 내려가며 단계마다 유휴 대기를 한 뒤 돌고 SLO를 처음 통과한 단계에서 멈춘다. 이때는 그 단계가 최대 안정 요청률이고 모두 실패하면 0이다. 결과의 단계 표는 단계마다 통과한 기준(SLO, 처리 기준만, 없음)을 적는다 | 최대 6분 |
+| ramp | 2, 4, 8, 16, 32, 64, 128, 256 req/s를 45초씩 올라간다. 첫 페이지 p95 500ms 미만, 실패율 1% 미만, dropped_iterations 0을 지키고 k6가 안전 중단하지 않은 단계는 SLO를 통과한다. p95는 보지 않고 실패율 1% 미만, dropped_iterations 0, k6 종료 코드 0인 단계는 처리 기준을 통과한다. 처리 기준을 지키는 동안 계속 올라가고 처리 기준을 처음 못 지킨 단계에서 멈춘다. 처음 SLO에 실패하기 전까지 SLO를 통과한 마지막 단계가 최대 안정 요청률이고 그 뒤 단계는 이 값을 올리지 않는다. 처리 기준을 통과한 가장 높은 단계가 처리 가능 요청률(`capacity_rate`)이다. 2 req/s부터 SLO를 못 지키면 처리 기준 통과 여부와 무관하게 올라가는 단계가 끝난 뒤 `RAMP_FLOOR_RATES`(1, 0.5, 0.25)를 내려가며 단계마다 유휴 대기를 한 뒤 돌고 SLO를 처음 통과한 단계에서 멈춘다. 이때는 그 단계가 최대 안정 요청률이고 모두 실패하면 0이다. 바닥 단계는 반복이 20회 이상 들도록 길이를 늘린다(0.5 req/s면 58초, 0.25 req/s면 110초). 결과의 단계 표는 단계마다 통과한 기준(SLO, 처리 기준만, 없음)을 적는다 | 최대 6분, 바닥 단계를 돌면 5분 안팎 더 |
 | steady | 기준 요청률의 70%로 3분씩 3회. 세 p95의 중앙값과 최소 최대가 결과이고 그 폭이 이 변형의 잡음 폭 | 약 12분 |
 | spike | 기준 요청률의 3배를 30초, 이어서 기준 요청률의 절반(최대 2 req/s)으로 탐침 90초. 오류율, 오류 코드, 회복 시간(탐침의 회복 창 이동 p95가 회복 기준 아래로 돌아오기까지), dropped_iterations. 회복 기준은 500ms와 기준 steady 첫 페이지 p95 중앙값의 1.2배 중 큰 쪽이다. 기준 steady는 같은 단계 before의 steady이고 before가 없으면 그 변형 자신의 steady다. steady 행이 없으면 500ms를 쓴다. before와 after는 같은 회복 기준으로 비교하고 spike 표에 회복 기준을 적는다. 회복 창은 5초와 3 / 탐침 요청률(초) 중 긴 쪽이라 0.25 req/s 탐침이면 12초이고 탐침 시간 안에 내려오지 않으면 90초 안에 회복 안 됨처럼 관찰 한도를 적는다. burst는 시작할 때 VU를 `MAX_VUS`만큼 만들어 둔다 | 2분 |
 | sequential | 1 VU로 검색어 x 정렬 x 페이지(1, 2)마다 반복. 10만 건은 20회, 100만 건과 거울층은 등급 대표 검색어만 3회 | 약 3분 |
@@ -91,7 +91,7 @@ make down
 
 변형 하나는 25분에서 30분이고, before와 after 한 단계는 10만 건만이면 약 1시간, 100만 건까지면 약 2시간이다. `CELLS="smoke ramp"`처럼 일부만 돌릴 수 있다.
 
-k6는 요청률을 분당 반복 수로 바꿔 보내므로 0.25 req/s 같은 소수 요청률도 목표와 5% 안으로 맞는다. 실제로 보낼 요청률은 요약 JSON의 `kit.effective_req_rate`에 남는다. VU 상한(`MAX_VUS`)은 초당 반복 수(요청률 / 1.4) x 반복 하나가 차례로 보낼 수 있는 최대 요청 수 3(첫 페이지와 다음 페이지 둘) x 타임아웃 10초 x 1.2이고 최소 20이며 `MAX_VUS_CAP`에서 자른다. 6 req/s면 155이고 기본 상한 1500은 약 58 req/s부터 걸린다. rate 시나리오(warmup, ramp 단계, steady)는 실패율이 50% 이상이면 15초 뒤 k6가 멈추고 종료 코드 99를 낸다. spike, smoke, sequential은 멈추지 않는다.
+k6는 요청률을 분당 반복 수로 바꿔 보내므로 0.25 req/s 같은 소수 요청률도 목표와 5% 안으로 맞는다. 실제로 보낼 요청률은 요약 JSON의 `kit.effective_req_rate`에 남는다. VU 상한(`MAX_VUS`)은 초당 반복 수(요청률 / 1.4) x 반복 하나가 차례로 보낼 수 있는 최대 요청 수 3(첫 페이지와 다음 페이지 둘) x 요청 타임아웃 x 1.2이고 최소 20이며 `MAX_VUS_CAP`에서 자른다. 10만 건에서 6 req/s면 155이고 기본 상한 1500은 약 58 req/s부터 걸린다. 요청 타임아웃은 10만 건과 거울층이 10초, 100만 건이 30초다. 100만 건은 기준선 첫 페이지 하나가 유휴 상태에서도 6초에서 9.5초라 10초로는 부하가 거의 없어도 실패가 나기 때문이고 2026-10-15 기준 측정과 같은 값이다. run의 env.txt `request_timeout`에 적는다. rate 시나리오와 burst는 단계가 끝날 때 남은 반복이 요청을 타임아웃까지 기다릴 수 있게 `gracefulStop`을 반복당 최대 요청 수 x 요청 타임아웃(최소 30초)으로 둔다. rate 시나리오(warmup, ramp 단계, steady)는 실패율이 50% 이상이면 15초 뒤 k6가 멈추고 종료 코드 99를 낸다. spike, smoke, sequential은 멈추지 않는다.
 
 ### 기준 요청률
 
@@ -147,7 +147,7 @@ Grafana 캡처도 이 뒤에 한꺼번에 찍는다. ramp, steady, spike는 전�
 | 코드 | 뜻 |
 |---|---|
 | 0 | 정상 |
-| 1 | 사용법 오류, `FORCE` 없이 이미 있는 run id(AWS), 기준 요청률을 모름(ramp도 `--base-rate`도 없음) |
+| 1 | 사용법 오류, `FORCE` 없이 이미 있는 run id(AWS), 기준 요청률을 모름(ramp도 `--base-rate`도 없음), history_long consumer를 끄지 못함 |
 | 3 | manifest 불일치 |
 | 4 | DDL 상태 불일치 |
 | 5 | api가 준비되지 않음 |
@@ -174,7 +174,7 @@ run id는 `<YYYY-MM-DD>-<STEP>-<DATASET>-<CELL>-<VARIANT>-r<N>`이고 날짜는 
 
 | 결과 경로 | git | 내용 |
 |---|---|---|
-| `results/raw/<run-id>.*` | 제외 | `.json`(k6 요약), `.k6.txt`, `.cw.csv`(RDS 지표 1분 단위), `.digest.txt`(다이제스트 상위 10), `.slow.log`, `.env.txt`, ramp의 `.ramp.tsv`(단계마다 `start_ms`, `end_ms`, `k6_exit`)와 `.s<RATE>.json`, spike의 `.points.csv.gz`, explain의 `.explain.txt` |
+| `results/raw/<run-id>.*` | 제외 | `.json`(k6 요약), `.k6.txt`, `.cw.csv`(RDS 지표 1분 단위), `.digest.txt`(다이제스트 상위 10), `.slow.log`, `.env.txt`, ramp의 `.ramp.tsv`(단계마다 `start_ms`, `end_ms`, `k6_exit`)와 `.s<RATE>.json`, spike의 `.points.csv.gz`, explain의 `.explain.txt`, `.prom.json`(run 구간의 Prometheus 값. Hikari 대기와 활성, `Threads_running`은 5초 수집값의 최대다. Hikari 타임아웃과 api CPU 스로틀링 초는 increase 추정이라 소수가 나온다. api CPU 평균과 최대는 30초 rate를 5초마다 본 값이고 단위는 코어다. 서버 p95 최대는 30초 창 히스토그램 추정의 최대이고 30은 가장 큰 버킷이다. 러너 CPU 최대는 코어 평균 사용률이고 러너 가용 메모리 최소는 MiB다. 30초 창은 run 시작 전 30초까지 걸칠 수 있다) |
 | `results/captures/<run-id>/` | 골라서 커밋 | 패널 PNG `NN-slug.png`와 `00-dashboard.png` |
 | `results/<STEP>.md` | 커밋 | summarize.py가 붙인 표 |
 | `results/manifest/<size>.json` | 커밋 | 데이터셋 기준 상태 |
@@ -183,7 +183,7 @@ run id는 `<YYYY-MM-DD>-<STEP>-<DATASET>-<CELL>-<VARIANT>-r<N>`이고 날짜는 
 | `results/graphs/` | 커밋 | `make graphs` 결과 |
 | `jars/`, `.perf/` | 제외 | jar와 메타, outputs.json, 로그, 노트북 결과 |
 
-env.txt에는 run마다 rev, 트리 해시, merge-base, dirty 여부, jar sha256, hibernate-core와 elasticsearch-java 버전, 검색 테스트 종료 코드, RDS id와 클래스와 엔진 버전, 버퍼 풀 크기, 다이제스트 길이와 `long_query_time` 파라미터, api와 러너 인스턴스 타입, api 상한, Hikari 최대값, 적용 DDL, 스키마와 인덱스 해시, manifest 일치, 변형 환경변수, 요청률, 시나리오, `max_vus`, k6 버전, 버퍼 풀 디스크 읽기 차이, dropped_iterations, 최대 안정 요청률이 들어간다. 이어서 k6 종료 코드(`k6_exit`, ramp는 최대 안정 단계의 값), k6 최대 RSS(`k6_max_rss_kb`, 러너에 GNU time이 있을 때만), 기준 요청률과 출처(`base_rate`, `base_rate_source`), CloudWatch 다시 받기 결과(`cw_complete`), 건너뛴 셀의 이유(`skip_reason`), spike 탐침 요청률(`probe_rate`), ramp의 처리 가능 요청률(`capacity_rate`)이 들어간다. 모르는 값은 `na`다.
+env.txt에는 run마다 rev, 트리 해시, merge-base, dirty 여부, jar sha256, hibernate-core와 elasticsearch-java 버전, 검색 테스트 종료 코드, RDS id와 클래스와 엔진 버전, 버퍼 풀 크기, 다이제스트 길이와 `long_query_time` 파라미터, api와 러너 인스턴스 타입, api 상한, Hikari 최대값, 적용 DDL, 스키마와 인덱스 해시, manifest 일치, 변형 환경변수, 요청률, 시나리오, `max_vus`, k6 버전, 버퍼 풀 디스크 읽기 차이, dropped_iterations, 최대 안정 요청률이 들어간다. 이어서 k6 종료 코드(`k6_exit`, ramp는 최대 안정 단계의 값), k6 최대 RSS(`k6_max_rss_kb`, 러너에 GNU time이 있을 때만), 기준 요청률과 출처(`base_rate`, `base_rate_source`), CloudWatch 다시 받기 결과(`cw_complete`), 건너뛴 셀의 이유(`skip_reason`), spike 탐침 요청률(`probe_rate`), ramp의 처리 가능 요청률(`capacity_rate`), k6 요청 타임아웃(`request_timeout`), kit 소스 해시(`kit_hash`, search의 sh, js, py, sql, yml, Makefile과 monitoring의 yml을 경로 순서로 이어 붙인 sha256 앞 12자리. `make sync`가 같은 묶음을 `s3://<bucket>/kit/<kit_hash>.tgz`로도 올린다), 변형을 시작할 때의 history_long consumer 상태(`ps_history_long`), steady 반복의 순번 오프셋(`trace_offset`)이 들어간다. 모르는 값은 `na`다.
 
 ## 지표와 판정
 
@@ -195,14 +195,14 @@ run마다 항상 기록하는 것은 k6의 p50, p95, p99, 최대값, 처리량, 
 
 한 단계의 변경은 아래를 모두 만족할 때만 채택한다. 하나라도 어긋나면 측정했지만 채택하지 않았다고 기록한다.
 
-1. steady p95의 개선이 잡음 폭 밖이다. before와 after의 세 회 범위가 겹치지 않고 중앙값 차이가 폭보다 크다.
-2. p99가 before보다 잡음 폭 넘게 나빠지지 않는다. 결과 표는 p99 옆에 그 백분위를 계산한 표본 수 n을 적고 n이 100 미만이면 p99 대신 표본 부족(n=40처럼)을 적는다. 이런 행에는 이 조건을 적용하지 않는다.
-3. 같은 부하에서 요청당 RDS CPU초가 줄거나 같다.
+1. steady p95의 개선이 잡음 폭 밖이다. before와 after의 세 회 범위가 겹치지 않고 중앙값 차이가 폭보다 크다. steady 첫 페이지가 run당 수십 건뿐인 100만 건은 몇 % 차이를 steady p95로 판정하지 않고 sequential 중앙값과 steady p50을 함께 본다.
+2. 꼬리 지연이 나빠지지 않는다. steady p99는 run당 첫 페이지가 150건 안팎이면 가장 느린 두세 건이 정하므로 기록만 한다. p99가 before보다 잡음 폭 넘게 나빠 보이면 같은 조건에서 첫 페이지 1,000건 이상을 담은 확인 셀을 따로 돌아 판정한다. 결과 표는 p99 옆에 그 백분위를 계산한 표본 수 n을 적고 n이 100 미만이면 p99 대신 표본 부족(n=40처럼)을 적는다.
+3. 같은 부하에서 요청당 RDS CPU초가 before 세 run의 최댓값을 넘지 않는다. 1분 지표에서 나온 추정치라 before의 범위를 허용 폭으로 쓴다.
 4. 포화 아래에서 Hikari 대기가 0이고 실패율이 1% 미만이다.
 5. spike 회복 시간이 나빠지지 않는다.
 6. equiv diff가 비어 있다. `tools/equiv_diff.py`가 혼합 검색어에서 차이를 찾으면 종료 코드 1이다.
 
-다음 단계를 고르는 병목 판정은 포화점에서 한다. RDS CPU가 80% 이상이면 DB CPU 병목, api CPU가 80% 이상이면 api 병목(이때는 api를 2 vCPU로 한 번 더 재서 둘 다 적는다), Hikari 대기가 쌓이는데 RDS CPU가 낮으면 락이나 긴 트랜잭션 같은 커넥션 점유, 버퍼 풀 디스크 읽기가 0이 아니면 메모리 병목이다. p99는 요청이 수천 건인 steady에서만 게이트에 쓰고(표본 수 n이 100 미만이면 쓰지 않는다), 검색어마다 표본이 작은 sequential에서는 중앙값, p90, 최대값만 적는다.
+다음 단계를 고르는 병목 판정은 포화점에서 한다. RDS CPU가 80% 이상이면 DB CPU 병목, api CPU가 80% 이상이면 api 병목(이때는 api를 2 vCPU로 한 번 더 재서 둘 다 적는다), Hikari 대기가 쌓이는데 RDS CPU가 낮으면 락이나 긴 트랜잭션 같은 커넥션 점유, 버퍼 풀 디스크 읽기가 0이 아니면 메모리 병목이다. sequential은 검색어마다 표본이 작아서 중앙값, p90, 최대값만 적는다.
 
 ## 노트북 local 모드
 

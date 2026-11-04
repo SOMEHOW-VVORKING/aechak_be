@@ -7,6 +7,8 @@
 //   sequential  1 VU로 검색어 x 정렬 x 페이지(1, 2)를 SEQ_REPS번씩 차례로
 // MIX=mixed(기본)는 첫 페이지 60%, 필터 20%, 페이징 20%(첫 페이지와 다음 페이지 최대 둘)라 반복 하나가 요청 약 1.4건이다.
 // MIX=first는 첫 페이지만 보낸다.
+// 검색어, 필터, 요청 흐름은 반복 순번으로 정해서 같은 셀의 before와 after가 같은 순서로 요청한다.
+// TRACE_OFFSET(기본 0)은 순번에 더하는 값이라 steady 반복마다 다른 순서를 쓰게 한다.
 // 예) k6 run --tag testid=RUN -e SCENARIO=rate -e REQ_RATE=8 -e DURATION=45s -e SUMMARY_FILE=x.json search.js
 import http from 'k6/http'
 import exec from 'k6/execution'
@@ -24,6 +26,7 @@ const PROBE_SECONDS = Number(__ENV.PROBE_SECONDS || 90)
 const SEQ_REPS = Number(__ENV.SEQ_REPS || 20)
 const SEQ_KEYWORDS = __ENV.SEQ_KEYWORDS || 'all'
 const SEQ_ONLY = __ENV.SEQ_ONLY || ''
+const TRACE_OFFSET = Number(__ENV.TRACE_OFFSET || 0)
 const REQS_PER_MIXED_ITER = 1.4
 // 페이징 반복은 첫 페이지와 다음 페이지 최대 둘을 차례로 보낸다
 const MAX_NEXT_PAGES = 2
@@ -87,6 +90,11 @@ for (const k of KEYWORDS.filter(k => SEQ_KEYWORDS === 'all' || CLASS_KEYWORDS.in
 }
 if (SCENARIO === 'sequential' && SEQ_COMBOS.length === 0) throw new Error(`SEQ_ONLY ${SEQ_ONLY} matches nothing`)
 
+// 시나리오가 끝날 때 남은 반복이 모든 요청을 타임아웃까지 기다려도 끊기지 않게 한다(k6 기본 30초)
+function gracefulStop(mix) {
+  return `${Math.max(30, maxReqsPerIter(mix) * seconds(REQUEST_TIMEOUT))}s`
+}
+
 function arrival(reqRate, mix, duration, extra) {
   return Object.assign({
     executor: 'constant-arrival-rate',
@@ -95,13 +103,14 @@ function arrival(reqRate, mix, duration, extra) {
     duration,
     preAllocatedVUs: Math.min(MAX_VUS, Math.max(10, Math.ceil(reqRate * 2))),
     maxVUs: MAX_VUS,
+    gracefulStop: gracefulStop(mix),
   }, extra)
 }
 
 function buildScenarios() {
   switch (SCENARIO) {
     case 'smoke':
-      return { smoke: { executor: 'constant-vus', vus: 1, duration: __ENV.DURATION || '30s' } }
+      return { smoke: { executor: 'constant-vus', vus: 1, duration: __ENV.DURATION || '30s', gracefulStop: gracefulStop(MIX) } }
     case 'rate':
       return { rate: arrival(REQ_RATE, MIX, __ENV.DURATION || '180s') }
     case 'spike':
@@ -117,6 +126,7 @@ function buildScenarios() {
           // burst 직후 probe 응답이 타임아웃까지 늘어지므로 VU를 미리 다 만들어 둔다
           preAllocatedVUs: Math.max(5, Math.ceil(PROBE_RATE * seconds(REQUEST_TIMEOUT) * 1.2)),
           maxVUs: Math.max(5, Math.ceil(PROBE_RATE * seconds(REQUEST_TIMEOUT) * 1.2)),
+          gracefulStop: gracefulStop('first'),
           exec: 'probe',
           tags: { phase: 'probe' },
         },
@@ -173,8 +183,14 @@ export const options = {
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
 }
 
+// 반복 순번 i의 k번째 선택값 frac((i + 1) x 무리수). 짧은 run에서도 검색어와 요청 흐름의 비율이 가중치에 가깝다
+const PICK_STEPS = [(Math.sqrt(5) - 1) / 2, Math.SQRT2 - 1, Math.sqrt(3) - 1, Math.sqrt(7) - 2, Math.sqrt(11) - 3]
+function pick(k) {
+  return ((exec.scenario.iterationInTest + 1 + TRACE_OFFSET) * PICK_STEPS[k]) % 1
+}
+
 function pickKeyword() {
-  let r = Math.random() * TOTAL_WEIGHT
+  let r = pick(0) * TOTAL_WEIGHT
   for (const k of KEYWORDS) {
     r -= k.w
     if (r <= 0) return k
@@ -218,8 +234,8 @@ function firstPage(k, kind) {
 
 function filtered(k) {
   const params = { keyword: k.kw, size: 20, sort: 'price_asc', minPrice: 10000, maxPrice: 80000 }
-  if (Math.random() < 0.5) params.category = MID_CATEGORIES[Math.floor(Math.random() * MID_CATEGORIES.length)]
-  if (Math.random() < 0.3) params.freeShipping = true
+  if (pick(2) < 0.5) params.category = MID_CATEGORIES[Math.floor(pick(3) * MID_CATEGORIES.length)]
+  if (pick(4) < 0.3) params.freeShipping = true
   return search(params, { kind: 'filtered', kw_class: k.cls, sort: 'price_asc' })
 }
 
@@ -238,7 +254,7 @@ export default function () {
     firstPage(k, 'first')
     return
   }
-  const r = Math.random()
+  const r = pick(1)
   if (r < 0.6) firstPage(k, 'first')
   else if (r < 0.8) filtered(k)
   else paging(k)
