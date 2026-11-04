@@ -42,3 +42,16 @@ bin/
 .DS_Store
 
 .env*
+
+### loadtest ###
+loadtest/search/jars/
+loadtest/search/results/raw/
+loadtest/search/tools/.venv/
+loadtest/search/.perf/
+loadtest/terraform/.terraform/
+loadtest/terraform/*.tfvars
+loadtest/terraform/*.tfplan
+loadtest/monitoring/.local/
+loadtest/search/tools/__pycache__/
+loadtest/terraform/*.tfstate*
+loadtest/terraform/crash*.log

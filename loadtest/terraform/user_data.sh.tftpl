@@ -1,0 +1,54 @@
+#!/bin/bash
+# perf 호스트 초기 설정. 첫 부팅에만 돈다
+set -euo pipefail
+
+dnf install -y docker jq openssl python3 time
+systemctl enable --now docker
+
+# docker compose 플러그인 고정 버전
+case "$(uname -m)" in
+  aarch64) COMPOSE_ARCH=aarch64; COMPOSE_SHA=733ec76717ceb59052a9609b9dadfb523b2df8eab57a54212872d10a58078ea2 ;;
+  x86_64) COMPOSE_ARCH=x86_64; COMPOSE_SHA=40343e21ca777173e69cff5dbafeb37c6f81f3b0d57d9e597f036e95eb63e76a ;;
+  *) echo "unsupported arch" >&2; exit 1 ;;
+esac
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
+  "https://github.com/docker/compose/releases/download/v5.6.0/docker-compose-linux-$COMPOSE_ARCH"
+echo "$COMPOSE_SHA  /usr/local/lib/docker/cli-plugins/docker-compose" | sha256sum -c -
+chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose
+
+%{ if role == "runner" ~}
+# k6는 노트북과 같은 버전
+curl -fsSL -o /tmp/k6.tgz https://github.com/grafana/k6/releases/download/v2.2.0/k6-v2.2.0-linux-arm64.tar.gz
+echo "4ecd64cadcc792402d16293836115480419c4447c032858f564852d98f1bf54c  /tmp/k6.tgz" | sha256sum -c -
+tar xzf /tmp/k6.tgz -C /tmp
+install -m 0755 /tmp/k6-v2.2.0-linux-arm64/k6 /usr/local/bin/k6
+rm -rf /tmp/k6.tgz /tmp/k6-v2.2.0-linux-arm64
+
+%{ endif ~}
+%{ if role == "es" ~}
+# ES 부트스트랩 검사가 요구하는 값. 재부팅 뒤에도 유지한다
+echo "vm.max_map_count=262144" > /etc/sysctl.d/99-elasticsearch.conf
+sysctl -w vm.max_map_count=262144
+
+%{ endif ~}
+mkdir -p /opt/perf/bin /opt/perf/kit /opt/perf/state /opt/perf/jars /opt/perf/results
+echo "${bucket}" > /opt/perf/state/bucket
+echo "${role}" > /opt/perf/state/role
+
+cat > /etc/profile.d/perf.sh <<'PROFILE'
+export AWS_REGION=${region}
+export AWS_DEFAULT_REGION=${region}
+PROFILE
+
+cat > /opt/perf/bin/kit-pull <<'KITPULL'
+#!/bin/bash
+set -euo pipefail
+B=$(cat /opt/perf/state/bucket)
+aws s3 cp "s3://$B/state/outputs.json" /opt/perf/state/outputs.json --only-show-errors
+aws s3 cp "s3://$B/kit/current.tgz" /tmp/kit.tgz --only-show-errors
+rm -rf /opt/perf/kit.new && mkdir -p /opt/perf/kit.new
+tar xzf /tmp/kit.tgz -C /opt/perf/kit.new
+rm -rf /opt/perf/kit && mv /opt/perf/kit.new /opt/perf/kit
+KITPULL
+chmod 0755 /opt/perf/bin/kit-pull

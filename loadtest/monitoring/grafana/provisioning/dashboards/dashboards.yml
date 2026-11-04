@@ -1,0 +1,21 @@
+apiVersion: 1
+
+# kit-pull이 kit 디렉터리를 교체하면 마운트된 폴더가 비므로 대시보드 삭제를 막는다
+providers:
+  - name: aechak-perf
+    folder: aechak-perf
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/aechak
+
+  - name: community
+    folder: community
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/community

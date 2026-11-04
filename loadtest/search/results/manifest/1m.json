@@ -1,0 +1,112 @@
+{
+  "dataset": "1m",
+  "seeded_at": "2026-11-04T01:07:41+0900",
+  "rows": {
+    "products": 1000000,
+    "product_stats": 600000,
+    "sellers": 1000,
+    "categories": 67
+  },
+  "crc": {
+    "products": 1432554755,
+    "product_stats": 88838228,
+    "sellers": 570770017
+  },
+  "active_discounts": 301000,
+  "visible_products": 960000,
+  "keywords": {
+    "강아지": 470000,
+    "사료": 100000,
+    "연어": 100000,
+    "간식": 63334,
+    "관절": 26667,
+    "하네스": 33333,
+    "바잇미": 25000,
+    "한정판": 1000,
+    "없는상품": 0
+  },
+  "indexes": [
+    {
+      "table": "categories",
+      "name": "fk_categories_parent",
+      "columns": "parent_id",
+      "type": "BTREE",
+      "non_unique": 1
+    },
+    {
+      "table": "categories",
+      "name": "PRIMARY",
+      "columns": "id",
+      "type": "BTREE",
+      "non_unique": 0
+    },
+    {
+      "table": "product_stats",
+      "name": "PRIMARY",
+      "columns": "product_id",
+      "type": "BTREE",
+      "non_unique": 0
+    },
+    {
+      "table": "products",
+      "name": "FKog2rp4qthbtt2lfyhfo32lsw9",
+      "columns": "category_id",
+      "type": "BTREE",
+      "non_unique": 1
+    },
+    {
+      "table": "products",
+      "name": "ix_products_seller_id",
+      "columns": "seller_id,id",
+      "type": "BTREE",
+      "non_unique": 1
+    },
+    {
+      "table": "products",
+      "name": "PRIMARY",
+      "columns": "id",
+      "type": "BTREE",
+      "non_unique": 0
+    },
+    {
+      "table": "products",
+      "name": "uk_product_public_id",
+      "columns": "public_id",
+      "type": "BTREE",
+      "non_unique": 0
+    },
+    {
+      "table": "sellers",
+      "name": "PRIMARY",
+      "columns": "user_id",
+      "type": "BTREE",
+      "non_unique": 0
+    }
+  ],
+  "table_status": [
+    {
+      "table": "categories",
+      "rows": 67,
+      "data_length": 16384,
+      "index_length": 16384
+    },
+    {
+      "table": "product_stats",
+      "rows": 597597,
+      "data_length": 42549248,
+      "index_length": 0
+    },
+    {
+      "table": "products",
+      "rows": 989511,
+      "data_length": 190562304,
+      "index_length": 124633088
+    },
+    {
+      "table": "sellers",
+      "rows": 1000,
+      "data_length": 196608,
+      "index_length": 0
+    }
+  ]
+}

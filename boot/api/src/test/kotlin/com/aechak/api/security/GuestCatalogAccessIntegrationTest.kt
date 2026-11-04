@@ -122,6 +122,13 @@ class GuestCatalogAccessIntegrationTest : IntegrationTestBase() {
             .andExpect(status().isUnauthorized)
     }
 
+    @Test
+    fun `게스트는 메인 포트에서 prometheus 지표를 볼 수 없다`() {
+        mockMvc
+            .perform(get("/actuator/prometheus"))
+            .andExpect(status().isUnauthorized)
+    }
+
     /** 노출 조건을 만족하는 상품 한 건을 심고 공개 식별자를 돌려준다. */
     private fun seedProduct(): String =
         tx.execute {
