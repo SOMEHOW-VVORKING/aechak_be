@@ -113,11 +113,11 @@ def steady_graph(step, runs, out):
     save(fig, os.path.join(out, f'{step}-steady.svg'))
 
 
-def rolling_p95(points, start, end):
+def rolling_p95(points, start, end, window):
     xs, ys = [], []
     t = start + 1
     while t <= end + 1:
-        vals = [ms for ts, ms in points if t - s.RECOVERY_WINDOW_S < ts <= t]
+        vals = [ms for ts, ms in points if t - window < ts <= t]
         if len(vals) >= s.RECOVERY_MIN_SAMPLES:
             xs.append(t)
             ys.append(s.p95(vals))
@@ -125,27 +125,36 @@ def rolling_p95(points, start, end):
     return xs, ys
 
 
-def spike_graph(run, out):
+def spike_graph(run, pool, out):
     t0, samples = s.read_points(run['points'])
-    spike_seconds = (run['summary'] or {}).get('kit', {}).get('spike_seconds', 30)
+    kit = (run['summary'] or {}).get('kit', {})
+    spike_seconds = kit.get('spike_seconds', 30)
+    # 요약 표(spike_section)와 같은 회복 창과 회복 기준을 쓴다
+    probe_rate = run['env'].get('probe_rate') or kit.get('probe_rate', 2)
+    window = s.recovery_window(probe_rate)
+    threshold = s.recovery_threshold(run, pool)
     fig, ax = plt.subplots(figsize=(9, 4.5))
     for i, scenario in enumerate(('burst', 'probe')):
-        pts = [(ts - t0, ms) for ts, ms, sc in samples if sc == scenario]
+        pts = [(ts - t0, ms) for ts, ms, sc, _ in samples if sc == scenario]
         if pts:
             ax.plot([p[0] for p in pts], [p[1] for p in pts], 'o', markersize=3, alpha=0.5,
                     color=COLORS[i], label=f'{scenario} request')
-    probe = [(ts - t0, ms) for ts, ms, sc in samples if sc == 'probe']
+    probe = [(ts - t0, ms) for ts, ms, sc, _ in samples if sc == 'probe']
     if probe:
-        xs, ys = rolling_p95(probe, spike_seconds, max(p[0] for p in probe))
-        ax.plot(xs, ys, color=COLORS[2], label='probe rolling 5s p95')
+        xs, ys = rolling_p95(probe, spike_seconds, max(p[0] for p in probe), window)
+        ax.plot(xs, ys, color=COLORS[2], label=f'probe rolling {window}s p95')
     ax.axvline(spike_seconds, color=INK, linewidth=1)
-    rec = s.recovery_seconds(run['points'], spike_seconds)
+    rec = s.recovery_seconds(run['points'], spike_seconds, probe_rate, threshold, kit.get('probe_seconds', 90))
     if rec is not None:
         ax.axvline(spike_seconds + rec, color=COLORS[2], linewidth=1, linestyle=':')
     note = f'recovery {rec}s' if rec is not None else 'not recovered'
     ax.annotate(f'burst end, {note}', (spike_seconds, 0), xycoords=('data', 'axes fraction'),
                 xytext=(4, 6), textcoords='offset points', color=INK)
     threshold_line(ax)
+    if threshold != s.RECOVERY_P95_MS:
+        ax.axhline(threshold, color=COLORS[2], linestyle='--', linewidth=1)
+        ax.annotate(f'recovery {threshold:.0f} ms', (1, threshold), xycoords=('axes fraction', 'data'),
+                    xytext=(-4, 4), textcoords='offset points', ha='right', color=COLORS[2])
     ax.set_yscale('log')
     ax.yaxis.set_major_locator(FixedLocator([10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 60000]))
     ax.yaxis.set_major_formatter(PLAIN)
@@ -174,7 +183,7 @@ def main():
         steady_graph(step, runs, a.out)
         for r in runs:
             if r['env'].get('cell') == 'spike' and r['points']:
-                spike_graph(r, a.out)
+                spike_graph(r, runs, a.out)
 
 
 if __name__ == '__main__':

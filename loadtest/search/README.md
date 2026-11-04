@@ -9,9 +9,9 @@
 | 층 | 구성 | 쓰는 단계 |
 |---|---|---|
 | 측정층 | RDS `db.m7g.large`(데이터 크기마다 하나, `aechak-perf-100k`와 `aechak-perf-1m`), api 호스트 EC2 `m7i.large`(api 컨테이너는 dev 태스크와 같은 1 vCPU, 2GB), 러너 EC2 `c7g.large`(k6와 모니터링), T07부터 ES 호스트 `m7g.large` | 모든 단계의 수치 |
-| 운영 거울층 | 기준 스냅샷을 dev와 prod가 쓰는 `db.t4g.micro`로 복원한 `aechak-perf-mirror`. 나머지는 측정층과 같다 | T01과 T10만 |
+| 운영 거울층 | 10만 건 기준 스냅샷을 dev와 prod가 쓰는 `db.t4g.micro`로 복원한 `aechak-perf-mirror`. 나머지는 측정층과 같고 manifest는 10만 건 것과 비교한다 | T01과 T10만 |
 
-측정층은 버스트 크레딧이 없는 고정 성능 인스턴스라서 앞 측정이 쓴 크레딧이 뒤 측정에 섞이지 않는다. 운영 거울층은 실제 서비스 크기에서 같은 셀을 돌려 측정층 숫자가 현실과 얼마나 다른지 보여 준다. 거울층에서는 `CPUCreditBalance`와 `CPUSurplusCreditBalance`를 함께 기록하고 크레딧이 바닥난 상태의 셀은 무효로 한다.
+측정층은 버스트 크레딧이 없는 고정 성능 인스턴스라서 앞 측정이 쓴 크레딧이 뒤 측정에 섞이지 않는다. 운영 거울층은 실제 서비스 크기에서 같은 셀을 돌려 측정층 숫자가 현실과 얼마나 다른지 보여 준다. 거울층에서는 `CPUCreditBalance`와 `CPUSurplusCreditBalance`를 함께 기록한다. 거울층 RDS는 unlimited 모드라 크레딧이 바닥나도 CPU가 기준 성능으로 깎이지 않고 초과분 요금만 붙으므로 그 셀도 유효하다. 대신 크레딧이 바닥난 시각과 초과 크레딧 최대값, `CPUSurplusCreditsCharged`를 결과에 적어 다음 거울층 측정(T10)이 같은 상태에서 돌았는지 비교한다.
 
 api 컨테이너는 `SPRING_PROFILES_ACTIVE=local`에 환경변수로 DB, Redis, Kafka 주소를 받는다. Hikari는 기본값(최대 10)을 시리즈 내내 그대로 쓰고, `/actuator/prometheus`는 perf 호스트에서만 환경변수로 노출한다.
 
@@ -91,7 +91,7 @@ make down
 
 변형 하나는 25분에서 30분이고, before와 after 한 단계는 10만 건만이면 약 1시간, 100만 건까지면 약 2시간이다. `CELLS="smoke ramp"`처럼 일부만 돌릴 수 있다.
 
-k6는 요청률을 분당 반복 수로 바꿔 보내므로 0.25 req/s 같은 소수 요청률도 목표와 5% 안으로 맞는다. 실제로 보낼 요청률은 요약 JSON의 `kit.effective_req_rate`에 남는다. VU 상한(`MAX_VUS`)은 초당 반복 수(요청률 / 1.4) x 반복 하나가 차례로 보낼 수 있는 최대 요청 수 3(첫 페이지와 다음 페이지 둘) x 타임아웃 10초 x 1.2이고 최소 20이며 `MAX_VUS_CAP`에서 자른다. 6 req/s면 155이고 기본 상한 1500은 약 58 req/s부터 걸린다. rate 시나리오(warmup, ramp 단계, steady)는 실패율이 50% 이상이면 15초 뒤 k6가 멈추고 종료 코드 99를 낸다. spike, smoke, sequential은 멈추지 않는다.
+k6는 요청률을 분당 반복 수로 바꿔 보내므로 0.25 req/s 같은 소수 요청률도 목표와 5% 안으로 맞는다. 실제로 보낼 요청률은 요약 JSON의 `kit.effective_req_rate`에 남는다. VU 상한(`MAX_VUS`)은 초당 반복 수(요청률 / 1.4) x 반복 하나가 차례로 보낼 수 있는 최대 요청 수 3(첫 페이지와 다음 페이지 둘) x 요청 타임아웃 x 1.2이고 최소 20이며 `MAX_VUS_CAP`에서 자른다. 10만 건에서 6 req/s면 155이고 기본 상한 1500은 약 58 req/s부터 걸린다. 요청 타임아웃은 10만 건과 거울층이 10초, 100만 건이 30초다. 100만 건은 기준선 첫 페이지 하나가 유휴 상태에서도 6초에서 9.5초라 10초로는 부하가 거의 없어도 실패가 나기 때문이고 2026-10-15 기준 측정과 같은 값이다. run의 env.txt `request_timeout`에 적는다. rate 시나리오와 burst는 단계가 끝날 때 남은 반복이 요청을 타임아웃까지 기다릴 수 있게 `gracefulStop`을 반복당 최대 요청 수 x 요청 타임아웃(최소 30초)으로 둔다. rate 시나리오(warmup, ramp 단계, steady)는 실패율이 50% 이상이면 15초 뒤 k6가 멈추고 종료 코드 99를 낸다. spike, smoke, sequential은 멈추지 않는다.
 
 ### 기준 요청률
 
@@ -183,7 +183,7 @@ run id는 `<YYYY-MM-DD>-<STEP>-<DATASET>-<CELL>-<VARIANT>-r<N>`이고 날짜는 
 | `results/graphs/` | 커밋 | `make graphs` 결과 |
 | `jars/`, `.perf/` | 제외 | jar와 메타, outputs.json, 로그, 노트북 결과 |
 
-env.txt에는 run마다 rev, 트리 해시, merge-base, dirty 여부, jar sha256, hibernate-core와 elasticsearch-java 버전, 검색 테스트 종료 코드, RDS id와 클래스와 엔진 버전, 버퍼 풀 크기, 다이제스트 길이와 `long_query_time` 파라미터, api와 러너 인스턴스 타입, api 상한, Hikari 최대값, 적용 DDL, 스키마와 인덱스 해시, manifest 일치, 변형 환경변수, 요청률, 시나리오, `max_vus`, k6 버전, 버퍼 풀 디스크 읽기 차이, dropped_iterations, 최대 안정 요청률이 들어간다. 이어서 k6 종료 코드(`k6_exit`, ramp는 최대 안정 단계의 값), k6 최대 RSS(`k6_max_rss_kb`, 러너에 GNU time이 있을 때만), 기준 요청률과 출처(`base_rate`, `base_rate_source`), CloudWatch 다시 받기 결과(`cw_complete`), 건너뛴 셀의 이유(`skip_reason`), spike 탐침 요청률(`probe_rate`), ramp의 처리 가능 요청률(`capacity_rate`)이 들어간다. 모르는 값은 `na`다.
+env.txt에는 run마다 rev, 트리 해시, merge-base, dirty 여부, jar sha256, hibernate-core와 elasticsearch-java 버전, 검색 테스트 종료 코드, RDS id와 클래스와 엔진 버전, 버퍼 풀 크기, 다이제스트 길이와 `long_query_time` 파라미터, api와 러너 인스턴스 타입, api 상한, Hikari 최대값, 적용 DDL, 스키마와 인덱스 해시, manifest 일치, 변형 환경변수, 요청률, 시나리오, `max_vus`, k6 버전, 버퍼 풀 디스크 읽기 차이, dropped_iterations, 최대 안정 요청률이 들어간다. 이어서 k6 종료 코드(`k6_exit`, ramp는 최대 안정 단계의 값), k6 최대 RSS(`k6_max_rss_kb`, 러너에 GNU time이 있을 때만), 기준 요청률과 출처(`base_rate`, `base_rate_source`), CloudWatch 다시 받기 결과(`cw_complete`), 건너뛴 셀의 이유(`skip_reason`), spike 탐침 요청률(`probe_rate`), ramp의 처리 가능 요청률(`capacity_rate`), k6 요청 타임아웃(`request_timeout`)이 들어간다. 모르는 값은 `na`다.
 
 ## 지표와 판정
 

@@ -49,6 +49,8 @@ else
   IDLE_HOLD=10 IDLE_SETTLE=20 RAMP_FLOOR_RATES=${RAMP_FLOOR_RATES:-1 0.5 0.25}
   case $DATASET in 1m|mirror) SEQ_REPS=3 SEQ_KW=class ;; *) SEQ_REPS=20 SEQ_KW=all ;; esac
 fi
+# 100만 건은 기준선 첫 페이지 하나가 유휴 상태에서도 10초에 가까워 30초를 쓴다(2026-10-15 기준과 같음)
+case $DATASET in 1m) REQ_TIMEOUT_S=30 ;; *) REQ_TIMEOUT_S=10 ;; esac
 WARMUP_RATE=${WARMUP_RATE:-2}
 IDLE_RDS_CPU_MAX=${IDLE_RDS_CPU_MAX:-5}
 MAX_STABLE='' CAPACITY=''
@@ -68,7 +70,7 @@ if [ "$DATASET" = mirror ]; then PANELS="$PANELS 19" CW_EXTRA="CPUCreditBalance 
 if [ -n "$ES_URL" ]; then PANELS="$PANELS 15 16"; fi
 
 ENV_step=$STEP ENV_dataset=$DATASET ENV_variant=$VARIANT ENV_date_kst=$DATE_KST ENV_kit_version=$KIT_VERSION
-ENV_rds_id=$RDS_ID ENV_rds_class=$RDS_CLASS ENV_jar=api-$REV.jar
+ENV_rds_id=$RDS_ID ENV_rds_class=$RDS_CLASS ENV_jar=api-$REV.jar ENV_request_timeout=${REQ_TIMEOUT_S}s
 # shortcut: api 상한은 apihost compose 고정값을 적는다. 상한을 변형 변수로 바꾸게 되면 docker inspect로 읽는다
 ENV_api_cpus=1 ENV_api_mem=2g
 ENV_k6_version=$("$K6_BIN" version 2>/dev/null | awk '{print $2}' || true)
@@ -134,6 +136,8 @@ done
 
 # 2. manifest 확인
 if [ "$LOCAL" = 1 ]; then MF=$OUT/manifest/local.json; else MF=$KIT/results/manifest/$DATASET.json; fi
+# 거울층은 10만 건 기준 스냅샷에서 복원하므로 10만 건 manifest와 비교한다
+if [ "$DATASET" = mirror ]; then MF=$KIT/results/manifest/100k.json; fi
 if is_dry; then
   sql < "$KIT/sql/manifest.sql"
   log "DRY: manifest 비교 생략 ($MF)"
@@ -323,7 +327,8 @@ k6_run() {
   K6_EXIT=0 K6_RSS=''
   c=(env "K6_PROMETHEUS_RW_SERVER_URL=$PROM_URL/api/v1/write" "K6_PROMETHEUS_RW_TREND_STATS=p(50),p(95),p(99),max"
      "$K6_BIN" run --quiet --tag "testid=$RID" -o "$K6_PROM_OUT"
-     -e "BASE_URL=$BASE_URL" -e "RUN_ID=$RID" -e "SUMMARY_FILE=$pre.json" -e "TEXT_SUMMARY_FILE=$pre.k6.txt")
+     -e "BASE_URL=$BASE_URL" -e "RUN_ID=$RID" -e "SUMMARY_FILE=$pre.json" -e "TEXT_SUMMARY_FILE=$pre.k6.txt"
+     -e "REQUEST_TIMEOUT=${REQ_TIMEOUT_S}s")
   if [ "$TIME_RSS" = 1 ]; then c=(/usr/bin/time -f %M -o "$pre.rss" "${c[@]}"); fi
   for a in "$@"; do
     case $a in

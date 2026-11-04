@@ -35,11 +35,11 @@ iso_of_ms() { python3 -I -c 'import sys,datetime; print(datetime.datetime.fromti
 sha256() { if command -v sha256sum >/dev/null; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi; }
 sha256_file() { sha256 < "$1"; }
 nth() { echo "$1" | awk -v n="$2" '{print $n}'; }
-# 초당 혼합 반복(요청률 / 1.4) x 반복 하나의 최대 요청 3건 x 타임아웃 10초 x 1.2를 MAX_VUS_CAP(기본 1500)에서 자른다
+# 초당 혼합 반복(요청률 / 1.4) x 반복 하나의 최대 요청 3건 x 요청 타임아웃(REQ_TIMEOUT_S, 기본 10초) x 1.2를 MAX_VUS_CAP(기본 1500)에서 자른다
 # 1.4와 3은 search.js의 REQS_PER_MIXED_ITER와 MAX_REQS_PER_MIXED_ITER다. 잘리면 로그를 남긴다
 max_vus() {
   local cap=${MAX_VUS_CAP:-1500} v
-  v=$(awk -v r="$1" 'BEGIN{v=r/1.4*3*10*1.2; c=int(v); if (c<v) c++; if (c<20) c=20; print c}')
+  v=$(awk -v r="$1" -v t="${REQ_TIMEOUT_S:-10}" 'BEGIN{v=r/1.4*3*t*1.2; c=int(v); if (c<v) c++; if (c<20) c=20; print c}')
   if [ "$v" -gt "$cap" ]; then log "MAX_VUS ${v}를 MAX_VUS_CAP ${cap}으로 줄인다 (요청률 $1)"; v=$cap; fi
   echo "$v"
 }
@@ -146,7 +146,8 @@ cw_fetch() {
   from=$(iso_of_ms $(( $2 - 60000 ))); to=$(iso_of_ms $(( $3 + 120000 )))
   shift 4
   for m in CPUUtilization DatabaseConnections ReadIOPS FreeableMemory "$@"; do
-    x aws cloudwatch get-metric-statistics --namespace AWS/RDS --metric-name "$m" \
+    # TZ=Asia/Seoul이면 CLI가 시각을 +09:00으로 바꿔 찍어 변형 끝의 cw_complete 확인(UTC 분)과 맞지 않는다
+    x env TZ=UTC aws cloudwatch get-metric-statistics --namespace AWS/RDS --metric-name "$m" \
       --dimensions Name=DBInstanceIdentifier,Value="$id" --start-time "$from" --end-time "$to" \
       --period 60 --statistics Average Maximum --output json \
     | jq -r --arg m "$m" '(.Datapoints // []) | sort_by(.Timestamp)[]
@@ -200,7 +201,7 @@ k6_eval() {
     | map(tostring) | join("\t")' "$1"
 }
 
-ENV_KEYS="run_id step dataset cell variant rep start_ms end_ms date_kst kit_version git_rev git_tree merge_base patch_id dirty jar jar_sha256 hibernate_core elasticsearch_java search_test_exit rds_id rds_class rds_engine_version buffer_pool_size_bytes param_max_digest_length param_perf_schema_max_digest_length param_long_query_time api_instance_type api_cpus api_mem runner_instance_type hikari_max applied_ddl schema_hash index_hash manifest_match search_env req_rate scenario max_vus k6_version bp_reads_delta bp_read_requests_delta bp_disk_read_flag dropped_iterations max_stable_rate k6_exit k6_max_rss_kb base_rate base_rate_source cw_complete skip_reason probe_rate capacity_rate"
+ENV_KEYS="run_id step dataset cell variant rep start_ms end_ms date_kst kit_version git_rev git_tree merge_base patch_id dirty jar jar_sha256 hibernate_core elasticsearch_java search_test_exit rds_id rds_class rds_engine_version buffer_pool_size_bytes param_max_digest_length param_perf_schema_max_digest_length param_long_query_time api_instance_type api_cpus api_mem runner_instance_type hikari_max applied_ddl schema_hash index_hash manifest_match search_env req_rate scenario max_vus k6_version bp_reads_delta bp_read_requests_delta bp_disk_read_flag dropped_iterations max_stable_rate k6_exit k6_max_rss_kb base_rate base_rate_source cw_complete skip_reason probe_rate capacity_rate request_timeout"
 
 # write_env <file>: ENV_<key> 변수를 key=value로 쓴다. 비었으면 na
 write_env() {

@@ -408,7 +408,7 @@ def p95(vals):
 
 
 def read_points(path):
-    """k6 csv에서 (시작 시각 초, [(초, ms, scenario)]) 를 읽는다. 시각은 unix 초나 밀리초 모두 받는다."""
+    """k6 csv에서 (시작 시각 초, [(초, ms, scenario, 성공 여부)]) 를 읽는다. 시각은 unix 초나 밀리초 모두 받는다."""
     t0 = None
     samples = []
     with gzip.open(path, 'rt', encoding='utf-8', newline='') as f:
@@ -417,7 +417,7 @@ def read_points(path):
             ts = ts / 1000 if ts > 1e11 else ts
             t0 = ts if t0 is None else min(t0, ts)
             if row['metric_name'] == 'http_req_duration':
-                samples.append((ts, float(row['metric_value']), row['scenario']))
+                samples.append((ts, float(row['metric_value']), row['scenario'], row.get('expected_response') != 'false'))
     return t0, samples
 
 
@@ -426,19 +426,22 @@ def recovery_window(probe_rate):
     return max(RECOVERY_MIN_WINDOW_S, math.ceil(RECOVERY_MIN_SAMPLES / float(probe_rate)))
 
 
-def recovery_seconds(path, spike_seconds, probe_rate=2, threshold=RECOVERY_P95_MS):
-    """burst가 끝난 뒤 probe 요청의 직전 회복 창 p95가 처음 회복 기준(ms) 아래로 내려온 시점(초). 끝까지 못 내려오면 None."""
+def recovery_seconds(path, spike_seconds, probe_rate=2, threshold=RECOVERY_P95_MS, probe_seconds=None):
+    """burst가 끝난 뒤 probe 요청의 직전 회복 창이 실패 없이 표본 3개 이상이고 p95가 처음 회복 기준(ms) 아래로 내려온 시점(초).
+    탐침 시간(probe_seconds)이 끝난 뒤 들어온 응답으로는 판정하지 않는다. 끝까지 못 내려오면 None."""
     window = recovery_window(probe_rate)
     t0, samples = read_points(path)
-    probe = [(ts, ms) for ts, ms, sc in samples if sc == 'probe']
+    probe = [(ts, ms, ok) for ts, ms, sc, ok in samples if sc == 'probe']
     if not probe:
         return None
     burst_end = t0 + spike_seconds
-    last = max(ts for ts, _ in probe)
+    last = max(ts for ts, _, _ in probe)
+    end = last + 1 if probe_seconds is None else min(last + 1, burst_end + float(probe_seconds))
     t = burst_end + 1
-    while t <= last + 1:
-        vals = [ms for ts, ms in probe if t - window < ts <= t]
-        if len(vals) >= RECOVERY_MIN_SAMPLES and p95(vals) < threshold:
+    while t <= end:
+        win = [(ms, ok) for ts, ms, ok in probe if t - window < ts <= t]
+        vals = [ms for ms, _ in win]
+        if len(vals) >= RECOVERY_MIN_SAMPLES and all(ok for _, ok in win) and p95(vals) < threshold:
             return round(t - burst_end)
         t += 1
     return None
@@ -469,7 +472,8 @@ def spike_section(runs, ref=()):
         probe_rate = r['env'].get('probe_rate') or kit.get('probe_rate', 2)
         window = recovery_window(probe_rate)
         threshold = recovery_threshold(r, list(runs) + list(ref))
-        rec = recovery_seconds(r['points'], kit.get('spike_seconds', 30), probe_rate, threshold) if r['points'] else None
+        rec = recovery_seconds(r['points'], kit.get('spike_seconds', 30), probe_rate, threshold,
+                               kit.get('probe_seconds', 90)) if r['points'] else None
         dropped = metric(r, 'dropped_iterations', 'count') or int(r['env'].get('dropped_iterations') or 0)
         burst = metric(r, 'http_req_failed{phase:burst}', 'rate')
         probe = metric(r, 'http_req_failed{phase:probe}', 'rate')
@@ -553,8 +557,9 @@ def self_test():
         f = tempfile.NamedTemporaryFile(suffix='.csv.gz', delete=False)
         with gzip.open(f.name, 'wt') as g:
             g.write(header)
-            for ts, ms, sc in rows:
-                g.write(f'http_req_duration,{int((EPOCH + ts) * unit)},{ms},,,,true,,GET,u,HTTP/1.1,{sc},,200,,,u,,\n')
+            for ts, ms, sc, *rest in rows:
+                ok = rest[0] if rest else True
+                g.write(f'http_req_duration,{int((EPOCH + ts) * unit)},{ms},,,,{"true" if ok else "false"},,GET,u,HTTP/1.1,{sc},,{200 if ok else 0},,,u,,\n')
         return f.name
 
     # burst 0~10초, probe는 10초부터 초당 2건. 16초까지는 2000ms, 17초부터 50ms
@@ -590,6 +595,26 @@ def self_test():
         spike = {'id': 's', 'env': {'cell': 'spike', 'probe_rate': '0.125'}, 'points': path,
                  'summary': {'metrics': {}, 'kit': {'spike_seconds': 30, 'probe_seconds': 90}}}
         assert '| 90초 안에 회복 안 됨 (회복 창 24s) |' in '\n'.join(spike_section([spike])), spike_section([spike])
+    finally:
+        os.unlink(path)
+
+    # 실패한 탐침은 지연이 회복 기준 아래여도 회복이 아니다. 30초 타임아웃 셋이 31.2초 기준 아래이거나 50ms 실패가 셋이어도 None
+    path = write([(t / 10, 3000, 'burst') for t in range(300)] + [(t, 30000, 'probe', False) for t in range(31, 120, 8)])
+    try:
+        assert recovery_seconds(path, 30, 0.125, 31200) is None
+    finally:
+        os.unlink(path)
+    path = write([(t / 10, 3000, 'burst') for t in range(100)] + [(10 + i / 2, 50, 'probe', False) for i in range(40)])
+    try:
+        assert recovery_seconds(path, 10, 2) is None
+    finally:
+        os.unlink(path)
+    # 탐침 90초가 끝난 뒤 늦게 들어온 빠른 응답으로는 회복을 판정하지 않는다
+    path = write([(t / 10, 3000, 'burst') for t in range(300)] + [(t, 2000, 'probe') for t in range(31, 120, 2)]
+                 + [(t, 50, 'probe') for t in range(121, 140)])
+    try:
+        assert recovery_seconds(path, 30, 2, 500, 90) is None
+        assert recovery_seconds(path, 30, 2, 500) is not None
     finally:
         os.unlink(path)
 

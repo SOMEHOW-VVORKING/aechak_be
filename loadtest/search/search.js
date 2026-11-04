@@ -87,6 +87,11 @@ for (const k of KEYWORDS.filter(k => SEQ_KEYWORDS === 'all' || CLASS_KEYWORDS.in
 }
 if (SCENARIO === 'sequential' && SEQ_COMBOS.length === 0) throw new Error(`SEQ_ONLY ${SEQ_ONLY} matches nothing`)
 
+// 시나리오가 끝날 때 남은 반복이 모든 요청을 타임아웃까지 기다려도 끊기지 않게 한다(k6 기본 30초)
+function gracefulStop(mix) {
+  return `${Math.max(30, maxReqsPerIter(mix) * seconds(REQUEST_TIMEOUT))}s`
+}
+
 function arrival(reqRate, mix, duration, extra) {
   return Object.assign({
     executor: 'constant-arrival-rate',
@@ -95,13 +100,14 @@ function arrival(reqRate, mix, duration, extra) {
     duration,
     preAllocatedVUs: Math.min(MAX_VUS, Math.max(10, Math.ceil(reqRate * 2))),
     maxVUs: MAX_VUS,
+    gracefulStop: gracefulStop(mix),
   }, extra)
 }
 
 function buildScenarios() {
   switch (SCENARIO) {
     case 'smoke':
-      return { smoke: { executor: 'constant-vus', vus: 1, duration: __ENV.DURATION || '30s' } }
+      return { smoke: { executor: 'constant-vus', vus: 1, duration: __ENV.DURATION || '30s', gracefulStop: gracefulStop(MIX) } }
     case 'rate':
       return { rate: arrival(REQ_RATE, MIX, __ENV.DURATION || '180s') }
     case 'spike':

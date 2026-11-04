@@ -1601,7 +1601,7 @@
           "custom": {
             "lineWidth": 2,
             "fillOpacity": 10,
-            "showPoints": "never",
+            "showPoints": "always",
             "spanNulls": false
           },
           "min": 0

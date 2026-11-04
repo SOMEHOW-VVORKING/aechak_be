@@ -44,6 +44,7 @@ JOIN performance_schema.threads t ON t.thread_id = h.thread_id
 WHERE t.processlist_user IS NOT NULL AND t.processlist_user NOT IN ('exporter', 'rdsadmin')
   AND h.thread_id <> PS_CURRENT_THREAD_ID() AND h.event_name = 'statement/sql/select'
   AND h.current_schema = 'aechak' AND h.sql_text NOT LIKE '%performance_schema%' AND h.sql_text NOT LIKE 'select @@%'
+  AND h.sql_text LIKE '%from products %'
 ORDER BY h.event_id
 SQL
   # 이벤트를 먼저 다 읽고 나서 EXPLAIN을 돌린다
