@@ -24,11 +24,12 @@ trap 'rm -rf "$TMP"' EXIT
 echo "UPDATE performance_schema.setup_consumers SET enabled = 'YES' WHERE name = 'events_statements_history_long'" | sql \
   || warn "events_statements_history_long consumer를 켜지 못했다"
 
-# call_api <kw> <sort> [cursor]: 응답 본문은 $TMP/body, 상태 코드를 찍는다
+# call_api <kw> <sort> [cursor]: 응답 본문은 $TMP/body, 상태 코드를 찍는다. FILTER(key=value를 &로 이은 값)가 있으면 덧붙인다
 call_api() {
   local c=(curl -s -G --max-time 60 -o "$TMP/body" -w '%{http_code}' "$BASE_URL/search/products"
            --data-urlencode "keyword=$1" --data-urlencode "sort=$2")
   if [ -n "${3:-}" ]; then c+=(--data-urlencode "cursor=$3"); fi
+  if [ -n "${FILTER:-}" ]; then c+=(--data "$FILTER"); fi
   "${c[@]}" || true
 }
 
@@ -54,7 +55,7 @@ SQL
     echo "SELECT sql_text FROM performance_schema.events_statements_history_long WHERE thread_id = $t AND event_id = $e" \
       | sql -r > "$TMP/sql.$n"
   done < "$TMP/ids"
-  echo "===== kw=$1 sort=$2 page=$3 status=$code totalCount=$total statements=$n ====="
+  echo "===== kw=$1 sort=$2 page=$3${FILTER:+ filter=$FILTER} status=$code totalCount=$total statements=$n ====="
   local k=1
   while [ "$k" -le "$n" ]; do
     text=$(cat "$TMP/sql.$k")
@@ -81,6 +82,11 @@ SQL
     else
       echo "===== kw=$kw sort=popular page=2 다음 페이지 없음 ====="
     fi
+  done
+  # 부하의 필터 요청(search.js filtered)과 같은 모양으로 가격 범위만 건 요청과 카테고리와 무료배송까지 건 요청을 더한다
+  for kw in 강아지 없는상품; do
+    FILTER='minPrice=10000&maxPrice=80000' explain_one "$kw" price_asc 1
+    FILTER='minPrice=10000&maxPrice=80000&category=11&freeShipping=true' explain_one "$kw" price_asc 1
   done
 } > "$OUTF"
 log "explain 완료: $OUTF"
