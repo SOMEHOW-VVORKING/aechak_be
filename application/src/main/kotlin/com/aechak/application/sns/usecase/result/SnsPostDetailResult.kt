@@ -11,6 +11,7 @@ data class SnsPostDetailResult(
     val caption: String?,
     val hashtags: List<String>,
     val photoUrls: List<String>,
+    val video: SnsPostVideoResult?,
     val likeCount: Long,
     val commentCount: Long,
     val repostCount: Long,
@@ -25,4 +26,10 @@ data class SnsPostAuthorResult(
     val publicId: String,
     val nickname: String,
     val profileImageUrl: String?,
+)
+
+data class SnsPostVideoResult(
+    val url: String,
+    val thumbnailUrl: String,
+    val durationMs: Int,
 )
