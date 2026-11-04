@@ -126,6 +126,7 @@ function buildScenarios() {
           // burst 직후 probe 응답이 타임아웃까지 늘어지므로 VU를 미리 다 만들어 둔다
           preAllocatedVUs: Math.max(5, Math.ceil(PROBE_RATE * seconds(REQUEST_TIMEOUT) * 1.2)),
           maxVUs: Math.max(5, Math.ceil(PROBE_RATE * seconds(REQUEST_TIMEOUT) * 1.2)),
+          gracefulStop: gracefulStop('first'),
           exec: 'probe',
           tags: { phase: 'probe' },
         },

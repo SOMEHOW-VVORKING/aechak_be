@@ -391,7 +391,7 @@ ramp_stage() {
 }
 
 # floor_dur <요청률>: 반복이 20회 이상 들도록 늘린 바닥 단계 길이. 낮은 요청률의 45초에는 검색어 등급이 다 들지 않는다
-# 분당 반복 수는 search.js의 iterRate처럼 반올림한다
+# 분당 반복 수는 search.js의 iterRate처럼 반올림하고 1.4는 search.js의 REQS_PER_MIXED_ITER다(ramp는 늘 MIX=mixed)
 floor_dur() {
   awk -v r="$1" -v d="${RAMP_DUR%s}" 'BEGIN{m = int(r * 60 / 1.4 + 0.5); if (m < 1) m = 1; s = 20 * 60 / m; if (s > int(s)) s = int(s) + 1; print (s > d ? s : d) "s"}'
 }
