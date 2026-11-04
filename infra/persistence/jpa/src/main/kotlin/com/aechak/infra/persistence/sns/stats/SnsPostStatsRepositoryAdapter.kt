@@ -29,11 +29,6 @@ interface SnsPostStatsJpaRepository : JpaRepository<SnsPostStats, Long> {
     fun decreaseRepostCount(
         @Param("postId") postId: Long,
     ): Int
-
-    @Query("select s.repostCount from SnsPostStats s where s.postId = :postId")
-    fun findRepostCount(
-        @Param("postId") postId: Long,
-    ): Int?
 }
 
 @Repository
@@ -43,6 +38,4 @@ class SnsPostStatsRepositoryAdapter(
     override fun increaseRepostCount(postId: Long): Int = jpaRepository.increaseRepostCount(postId)
 
     override fun decreaseRepostCount(postId: Long): Int = jpaRepository.decreaseRepostCount(postId)
-
-    override fun findRepostCount(postId: Long): Long = jpaRepository.findRepostCount(postId)?.toLong() ?: 0L
 }

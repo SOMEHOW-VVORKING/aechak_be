@@ -9,6 +9,7 @@ import com.aechak.application.moderation.usecase.ModerationUseCase
 import com.aechak.application.moderation.usecase.result.ModerationDecision
 import com.aechak.application.sns.service.HashtagService
 import com.aechak.application.sns.service.PostAccessService
+import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.PostCommandService
 import com.aechak.application.sns.service.RepostService
 import com.aechak.application.sns.usecase.SnsPostUseCase
@@ -18,17 +19,13 @@ import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.application.sns.usecase.result.CreatePostResult
 import com.aechak.application.sns.usecase.result.SnsHashtagSearchResult
 import com.aechak.application.sns.usecase.result.SnsPostDetailResult
-import com.aechak.application.sns.usecase.result.SnsPostVideoResult
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.hashtag.Hashtag
 import com.aechak.domain.sns.post.Post
-import com.aechak.domain.sns.post.enums.PostMediaKind
 import com.aechak.domain.sns.post.repository.PostRepository
-import com.aechak.domain.sns.repost.repository.RepostRepository
-import com.aechak.domain.sns.stats.repository.SnsPostStatsRepository
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -48,9 +45,8 @@ class SnsPostFacade(
     private val postAccessService: PostAccessService,
     private val hashtagService: HashtagService,
     private val repostService: RepostService,
+    private val postCardAssembler: PostCardAssembler,
     private val postRepository: PostRepository,
-    private val repostRepository: RepostRepository,
-    private val snsPostStatsRepository: SnsPostStatsRepository,
     private val moderationUseCase: ModerationUseCase,
     private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
@@ -141,39 +137,10 @@ class SnsPostFacade(
         viewerId: Long?,
     ): SnsPostDetailResult {
         val post = postAccessService.requirePublished(publicId)
-        val author = postAccessService.requireActiveAuthor(userUseCase.findPublicProfileById(post.authorId))
+        postAccessService.requireActiveAuthor(userUseCase.findPublicProfileById(post.authorId))
         val pair = postAccessService.requireNotBlocked(post.authorId, viewerId)
-        val pet = post.petId?.let { petId -> petProfileUseCase.getPets(post.authorId).pets.firstOrNull { it.petId == petId } }
-        val (photos, videos) = post.media.partition { it.mediaKind == PostMediaKind.IMAGE }
-        return SnsPostDetailResult(
-            publicId = post.publicId,
-            author = author,
-            pet = pet,
-            caption = post.caption,
-            hashtags = hashtagService.namesOf(post.hashtags.map { it.hashtagId }),
-            photoUrls = photos.mapNotNull { fileUseCase.resolveMediaUrl(it.storageKey) },
-            // 영상 행은 게시할 때 썸네일과 길이를 함께 저장한다
-            video =
-                videos.firstOrNull()?.let {
-                    SnsPostVideoResult(
-                        url = fileUseCase.resolveMediaUrl(it.storageKey)!!,
-                        thumbnailUrl = fileUseCase.resolveMediaUrl(it.thumbnailKey)!!,
-                        durationMs = it.durationMs!!,
-                    )
-                },
-            // 좋아요와 댓글은 아직 없어 0이다
-            likeCount = 0,
-            commentCount = 0,
-            repostCount = snsPostStatsRepository.findRepostCount(post.id),
-            edited = post.editedAt != null,
-            createdAt = post.createdAt,
-            isMine = post.authorId == viewerId,
-            following = pair.following,
-            mutedByMe = pair.mutedByMe,
-            reposted = viewerId != null && post.id in repostRepository.findRepostedPostIdsAmong(viewerId, listOf(post.id)),
-            // 저장은 아직 없어 false다
-            saved = false,
-        )
+        val mutedIds = if (pair.mutedByMe) setOf(post.authorId) else emptySet()
+        return postCardAssembler.assemble(listOf(post.id), viewerId, mutedIds).single()
     }
 
     @Transactional(readOnly = true)

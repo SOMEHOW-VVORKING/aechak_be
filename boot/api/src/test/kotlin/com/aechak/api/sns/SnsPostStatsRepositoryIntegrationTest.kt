@@ -1,13 +1,14 @@
 package com.aechak.api.sns
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.domain.sns.stats.SnsPostStats
 import com.aechak.domain.sns.stats.repository.SnsPostStatsRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 
 /**
- * 통합: 게시물 리포스트 수의 원자 갱신. 깨지면 통계 행이 없는 게시물의 수가 빠지거나 수가 음수가 되거나 행이 없는 게시물의 수를 읽지 못한다.
+ * 통합: 게시물 리포스트 수의 원자 갱신. 깨지면 통계 행이 없는 게시물의 수가 빠지거나 수가 음수가 된다.
  */
 class SnsPostStatsRepositoryIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -34,12 +35,7 @@ class SnsPostStatsRepositoryIntegrationTest : IntegrationTestBase() {
         assertEquals(0L, repostCountOf(POST_ID), "리포스트 수가 0 아래로 내려가면 안 된다")
     }
 
-    @Test
-    fun `통계 행이 없는 게시물의 리포스트 수는 0으로 읽는다`() {
-        assertEquals(0L, repostCountOf(POST_ID), "행이 없으면 0으로 읽어야 한다")
-    }
-
-    private fun repostCountOf(postId: Long): Long = tx.execute { statsRepository.findRepostCount(postId) }!!
+    private fun repostCountOf(postId: Long): Long? = tx.execute { em.find(SnsPostStats::class.java, postId)?.repostCount?.toLong() }
 
     companion object {
         private const val POST_ID = 100L
