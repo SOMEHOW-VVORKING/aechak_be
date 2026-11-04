@@ -155,6 +155,7 @@ COUNT는 첫 페이지에만 붙는다. 혼합 부하 전체로는 DB 시간의 
 |---|---|
 | 10만 건 ramp. 2 req/s에서 0.8초이던 k6 지연이 4 req/s에서 6.8초로 오른다 | `captures/2026-11-04-SEARCH-T01-100k-ramp-base-r1/12-k6-latency.png` |
 | 같은 ramp의 RDS CPU. 4 req/s에서 89% | `captures/2026-11-04-SEARCH-T01-100k-ramp-base-r1/01-rds-cpu.png` |
+| 같은 ramp의 api CPU. RDS CPU가 89%일 때 api 컨테이너는 1 vCPU의 10% 안팎이다 | `captures/2026-11-04-SEARCH-T01-100k-ramp-base-r1/06-api-cpu.png` |
 | 10만 건 spike의 Hikari 풀. burst에서 대기가 51까지 쌓였다가 30초 만에 비워진다 | `captures/2026-11-04-SEARCH-T01-100k-spike-base-r1/08-hikari-pool.png` |
 | 100만 건 steady의 RDS slow log(CloudWatch Logs). 0.175 req/s에서도 쿼리 하나가 3초에서 7초 | `captures/2026-11-04-SEARCH-T01-1m-steady-base-r2/18-slow-log.png` |
 
