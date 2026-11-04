@@ -246,13 +246,10 @@ class PostCreateIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
-    fun `해시태그나 영상을 보내면 아직 90001이다`() {
+    fun `영상을 보내면 아직 90001이다`() {
         val userId = onboardedUser()
         val video = """{"key":"${tmpPhotoKey(userId)}","thumbnailKey":"${tmpPhotoKey(userId)}","durationMs":1000}"""
 
-        createPost(userId, postBody(hashtags = listOf("산책")))
-            .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.errorCode").value(90001))
         createPost(userId, postBody(caption = null, video = video))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90001))
@@ -311,6 +308,44 @@ class PostCreateIntegrationTest : SnsPostIntegrationTestBase() {
                 fakeFileStorage.deletedKeys.containsAll(fakeFileStorage.promotedKeys - kept.toSet()),
                 "게시하지 못한 요청이 승격한 파일은 지워야 한다",
             )
+        }
+
+        @Test
+        fun `같은 새 태그를 서로 다른 순서로 단 게시를 동시에 보내도 교착 없이 태그 행이 하나씩이고 수가 맞다`() {
+            val tags = listOf("산책", "댕댕이", "골든리트리버", "ㅋㅋㅋ")
+            val threads = 6
+            // 짝수 번째와 홀수 번째 요청이 서로 반대 순서로 단다
+            val commands =
+                List(threads) { i ->
+                    val order = if (i % 2 == 0) tags else tags.reversed()
+                    CreatePostCommand(onboardedUser(), Ulid.generate(), "동시 게시", emptyList(), order)
+                }
+            val ready = CountDownLatch(threads)
+            val start = CountDownLatch(1)
+            val pool = Executors.newFixedThreadPool(threads)
+            val errors = Collections.synchronizedList(mutableListOf<Throwable>())
+            try {
+                val futures =
+                    commands.map { command ->
+                        pool.submit {
+                            ready.countDown()
+                            start.await()
+                            try {
+                                snsPostUseCase.createPost(command)
+                            } catch (e: Throwable) {
+                                errors.add(e)
+                            }
+                        }
+                    }
+                ready.await(5, TimeUnit.SECONDS)
+                start.countDown() // 모든 스레드가 동시에 출발
+                futures.forEach { it.get(30, TimeUnit.SECONDS) }
+            } finally {
+                pool.shutdownNow()
+            }
+
+            assertTrue(errors.isEmpty(), "태그 순서가 달라도 동시 게시는 교착 없이 모두 성공해야 한다: $errors")
+            assertEquals(tags.associateWith { threads }, hashtagCounts())
         }
     }
 }

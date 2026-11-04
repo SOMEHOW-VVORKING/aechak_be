@@ -228,5 +228,11 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
             .queryForList("select post_count from sns_user_stats where user_id = ?", Int::class.java, userId)
             .firstOrNull()
 
+    /** 해시태그 행마다 이름과 post_count. */
+    protected fun hashtagCounts(): Map<String, Int> =
+        jdbcTemplate
+            .queryForList("select name, post_count from sns_hashtags")
+            .associate { it["name"] as String to (it["post_count"] as Number).toInt() }
+
     private fun jsonArray(values: List<String>): String = values.joinToString(",", "[", "]") { "\"$it\"" }
 }

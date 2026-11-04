@@ -13,7 +13,7 @@ data class PostDetailResponse(
     val pet: SnsPetResponse?,
     @field:Schema(description = "금지어를 가린 뒤의 캡션. 없으면 null")
     val caption: String?,
-    @field:Schema(description = "작성자가 단 순서대로 정규화한 해시태그 이름. 아직 해시태그를 받지 않아 빈 배열이다")
+    @field:Schema(description = "작성자가 단 순서대로 정규화한 해시태그 이름(# 없음)")
     val hashtags: List<String>,
     @field:Schema(description = "사진 표시용 URL. 첫 항목이 대표 이미지다")
     val photoUrls: List<String>,

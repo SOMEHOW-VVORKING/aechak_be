@@ -7,6 +7,7 @@ import com.aechak.application.file.usecase.command.DeleteFileCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.moderation.usecase.ModerationUseCase
 import com.aechak.application.moderation.usecase.result.ModerationDecision
+import com.aechak.application.sns.service.HashtagService
 import com.aechak.application.sns.service.PostAccessService
 import com.aechak.application.sns.service.PostCommandService
 import com.aechak.application.sns.usecase.SnsPostUseCase
@@ -35,6 +36,7 @@ import org.springframework.transaction.support.TransactionTemplate
 class SnsPostFacade(
     private val postCommandService: PostCommandService,
     private val postAccessService: PostAccessService,
+    private val hashtagService: HashtagService,
     private val moderationUseCase: ModerationUseCase,
     private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
@@ -51,7 +53,11 @@ class SnsPostFacade(
     override fun createPost(command: CreatePostCommand): CreatePostResult {
         findIdempotent(command)?.let { return it }
 
-        val caption = Post.validateDraft(command.caption, command.photoKeys)?.let(::moderate)
+        // 캡션, 첨부, 태그의 형식 규칙을 모두 본 뒤에 금지어를 판정한다
+        val draftCaption = Post.validateDraft(command.caption, command.photoKeys)
+        val hashtags = Post.normalizeHashtags(command.hashtags)
+        val caption = draftCaption?.let(::moderate)
+        if (hashtags.any(moderationUseCase::containsBannedWord)) throw BusinessException(SnsErrorCode.SNS_HASHTAG_BANNED_WORD)
         val petId =
             petProfileUseCase
                 .getPets(command.userId)
@@ -74,7 +80,7 @@ class SnsPostFacade(
             try {
                 tx.execute {
                     postCommandService
-                        .create(command.userId, caption, photoKeys, petId, command.idempotencyKey)
+                        .create(command.userId, caption, photoKeys, hashtags, petId, command.idempotencyKey)
                         .also { committing = true }
                 }!!
             } catch (e: Exception) {
@@ -112,7 +118,7 @@ class SnsPostFacade(
             author = author,
             pet = pet,
             caption = post.caption,
-            hashtags = emptyList(),
+            hashtags = hashtagService.namesOf(post.hashtags.map { it.hashtagId }),
             photoUrls = post.media.mapNotNull { fileUseCase.resolveMediaUrl(it.storageKey) },
             // 좋아요, 댓글, 리포스트는 아직 없어 0이다
             likeCount = 0,

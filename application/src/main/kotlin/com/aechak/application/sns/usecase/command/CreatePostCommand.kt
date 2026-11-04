@@ -5,4 +5,5 @@ data class CreatePostCommand(
     val idempotencyKey: String,
     val caption: String?,
     val photoKeys: List<String>,
+    val hashtags: List<String> = emptyList(),
 )

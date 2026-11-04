@@ -18,7 +18,16 @@ class PostTest {
     private fun aPost(
         caption: String? = "산책 다녀왔어요",
         photoKeys: List<String> = emptyList(),
-    ): Post = Post.create(authorId = 1L, caption = caption, photoKeys = photoKeys, petId = null, idempotencyKey = "key-1")
+        hashtagIds: List<Long> = emptyList(),
+    ): Post =
+        Post.create(
+            authorId = 1L,
+            caption = caption,
+            photoKeys = photoKeys,
+            hashtagIds = hashtagIds,
+            petId = null,
+            idempotencyKey = "key-1",
+        )
 
     private fun photoKeys(count: Int): List<String> = (1..count).map { "sns/posts/images/photo-$it.jpg" }
 
@@ -76,6 +85,27 @@ class PostTest {
         val e = assertFailsWith<BusinessException> { aPost(caption = "   ") }
 
         assertEquals(SnsErrorCode.SNS_POST_EMPTY, e.errorCode)
+    }
+
+    @Test
+    fun `태그만 있고 캡션과 첨부가 없으면 130402다`() {
+        val e = assertFailsWith<BusinessException> { aPost(caption = null, hashtagIds = listOf(1L, 2L)) }
+
+        assertEquals(SnsErrorCode.SNS_POST_EMPTY, e.errorCode)
+    }
+
+    @Test
+    fun `정규화 결과가 같은 태그는 하나로 합친다`() {
+        assertEquals(listOf("dog", "산책"), Post.normalizeHashtags(listOf("#DOG", "산책", "dog", " #Dog ")))
+    }
+
+    @Test
+    fun `태그는 합친 뒤 30개까지 달 수 있고 31개면 130406이다`() {
+        val thirty = (1..30).map { "tag$it" }
+
+        assertEquals(thirty, Post.normalizeHashtags(thirty + "#TAG1"))
+        val e = assertFailsWith<BusinessException> { Post.normalizeHashtags(thirty + "tag31") }
+        assertEquals(SnsErrorCode.SNS_POST_TOO_MANY_HASHTAGS, e.errorCode)
     }
 
     @Test

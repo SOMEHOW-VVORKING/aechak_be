@@ -3,6 +3,7 @@ package com.aechak.application.sns.service
 import com.aechak.application.sns.usecase.result.CreatePostResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.error.SnsErrorCode
+import com.aechak.domain.sns.hashtag.repository.HashtagRepository
 import com.aechak.domain.sns.post.Post
 import com.aechak.domain.sns.post.enums.PostStatus
 import com.aechak.domain.sns.post.repository.PostRepository
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service
 @Service
 class PostCommandService(
     private val postRepository: PostRepository,
+    private val hashtagRepository: HashtagRepository,
     private val snsUserStatsRepository: SnsUserStatsRepository,
 ) {
     fun findPublicIdByIdempotencyKey(
@@ -19,15 +21,19 @@ class PostCommandService(
         idempotencyKey: String,
     ): String? = postRepository.findByAuthorIdAndIdempotencyKey(authorId, idempotencyKey)?.publicId
 
-    /** 게시물과 미디어 행을 저장하고 작성자 게시물 수를 올린다 */
+    /** 태그 게시글 수를 올리고 게시물과 미디어, 태그 연결을 저장한 뒤 작성자 게시물 수를 올린다 */
     fun create(
         authorId: Long,
         caption: String?,
         photoKeys: List<String>,
+        hashtags: List<String>,
         petId: Long?,
         idempotencyKey: String,
     ): CreatePostResult {
-        val post = postRepository.save(Post.create(authorId, caption, photoKeys, petId, idempotencyKey))
+        // 태그 행을 작성자 통계 행보다 먼저 잠근다. 수정, 삭제와 순서가 엇갈리면 서로 교착한다
+        hashtagRepository.adjustCounts(added = hashtags)
+        val hashtagIds = hashtagRepository.findAllByNameIn(hashtags).associate { it.name to it.id }
+        val post = postRepository.save(Post.create(authorId, caption, photoKeys, hashtags.map(hashtagIds::getValue), petId, idempotencyKey))
         snsUserStatsRepository.increasePostCount(authorId)
         return CreatePostResult(post.publicId)
     }

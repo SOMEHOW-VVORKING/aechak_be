@@ -2,6 +2,7 @@ package com.aechak.domain.sns.post
 
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.error.SnsErrorCode
+import com.aechak.domain.sns.hashtag.Hashtag
 import com.aechak.domain.sns.post.enums.PostDeletionReason
 import com.aechak.domain.sns.post.enums.PostMediaType
 import com.aechak.domain.sns.post.enums.PostStatus
@@ -78,6 +79,12 @@ class Post protected constructor(
     private val _media: MutableList<PostMedia> = mutableListOf()
     val media: List<PostMedia> get() = _media.toList()
 
+    @OneToMany(cascade = [CascadeType.ALL], orphanRemoval = true)
+    @JoinColumn(name = "post_id", nullable = false, updatable = false)
+    @OrderBy("sortOrder ASC")
+    private val _hashtags: MutableList<PostHashtag> = mutableListOf()
+    val hashtags: List<PostHashtag> get() = _hashtags.toList()
+
     /** 캡션을 통째로 바꾼다. 정규화한 캡션이 지금과 같으면 아무것도 바꾸지 않고 false를 돌려준다 */
     fun update(caption: String?): Boolean {
         val normalized = normalizeCaption(caption)
@@ -102,12 +109,14 @@ class Post protected constructor(
         const val UK_AUTHOR_IDEMPOTENCY = "uk_sns_posts_author_idempotency"
         const val CAPTION_MAX_CODE_POINTS = 2_200
         const val MAX_PHOTOS = 10
+        const val MAX_HASHTAGS = 30
         const val IDEMPOTENCY_KEY_MAX_LENGTH = 100
 
         fun create(
             authorId: Long,
             caption: String?,
             photoKeys: List<String>,
+            hashtagIds: List<Long>,
             petId: Long?,
             idempotencyKey: String,
         ): Post {
@@ -115,7 +124,15 @@ class Post protected constructor(
             val mediaType = if (photoKeys.isEmpty()) PostMediaType.TEXT else PostMediaType.PHOTO
             val post = Post(authorId, normalized, mediaType, petId, idempotencyKey)
             photoKeys.forEachIndexed { index, key -> post._media += PostMedia.image(key, index) }
+            hashtagIds.forEachIndexed { index, hashtagId -> post._hashtags += PostHashtag.of(hashtagId, index) }
             return post
+        }
+
+        /** 태그마다 정규화하고 정규화 결과가 같은 태그는 하나로 합친다. 합친 뒤 30개를 넘으면 130406이다 */
+        fun normalizeHashtags(hashtags: List<String>): List<String> {
+            val names = hashtags.map(Hashtag::normalize).distinct()
+            if (names.size > MAX_HASHTAGS) throw BusinessException(SnsErrorCode.SNS_POST_TOO_MANY_HASHTAGS)
+            return names
         }
 
         /** 게시 규칙을 확인하고 정규화한 캡션을 돌려준다. 승격 전에 같은 규칙으로 미리 확인할 때도 쓴다 */

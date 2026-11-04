@@ -13,17 +13,22 @@ data class CreatePostRequest(
     val photoKeys: List<String> = emptyList(),
     @field:Schema(description = "영상 하나. 아직 받지 않아 보내면 90001이다")
     val video: PostVideoRequest? = null,
-    @field:Schema(description = "해시태그 이름. 아직 받지 않아 비어 있지 않으면 90001이다")
+    @field:Schema(description = "해시태그 이름. 앞의 #과 앞뒤 공백을 떼고 NFC 정규화와 영문 소문자화를 하며 같은 태그는 하나로 합쳐 30개까지")
     val hashtags: List<String> = emptyList(),
 ) {
     fun toCommand(
         userId: Long,
         idempotencyKey: String,
     ): CreatePostCommand {
-        // 해시태그와 영상은 아직 받지 않는다
-        if (hashtags.isNotEmpty()) throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "hashtags: 아직 해시태그를 받지 않습니다.")
+        // 영상은 아직 받지 않는다
         if (video != null) throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "video: 아직 영상을 받지 않습니다.")
-        return CreatePostCommand(userId = userId, idempotencyKey = idempotencyKey, caption = caption, photoKeys = photoKeys)
+        return CreatePostCommand(
+            userId = userId,
+            idempotencyKey = idempotencyKey,
+            caption = caption,
+            photoKeys = photoKeys,
+            hashtags = hashtags,
+        )
     }
 }
 
