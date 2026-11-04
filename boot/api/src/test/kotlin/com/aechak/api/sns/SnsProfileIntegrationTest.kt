@@ -26,7 +26,7 @@ import org.springframework.web.context.WebApplicationContext
 
 /**
  * 통합: SNS 프로필 조회가 실 보안 필터체인과 MySQL을 지나 계약대로 응답하는지.
- * 깨지면 볼 수 없는 사용자가 구분되어 드러나거나 내부 id가 응답에 실린다.
+ * 깨지면 볼 수 없는 사용자가 구분되어 드러나거나 나를 차단한 사용자의 정보가 기본 프로필 밖으로 새거나 내부 id가 응답에 실린다.
  */
 class SnsProfileIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -75,6 +75,7 @@ class SnsProfileIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.following").value(false))
             .andExpect(jsonPath("$.data.blockedByMe").value(false))
             .andExpect(jsonPath("$.data.mutedByMe").value(false))
+            .andExpect(jsonPath("$.data.blockingMe").value(false))
     }
 
     @Test
@@ -171,6 +172,7 @@ class SnsProfileIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.following").value(false))
             .andExpect(jsonPath("$.data.blockedByMe").value(false))
             .andExpect(jsonPath("$.data.mutedByMe").value(false))
+            .andExpect(jsonPath("$.data.blockingMe").value(false))
     }
 
     @Test
@@ -186,10 +188,11 @@ class SnsProfileIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.following").value(false))
             .andExpect(jsonPath("$.data.blockedByMe").value(false))
             .andExpect(jsonPath("$.data.mutedByMe").value(false))
+            .andExpect(jsonPath("$.data.blockingMe").value(false))
     }
 
     @Test
-    fun `다른 사용자가 로그인해 조회하면 isMe가 false다`() {
+    fun `다른 사용자가 로그인해 조회하면 isMe와 blockingMe가 false다`() {
         val target = onboardedUser("otherone")
         val viewer = onboardedUser("viewerone")
 
@@ -199,6 +202,7 @@ class SnsProfileIntegrationTest : IntegrationTestBase() {
                     .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewer.id)}"),
             ).andExpect(status().isOk)
             .andExpect(jsonPath("$.data.isMe").value(false))
+            .andExpect(jsonPath("$.data.blockingMe").value(false))
     }
 
     @Test
@@ -243,12 +247,52 @@ class SnsProfileIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `나를 차단한 사용자의 프로필은 404 130000이다`() {
-        val target = onboardedUser("blocksme")
+    fun `나를 차단한 사용자는 blockingMe와 publicId, 닉네임만 받고 이미지와 나머지는 null이다`() {
+        val target = onboardedUser("blocksme", bio = "hello", imageKey = "users/profile/abc.webp")
         val viewer = onboardedUser("blockedview")
-        tx.execute { blockRepository.insertIfAbsent(target.id, viewer.id) }
+        tx.execute {
+            val user = em.find(User::class.java, target.id)
+            val breed = Breed.of(Species.DOG, "Samoyed").also { em.persist(it) }
+            em.persist(PetProfile.register(user, breed, "samoyed", birthYearMonth = "2022-02", isDefault = true))
+            statsRepository.increaseFollowerCount(target.id)
+            muteRepository.insertIfAbsent(viewer.id, target.id)
+            blockRepository.insertIfAbsent(target.id, viewer.id)
+        }
 
-        expectUnavailable(viewProfile(viewer, target))
+        viewProfile(viewer, target)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.publicId").value(target.publicId))
+            .andExpect(jsonPath("$.data.nickname").value("blocksme"))
+            .andExpect(jsonPath("$.data.profileImageUrl").value(nullValue()))
+            .andExpect(jsonPath("$.data.bio").value(nullValue()))
+            .andExpect(jsonPath("$.data.pets").value(nullValue()))
+            .andExpect(jsonPath("$.data.postCount").value(nullValue()))
+            .andExpect(jsonPath("$.data.followerCount").value(nullValue()))
+            .andExpect(jsonPath("$.data.followingCount").value(nullValue()))
+            .andExpect(jsonPath("$.data.isMe").value(false))
+            .andExpect(jsonPath("$.data.following").value(false))
+            .andExpect(jsonPath("$.data.blockedByMe").value(false))
+            .andExpect(jsonPath("$.data.mutedByMe").value(true))
+            .andExpect(jsonPath("$.data.blockingMe").value(true))
+    }
+
+    @Test
+    fun `서로 차단하면 blockingMe와 blockedByMe가 모두 true이고 이미지도 null이다`() {
+        val target = onboardedUser("mutualtarget", bio = "hello", imageKey = "users/profile/abc.webp")
+        val viewer = onboardedUser("mutualview")
+        tx.execute {
+            blockRepository.insertIfAbsent(target.id, viewer.id)
+            blockRepository.insertIfAbsent(viewer.id, target.id)
+        }
+
+        viewProfile(viewer, target)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.nickname").value("mutualtarget"))
+            .andExpect(jsonPath("$.data.profileImageUrl").value(nullValue()))
+            .andExpect(jsonPath("$.data.bio").value(nullValue()))
+            .andExpect(jsonPath("$.data.followerCount").value(nullValue()))
+            .andExpect(jsonPath("$.data.blockedByMe").value(true))
+            .andExpect(jsonPath("$.data.blockingMe").value(true))
     }
 
     @Test
@@ -277,6 +321,7 @@ class SnsProfileIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.data.following").value(false))
             .andExpect(jsonPath("$.data.blockedByMe").value(true))
             .andExpect(jsonPath("$.data.mutedByMe").value(false))
+            .andExpect(jsonPath("$.data.blockingMe").value(false))
     }
 
     @Test
