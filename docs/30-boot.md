@@ -288,7 +288,7 @@ boot/admin/src/main/java/com/aechak/admin/
 ├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config} · InspectionScanConfig · ClaimAmountScanConfig · AdminReviewScanConfig
 ├── inspection/      # AI 검수 지표 컨트롤러 + response
 ├── order/           # 주문 배송 모니터링 컨트롤러 + request/response
-├── product/         # 상품 검수 큐 컨트롤러 + request/response
+├── product/         # 상품 검수 큐·카탈로그 관리 컨트롤러 + request/response
 ├── review/          # 리뷰 관리·블라인드 컨트롤러 + request/response
 ├── security/        # SecurityConfig — 정책 조립은 admin 소유, 판단 부품은 web-security
 ├── inquiry/         # 서비스 문의 조회·답변 컨트롤러 + request/response
@@ -320,6 +320,12 @@ boot/admin/src/main/java/com/aechak/admin/
   - **해제 예정 시각(`sellers.suspension_until`)은 운영자에게 보여 주는 값이고 자동 해제 장치가 아니다.** 게이트가 만료를 보지 않으므로 기간이 지나도 상태는 SUSPENDED로 남는다 — 회원의 임시 정지(조회 시점 만료 판정)와 다른 점이다.
   - 제재 이력(`seller_sanctions`)은 추가 전용이고 해제도 `action=RELEASE` 행 추가로 남긴다. 내부 메모는 `sellers.admin_memo`가 현재 값을, 이력 행의 `memo`가 조치 시점 사본을 든다 — 화면이 제재 없이 메모만 저장하는 경로를 가져서, 현재 값을 이력에서 유도하면 메모만 바꾸려는 요청이 가짜 제재 행을 만든다.
   - **목록 응답에 최근 접속 시각과 누적 신고 수를 싣지 않는다.** `users`에 최근 접속 칼럼이 없고, 신고 대상 종류에 셀러가 없어 셀 수 있는 값이 아니다. 대표자명은 서버가 가려서 내려준다 — 목록은 한 요청에 최대 100행의 대표자명을 내보내는 자리라 평문의 노출면이 행 수만큼 커지고, 평문이 필요한 통장사본 대조는 입점 심사 상세가 담당한다.
+- **상품 카탈로그 관리 경로는 `/admin/products`다** — 목록(검수 상태·판매 상태·카테고리 하위 포함·상품명/상호명 검색·오프셋 페이징), 판매중지(`POST .../sale-suspensions`), 재개(`POST .../sale-suspensions/release`). 식별자는 상품 공개 ULID다.
+  - **검수 큐(`/admin/product-inspections`)와 성격이 갈린다.** 큐는 판정 대기열이라 등재된 행만 보여 주고, 이 경로는 카탈로그 전수라 노출 조건을 하나도 걸지 않는다 — 큐에 없는 상품(판매 중이고 검수를 통과했으며 신고가 없는 상품)도 보고, 검수와 무관한 이유로 판매를 막는 곳이다. 화면의 "검수 통과"와 "블라인드 유지"에 새 경로를 만들지 않은 이유가 그것이다: 그 둘은 큐의 승인·반려가 상품의 `inspection_status`를 APPROVED·REJECTED로 옮기는 같은 조작이고, 블라인드를 검수와 별 축으로 가르면 칼럼과 노출 조회 조건이 하나씩 늘면서 얻는 것이 없다.
+  - **판매중지는 `sale_status`를 SUSPENDED로 옮기는 것만으로는 유지되지 않는다.** `SaleStatus.isSellerAssignable()`이 SUSPENDED를 셀러에게 허용하므로 상태만 옮기면 셀러가 자기 상태 변경 경로로 즉시 되돌린다. 그래서 상품에 운영자가 막았다는 표시(`admin_sale_blocked_at`·사유·행위자·직전 상태)를 두고, 그 표시가 있는 동안 `changeSaleStatusBySeller`를 409(40010)로 거부한다.
+  - 별도의 가림 수단은 두지 않는다 — SUSPENDED는 노출 화이트리스트(`SaleStatus.EXPOSABLE`)에서 빠지고 `canPurchase`·`canOrder` 양쪽에서도 막혀, 목록·검색·찜·상세·옵션·주문이 상태 하나로 함께 끊긴다.
+  - 재개는 막기 직전 상태로 되돌린 뒤 재고 동기화를 이어 부른다. 일괄로 판매중으로 올리면 스스로 판매중지해 둔 셀러의 의사까지 뒤집히고, 품절은 셀러가 지정하는 값이 아니라 재고에서 파생하는 값이다. 이미 막힌 상품의 중지는 409(40008), 막혀 있지 않은 상품의 재개는 409(40009), 동시 조치 충돌은 409(40011)다 — `Product`에 `@Version`이 있어 파사드가 `TransactionTemplate` 밖에서 받아 번역한다(셀러 계정 제재와 같은 방식).
+  - 목록의 신고 누적 수는 페이지가 정해진 뒤 그 상품 id 목록으로 한 번 더 묻는다. 상관 서브쿼리는 행마다 1회 실행이고, 본 질의에 `group by`로 섞으면 신고가 0건인 상품이 집계에서 빠진다. 셀러 상호명은 left join이다 — `products.seller_id`는 FK 없는 값 참조라 셀러 행이 없는 상품이 목록에서 사라지면 운영자가 손을 댈 수 없다.
 - **일반 회원 조회·제재 경로는 `/admin/members`다** — 목록(상태 필터·닉네임/회원ID 검색·가입일 범위·커서 페이징), 상세(제재 이력 포함), 제재(`POST .../sanctions`), 해제(`POST .../sanctions/release`).
   - 목록·상세는 `users.role = GENERAL`만 본다. 관리자 계정은 명부 경로가 따로 있어 여기서는 조회도 404(30000), 제재도 409(30021)로 막는다 — 운영 권한을 가진 계정이 차단 상태로 남지 않게 강등을 먼저 하게 한다. 자기 자신 제재는 403(30020).
   - 제재는 `users.status` 단일 축으로 표현한다(RESTRICTED·SUSPENDED·BANNED). 접근 판정의 단일 지점이 매 요청 한 컬럼만 읽고 끝나야 하고, 제재 상태끼리는 배타적이라 축을 둘로 나누면 모순 조합이 생긴다.
@@ -358,7 +364,8 @@ boot/admin/src/main/java/com/aechak/admin/
     실패는 파사드가 삼켜 ERROR 로그로만 남긴다. 반대로 했다면 감사 테이블 사고 한 번이 모든 운영 조치를 멈춘다.
   - **수정·삭제 경로를 만들지 않는다.** 도메인 포트는 `append`만 열고 컨트롤러에 쓰기 핸들러가 없다.
   - 지금 기록하는 조치는 입점 심사 승인·거부, 관리자 승격·강등, 상품 검수 승인·반려, 클레임 개입,
-    회원 제재·해제, 서비스 문의 답변, 리뷰 블라인드·해제·삭제, **셀러 판매정지·해제·내부 메모 수정**이다. 조치를 더하는 사람이 할 일은
+    회원 제재·해제, 서비스 문의 답변, 리뷰 블라인드·해제·삭제, 셀러 판매정지·해제·내부 메모 수정,
+    **상품 판매중지·재개**다. 조치를 더하는 사람이 할 일은
     쓰기 핸들러에 애너테이션 하나를 붙이는 것뿐이고, 기록 코드를 쓰지 않는다. 면제를 고르면 `reason`에
     그 판단을 적는다 — 커버리지 테스트는 "어느 쪽인지 정했나"만 본다. 문의의 처리중·보류 전이가
     지금 유일한 면제다(처리 흐름 표시이고 그 결과는 문의 행이 들고 있다).
