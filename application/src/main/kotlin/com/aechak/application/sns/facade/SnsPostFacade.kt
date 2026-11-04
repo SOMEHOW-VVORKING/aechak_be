@@ -27,6 +27,8 @@ import com.aechak.domain.sns.hashtag.Hashtag
 import com.aechak.domain.sns.post.Post
 import com.aechak.domain.sns.post.enums.PostMediaKind
 import com.aechak.domain.sns.post.repository.PostRepository
+import com.aechak.domain.sns.repost.repository.RepostRepository
+import com.aechak.domain.sns.stats.repository.SnsPostStatsRepository
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -47,6 +49,8 @@ class SnsPostFacade(
     private val hashtagService: HashtagService,
     private val repostService: RepostService,
     private val postRepository: PostRepository,
+    private val repostRepository: RepostRepository,
+    private val snsPostStatsRepository: SnsPostStatsRepository,
     private val moderationUseCase: ModerationUseCase,
     private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
@@ -157,15 +161,18 @@ class SnsPostFacade(
                         durationMs = it.durationMs!!,
                     )
                 },
-            // 좋아요, 댓글, 리포스트는 아직 없어 0이다
+            // 좋아요와 댓글은 아직 없어 0이다
             likeCount = 0,
             commentCount = 0,
-            repostCount = 0,
+            repostCount = snsPostStatsRepository.findRepostCount(post.id),
             edited = post.editedAt != null,
             createdAt = post.createdAt,
             isMine = post.authorId == viewerId,
             following = pair.following,
             mutedByMe = pair.mutedByMe,
+            reposted = viewerId != null && post.id in repostRepository.findRepostedPostIdsAmong(viewerId, listOf(post.id)),
+            // 저장은 아직 없어 false다
+            saved = false,
         )
     }
 

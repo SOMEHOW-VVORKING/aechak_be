@@ -16,7 +16,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
- * 통합 — 게시물 상세가 볼 수 없는 경우를 계약 순서대로 거르고 작성자, 펫 태그, 미디어, 관계 상태를 싣는지.
+ * 통합 — 게시물 상세가 볼 수 없는 경우를 계약 순서대로 거르고 작성자, 펫 태그, 미디어, 리포스트 수, 보는 사람 상태를 싣는지.
  */
 class PostDetailIntegrationTest : SnsPostIntegrationTestBase() {
     @Autowired
@@ -236,6 +236,48 @@ class PostDetailIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `리포스트하면 상세의 리포스트 수가 1이다`() {
+        val publicId = createdPublicId(onboardedUser())
+        repost(publicId, onboardedUser()).andExpect(status().isCreated)
+
+        assertEquals(1, postDetail(publicId)["repostCount"])
+    }
+
+    @Test
+    fun `두 사람이 리포스트하면 수가 2이고 리포스트한 사람만 reposted가 true다`() {
+        val publicId = createdPublicId(onboardedUser())
+        val reposterId = onboardedUser()
+        repost(publicId, reposterId).andExpect(status().isCreated)
+        repost(publicId, onboardedUser()).andExpect(status().isCreated)
+
+        val detail = postDetail(publicId, reposterId)
+
+        assertEquals(2, detail["repostCount"])
+        assertEquals(true, detail["reposted"])
+        assertEquals(false, postDetail(publicId, onboardedUser())["reposted"])
+    }
+
+    @Test
+    fun `작성자 본인은 reposted가 false다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        repost(publicId, onboardedUser()).andExpect(status().isCreated)
+
+        assertEquals(false, postDetail(publicId, authorId)["reposted"])
+    }
+
+    @Test
+    fun `비로그인은 reposted와 saved가 false다`() {
+        val publicId = createdPublicId(onboardedUser())
+        repost(publicId, onboardedUser()).andExpect(status().isCreated)
+
+        val detail = postDetail(publicId)
+
+        assertEquals(false, detail["reposted"])
+        assertEquals(false, detail["saved"])
+    }
+
+    @Test
     fun `작성자 본인이 보면 isMine이 true다`() {
         val authorId = onboardedUser()
         val publicId = createdPublicId(authorId)
@@ -258,7 +300,7 @@ class PostDetailIntegrationTest : SnsPostIntegrationTestBase() {
         val contractFields =
             (
                 "publicId author pet caption hashtags photoUrls video likeCount commentCount repostCount " +
-                    "edited createdAt isMine following mutedByMe"
+                    "edited createdAt isMine following mutedByMe reposted saved"
             ).split(" ").toSet()
         assertEquals(contractFields, detail.keys)
         assertEquals(setOf("publicId", "nickname", "profileImageUrl"), (detail["author"] as Map<*, *>).keys)

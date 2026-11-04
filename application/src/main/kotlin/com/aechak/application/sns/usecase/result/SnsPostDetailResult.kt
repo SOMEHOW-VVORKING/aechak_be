@@ -20,6 +20,8 @@ data class SnsPostDetailResult(
     val isMine: Boolean,
     val following: Boolean,
     val mutedByMe: Boolean,
+    val reposted: Boolean,
+    val saved: Boolean,
 )
 
 data class SnsPostAuthorResult(

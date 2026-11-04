@@ -31,6 +31,12 @@ interface RepostJpaRepository : JpaRepository<Repost, Long> {
         @Param("postId") postId: Long,
     ): Int
 
+    @Query("select r.postId from Repost r where r.reposterId = :reposterId and r.postId in :postIds")
+    fun findPostIds(
+        @Param("reposterId") reposterId: Long,
+        @Param("postIds") postIds: Collection<Long>,
+    ): List<Long>
+
     @Query(
         "select r from Repost r join Post p on p.id = r.postId " +
             "where r.reposterId = :reposterId and p.authorId = :authorId order by r.id",
@@ -61,6 +67,11 @@ class RepostRepositoryAdapter(
         reposterId: Long,
         postId: Long,
     ): Int = jpaRepository.deleteByPair(reposterId, postId)
+
+    override fun findRepostedPostIdsAmong(
+        reposterId: Long,
+        postIds: Collection<Long>,
+    ): Set<Long> = jpaRepository.findPostIds(reposterId, postIds).toSet()
 
     // 잠금 순서를 지키려고 원글과 조인한 읽기는 잠그지 않고 리포스트 행만 id로 지운다
     override fun deleteBetween(

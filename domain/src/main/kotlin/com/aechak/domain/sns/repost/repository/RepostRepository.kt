@@ -17,6 +17,12 @@ interface RepostRepository {
         postId: Long,
     ): Int
 
+    /** postIds 중 reposter가 리포스트한 원글 id */
+    fun findRepostedPostIdsAmong(
+        reposterId: Long,
+        postIds: Collection<Long>,
+    ): Set<Long>
+
     /** reposter가 author의 글에 한 리포스트를 원글 상태와 관계없이 지우고 실제로 지운 행의 원글 id를 돌려준다 */
     fun deleteBetween(
         reposterId: Long,
