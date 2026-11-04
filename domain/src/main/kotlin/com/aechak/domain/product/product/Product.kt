@@ -95,6 +95,30 @@ class Product protected constructor(
     var inspectionStatus: InspectionStatus = InspectionStatus.APPROVED
         protected set
 
+    /**
+     * 운영자가 판매를 막은 시각. null이면 막혀 있지 않다 — 이 한 칸이 "지금 운영자가 막았는가"의 축이다.
+     * saleStatus로 대신할 수 없다: SUSPENDED는 셀러도 지정할 수 있는 값이라 표시 없이 상태만 옮기면
+     * 셀러가 자기 경로로 즉시 되돌린다.
+     */
+    @Column
+    var adminSaleBlockedAt: LocalDateTime? = null
+        protected set
+
+    /** 막은 사유. 셀러에게 보내는 문장이 아니라 운영 기록이다. */
+    @Column(length = ADMIN_SALE_BLOCK_REASON_MAX)
+    var adminSaleBlockReason: String? = null
+        protected set
+
+    @Column
+    var adminSaleBlockedByAdminId: Long? = null
+        protected set
+
+    /** 막기 직전의 판매 상태. 재개가 되돌릴 자리다. */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 30)
+    var adminSaleBlockPreviousStatus: SaleStatus? = null
+        protected set
+
     @Version
     var version: Int = 0
         protected set
@@ -191,8 +215,16 @@ class Product protected constructor(
             detailImageKeys.forEachIndexed { index, key -> put(ProductImageType.DETAIL to key, index) }
         }
 
-    /** 셀러가 직접 바꾸는 경로. 재고에서 파생하는 전이는 여기로 들어오지 못함. */
+    /**
+     * 셀러가 직접 바꾸는 경로. 재고에서 파생하는 전이는 여기로 들어오지 못함.
+     *
+     * 운영자가 막아 둔 상품은 거부한다. SUSPENDED가 셀러 지정 가능 값이라 이 가드가 없으면
+     * 운영자의 판매중지가 셀러의 다음 요청 한 번에 뒤집힌다.
+     */
     fun changeSaleStatusBySeller(status: SaleStatus) {
+        if (adminSaleBlocked) {
+            throw BusinessException(ProductErrorCode.PRODUCT_SALE_BLOCKED_BY_ADMIN)
+        }
         if (!status.isSellerAssignable()) {
             throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "판매중과 판매중지만 지정할 수 있습니다.")
         }
@@ -231,6 +263,47 @@ class Product protected constructor(
         inspectionStatus = InspectionStatus.APPROVED
     }
 
+    /** 운영자가 막아 둔 상품인지. 셀러의 상태 변경을 거부하는 조건이자 목록의 표시 값. */
+    val adminSaleBlocked: Boolean get() = adminSaleBlockedAt != null
+
+    /**
+     * 운영자가 판매를 막는다. 판매 상태를 SUSPENDED로 옮기고 막음 표시를 남긴다.
+     *
+     * 따로 가릴 수단을 두지 않는 이유: SUSPENDED는 노출 화이트리스트(SaleStatus.EXPOSABLE)와
+     * 구매·주문 판정(canPurchase·canOrder)에서 모두 빠져 목록·검색·찜·상세·옵션·주문이 한꺼번에 끊긴다.
+     */
+    fun blockSaleByAdmin(
+        adminId: Long,
+        reason: String,
+    ) {
+        if (adminSaleBlocked) {
+            throw BusinessException(ProductErrorCode.PRODUCT_SALE_ALREADY_BLOCKED_BY_ADMIN)
+        }
+        adminSaleBlockPreviousStatus = saleStatus
+        saleStatus = SaleStatus.SUSPENDED
+        adminSaleBlockedAt = LocalDateTime.now()
+        adminSaleBlockReason = reason
+        adminSaleBlockedByAdminId = adminId
+    }
+
+    /**
+     * 운영자가 판매를 되돌린다. 막기 직전 상태로 돌리고 표시를 지운다.
+     *
+     * 일괄로 ON_SALE로 올리지 않는다 — 스스로 판매중지해 둔 셀러의 의사까지 운영자 조치가 뒤집는다.
+     * 직전 상태가 비어 있는 행은 이 전이가 생기기 전에 막힌 상품이라 ON_SALE로 되돌린다.
+     * 품절은 재고에서 파생하는 값이므로 호출측이 syncSaleStatusWithStock을 이어 불러 맞춘다.
+     */
+    fun unblockSaleByAdmin() {
+        if (!adminSaleBlocked) {
+            throw BusinessException(ProductErrorCode.PRODUCT_SALE_NOT_BLOCKED_BY_ADMIN)
+        }
+        saleStatus = adminSaleBlockPreviousStatus ?: SaleStatus.ON_SALE
+        adminSaleBlockPreviousStatus = null
+        adminSaleBlockedAt = null
+        adminSaleBlockReason = null
+        adminSaleBlockedByAdminId = null
+    }
+
     /** 가격 계산 정책(정가/할인가/기간) */
     fun pricing(): ProductPricing =
         ProductPricing(
@@ -257,6 +330,9 @@ class Product protected constructor(
         const val REGULAR_PRICE_MAX = 100_000_000L
         const val ADDITIONAL_IMAGE_MAX = 9
         const val DETAIL_IMAGE_MAX = 20
+
+        /** admin_sale_block_reason 컬럼 길이. 요청 DTO의 상한이 이 상수를 참조한다. */
+        const val ADMIN_SALE_BLOCK_REASON_MAX = 500
 
         fun register(
             category: Category,

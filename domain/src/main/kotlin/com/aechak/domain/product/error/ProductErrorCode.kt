@@ -17,6 +17,12 @@ enum class ProductErrorCode(
     PRODUCT_SELLER_READ_FORBIDDEN(40006, "탈퇴하거나 정지된 셀러는 상품을 조회할 수 없습니다.", 403),
     PRODUCT_ACCESS_DENIED(40007, "본인의 상품만 조회할 수 있습니다.", 403),
 
+    // 어드민 판매중지 — 셀러의 판매중지(sale_status 토글)와 다른 층이다
+    PRODUCT_SALE_ALREADY_BLOCKED_BY_ADMIN(40008, "이미 관리자가 판매를 중지한 상품입니다.", 409),
+    PRODUCT_SALE_NOT_BLOCKED_BY_ADMIN(40009, "관리자가 판매를 중지한 상품이 아닙니다.", 409),
+    PRODUCT_SALE_BLOCKED_BY_ADMIN(40010, "관리자가 판매를 중지한 상품은 판매 상태를 바꿀 수 없습니다.", 409),
+    PRODUCT_SALE_BLOCK_CONFLICT(40011, "다른 조치가 먼저 반영됐습니다. 다시 조회한 뒤 시도해 주세요.", 409),
+
     // 카테고리
     INVALID_CATEGORY_DEPTH(40100, "카테고리 단계와 부모 참조가 일치하지 않습니다.", 400),
     CATEGORY_NOT_FOUND(40101, "카테고리를 찾을 수 없습니다.", 404),
