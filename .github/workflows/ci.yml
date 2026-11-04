@@ -72,7 +72,8 @@ jobs:
       - name: Test
         # 실패한 테스트만 1회 재시도한다(build-logic의 공통 Test 컨벤션, CI 한정).
         # 재시도로 통과한 것은 아래 단계가 잡 요약에 이름까지 올려 드러낸다.
-        run: ./gradlew test --console=plain
+        # --parallel: 모듈 테스트를 동시에 돌린다. 모듈마다 테스트 JVM과 컨테이너가 따로 떠서 데이터가 섞이지 않는다.
+        run: ./gradlew test --parallel --console=plain
 
       # 재시도로 가려진 플레이크를 매 run마다 드러낸다 — 실패했을 때도 돌아야 하므로 always()
       - name: 플레이크 요약
