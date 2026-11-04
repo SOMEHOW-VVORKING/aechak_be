@@ -22,4 +22,10 @@ interface SnsUserStatsRepository {
 
     /** 팔로잉 수 -1(following_count > 0), 갱신 행 수 반환 */
     fun decreaseFollowingCount(userId: Long): Int
+
+    /** 게시물 수 +1, 행이 없으면 만든다 */
+    fun increasePostCount(userId: Long): Int
+
+    /** 게시물 수 -1(post_count > 0), 갱신 행 수 반환 */
+    fun decreasePostCount(userId: Long): Int
 }

@@ -6,4 +6,5 @@ data class IssuePresignedUrlCommand(
     val purpose: UploadPurpose,
     val contentType: String,
     val userId: Long,
+    val contentLength: Long? = null,
 )

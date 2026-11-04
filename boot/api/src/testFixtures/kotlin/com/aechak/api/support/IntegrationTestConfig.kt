@@ -52,6 +52,10 @@ class IntegrationTestConfig {
     @Primary
     fun fakeFileStorage(): FileStorage = FakeFileStorage()
 
+    /** 커밋 뒤 응답 유실을 흉내 낼 때만 켠다. 켜지 않으면 아무것도 하지 않는다 */
+    @Bean
+    fun commitFailureInjector(): CommitFailureInjector = CommitFailureInjector()
+
     /** 실 어댑터면 통합 테스트가 시크릿 없이 실 포트원으로 나가 게이트웨이 오류를 던짐 */
     @Bean
     @Primary

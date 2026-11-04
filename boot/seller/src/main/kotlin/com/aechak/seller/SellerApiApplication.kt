@@ -33,7 +33,7 @@ import org.springframework.context.annotation.FilterType
         // 셀러가 받은 상품 문의 — 상위 application.inquiry(앱 서비스 문의)의 메일 발송 조립은 끌고 오지 않는다
         "com.aechak.application.inquiry.product",
         "com.aechak.application.product", // 상품 등록·카테고리 조회
-        // 셀러 리뷰 관리·답글 — 리뷰 작성·금칙어 판정(application.review 상위)은 구매자 경로의 것이고
+        // 셀러 리뷰 관리·답글 — 리뷰 작성(application.review 상위)과 금칙어 판정(application.moderation)은 구매자 경로의 것이고
         // 금칙어 스캐너 구현과 메시지 발행이 api 모듈에만 있어 끌고 오면 부팅이 깨진다
         "com.aechak.application.review.seller",
         "com.aechak.application.order.seller", // 셀러 주문 관리 — 구매자 주문서·장바구니 조립은 끌고 오지 않는다

@@ -1,7 +1,7 @@
 package com.aechak.application.review.service
 
+import com.aechak.application.moderation.usecase.result.ModerationDecision
 import com.aechak.application.order.usecase.result.OrderItemForReviewResult
-import com.aechak.application.review.moderation.service.ReviewModerationDecision
 import com.aechak.application.review.usecase.command.CreateReviewCommand
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.review.error.ReviewErrorCode
@@ -50,14 +50,14 @@ class ReviewCommandService(
         command: CreateReviewCommand,
         orderItem: OrderItemForReviewResult,
         images: List<ReviewImage>,
-        moderationDecision: ReviewModerationDecision,
+        moderationDecision: ModerationDecision,
         petSnapshot: ReviewPetSnapshot?,
     ): Review {
         val review = command.toEntity(orderItem, images, petSnapshot)
         when (moderationDecision) {
-            is ReviewModerationDecision.Keep -> Unit
-            is ReviewModerationDecision.Mask -> review.mask(moderationDecision.displayContent)
-            is ReviewModerationDecision.Block -> review.block()
+            is ModerationDecision.Keep -> Unit
+            is ModerationDecision.Mask -> review.mask(moderationDecision.displayContent)
+            is ModerationDecision.Block -> review.block()
         }
         return try {
             reviewRepository.save(review)

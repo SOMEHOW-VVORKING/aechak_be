@@ -10,6 +10,7 @@ import com.aechak.application.file.usecase.command.DeleteFileCommand
 import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -110,18 +111,67 @@ class FileServiceTest {
         assertEquals(listOf(key), storage.deletedKeys, "삭제는 스토리지 삭제로 그대로 위임해야 한다")
     }
 
+    @Test
+    fun `상한이 있는 용도에 길이가 없으면 INVALID_REQUEST로 거절한다`() {
+        val command = IssuePresignedUrlCommand(UploadPurpose.SNS_POST_IMAGE, "image/jpeg", USER_ID)
+
+        val ex = assertFailsWith<BusinessException> { service.issuePresignedUrl(command) }
+
+        assertEquals(CommonErrorCode.INVALID_REQUEST, ex.errorCode, "상한이 있는 용도는 서명에 넣을 길이를 받아야 한다")
+    }
+
+    @Test
+    fun `길이가 상한을 넘으면 FILE_TOO_LARGE로 거절한다`() {
+        val command = IssuePresignedUrlCommand(UploadPurpose.SNS_POST_IMAGE, "image/jpeg", USER_ID, SNS_POST_IMAGE_MAX_BYTES + 1)
+
+        val ex = assertFailsWith<BusinessException> { service.issuePresignedUrl(command) }
+
+        assertEquals(FileErrorCode.FILE_TOO_LARGE, ex.errorCode, "상한을 1바이트라도 넘으면 거절해야 한다")
+    }
+
+    @Test
+    fun `형식 검증이 길이 검증보다 먼저다`() {
+        val command = IssuePresignedUrlCommand(UploadPurpose.SNS_POST_IMAGE, "video/webm", USER_ID)
+
+        val ex = assertFailsWith<BusinessException> { service.issuePresignedUrl(command) }
+
+        assertEquals(FileErrorCode.UNSUPPORTED_FILE_TYPE, ex.errorCode, "형식과 길이가 모두 틀리면 형식 오류가 먼저다")
+    }
+
+    @Test
+    fun `길이가 상한과 같으면 그 길이로 서명을 요청한다`() {
+        val command = IssuePresignedUrlCommand(UploadPurpose.SNS_POST_IMAGE, "image/jpeg", USER_ID, SNS_POST_IMAGE_MAX_BYTES)
+
+        service.issuePresignedUrl(command)
+
+        assertEquals(listOf<Long?>(SNS_POST_IMAGE_MAX_BYTES), storage.issuedContentLengths, "상한과 같은 길이는 그대로 서명에 넣어야 한다")
+    }
+
+    @Test
+    fun `상한이 없는 용도는 받은 길이를 서명에 넣지 않는다`() {
+        val command = IssuePresignedUrlCommand(UploadPurpose.REVIEW_IMAGE, "image/png", USER_ID, 1024)
+
+        service.issuePresignedUrl(command)
+
+        assertEquals(listOf<Long?>(null), storage.issuedContentLengths, "기존 용도의 서명은 길이 없이 그대로여야 한다")
+    }
+
     private class FakeFileStorage : FileStorage {
         val deletedKeys = mutableListOf<String>()
+        val issuedContentLengths = mutableListOf<Long?>()
 
         override fun issueUploadUrl(
             purpose: UploadPurpose,
             fileType: FileType,
             userId: Long,
-        ): IssueFileUrl =
-            IssueFileUrl(
+            contentLength: Long?,
+        ): IssueFileUrl {
+            issuedContentLengths += contentLength
+            return IssueFileUrl(
                 url = "https://fake-presigned",
                 key = "tmp/$userId/${purpose.prefix}/ULID.${fileType.extension}",
             )
+        }
 
         override fun promote(
             tmpKey: String,
@@ -145,5 +195,6 @@ class FileServiceTest {
 
     companion object {
         private const val USER_ID = 1L
+        private const val SNS_POST_IMAGE_MAX_BYTES = 10_485_760L
     }
 }

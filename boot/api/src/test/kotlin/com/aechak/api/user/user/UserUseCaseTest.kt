@@ -44,7 +44,7 @@ class UserUseCaseTest : IntegrationTestBase() {
     lateinit var userRepository: UserRepository
 
     @BeforeEach
-    fun resetFakes() = (fileStorage as FakeFileStorage).clearPromoted()
+    fun resetFakes() = (fileStorage as FakeFileStorage).reset()
 
     private fun seedTerm(
         type: TermType,
