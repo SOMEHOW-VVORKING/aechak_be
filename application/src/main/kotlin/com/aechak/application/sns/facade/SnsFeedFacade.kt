@@ -8,6 +8,7 @@ import com.aechak.application.sns.support.SnsFeedCursorCodec
 import com.aechak.application.sns.usecase.SnsFeedUseCase
 import com.aechak.application.sns.usecase.query.SnsFeedQuery
 import com.aechak.application.sns.usecase.result.SnsFeedItemResult
+import com.aechak.application.sns.usecase.result.SnsFeedReposterResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
@@ -31,6 +32,14 @@ class SnsFeedFacade(
 
     // 인기 피드는 순위 저장소(Redis)를 트랜잭션 밖에서 부르고 DB 읽기만 이 트랜잭션으로 감싼다
     private val readTx = TransactionTemplate(transactionManager).apply { isReadOnly = true }
+
+    @Transactional(readOnly = true)
+    override fun following(query: SnsFeedQuery): CursorPageResult<SnsFeedItemResult> {
+        val viewerId = checkNotNull(query.viewerId) { "팔로잉 피드는 로그인한 사용자만 부른다" }
+        val mutedIds = snsVisibilityService.findMutedIds(viewerId)
+        val following = snsFeedService.followingPage(query, viewerId, snsVisibilityService.findViewerFilter(viewerId) + mutedIds)
+        return cardPage(following.page.items.map { it.postId }, following.page, viewerId, mutedIds, following.reposters)
+    }
 
     @Transactional(readOnly = true)
     override fun explore(query: SnsFeedQuery): CursorPageResult<SnsFeedItemResult> {
@@ -94,14 +103,16 @@ class SnsFeedFacade(
         return PopularRanking(cursor.epochMinute, stored)
     }
 
+    /** 페이지의 게시물을 카드로 조립한다. reposters는 게시물 publicId별 리포스트 표시이고 팔로잉 피드만 채운다 */
     private fun cardPage(
         postIds: List<Long>,
         page: CursorPageResult<*>,
         viewerId: Long?,
         mutedIds: Set<Long>,
+        reposters: Map<String, SnsFeedReposterResult> = emptyMap(),
     ): CursorPageResult<SnsFeedItemResult> {
         val cards = postCardAssembler.assemble(postIds, viewerId, mutedIds)
-        return CursorPageResult(cards.map { SnsFeedItemResult(it, repostedBy = null) }, null, page.nextCursor, page.hasNext)
+        return CursorPageResult(cards.map { SnsFeedItemResult(it, reposters[it.publicId]) }, null, page.nextCursor, page.hasNext)
     }
 
     /** 인기 순위와 그 순위를 남긴 분. 분이 null이면 남기지 못한 순위라 다음 페이지가 없다 */

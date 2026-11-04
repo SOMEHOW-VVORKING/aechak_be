@@ -11,6 +11,7 @@ import com.aechak.application.sns.port.SnsFeedQueryPort
 import com.aechak.application.sns.port.SnsPopularSnapshotStore
 import com.aechak.application.sns.port.SnsVisibilityQueryPort
 import com.aechak.application.sns.port.view.SnsFeedEntryView
+import com.aechak.application.sns.port.view.SnsFeedRepostView
 import com.aechak.application.sns.port.view.SnsPairStateView
 import com.aechak.application.sns.port.view.SnsPostCardView
 import com.aechak.application.sns.port.view.SnsPostHashtagView
@@ -131,6 +132,22 @@ private class LosingSnapshotStore : SnsPopularSnapshotStore {
 private class FakeFeedQueryPort(
     private val ranking: List<Long>,
 ) : SnsFeedQueryPort {
+    override fun findFollowingPage(
+        viewerId: Long,
+        hiddenUserIds: Set<Long>,
+        anchor: LocalDateTime,
+        lastTime: LocalDateTime?,
+        lastPostId: Long?,
+        limit: Int,
+    ): List<SnsFeedEntryView> = throw UnsupportedOperationException()
+
+    override fun findLatestReposts(
+        viewerId: Long,
+        hiddenUserIds: Set<Long>,
+        anchor: LocalDateTime,
+        postIds: Collection<Long>,
+    ): List<SnsFeedRepostView> = throw UnsupportedOperationException()
+
     override fun findExplorePage(
         viewerId: Long?,
         hiddenUserIds: Set<Long>,

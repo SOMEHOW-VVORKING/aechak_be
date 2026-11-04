@@ -1,6 +1,7 @@
 package com.aechak.application.sns.port
 
 import com.aechak.application.sns.port.view.SnsFeedEntryView
+import com.aechak.application.sns.port.view.SnsFeedRepostView
 import com.aechak.application.sns.port.view.SnsPostCardView
 import com.aechak.application.sns.port.view.SnsPostHashtagView
 import com.aechak.application.sns.port.view.SnsPostMediaView
@@ -8,6 +9,28 @@ import java.time.LocalDateTime
 
 /** 피드와 카드 읽기 전용 포트. 볼 수 있는 작성자는 프로필 행이 있는 사용자다 */
 interface SnsFeedQueryPort {
+    /**
+     * 팔로잉 피드 한 페이지. 원천은 나와 내가 팔로우하는 사용자 중 볼 수 있고 숨김 밖인 사용자다.
+     * 원천의 PUBLISHED 원글과 리포스트를 anchor 이하로 모아 원글마다 가장 늦은 시각으로 묶고 (그 시각, 원글 id) 내림차순으로
+     * last 뒤부터 limit개 읽는다. 원글이 PUBLISHED이고 작성자가 볼 수 있으며 숨김 밖인 것만 싣는다.
+     */
+    fun findFollowingPage(
+        viewerId: Long,
+        hiddenUserIds: Set<Long>,
+        anchor: LocalDateTime,
+        lastTime: LocalDateTime?,
+        lastPostId: Long?,
+        limit: Int,
+    ): List<SnsFeedEntryView>
+
+    /** postIds마다 팔로잉 피드 원천이 anchor 이하에 한 리포스트 중 가장 늦은 것 */
+    fun findLatestReposts(
+        viewerId: Long,
+        hiddenUserIds: Set<Long>,
+        anchor: LocalDateTime,
+        postIds: Collection<Long>,
+    ): List<SnsFeedRepostView>
+
     /**
      * 탐색 피드 한 페이지. from과 anchor 사이의 PUBLISHED 원글을 (created_at, id) 내림차순으로 last 뒤부터 limit개 읽는다.
      * 숨김 사용자의 글을 빼고 로그인이면 나와 내가 팔로우하는 사용자의 글도 뺀다.

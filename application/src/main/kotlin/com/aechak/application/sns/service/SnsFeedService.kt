@@ -5,6 +5,7 @@ import com.aechak.application.sns.port.view.SnsFeedEntryView
 import com.aechak.application.sns.support.PopularScore
 import com.aechak.application.sns.support.SnsFeedCursorCodec
 import com.aechak.application.sns.usecase.query.SnsFeedQuery
+import com.aechak.application.sns.usecase.result.SnsFeedReposterResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.support.CursorPageSize
 import com.aechak.common.error.BusinessException
@@ -24,6 +25,52 @@ class SnsFeedService(
     private val postRepository: PostRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    /**
+     * 팔로잉 피드 한 페이지와 카드 순서 시각에 원글을 리포스트한 원천 사용자.
+     * 첫 페이지는 지금이 기준 시각이고 다음 페이지도 그 뒤의 게시와 리포스트를 넣지 않는다.
+     */
+    fun followingPage(
+        query: SnsFeedQuery,
+        viewerId: Long,
+        hiddenUserIds: Set<Long>,
+    ): FollowingPage {
+        val cursor = query.cursor?.let(SnsFeedCursorCodec::decodeFollowing)
+        val anchor = cursor?.anchor ?: LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)
+        val lastPostId = cursor?.let { findLastPost(it.lastPostPublicId).id }
+        val fetched =
+            feedQueryPort.findFollowingPage(
+                viewerId,
+                hiddenUserIds,
+                anchor,
+                cursor?.lastTime,
+                lastPostId,
+                CursorPageSize.fetchLimit(query.size),
+            )
+        val page =
+            CursorPageResult.of(fetched = fetched, size = query.size) {
+                SnsFeedCursorCodec.encodeFollowing(anchor, it.sortTime, it.publicId)
+            }
+        return FollowingPage(page, reposters(viewerId, hiddenUserIds, anchor, page.items))
+    }
+
+    /** 가장 늦은 리포스트의 시각이 카드 순서 시각과 같을 때만 리포스트 표시를 싣는다. 다르면 원글 게시로 들어온 카드다 */
+    private fun reposters(
+        viewerId: Long,
+        hiddenUserIds: Set<Long>,
+        anchor: LocalDateTime,
+        entries: List<SnsFeedEntryView>,
+    ): Map<String, SnsFeedReposterResult> {
+        if (entries.isEmpty()) return emptyMap()
+        val byPostId = entries.associateBy { it.postId }
+        return feedQueryPort
+            .findLatestReposts(viewerId, hiddenUserIds, anchor, byPostId.keys)
+            .mapNotNull { repost ->
+                byPostId[repost.postId]
+                    ?.takeIf { it.sortTime == repost.repostedAt }
+                    ?.let { it.publicId to SnsFeedReposterResult(repost.reposterPublicId, repost.reposterNickname) }
+            }.toMap()
+    }
 
     /** 탐색 피드 한 페이지. 첫 페이지는 지금이 기준 시각이고 다음 페이지는 커서의 기준 시각에서 7일을 센다 */
     fun explorePage(
@@ -93,3 +140,9 @@ class SnsFeedService(
         private const val SECONDS_PER_MINUTE = 60L
     }
 }
+
+/** 팔로잉 피드 한 페이지의 원글과 원글 publicId별 리포스트 표시 */
+data class FollowingPage(
+    val page: CursorPageResult<SnsFeedEntryView>,
+    val reposters: Map<String, SnsFeedReposterResult>,
+)

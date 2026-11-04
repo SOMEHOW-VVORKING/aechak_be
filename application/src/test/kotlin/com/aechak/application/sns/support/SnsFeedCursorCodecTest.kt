@@ -95,6 +95,28 @@ class SnsFeedCursorCodecTest {
         assertCursorRejected { SnsFeedCursorCodec.decodeExplore(SnsFeedCursorCodec.encodePopular(29_897_280L, 0)) }
     }
 
+    @Test
+    fun `팔로잉 커서를 왕복하면 기준 시각과 마지막 시각이 마이크로초까지 보존된다`() {
+        val anchor = LocalDateTime.of(2026, 11, 5, 9, 30, 15, 123_456_000)
+        val lastTime = LocalDateTime.of(2026, 11, 4, 22, 1, 2, 654_321_000)
+
+        val decoded = SnsFeedCursorCodec.decodeFollowing(SnsFeedCursorCodec.encodeFollowing(anchor, lastTime, lastPostPublicId))
+
+        assertEquals(anchor, decoded.anchor, "기준 시각이 마이크로초까지 보존되어야 한다")
+        assertEquals(lastTime, decoded.lastTime, "마지막 시각이 마이크로초까지 보존되어야 한다")
+        assertEquals(lastPostPublicId, decoded.lastPostPublicId, "마지막 게시물 공개 ID가 보존되어야 한다")
+    }
+
+    @Test
+    fun `팔로잉 커서는 다른 목록의 커서와 시각이 양수가 아닌 커서를 거절한다`() {
+        val explore = SnsFeedCursorCodec.encodeExplore(LocalDateTime.of(2026, 11, 5, 9, 30), lastPostPublicId)
+
+        assertCursorRejected { SnsFeedCursorCodec.decodeFollowing(explore) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("fl:1:2:$lastPostPublicId")) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeFollowing(encodeRaw("fl:1:0:$lastPostPublicId")) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeFollowing(encodeRaw("fl:1:2")) }
+    }
+
     private fun encodeRaw(payload: String): String =
         Base64
             .getUrlEncoder()

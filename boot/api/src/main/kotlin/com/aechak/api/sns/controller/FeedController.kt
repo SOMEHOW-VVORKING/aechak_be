@@ -18,6 +18,13 @@ import org.springframework.web.bind.annotation.RestController
 class FeedController(
     private val snsFeedUseCase: SnsFeedUseCase,
 ) {
+    @GetMapping("/following")
+    fun following(
+        @Valid @ModelAttribute request: SnsFeedRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<SnsFeedPageResponse>> =
+        ResponseEntity.ok(ApiResponse.of(SnsFeedPageResponse.from(snsFeedUseCase.following(request.toQuery(principal.userId)))))
+
     @GetMapping("/explore")
     fun explore(
         @Valid @ModelAttribute request: SnsFeedRequest,

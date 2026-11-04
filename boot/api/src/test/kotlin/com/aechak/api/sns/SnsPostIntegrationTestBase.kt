@@ -259,6 +259,20 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         jdbcTemplate.update("update sns_posts set created_at = ? where public_id = ?", createdAt, publicId)
     }
 
+    /** reposter가 이 원글에 한 리포스트의 시각을 옮긴다. */
+    protected fun backdateRepost(
+        reposterId: Long,
+        publicId: String,
+        createdAt: LocalDateTime,
+    ) {
+        jdbcTemplate.update(
+            "update sns_reposts r join sns_posts p on p.id = r.post_id set r.created_at = ? where r.reposter_id = ? and p.public_id = ?",
+            createdAt,
+            reposterId,
+            publicId,
+        )
+    }
+
     protected fun postCreatedAt(publicId: String): LocalDateTime =
         jdbcTemplate.queryForObject("select created_at from sns_posts where public_id = ?", LocalDateTime::class.java, publicId)!!
 

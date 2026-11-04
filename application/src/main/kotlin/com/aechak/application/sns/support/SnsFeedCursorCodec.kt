@@ -12,13 +12,34 @@ import java.util.Base64
  * 피드와 프로필 탭 목록의 keyset 커서.
  * 페이로드는 태그로 시작하는 `:` 구분 값을 base64url(패딩 없음)로 감싼 값이고 사용자 id는 싣지 않는다.
  * 시각은 오프셋 없는 LocalDateTime을 UTC 기준 epoch 마이크로초로 담는다.
+ *  - 팔로잉 fl:{anchor}:{lastTime}:{lastPostPublicId}
  *  - 탐색 ex:{anchor}:{lastPostPublicId}
  *  - 인기 pp:{epochMinute}:{offset}
  */
 object SnsFeedCursorCodec {
     private const val SEPARATOR = ":"
+    private const val FOLLOWING_TAG = "fl"
     private const val EXPLORE_TAG = "ex"
     private const val POPULAR_TAG = "pp"
+
+    /** 팔로잉 피드 커서. anchor는 첫 페이지의 기준 시각이고 lastTime은 마지막 카드의 정렬 시각이다 */
+    data class FollowingCursor(
+        val anchor: LocalDateTime,
+        val lastTime: LocalDateTime,
+        val lastPostPublicId: String,
+    )
+
+    fun encodeFollowing(
+        anchor: LocalDateTime,
+        lastTime: LocalDateTime,
+        lastPostPublicId: String,
+    ): String = encode(FOLLOWING_TAG, anchor.toEpochMicros().toString(), lastTime.toEpochMicros().toString(), lastPostPublicId)
+
+    /** 형식이나 태그가 다르거나 두 시각 중 하나가 양수가 아니면 INVALID_CURSOR */
+    fun decodeFollowing(cursor: String): FollowingCursor {
+        val (anchor, lastTime, lastPostPublicId) = decode(cursor, FOLLOWING_TAG, 3)
+        return FollowingCursor(anchor.toTimeOrInvalid(), lastTime.toTimeOrInvalid(), lastPostPublicId.toTokenOrInvalid())
+    }
 
     /** 탐색 피드 커서. anchor는 첫 페이지의 기준 시각이다 */
     data class ExploreCursor(
