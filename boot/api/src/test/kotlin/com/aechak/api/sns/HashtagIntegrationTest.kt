@@ -7,8 +7,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * 통합: 게시가 해시태그를 정규화해 저장하고 태그 게시글 수를 올리는지, 상세가 작성자가 단 순서대로 태그를 싣는지.
- * 깨지면 표기만 다른 태그가 따로 세어지거나 규칙을 어긴 태그가 저장된다.
+ * 통합: 게시와 수정이 해시태그를 정규화해 저장하고 게시, 수정, 삭제가 태그 게시글 수를 맞추는지, 상세가 작성자가 단 순서대로 태그를 싣는지.
+ * 깨지면 표기만 다른 태그가 따로 세어지거나 규칙을 어긴 태그가 저장되거나 태그 게시글 수가 실제 게시물 수와 어긋난다.
  */
 class HashtagIntegrationTest : SnsPostIntegrationTestBase() {
     @Test
@@ -95,4 +95,83 @@ class HashtagIntegrationTest : SnsPostIntegrationTestBase() {
         assertTrue(hashtagCounts().isEmpty())
         assertTrue(fakeFileStorage.promotedKeys.isEmpty())
     }
+
+    @Test
+    fun `수정하면 빠진 태그 수를 내리고 새 태그 수를 올리며 남은 태그 수는 그대로다`() {
+        val userId = onboardedUser()
+        val publicId = createdPublicId(userId, postBody(hashtags = listOf("산책", "한강")))
+        createdPublicId(userId, postBody(hashtags = listOf("산책")))
+
+        updatePost(publicId, userId, updateBody(hashtags = listOf("한강", "#코코"))).andExpect(status().isNoContent)
+
+        assertEquals(mapOf("산책" to 1, "한강" to 1, "코코" to 1), hashtagCounts())
+        assertEquals(listOf("한강", "코코"), postDetail(publicId)["hashtags"])
+    }
+
+    @Test
+    fun `지우면 그 게시물의 태그 수를 1 내리고 태그 연결을 지운다`() {
+        val userId = onboardedUser()
+        val publicId = createdPublicId(userId, postBody(hashtags = listOf("산책", "한강")))
+        createdPublicId(userId, postBody(hashtags = listOf("산책")))
+
+        deletePost(publicId, userId).andExpect(status().isNoContent)
+
+        assertEquals(mapOf("산책" to 1, "한강" to 0), hashtagCounts())
+        assertEquals(0, hashtagLinkCountOf(publicId))
+    }
+
+    @Test
+    fun `이미 지운 게시물을 다시 지워도 태그 수를 다시 내리지 않는다`() {
+        val userId = onboardedUser()
+        val publicId = createdPublicId(userId, postBody(hashtags = listOf("산책")))
+        createdPublicId(userId, postBody(hashtags = listOf("산책")))
+        deletePost(publicId, userId).andExpect(status().isNoContent)
+
+        deletePost(publicId, userId).andExpect(status().isNoContent)
+
+        assertEquals(mapOf("산책" to 1), hashtagCounts())
+    }
+
+    @Test
+    fun `수정에 태그 31개를 보내면 130406이고 금지어 태그는 130502이며 태그는 그대로다`() {
+        val userId = onboardedUser()
+        val publicId = createdPublicId(userId, postBody(hashtags = listOf("산책")))
+
+        updatePost(publicId, userId, updateBody(hashtags = (1..31).map { "tag$it" }))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(130406))
+        updatePost(publicId, userId, updateBody(hashtags = listOf("한강", "시발")))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(130502))
+
+        assertEquals(listOf("산책"), postDetail(publicId)["hashtags"])
+        assertEquals(mapOf("산책" to 1), hashtagCounts())
+    }
+
+    @Test
+    fun `글 게시물의 캡션을 비우는 수정은 130402이고 태그와 태그 수는 그대로다`() {
+        val userId = onboardedUser()
+        val publicId = createdPublicId(userId, postBody(hashtags = listOf("산책")))
+
+        updatePost(publicId, userId, updateBody(caption = null, hashtags = listOf("한강")))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(130402))
+
+        assertEquals(listOf("산책"), postDetail(publicId)["hashtags"])
+        assertEquals(mapOf("산책" to 1), hashtagCounts())
+    }
+
+    @Test
+    fun `없는 게시물에 태그 31개로 수정하면 404가 아니라 400 130406이다`() {
+        updatePost("01JF9W3Q6R8T2V4X7Z9B1C3D5J", onboardedUser(), updateBody(hashtags = (1..31).map { "tag$it" }))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(130406))
+    }
+
+    private fun hashtagLinkCountOf(publicId: String): Int =
+        jdbcTemplate.queryForObject(
+            "select count(*) from sns_post_hashtags h join sns_posts p on p.id = h.post_id where p.public_id = ?",
+            Int::class.java,
+            publicId,
+        )!!
 }

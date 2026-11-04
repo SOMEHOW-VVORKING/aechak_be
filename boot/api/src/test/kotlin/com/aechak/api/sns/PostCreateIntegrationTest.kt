@@ -2,8 +2,10 @@ package com.aechak.api.sns
 
 import com.aechak.api.support.CommitFailureInjector
 import com.aechak.application.file.port.enums.UploadPurpose
+import com.aechak.application.sns.postdeletion.usecase.SnsPostDeletionUseCase
 import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.application.sns.usecase.command.CreatePostCommand
+import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.domain.support.Ulid
 import org.hamcrest.Matchers.hasLength
 import org.junit.jupiter.api.Nested
@@ -27,6 +29,9 @@ import kotlin.test.assertTrue
 class PostCreateIntegrationTest : SnsPostIntegrationTestBase() {
     @Autowired
     private lateinit var snsPostUseCase: SnsPostUseCase
+
+    @Autowired
+    private lateinit var snsPostDeletionUseCase: SnsPostDeletionUseCase
 
     @Autowired
     private lateinit var commitFailureInjector: CommitFailureInjector
@@ -346,6 +351,40 @@ class PostCreateIntegrationTest : SnsPostIntegrationTestBase() {
 
             assertTrue(errors.isEmpty(), "태그 순서가 달라도 동시 게시는 교착 없이 모두 성공해야 한다: $errors")
             assertEquals(tags.associateWith { threads }, hashtagCounts())
+        }
+
+        @Test
+        fun `두 게시물에서 서로 반대로 태그를 바꾸는 수정을 동시에 보내도 교착 없이 수가 맞다`() {
+            // 태그 id 순서와 이름 순서가 반대가 되도록 b를 먼저 만든다
+            val bToA = List(4) { onboardedUser().let { it to createdPublicId(it, postBody(hashtags = listOf("b"))) } }
+            val aToB = List(2) { onboardedUser().let { it to createdPublicId(it, postBody(hashtags = listOf("a"))) } }
+            val commands =
+                bToA.map { (userId, publicId) -> UpdatePostCommand(userId, publicId, "동시 수정", listOf("a")) } +
+                    aToB.map { (userId, publicId) -> UpdatePostCommand(userId, publicId, "동시 수정", listOf("b")) }
+
+            val errors = runConcurrently(commands.map { command -> { snsPostUseCase.updatePost(command) } })
+
+            assertTrue(errors.isEmpty(), "태그를 서로 반대로 바꾸는 동시 수정은 교착 없이 모두 성공해야 한다: $errors")
+            assertEquals(mapOf("a" to 4, "b" to 2), hashtagCounts())
+        }
+
+        @Test
+        fun `태그를 단 게시와 같은 태그가 달린 다른 게시물의 삭제가 겹쳐도 교착 없이 수가 맞다`() {
+            val authorId = onboardedUser()
+            // 태그 id 순서와 이름 순서가 반대가 되도록 b를 먼저 만든다
+            createdPublicId(authorId, postBody(hashtags = listOf("b")))
+            val targets = List(4) { createdPublicId(authorId, postBody(hashtags = listOf("a", "b"))) }
+            val deletes = targets.map { publicId -> { snsPostDeletionUseCase.deleteByAuthor(authorId, publicId) } }
+            val creates: List<() -> Unit> =
+                List(2) {
+                    { snsPostUseCase.createPost(CreatePostCommand(authorId, Ulid.generate(), "동시 게시", emptyList(), listOf("a", "b"))) }
+                }
+
+            val errors = runConcurrently(deletes + creates)
+
+            assertTrue(errors.isEmpty(), "같은 태그의 게시와 삭제가 겹쳐도 교착 없이 모두 성공해야 한다: $errors")
+            assertEquals(mapOf("a" to 2, "b" to 3), hashtagCounts())
+            assertEquals(3, statsPostCount(authorId))
         }
     }
 }

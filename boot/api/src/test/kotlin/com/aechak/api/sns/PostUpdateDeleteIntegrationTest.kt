@@ -238,24 +238,13 @@ class PostUpdateDeleteIntegrationTest : SnsPostIntegrationTestBase() {
         assertEquals(tmpKeys.map(::promotedKeyOf), mediaKeysOf(publicId))
     }
 
-    @Test
-    fun `해시태그를 보내면 아직 90001이다`() {
-        val authorId = onboardedUser()
-        val publicId = createdPublicId(authorId)
-
-        updatePost(publicId, authorId, updateBody(hashtags = listOf("산책")))
-            .andExpect(status().isBadRequest)
-            .andExpect(jsonPath("$.errorCode").value(90001))
-        assertNull(postRow(publicId)["edited_at"])
-    }
-
     @Nested
     inner class Concurrency {
         @Test
         fun `같은 게시물을 동시에 두 번 지워도 수는 한 번만 준다`() {
             val authorId = onboardedUser()
-            val publicId = createdPublicId(authorId)
-            createdPublicId(authorId)
+            val publicId = createdPublicId(authorId, postBody(hashtags = listOf("산책")))
+            createdPublicId(authorId, postBody(hashtags = listOf("산책")))
             val threads = 2
             val ready = CountDownLatch(threads)
             val start = CountDownLatch(1)
@@ -283,6 +272,24 @@ class PostUpdateDeleteIntegrationTest : SnsPostIntegrationTestBase() {
 
             assertTrue(errors.isEmpty(), "동시 삭제는 둘 다 성공해야 한다: $errors")
             assertEquals(1, statsPostCount(authorId))
+            assertEquals(mapOf("산책" to 1), hashtagCounts())
+        }
+
+        @Test
+        fun `같은 게시물을 동시에 고쳐도 태그 수가 마지막에 남은 태그와 맞는다`() {
+            val authorId = onboardedUser()
+            val publicId = createdPublicId(authorId, postBody(hashtags = listOf("산책")))
+            createdPublicId(authorId, postBody(hashtags = listOf("산책")))
+            val updates =
+                listOf("한강", "공원").map { tag ->
+                    { snsPostUseCase.updatePost(UpdatePostCommand(authorId, publicId, "산책 다녀왔어요", listOf(tag))) }
+                }
+
+            val errors = runConcurrently(updates)
+
+            assertTrue(errors.isEmpty(), "같은 게시물 동시 수정은 차례로 모두 성공해야 한다: $errors")
+            val last = (postDetail(publicId)["hashtags"] as List<*>).single() as String
+            assertEquals(mapOf("산책" to 1, "한강" to 0, "공원" to 0) + (last to 1), hashtagCounts())
         }
 
         @Test
@@ -297,7 +304,8 @@ class PostUpdateDeleteIntegrationTest : SnsPostIntegrationTestBase() {
                         jdbcTemplate.queryForList("select id from sns_posts where public_id = ? for update", publicId)
                         jdbcTemplate.update("update sns_posts set caption = ? where public_id = ?", "앞 요청 캡션", publicId)
                         // 나중 요청은 원래 캡션으로 되돌린다. 잠그지 않고 읽으면 바뀐 것이 없다고 보고 앞 요청의 캡션이 남는다
-                        val future = pool.submit { snsPostUseCase.updatePost(UpdatePostCommand(authorId, publicId, "산책 다녀왔어요")) }
+                        val future =
+                            pool.submit { snsPostUseCase.updatePost(UpdatePostCommand(authorId, publicId, "산책 다녀왔어요", emptyList())) }
                         assertFailsWith<TimeoutException> { future.get(1, TimeUnit.SECONDS) }
                         future
                     }!!

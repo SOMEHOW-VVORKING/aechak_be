@@ -38,15 +38,25 @@ class PostCommandService(
         return CreatePostResult(post.publicId)
     }
 
-    /** 작성자 본인의 게시물을 잠가 캡션을 바꾼다. 없거나 지운 게시물이면 130400, 작성자가 아니면 130401이다 */
+    /**
+     * 작성자 본인의 게시물을 잠가 캡션과 태그를 바꾸고 태그 게시글 수를 맞춘다. 없거나 지운 게시물이면 130400, 작성자가 아니면 130401이다.
+     * 지금 달린 태그는 게시물 행을 잠근 뒤에 읽는다. 잠그기 전에 읽으면 같은 게시물을 동시에 고칠 때 같은 태그 수를 두 번 내린다.
+     */
     fun update(
         publicId: String,
         userId: Long,
         caption: String?,
+        hashtags: List<String>,
     ) {
         val post = postRepository.findByPublicIdForUpdate(publicId) ?: throw BusinessException(SnsErrorCode.SNS_POST_UNAVAILABLE)
         if (post.authorId != userId) throw BusinessException(SnsErrorCode.SNS_POST_NOT_AUTHOR)
         if (post.status == PostStatus.DELETED) throw BusinessException(SnsErrorCode.SNS_POST_UNAVAILABLE)
-        post.update(caption)
+        // 거부할 수정이 태그 행을 잠그거나 새 태그 행을 만들지 않게 태그 수를 바꾸기 전에 확인한다
+        post.validateUpdate(caption)
+        val current = hashtagRepository.findAllById(post.hashtags.map { it.hashtagId }).map { it.name }
+        // 두 목록에 함께 든 태그는 adjustCounts가 건너뛰므로 빠진 태그와 새 태그의 수만 바뀐다
+        hashtagRepository.adjustCounts(added = hashtags, removed = current)
+        val hashtagIds = hashtagRepository.findAllByNameIn(hashtags).associate { it.name to it.id }
+        post.update(caption, hashtags.map(hashtagIds::getValue))
     }
 }

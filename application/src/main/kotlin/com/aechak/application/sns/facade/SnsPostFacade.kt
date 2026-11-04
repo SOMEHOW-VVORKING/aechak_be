@@ -100,8 +100,12 @@ class SnsPostFacade(
     }
 
     override fun updatePost(command: UpdatePostCommand) {
-        val caption = Post.normalizeCaption(command.caption)?.let(::moderate)
-        tx.execute { postCommandService.update(command.publicId, command.userId, caption) }
+        // 규칙은 게시물 조회보다 먼저 본다. 없는 게시물이어도 규칙을 어긴 수정은 404가 아니라 400이다
+        val draftCaption = Post.normalizeCaption(command.caption)
+        val hashtags = Post.normalizeHashtags(command.hashtags)
+        val caption = draftCaption?.let(::moderate)
+        if (hashtags.any(moderationUseCase::containsBannedWord)) throw BusinessException(SnsErrorCode.SNS_HASHTAG_BANNED_WORD)
+        tx.execute { postCommandService.update(command.publicId, command.userId, caption, hashtags) }
     }
 
     @Transactional(readOnly = true)

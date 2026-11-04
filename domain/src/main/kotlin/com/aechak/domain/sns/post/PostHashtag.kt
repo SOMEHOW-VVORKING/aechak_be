@@ -18,12 +18,19 @@ import jakarta.persistence.UniqueConstraint
 class PostHashtag protected constructor(
     @Column(nullable = false, updatable = false)
     val hashtagId: Long,
-    @Column(nullable = false)
-    val sortOrder: Int,
+    sortOrder: Int,
 ) : BaseEntity() {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0L
+
+    @Column(nullable = false)
+    var sortOrder: Int = sortOrder
+        protected set
+
+    fun moveTo(sortOrder: Int) {
+        this.sortOrder = sortOrder
+    }
 
     companion object {
         fun of(

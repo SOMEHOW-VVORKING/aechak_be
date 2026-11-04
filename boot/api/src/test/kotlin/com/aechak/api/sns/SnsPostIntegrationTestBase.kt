@@ -28,6 +28,10 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -233,6 +237,34 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         jdbcTemplate
             .queryForList("select name, post_count from sns_hashtags")
             .associate { it["name"] as String to (it["post_count"] as Number).toInt() }
+
+    /** 작업마다 스레드 하나를 두고 한꺼번에 출발시켜 모두 끝날 때까지 기다린 뒤 던진 예외를 모아 돌려준다. */
+    protected fun runConcurrently(tasks: List<() -> Unit>): List<Throwable> {
+        val ready = CountDownLatch(tasks.size)
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(tasks.size)
+        val errors = Collections.synchronizedList(mutableListOf<Throwable>())
+        try {
+            val futures =
+                tasks.map { task ->
+                    pool.submit {
+                        ready.countDown()
+                        start.await()
+                        try {
+                            task()
+                        } catch (e: Throwable) {
+                            errors.add(e)
+                        }
+                    }
+                }
+            ready.await(5, TimeUnit.SECONDS)
+            start.countDown() // 모든 스레드가 동시에 출발
+            futures.forEach { it.get(30, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdownNow()
+        }
+        return errors
+    }
 
     private fun jsonArray(values: List<String>): String = values.joinToString(",", "[", "]") { "\"$it\"" }
 }
