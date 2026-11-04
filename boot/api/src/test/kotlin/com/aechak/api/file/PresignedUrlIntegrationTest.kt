@@ -1,6 +1,8 @@
 package com.aechak.api.file
 
 import com.aechak.api.support.IntegrationTestBase
+import org.hamcrest.Matchers.allOf
+import org.hamcrest.Matchers.endsWith
 import org.hamcrest.Matchers.startsWith
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -81,6 +83,44 @@ class PresignedUrlIntegrationTest : IntegrationTestBase() {
     @Test
     fun `게시물 사진에 허용 밖 형식을 보내면 100000이다`() {
         issue("""{"purpose":"SNS_POST_IMAGE","contentType":"video/webm","contentLength":1024}""")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(100000))
+    }
+
+    @Test
+    fun `게시물 사진에 영상 형식을 보내면 100000이다`() {
+        issue("""{"purpose":"SNS_POST_IMAGE","contentType":"video/mp4","contentLength":1024}""")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(100000))
+    }
+
+    @Test
+    fun `게시물 영상에 길이가 없으면 90001이다`() {
+        issue("""{"purpose":"SNS_POST_VIDEO","contentType":"video/mp4"}""")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+    }
+
+    @Test
+    fun `게시물 영상이 100MB를 1바이트 넘으면 100004다`() {
+        issue("""{"purpose":"SNS_POST_VIDEO","contentType":"video/mp4","contentLength":104857601}""")
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(100004))
+    }
+
+    @Test
+    fun `게시물 영상은 MP4와 MOV 모두 정확히 100MB면 발급한다`() {
+        issue("""{"purpose":"SNS_POST_VIDEO","contentType":"video/mp4","contentLength":104857600}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.key").value(allOf(startsWith("tmp/$userId/sns/posts/videos/"), endsWith(".mp4"))))
+        issue("""{"purpose":"SNS_POST_VIDEO","contentType":"video/quicktime","contentLength":104857600}""")
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.key").value(allOf(startsWith("tmp/$userId/sns/posts/videos/"), endsWith(".mov"))))
+    }
+
+    @Test
+    fun `게시물 영상에 허용 밖 형식을 보내면 100000이다`() {
+        issue("""{"purpose":"SNS_POST_VIDEO","contentType":"video/webm","contentLength":1024}""")
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(100000))
     }
