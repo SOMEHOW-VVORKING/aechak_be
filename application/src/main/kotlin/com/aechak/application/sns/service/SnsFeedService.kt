@@ -75,7 +75,10 @@ class SnsFeedService(
             }.toMap()
     }
 
-    /** 탐색 피드 한 페이지. 첫 페이지는 지금이 기준 시각이고 다음 페이지는 커서의 기준 시각에서 7일을 센다 */
+    /**
+     * 탐색 피드 한 페이지. 첫 페이지는 지금이 기준 시각이고 다음 페이지는 커서의 기준 시각에서 7일을 센다.
+     * 7일 안의 글이 20개에 못 미치면 7일이 지난 글을 기간 없이 이어서 준다.
+     */
     fun explorePage(
         query: SnsFeedQuery,
         hiddenUserIds: Set<Long>,
@@ -84,31 +87,51 @@ class SnsFeedService(
         // 커서에 마이크로초까지 담으므로 첫 페이지도 같은 정밀도로 자른다
         val anchor = cursor?.anchor ?: LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)
         val last = cursor?.let { findLastPost(it.lastPostPublicId) }
-        val fetched =
+        val from = anchor.minusDays(EXPLORE_DAYS)
+        val page = { lowerBound: LocalDateTime? ->
             feedQueryPort.findExplorePage(
                 query.viewerId,
                 hiddenUserIds,
-                anchor.minusDays(EXPLORE_DAYS),
+                lowerBound,
                 anchor,
                 last?.createdAt,
                 last?.id,
                 CursorPageSize.fetchLimit(query.size),
             )
+        }
+        val inWindow = page(from)
+        // 이 페이지에서 7일 안의 글을 다 읽었을 때만 7일 안의 글 수를 센다
+        val fetched =
+            if (inWindow.size <= query.size &&
+                isExploreSparse(query.viewerId, hiddenUserIds, from, anchor)
+            ) {
+                page(null)
+            } else {
+                inWindow
+            }
         return CursorPageResult.of(fetched = fetched, size = query.size) { SnsFeedCursorCodec.encodeExplore(anchor, it.publicId) }
     }
 
     /** 지금 인기 순위를 정할 분. 순위 키와 인기 커서가 이 값을 쓴다 */
     fun currentMinute(): Long = Instant.now().epochSecond / SECONDS_PER_MINUTE
 
-    /** 인기 순위. 지금부터 72시간 안의 원글을 점수순으로 최대 1,000개 고르고 보는 사람의 숨김 집합은 넣지 않는다 */
+    /**
+     * 인기 순위. 지금부터 72시간 안의 원글을 점수순으로 최대 1,000개 고르고 보는 사람의 숨김 집합은 넣지 않는다.
+     * 72시간 안의 글이 20개에 못 미치면 그 뒤에 72시간이 지난 글을 점수순으로 잇는다.
+     */
     fun popularRanking(): List<Long> {
         val now = LocalDateTime.now()
-        // shortcut: 분마다 그 분의 첫 요청이 72시간 원글을 정렬해 순위를 만든다.
+        // shortcut: 분마다 그 분의 첫 요청이 72시간 원글을 정렬해 순위를 만들고 20개에 못 미치면 전체 원글을 한 번 더 정렬한다.
         // 72시간 후보가 1만 건을 넘거나 인기 피드 P95가 500ms를 넘으면 순위 계산을 요청 밖의 주기 작업으로 옮기고 점수를 미리 저장한다
-        return feedQueryPort
-            .findPopularRanking(now.minusHours(POPULAR_HOURS), now, PopularScore.REPOST, PopularScore.MAX_RANK)
-            .also { log.info("SNS 인기 순위 크기 size={}", it.size) }
+        val recent = rank(now.minusHours(POPULAR_HOURS), now)
+        val ranking = if (recent.size < MIN_FEED_POSTS) (recent + rank(null, now)).distinct().take(PopularScore.MAX_RANK) else recent
+        return ranking.also { log.info("SNS 인기 순위 크기 size={}", it.size) }
     }
+
+    private fun rank(
+        from: LocalDateTime?,
+        to: LocalDateTime,
+    ): List<Long> = feedQueryPort.findPopularRanking(from, to, PopularScore.REPOST, PopularScore.MAX_RANK)
 
     /**
      * 순위의 offset부터 지금 볼 수 있는 글로 size개를 채운다. 그사이 지운 글, 탈퇴 작성자, 숨김 사용자의 글은 건너뛴다.
@@ -173,6 +196,14 @@ class SnsFeedService(
         return CursorPageResult.of(fetched = fetched, size = query.size) { SnsFeedCursorCodec.encodeMySaves(userPublicId, it.saveId) }
     }
 
+    /** 보는 사람에게 from과 anchor 사이의 탐색 글이 20개보다 적은지 */
+    private fun isExploreSparse(
+        viewerId: Long?,
+        hiddenUserIds: Set<Long>,
+        from: LocalDateTime,
+        anchor: LocalDateTime,
+    ): Boolean = feedQueryPort.findExplorePage(viewerId, hiddenUserIds, from, anchor, null, null, MIN_FEED_POSTS).size < MIN_FEED_POSTS
+
     /** 커서의 마지막 게시물. 그사이 지운 게시물도 위치로 쓰므로 상태를 보지 않는다 */
     private fun findLastPost(publicId: String): Post =
         postRepository.findByPublicId(publicId) ?: throw BusinessException(CommonErrorCode.INVALID_CURSOR)
@@ -180,6 +211,9 @@ class SnsFeedService(
     companion object {
         private const val EXPLORE_DAYS = 7L
         private const val POPULAR_HOURS = 72L
+
+        // 탐색과 인기가 기간을 넓히지 않아도 되는 글 수. 첫 화면 한 페이지다
+        private const val MIN_FEED_POSTS = CursorPageSize.DEFAULT
         private const val SECONDS_PER_MINUTE = 60L
     }
 }

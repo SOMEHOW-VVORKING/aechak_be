@@ -51,6 +51,12 @@ private fun visibleUser(userId: NumberExpression<Long>): BooleanExpression =
         .where(profile.userId.eq(userId))
         .exists()
 
+/** 게시 시각이 from과 to 사이인 원글. from이 null이면 to까지 기간 없이 */
+private fun createdBetween(
+    from: LocalDateTime?,
+    to: LocalDateTime,
+): BooleanExpression = from?.let { post.createdAt.between(it, to) } ?: post.createdAt.loe(to)
+
 /** visibleUser와 같은 조건의 네이티브 조각. 팔로잉 피드의 원천, 원글 작성자, 리포스트한 사람이 함께 쓴다 */
 private fun visibleUserSql(userIdColumn: String): String = "EXISTS (SELECT 1 FROM user_profiles vp WHERE vp.user_id = $userIdColumn)"
 
@@ -169,7 +175,7 @@ class SnsFeedQueryAdapter(
     override fun findExplorePage(
         viewerId: Long?,
         hiddenUserIds: Set<Long>,
-        from: LocalDateTime,
+        from: LocalDateTime?,
         anchor: LocalDateTime,
         lastCreatedAt: LocalDateTime?,
         lastPostId: Long?,
@@ -180,7 +186,7 @@ class SnsFeedQueryAdapter(
             .from(post)
             .where(
                 post.status.eq(PostStatus.PUBLISHED),
-                post.createdAt.between(from, anchor),
+                createdBetween(from, anchor),
                 visibleUser(post.authorId),
                 // 빈 집합이면 NOT IN 조건을 빼 거르지 않는다
                 hiddenUserIds.takeIf { it.isNotEmpty() }?.let { post.authorId.notIn(it) },
@@ -202,7 +208,7 @@ class SnsFeedQueryAdapter(
             .fetch()
 
     override fun findPopularRanking(
-        from: LocalDateTime,
+        from: LocalDateTime?,
         to: LocalDateTime,
         repostWeight: Int,
         limit: Int,
@@ -215,7 +221,7 @@ class SnsFeedQueryAdapter(
             .on(stats.postId.eq(post.id))
             .where(
                 post.status.eq(PostStatus.PUBLISHED),
-                post.createdAt.between(from, to),
+                createdBetween(from, to),
                 visibleUser(post.authorId),
                 score.gt(0),
             ).orderBy(score.desc(), post.createdAt.desc(), post.id.desc())

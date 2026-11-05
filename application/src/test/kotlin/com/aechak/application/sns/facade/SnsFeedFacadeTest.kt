@@ -206,7 +206,7 @@ private class FakeFeedQueryPort(
     override fun findExplorePage(
         viewerId: Long?,
         hiddenUserIds: Set<Long>,
-        from: LocalDateTime,
+        from: LocalDateTime?,
         anchor: LocalDateTime,
         lastCreatedAt: LocalDateTime?,
         lastPostId: Long?,
@@ -214,7 +214,7 @@ private class FakeFeedQueryPort(
     ): List<SnsFeedEntryView> = throw UnsupportedOperationException()
 
     override fun findPopularRanking(
-        from: LocalDateTime,
+        from: LocalDateTime?,
         to: LocalDateTime,
         repostWeight: Int,
         limit: Int,

@@ -35,12 +35,12 @@ interface SnsFeedQueryPort {
 
     /**
      * 탐색 피드 한 페이지. from과 anchor 사이의 PUBLISHED 원글을 (created_at, id) 내림차순으로 last 뒤부터 limit개 읽는다.
-     * 숨김 사용자의 글을 빼고 로그인이면 나와 내가 팔로우하는 사용자의 글도 뺀다.
+     * from이 null이면 anchor까지의 글을 기간 없이 읽는다. 숨김 사용자의 글을 빼고 로그인이면 나와 내가 팔로우하는 사용자의 글도 뺀다.
      */
     fun findExplorePage(
         viewerId: Long?,
         hiddenUserIds: Set<Long>,
-        from: LocalDateTime,
+        from: LocalDateTime?,
         anchor: LocalDateTime,
         lastCreatedAt: LocalDateTime?,
         lastPostId: Long?,
@@ -49,10 +49,10 @@ interface SnsFeedQueryPort {
 
     /**
      * 인기 순위. from과 to 사이의 PUBLISHED 원글 중 점수가 0보다 큰 글의 id를 점수, created_at, id 내림차순으로 limit개 읽는다.
-     * 점수는 리포스트 수에 repostWeight를 곱한 값이고 보는 사람의 숨김 집합은 넣지 않는다.
+     * from이 null이면 to까지의 글을 기간 없이 읽는다. 점수는 리포스트 수에 repostWeight를 곱한 값이고 보는 사람의 숨김 집합은 넣지 않는다.
      */
     fun findPopularRanking(
-        from: LocalDateTime,
+        from: LocalDateTime?,
         to: LocalDateTime,
         repostWeight: Int,
         limit: Int,

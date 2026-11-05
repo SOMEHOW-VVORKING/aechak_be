@@ -16,9 +16,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * 통합: 탐색 피드가 기준 시각에서 7일 안의 원글을 최신순 카드로 주고 로그인이면 나, 팔로우, 차단, 뮤트 작성자를 빼며
- * 커서가 첫 페이지의 기준 시각을 지키는지, 카드가 상세와 같은 값이고 쿼리 수가 게시물 수와 상관없는지.
- * 깨지면 탐색에 내 글이나 숨긴 사용자의 글이 나오거나 내리는 동안 글이 겹치고 빠지거나 카드마다 쿼리가 늘어난다.
+ * 통합: 탐색 피드가 기준 시각에서 7일 안의 원글을 최신순 카드로 주고(20개에 못 미치면 7일이 지난 글을 잇고) 로그인이면 나, 팔로우,
+ * 차단, 뮤트 작성자를 빼며 커서가 첫 페이지의 기준 시각을 지키는지, 카드가 상세와 같은 값이고 쿼리 수가 게시물 수와 상관없는지.
+ * 깨지면 탐색에 내 글이나 숨긴 사용자의 글이 나오거나 글이 적을 때 7일이 지난 글로 채우지 않거나 내리는 동안 글이 겹치고 빠지거나
+ * 카드마다 쿼리가 늘어난다.
  */
 class ExploreFeedIntegrationTest : SnsPostIntegrationTestBase() {
     @Test
@@ -118,27 +119,37 @@ class ExploreFeedIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
-    fun `7일 경계 안의 글은 나오고 밖의 글은 나오지 않는다`() {
+    fun `7일 안의 글이 20개 이상이면 7일 경계 밖의 글은 나오지 않는다`() {
         val authorId = onboardedUser()
+        val recent = List(19) { createdPublicId(authorId) }
         val inside = createdPublicId(authorId)
         val outside = createdPublicId(authorId)
         backdatePost(inside, LocalDateTime.now().minusDays(7).plusMinutes(10))
         backdatePost(outside, LocalDateTime.now().minusDays(7).minusMinutes(10))
 
-        assertEquals(listOf(inside), feedPage("explore").postIds(), "7일 안의 글만 나와야 한다")
+        assertEquals(recent.reversed() + inside, feedPage("explore", size = 30).postIds(), "7일 안의 글 20개만 나와야 한다")
     }
 
     @Test
-    fun `7일 안의 글이 적어도 오래된 글로 채우지 않고 있는 글만 준다`() {
+    fun `7일 안의 글이 20개에 못 미치면 7일이 지난 글을 최신순으로 이어서 준다`() {
         val authorId = onboardedUser()
-        repeat(2) { backdatePost(createdPublicId(authorId), LocalDateTime.now().minusDays(8)) }
+        val old = List(2) { createdPublicId(authorId) }
+        backdatePost(old[0], LocalDateTime.now().minusDays(9))
+        backdatePost(old[1], LocalDateTime.now().minusDays(8))
         val recent = List(3) { createdPublicId(authorId) }
 
-        val page = feedPage("explore")
+        // 크기 2로 내려 7일 경계를 둘째 페이지에서 넘는다
+        val first = feedPage("explore", size = 2)
+        val second = feedPage("explore", cursor = first["nextCursor"] as String, size = 2)
+        val third = feedPage("explore", cursor = second["nextCursor"] as String, size = 2)
 
-        assertEquals(recent.reversed(), page.postIds(), "7일 안의 글 셋만 나와야 한다")
-        assertEquals(false, page["hasNext"], "더 부를 글이 없어야 한다")
-        assertNull(page["nextCursor"], "다음 커서가 없어야 한다")
+        assertEquals(
+            recent.reversed() + old.reversed(),
+            first.postIds() + second.postIds() + third.postIds(),
+            "7일 안의 글 셋 뒤에 7일이 지난 글 둘이 최신순으로 이어져야 한다",
+        )
+        assertEquals(false, third["hasNext"], "더 부를 글이 없어야 한다")
+        assertNull(third["nextCursor"], "다음 커서가 없어야 한다")
     }
 
     @Test
@@ -166,11 +177,11 @@ class ExploreFeedIntegrationTest : SnsPostIntegrationTestBase() {
         val now = LocalDateTime.now()
         val aging = createdPublicId(authorId)
         backdatePost(aging, now.minusDays(7).minusMinutes(30))
-        val last = createdPublicId(authorId)
-        backdatePost(last, now.minusHours(2))
-        assertEquals(listOf(last), feedPage("explore").postIds(), "지금 기준으로는 7일이 지난 글이 없어야 한다")
+        // 7일 안의 글이 20개라 기간을 넓히지 않는다. 같은 시각이면 id가 작은 첫 글이 마지막이다
+        val recent = List(20) { createdPublicId(authorId).also { backdatePost(it, now.minusHours(2)) } }
+        assertTrue(aging !in feedPage("explore", size = 30).postIds(), "지금 기준으로는 7일이 지난 글이 없어야 한다")
 
-        val page = feedPage("explore", cursor = SnsFeedCursorCodec.encodeExplore(now.minusHours(1), last))
+        val page = feedPage("explore", cursor = SnsFeedCursorCodec.encodeExplore(now.minusHours(1), recent.first()), size = 30)
 
         assertEquals(listOf(aging), page.postIds(), "커서의 기준 시각으로 7일을 세야 한다")
     }
