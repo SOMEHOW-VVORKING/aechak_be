@@ -2,6 +2,7 @@ package com.aechak.domain.sns.post
 
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.error.SnsErrorCode
+import com.aechak.domain.sns.hashtag.Hashtag
 import com.aechak.domain.sns.post.enums.PostDeletionReason
 import com.aechak.domain.sns.post.enums.PostMediaType
 import com.aechak.domain.sns.post.enums.PostStatus
@@ -23,7 +24,7 @@ import jakarta.persistence.UniqueConstraint
 import java.text.Normalizer
 import java.time.LocalDateTime
 
-/** SNS 게시물. 캡션은 금지어를 가린 뒤의 글이고 게시물을 지우면 상태만 남기고 캡션을 비운다 */
+/** SNS 게시물. 캡션은 금지어를 가린 뒤의 글이고 게시물을 지우면 상태만 남기고 캡션과 태그 연결을 비운다 */
 @Entity
 @Table(
     name = "sns_posts",
@@ -78,55 +79,115 @@ class Post protected constructor(
     private val _media: MutableList<PostMedia> = mutableListOf()
     val media: List<PostMedia> get() = _media.toList()
 
-    /** 캡션을 통째로 바꾼다. 정규화한 캡션이 지금과 같으면 아무것도 바꾸지 않고 false를 돌려준다 */
-    fun update(caption: String?): Boolean {
+    @OneToMany(cascade = [CascadeType.ALL], orphanRemoval = true)
+    @JoinColumn(name = "post_id", nullable = false, updatable = false)
+    @OrderBy("sortOrder ASC")
+    private val _hashtags: MutableList<PostHashtag> = mutableListOf()
+
+    // 수정은 남은 연결의 sortOrder만 고치고 목록 안 자리는 그대로 두므로 sortOrder로 정렬해 내준다
+    val hashtags: List<PostHashtag> get() = _hashtags.sortedBy { it.sortOrder }
+
+    /** 캡션과 태그를 통째로 바꾼다. 정규화한 캡션과 태그 목록이 순서까지 지금과 같으면 아무것도 바꾸지 않고 false를 돌려준다 */
+    fun update(
+        caption: String?,
+        hashtagIds: List<Long>,
+    ): Boolean {
         val normalized = normalizeCaption(caption)
-        if (normalized == this.caption) return false
-        if (normalized == null && mediaType == PostMediaType.TEXT) throw BusinessException(SnsErrorCode.SNS_POST_EMPTY)
+        if (normalized == this.caption && hashtagIds == hashtags.map { it.hashtagId }) return false
+        validateUpdate(caption)
         this.caption = normalized
+        replaceHashtags(hashtagIds)
         editedAt = LocalDateTime.now()
         return true
     }
 
-    /** 게시물을 지운다. 이미 지운 게시물이면 아무것도 바꾸지 않고 false를 돌려준다 */
+    /** 글 게시물의 캡션을 비우는 수정이면 130402다. 서비스는 태그 수를 바꾸기 전에 먼저 부른다 */
+    fun validateUpdate(caption: String?) {
+        if (normalizeCaption(caption) == null && mediaType == PostMediaType.TEXT) throw BusinessException(SnsErrorCode.SNS_POST_EMPTY)
+    }
+
+    /** 게시물을 지우고 태그 연결을 비운다. 이미 지운 게시물이면 아무것도 바꾸지 않고 false를 돌려준다 */
     fun delete(reason: PostDeletionReason): Boolean {
         if (status == PostStatus.DELETED) return false
         status = PostStatus.DELETED
         deletionReason = reason
         deletedAt = LocalDateTime.now()
         caption = null
+        _hashtags.clear()
         return true
     }
+
+    // 빠진 연결만 지우고 새 태그만 넣는다. 통째로 다시 넣으면 Hibernate가 삭제보다 삽입을 먼저 내보내 (post_id, hashtag_id) UNIQUE에 걸린다
+    private fun replaceHashtags(hashtagIds: List<Long>) {
+        val orders = hashtagIds.withIndex().associate { (index, hashtagId) -> hashtagId to index }
+        _hashtags.removeIf { it.hashtagId !in orders }
+        _hashtags.forEach { it.moveTo(orders.getValue(it.hashtagId)) }
+        val kept = _hashtags.map { it.hashtagId }.toSet()
+        hashtagIds.forEachIndexed { index, hashtagId -> if (hashtagId !in kept) _hashtags += PostHashtag.of(hashtagId, index) }
+    }
+
+    /** 게시 요청의 영상 하나. 요청에 썸네일 키가 없을 수 있어 첨부 규칙이 거른다 */
+    data class VideoSpec(
+        val key: String,
+        val thumbnailKey: String?,
+        val durationMs: Int,
+    )
 
     companion object {
         const val UK_AUTHOR_IDEMPOTENCY = "uk_sns_posts_author_idempotency"
         const val CAPTION_MAX_CODE_POINTS = 2_200
         const val MAX_PHOTOS = 10
+        const val MAX_VIDEO_DURATION_MS = 60_000
+        const val MAX_HASHTAGS = 30
         const val IDEMPOTENCY_KEY_MAX_LENGTH = 100
 
         fun create(
             authorId: Long,
             caption: String?,
             photoKeys: List<String>,
+            video: VideoSpec?,
+            hashtagIds: List<Long>,
             petId: Long?,
             idempotencyKey: String,
         ): Post {
-            val normalized = validateDraft(caption, photoKeys)
-            val mediaType = if (photoKeys.isEmpty()) PostMediaType.TEXT else PostMediaType.PHOTO
+            val normalized = validateDraft(caption, photoKeys, video)
+            val mediaType =
+                when {
+                    video != null -> PostMediaType.VIDEO
+                    photoKeys.isNotEmpty() -> PostMediaType.PHOTO
+                    else -> PostMediaType.TEXT
+                }
             val post = Post(authorId, normalized, mediaType, petId, idempotencyKey)
             photoKeys.forEachIndexed { index, key -> post._media += PostMedia.image(key, index) }
+            video?.let { post._media += PostMedia.video(it.key, it.thumbnailKey, it.durationMs) }
+            hashtagIds.forEachIndexed { index, hashtagId -> post._hashtags += PostHashtag.of(hashtagId, index) }
             return post
+        }
+
+        /** 태그마다 정규화하고 정규화 결과가 같은 태그는 하나로 합친다. 합친 뒤 30개를 넘으면 130406이다 */
+        fun normalizeHashtags(hashtags: List<String>): List<String> {
+            val names = hashtags.map(Hashtag::normalize).distinct()
+            if (names.size > MAX_HASHTAGS) throw BusinessException(SnsErrorCode.SNS_POST_TOO_MANY_HASHTAGS)
+            return names
         }
 
         /** 게시 규칙을 확인하고 정규화한 캡션을 돌려준다. 승격 전에 같은 규칙으로 미리 확인할 때도 쓴다 */
         fun validateDraft(
             caption: String?,
             photoKeys: List<String>,
+            video: VideoSpec?,
         ): String? {
             val normalized = normalizeCaption(caption)
-            if (normalized == null && photoKeys.isEmpty()) throw BusinessException(SnsErrorCode.SNS_POST_EMPTY)
+            if (normalized == null && photoKeys.isEmpty() && video == null) throw BusinessException(SnsErrorCode.SNS_POST_EMPTY)
             if (photoKeys.size > MAX_PHOTOS || photoKeys.toSet().size != photoKeys.size) {
                 throw BusinessException(SnsErrorCode.SNS_POST_INVALID_MEDIA)
+            }
+            if (video != null) {
+                // 영상은 사진 없이 하나만 오고 영상과 다른 썸네일이 있어야 한다
+                if (photoKeys.isNotEmpty() || video.thumbnailKey == null || video.thumbnailKey == video.key) {
+                    throw BusinessException(SnsErrorCode.SNS_POST_INVALID_MEDIA)
+                }
+                if (video.durationMs > MAX_VIDEO_DURATION_MS) throw BusinessException(SnsErrorCode.SNS_POST_VIDEO_TOO_LONG)
             }
             return normalized
         }

@@ -2,7 +2,7 @@ package com.aechak.application.sns.usecase.result
 
 import com.aechak.application.user.pet.usecase.result.PetProfileResult
 
-/** SNS 프로필. 펫은 대표 펫부터 ACTIVE 펫 전체다. 내가 차단한 사용자면 소개글, 펫, 세 수가 null이다. */
+/** SNS 프로필. 펫은 대표 펫부터 ACTIVE 펫 전체다. 내가 차단한 사용자면 소개글, 펫, 세 수가 null이고 나를 차단한 사용자면 이미지도 null이다. */
 data class SnsProfileResult(
     val publicId: String,
     val nickname: String,
@@ -16,4 +16,5 @@ data class SnsProfileResult(
     val following: Boolean,
     val blockedByMe: Boolean,
     val mutedByMe: Boolean,
+    val blockingMe: Boolean,
 )

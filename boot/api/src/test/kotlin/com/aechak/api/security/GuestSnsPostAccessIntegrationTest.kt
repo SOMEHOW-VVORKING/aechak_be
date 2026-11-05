@@ -6,6 +6,7 @@ import com.aechak.webcommon.http.CustomHttpHeaders
 import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -13,7 +14,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import kotlin.test.assertEquals
 
 /**
- * 통합 — 게시물 경로의 비로그인 접근. 상세만 비로그인에게 열고 쓰기는 모두 로그인이 필요하다.
+ * 통합 — 게시물 경로의 비로그인 접근. 상세만 비로그인에게 열고 쓰기와 해시태그 자동완성은 로그인이 필요하다.
  */
 class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
     @Test
@@ -50,6 +51,14 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
             ).andExpect(status().isUnauthorized)
             .andExpect(jsonPath("$.errorCode").value(20004))
         assertEquals("산책 다녀왔어요", postDetail(publicId)["caption"])
+    }
+
+    @Test
+    fun `토큰 없이 해시태그 자동완성을 부르면 401 20004다`() {
+        mockMvc
+            .perform(get("/api/v1/sns/hashtags").param("query", "산책"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
     }
 
     @Test

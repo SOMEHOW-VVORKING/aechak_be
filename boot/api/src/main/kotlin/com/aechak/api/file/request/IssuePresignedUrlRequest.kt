@@ -10,13 +10,13 @@ data class IssuePresignedUrlRequest(
     val purpose: UploadPurpose,
     @field:NotBlank(message = "contentType은 필수입니다.")
     @field:Schema(
-        description = "지원하는 파일 형식: image/png, image/jpeg, image/webp, application/pdf",
+        description = "지원하는 파일 형식: image/png, image/jpeg, image/webp, video/mp4, video/quicktime, application/pdf",
         example = "image/png",
     )
     val contentType: String,
     @field:Min(value = 1, message = "contentLength는 1 이상이어야 합니다.")
     @field:Schema(
-        description = "올릴 파일의 바이트 수. SNS_POST_IMAGE는 필수이고 이 길이 그대로 PUT해야 한다",
+        description = "올릴 파일의 바이트 수. SNS_POST_IMAGE와 SNS_POST_VIDEO는 필수이고 이 길이 그대로 PUT해야 한다",
         example = "1843200",
     )
     val contentLength: Long? = null,

@@ -2,8 +2,10 @@ package com.aechak.api.sns
 
 import com.aechak.api.support.CommitFailureInjector
 import com.aechak.application.file.port.enums.UploadPurpose
+import com.aechak.application.sns.postdeletion.usecase.SnsPostDeletionUseCase
 import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.application.sns.usecase.command.CreatePostCommand
+import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.domain.support.Ulid
 import org.hamcrest.Matchers.hasLength
 import org.junit.jupiter.api.Nested
@@ -27,6 +29,9 @@ import kotlin.test.assertTrue
 class PostCreateIntegrationTest : SnsPostIntegrationTestBase() {
     @Autowired
     private lateinit var snsPostUseCase: SnsPostUseCase
+
+    @Autowired
+    private lateinit var snsPostDeletionUseCase: SnsPostDeletionUseCase
 
     @Autowired
     private lateinit var commitFailureInjector: CommitFailureInjector
@@ -246,14 +251,105 @@ class PostCreateIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
-    fun `해시태그나 영상을 보내면 아직 90001이다`() {
+    fun `영상은 영상 용도로 썸네일은 사진 용도로 승격해 미디어 행 하나에 남긴다`() {
         val userId = onboardedUser()
-        val video = """{"key":"${tmpPhotoKey(userId)}","thumbnailKey":"${tmpPhotoKey(userId)}","durationMs":1000}"""
+        val videoKey = tmpVideoKey(userId)
+        val thumbnailKey = tmpPhotoKey(userId)
 
-        createPost(userId, postBody(hashtags = listOf("산책")))
+        val publicId = createdPublicId(userId, postBody(caption = null, video = videoJson(videoKey, thumbnailKey)))
+
+        assertEquals("VIDEO", postRow(publicId)["media_type"])
+        val media =
+            jdbcTemplate.queryForMap(
+                "select m.* from sns_post_media m join sns_posts p on p.id = m.post_id where p.public_id = ?",
+                publicId,
+            )
+        assertEquals("VIDEO", media["media_type"])
+        assertEquals(promotedKeyOf(videoKey), media["storage_key"])
+        assertEquals(promotedKeyOf(thumbnailKey), media["thumbnail_key"])
+        assertEquals(42_500, (media["duration_ms"] as Number).toInt())
+        assertTrue(promotedKeyOf(videoKey).startsWith("sns/posts/videos/"))
+        assertTrue(promotedKeyOf(thumbnailKey).startsWith("sns/posts/images/"))
+    }
+
+    @Test
+    fun `영상 게시가 커밋되면 영상과 썸네일의 tmp 키를 지운다`() {
+        val userId = onboardedUser()
+        val videoKey = tmpVideoKey(userId)
+        val thumbnailKey = tmpPhotoKey(userId)
+
+        createdPublicId(userId, postBody(caption = null, video = videoJson(videoKey, thumbnailKey)))
+
+        assertTrue(fakeFileStorage.deletedKeys.containsAll(listOf(videoKey, thumbnailKey)))
+    }
+
+    @Test
+    fun `영상 키를 사진 용도로 발급받은 키로 보내면 400 100003이다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = videoJson(tmpPhotoKey(userId), tmpPhotoKey(userId))))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(100003))
+        assertEquals(0, postCountOf(userId))
+    }
+
+    @Test
+    fun `썸네일 키를 영상 용도로 발급받은 키로 보내면 400 100003이다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = videoJson(tmpVideoKey(userId), tmpVideoKey(userId))))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(100003))
+        assertEquals(0, postCountOf(userId))
+    }
+
+    @Test
+    fun `썸네일 승격이 실패하면 먼저 승격한 영상 파일을 지운다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = videoJson(tmpVideoKey(userId), tmpPhotoKey(onboardedUser()))))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(100002))
+
+        assertEquals(1, fakeFileStorage.promotedKeys.size)
+        assertEquals(fakeFileStorage.promotedKeys, fakeFileStorage.deletedKeys)
+        assertEquals(0, postCountOf(userId))
+    }
+
+    @Test
+    fun `영상이 60초를 넘으면 130407이고 승격하지 않는다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = videoJson(tmpVideoKey(userId), tmpPhotoKey(userId), durationMs = 60_001)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(130407))
+        assertTrue(fakeFileStorage.promotedKeys.isEmpty())
+    }
+
+    @Test
+    fun `영상에 썸네일 키가 빠지면 90001이 아니라 130404다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = """{"key":"${tmpVideoKey(userId)}","durationMs":42500}"""))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(130404))
+    }
+
+    @Test
+    fun `영상 길이가 1보다 작으면 90001이다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = videoJson(tmpVideoKey(userId), tmpPhotoKey(userId), durationMs = 0)))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90001))
-        createPost(userId, postBody(caption = null, video = video))
+    }
+
+    @Test
+    fun `영상 두 개는 요청 형식상 받을 수 없어 90001이다`() {
+        val userId = onboardedUser()
+        val video = videoJson(tmpVideoKey(userId), tmpPhotoKey(userId))
+
+        createPost(userId, postBody(caption = null, video = "[$video,$video]"))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90001))
         assertEquals(0, postCountOf(userId))
@@ -311,6 +407,103 @@ class PostCreateIntegrationTest : SnsPostIntegrationTestBase() {
                 fakeFileStorage.deletedKeys.containsAll(fakeFileStorage.promotedKeys - kept.toSet()),
                 "게시하지 못한 요청이 승격한 파일은 지워야 한다",
             )
+        }
+
+        @Test
+        fun `같은 키 영상 게시를 동시에 보내면 게시하지 못한 요청이 승격한 영상과 썸네일을 지운다`() {
+            val userId = onboardedUser()
+            val video = CreatePostCommand.Video(tmpVideoKey(userId), tmpPhotoKey(userId), 42_500)
+            val command = CreatePostCommand(userId, Ulid.generate(), null, emptyList(), video = video)
+            val publicIds = Collections.synchronizedList(mutableListOf<String>())
+
+            val errors = runConcurrently(List(6) { { publicIds += snsPostUseCase.createPost(command).publicId } })
+
+            assertTrue(errors.isEmpty(), "같은 키 동시 게시는 오류 없이 같은 게시물을 돌려줘야 한다: $errors")
+            assertEquals(1, publicIds.toSet().size)
+            assertEquals(1, postCountOf(userId))
+            val media =
+                jdbcTemplate.queryForMap(
+                    "select m.* from sns_post_media m join sns_posts p on p.id = m.post_id where p.public_id = ?",
+                    publicIds.first(),
+                )
+            val kept = listOf(media["storage_key"] as String, media["thumbnail_key"] as String)
+            assertTrue(kept.none { it in fakeFileStorage.deletedKeys })
+            assertTrue(
+                fakeFileStorage.deletedKeys.containsAll(fakeFileStorage.promotedKeys - kept.toSet()),
+                "게시하지 못한 요청이 승격한 영상과 썸네일은 지워야 한다",
+            )
+        }
+
+        @Test
+        fun `같은 새 태그를 서로 다른 순서로 단 게시를 동시에 보내도 교착 없이 태그 행이 하나씩이고 수가 맞다`() {
+            val tags = listOf("산책", "댕댕이", "골든리트리버", "ㅋㅋㅋ")
+            val threads = 6
+            // 짝수 번째와 홀수 번째 요청이 서로 반대 순서로 단다
+            val commands =
+                List(threads) { i ->
+                    val order = if (i % 2 == 0) tags else tags.reversed()
+                    CreatePostCommand(onboardedUser(), Ulid.generate(), "동시 게시", emptyList(), order)
+                }
+            val ready = CountDownLatch(threads)
+            val start = CountDownLatch(1)
+            val pool = Executors.newFixedThreadPool(threads)
+            val errors = Collections.synchronizedList(mutableListOf<Throwable>())
+            try {
+                val futures =
+                    commands.map { command ->
+                        pool.submit {
+                            ready.countDown()
+                            start.await()
+                            try {
+                                snsPostUseCase.createPost(command)
+                            } catch (e: Throwable) {
+                                errors.add(e)
+                            }
+                        }
+                    }
+                ready.await(5, TimeUnit.SECONDS)
+                start.countDown() // 모든 스레드가 동시에 출발
+                futures.forEach { it.get(30, TimeUnit.SECONDS) }
+            } finally {
+                pool.shutdownNow()
+            }
+
+            assertTrue(errors.isEmpty(), "태그 순서가 달라도 동시 게시는 교착 없이 모두 성공해야 한다: $errors")
+            assertEquals(tags.associateWith { threads }, hashtagCounts())
+        }
+
+        @Test
+        fun `두 게시물에서 서로 반대로 태그를 바꾸는 수정을 동시에 보내도 교착 없이 수가 맞다`() {
+            // 태그 id 순서와 이름 순서가 반대가 되도록 b를 먼저 만든다
+            val bToA = List(4) { onboardedUser().let { it to createdPublicId(it, postBody(hashtags = listOf("b"))) } }
+            val aToB = List(2) { onboardedUser().let { it to createdPublicId(it, postBody(hashtags = listOf("a"))) } }
+            val commands =
+                bToA.map { (userId, publicId) -> UpdatePostCommand(userId, publicId, "동시 수정", listOf("a")) } +
+                    aToB.map { (userId, publicId) -> UpdatePostCommand(userId, publicId, "동시 수정", listOf("b")) }
+
+            val errors = runConcurrently(commands.map { command -> { snsPostUseCase.updatePost(command) } })
+
+            assertTrue(errors.isEmpty(), "태그를 서로 반대로 바꾸는 동시 수정은 교착 없이 모두 성공해야 한다: $errors")
+            assertEquals(mapOf("a" to 4, "b" to 2), hashtagCounts())
+        }
+
+        @Test
+        fun `태그를 단 게시와 같은 태그가 달린 다른 게시물의 삭제가 겹쳐도 교착 없이 수가 맞다`() {
+            val authorId = onboardedUser()
+            // 태그 id 순서와 이름 순서가 반대가 되도록 b를 먼저 만든다
+            createdPublicId(authorId, postBody(hashtags = listOf("b")))
+            val targets = List(4) { createdPublicId(authorId, postBody(hashtags = listOf("a", "b"))) }
+            val deletes = targets.map { publicId -> { snsPostDeletionUseCase.deleteByAuthor(authorId, publicId) } }
+            val creates: List<() -> Unit> =
+                List(2) {
+                    { snsPostUseCase.createPost(CreatePostCommand(authorId, Ulid.generate(), "동시 게시", emptyList(), listOf("a", "b"))) }
+                }
+
+            val errors = runConcurrently(deletes + creates)
+
+            assertTrue(errors.isEmpty(), "같은 태그의 게시와 삭제가 겹쳐도 교착 없이 모두 성공해야 한다: $errors")
+            assertEquals(mapOf("a" to 2, "b" to 3), hashtagCounts())
+            assertEquals(3, statsPostCount(authorId))
         }
     }
 }

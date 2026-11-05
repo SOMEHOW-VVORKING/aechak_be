@@ -18,9 +18,25 @@ class PostTest {
     private fun aPost(
         caption: String? = "산책 다녀왔어요",
         photoKeys: List<String> = emptyList(),
-    ): Post = Post.create(authorId = 1L, caption = caption, photoKeys = photoKeys, petId = null, idempotencyKey = "key-1")
+        video: Post.VideoSpec? = null,
+        hashtagIds: List<Long> = emptyList(),
+    ): Post =
+        Post.create(
+            authorId = 1L,
+            caption = caption,
+            photoKeys = photoKeys,
+            video = video,
+            hashtagIds = hashtagIds,
+            petId = null,
+            idempotencyKey = "key-1",
+        )
 
     private fun photoKeys(count: Int): List<String> = (1..count).map { "sns/posts/images/photo-$it.jpg" }
+
+    private fun aVideo(
+        thumbnailKey: String? = "sns/posts/images/thumbnail.jpg",
+        durationMs: Int = 42_500,
+    ): Post.VideoSpec = Post.VideoSpec("sns/posts/videos/video.mp4", thumbnailKey, durationMs)
 
     @Test
     fun `캡션을 NFC로 정규화하고 줄바꿈을 정리한 뒤 앞뒤 공백을 지운다`() {
@@ -79,6 +95,27 @@ class PostTest {
     }
 
     @Test
+    fun `태그만 있고 캡션과 첨부가 없으면 130402다`() {
+        val e = assertFailsWith<BusinessException> { aPost(caption = null, hashtagIds = listOf(1L, 2L)) }
+
+        assertEquals(SnsErrorCode.SNS_POST_EMPTY, e.errorCode)
+    }
+
+    @Test
+    fun `정규화 결과가 같은 태그는 하나로 합친다`() {
+        assertEquals(listOf("dog", "산책"), Post.normalizeHashtags(listOf("#DOG", "산책", "dog", " #Dog ")))
+    }
+
+    @Test
+    fun `태그는 합친 뒤 30개까지 달 수 있고 31개면 130406이다`() {
+        val thirty = (1..30).map { "tag$it" }
+
+        assertEquals(thirty, Post.normalizeHashtags(thirty + "#TAG1"))
+        val e = assertFailsWith<BusinessException> { Post.normalizeHashtags(thirty + "tag31") }
+        assertEquals(SnsErrorCode.SNS_POST_TOO_MANY_HASHTAGS, e.errorCode)
+    }
+
+    @Test
     fun `캡션만 있으면 미디어 없는 텍스트 게시물이다`() {
         val post = aPost()
 
@@ -100,10 +137,51 @@ class PostTest {
     }
 
     @Test
-    fun `게시 전 확인은 팩토리와 같은 규칙으로 정규화한 캡션을 돌려준다`() {
-        assertEquals("산책", Post.validateDraft("  산책\r\n", emptyList()))
+    fun `영상 게시물은 미디어 행 하나에 영상과 썸네일과 길이를 담는다`() {
+        val post = aPost(caption = null, video = aVideo())
 
-        val e = assertFailsWith<BusinessException> { Post.validateDraft(null, photoKeys(11)) }
+        assertEquals(PostMediaType.VIDEO, post.mediaType)
+        val media = post.media.single()
+        assertEquals(PostMediaKind.VIDEO, media.mediaKind)
+        assertEquals("sns/posts/videos/video.mp4", media.storageKey)
+        assertEquals("sns/posts/images/thumbnail.jpg", media.thumbnailKey)
+        assertEquals(42_500, media.durationMs)
+    }
+
+    @Test
+    fun `사진과 영상을 함께 보내면 130404다`() {
+        val e = assertFailsWith<BusinessException> { aPost(photoKeys = photoKeys(1), video = aVideo()) }
+
+        assertEquals(SnsErrorCode.SNS_POST_INVALID_MEDIA, e.errorCode)
+    }
+
+    @Test
+    fun `썸네일이 없는 영상은 130404다`() {
+        val e = assertFailsWith<BusinessException> { aPost(video = aVideo(thumbnailKey = null)) }
+
+        assertEquals(SnsErrorCode.SNS_POST_INVALID_MEDIA, e.errorCode)
+    }
+
+    @Test
+    fun `썸네일 키가 영상 키와 같으면 130404다`() {
+        val e = assertFailsWith<BusinessException> { aPost(video = aVideo(thumbnailKey = "sns/posts/videos/video.mp4")) }
+
+        assertEquals(SnsErrorCode.SNS_POST_INVALID_MEDIA, e.errorCode)
+    }
+
+    @Test
+    fun `영상은 60,000ms까지 올릴 수 있고 60,001ms면 130407이다`() {
+        assertEquals(60_000, aPost(video = aVideo(durationMs = 60_000)).media.single().durationMs)
+
+        val e = assertFailsWith<BusinessException> { aPost(video = aVideo(durationMs = 60_001)) }
+        assertEquals(SnsErrorCode.SNS_POST_VIDEO_TOO_LONG, e.errorCode)
+    }
+
+    @Test
+    fun `게시 전 확인은 팩토리와 같은 규칙으로 정규화한 캡션을 돌려준다`() {
+        assertEquals("산책", Post.validateDraft("  산책\r\n", emptyList(), null))
+
+        val e = assertFailsWith<BusinessException> { Post.validateDraft(null, photoKeys(11), null) }
         assertEquals(SnsErrorCode.SNS_POST_INVALID_MEDIA, e.errorCode)
     }
 
@@ -133,10 +211,19 @@ class PostTest {
     }
 
     @Test
+    fun `삭제하면 태그 연결을 비운다`() {
+        val post = aPost(hashtagIds = listOf(1L, 2L))
+
+        post.delete(PostDeletionReason.AUTHOR)
+
+        assertTrue(post.hashtags.isEmpty())
+    }
+
+    @Test
     fun `같은 캡션으로 고치면 false이고 수정 시각이 그대로다`() {
         val post = aPost(caption = "산책 다녀왔어요")
 
-        assertFalse(post.update("산책 다녀왔어요"))
+        assertFalse(post.update("산책 다녀왔어요", emptyList()))
 
         assertNull(post.editedAt)
     }
@@ -145,7 +232,7 @@ class PostTest {
     fun `다른 캡션으로 고치면 true이고 캡션과 수정 시각이 바뀐다`() {
         val post = aPost(caption = "산책 다녀왔어요")
 
-        assertTrue(post.update("공원 다녀왔어요"))
+        assertTrue(post.update("공원 다녀왔어요", emptyList()))
 
         assertEquals("공원 다녀왔어요", post.caption)
         assertNotNull(post.editedAt)
@@ -155,16 +242,49 @@ class PostTest {
     fun `정규화하면 지금과 같아지는 캡션은 바뀐 것이 없다`() {
         val post = aPost(caption = "산책\n다녀왔어요")
 
-        assertFalse(post.update("  산책\r\n다녀왔어요 "))
+        assertFalse(post.update("  산책\r\n다녀왔어요 ", emptyList()))
 
         assertNull(post.editedAt)
+    }
+
+    @Test
+    fun `캡션과 태그가 순서까지 같으면 false이고 수정 시각이 그대로다`() {
+        val post = aPost(hashtagIds = listOf(1L, 2L))
+
+        assertFalse(post.update("산책 다녀왔어요", listOf(1L, 2L)))
+
+        assertNull(post.editedAt)
+    }
+
+    @Test
+    fun `태그 순서만 바꿔도 수정이고 남은 연결은 그대로 둔 채 순서만 고친다`() {
+        val post = aPost(hashtagIds = listOf(1L, 2L))
+        val links = post.hashtags.toSet()
+
+        assertTrue(post.update("산책 다녀왔어요", listOf(2L, 1L)))
+
+        assertEquals(listOf(2L, 1L), post.hashtags.map { it.hashtagId })
+        assertEquals(listOf(0, 1), post.hashtags.map { it.sortOrder })
+        assertEquals(links, post.hashtags.toSet())
+        assertNotNull(post.editedAt)
+    }
+
+    @Test
+    fun `태그를 바꾸면 빠진 연결만 지우고 새 태그만 넣는다`() {
+        val post = aPost(hashtagIds = listOf(1L, 2L, 3L))
+        val kept = post.hashtags.filter { it.hashtagId != 1L }
+
+        assertTrue(post.update("산책 다녀왔어요", listOf(3L, 4L, 2L)))
+
+        assertEquals(listOf(3L, 4L, 2L), post.hashtags.map { it.hashtagId })
+        assertTrue(post.hashtags.containsAll(kept))
     }
 
     @Test
     fun `텍스트 게시물의 캡션을 비우면 130402이고 캡션이 그대로다`() {
         val post = aPost(caption = "산책 다녀왔어요")
 
-        val e = assertFailsWith<BusinessException> { post.update(" ") }
+        val e = assertFailsWith<BusinessException> { post.update(" ", emptyList()) }
 
         assertEquals(SnsErrorCode.SNS_POST_EMPTY, e.errorCode)
         assertEquals("산책 다녀왔어요", post.caption)
@@ -174,15 +294,25 @@ class PostTest {
     fun `사진 게시물은 캡션을 지울 수 있고 미디어는 그대로다`() {
         val post = aPost(photoKeys = photoKeys(2))
 
-        assertTrue(post.update(null))
+        assertTrue(post.update(null, emptyList()))
 
         assertNull(post.caption)
         assertEquals(photoKeys(2), post.media.map { it.storageKey })
     }
 
     @Test
+    fun `영상 게시물도 캡션을 지울 수 있고 미디어는 그대로다`() {
+        val post = aPost(video = aVideo())
+
+        assertTrue(post.update(null, emptyList()))
+
+        assertNull(post.caption)
+        assertEquals(listOf("sns/posts/videos/video.mp4"), post.media.map { it.storageKey })
+    }
+
+    @Test
     fun `고치는 캡션도 코드 포인트 2,200자를 넘으면 130403이다`() {
-        val e = assertFailsWith<BusinessException> { aPost().update("🐶".repeat(2_201)) }
+        val e = assertFailsWith<BusinessException> { aPost().update("🐶".repeat(2_201), emptyList()) }
 
         assertEquals(SnsErrorCode.SNS_POST_CAPTION_TOO_LONG, e.errorCode)
     }

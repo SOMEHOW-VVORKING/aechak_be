@@ -28,6 +28,10 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -96,8 +100,17 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         purpose: UploadPurpose = UploadPurpose.SNS_POST_IMAGE,
     ): String = "${FileKey.tmpPrefixOf(userId, purpose)}${Ulid.generate()}.jpg"
 
+    /** 이 사용자가 게시물 영상 용도로 발급받았을 tmp 키. */
+    protected fun tmpVideoKey(userId: Long): String = "${FileKey.tmpPrefixOf(userId, UploadPurpose.SNS_POST_VIDEO)}${Ulid.generate()}.mp4"
+
     /** 이 tmp 키를 승격한 영구 키. 게시물 사진은 승격마다 새 키라 fake의 기록에서 찾는다. */
     protected fun promotedKeyOf(tmpKey: String): String = fakeFileStorage.promotedKeyOf(tmpKey)
+
+    protected fun videoJson(
+        key: String,
+        thumbnailKey: String,
+        durationMs: Int = 42_500,
+    ): String = """{"key":"$key","thumbnailKey":"$thumbnailKey","durationMs":$durationMs}"""
 
     protected fun postBody(
         caption: String? = "산책 다녀왔어요",
@@ -227,6 +240,40 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         jdbcTemplate
             .queryForList("select post_count from sns_user_stats where user_id = ?", Int::class.java, userId)
             .firstOrNull()
+
+    /** 해시태그 행마다 이름과 post_count. */
+    protected fun hashtagCounts(): Map<String, Int> =
+        jdbcTemplate
+            .queryForList("select name, post_count from sns_hashtags")
+            .associate { it["name"] as String to (it["post_count"] as Number).toInt() }
+
+    /** 작업마다 스레드 하나를 두고 한꺼번에 출발시켜 모두 끝날 때까지 기다린 뒤 던진 예외를 모아 돌려준다. */
+    protected fun runConcurrently(tasks: List<() -> Unit>): List<Throwable> {
+        val ready = CountDownLatch(tasks.size)
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(tasks.size)
+        val errors = Collections.synchronizedList(mutableListOf<Throwable>())
+        try {
+            val futures =
+                tasks.map { task ->
+                    pool.submit {
+                        ready.countDown()
+                        start.await()
+                        try {
+                            task()
+                        } catch (e: Throwable) {
+                            errors.add(e)
+                        }
+                    }
+                }
+            ready.await(5, TimeUnit.SECONDS)
+            start.countDown() // 모든 스레드가 동시에 출발
+            futures.forEach { it.get(30, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdownNow()
+        }
+        return errors
+    }
 
     private fun jsonArray(values: List<String>): String = values.joinToString(",", "[", "]") { "\"$it\"" }
 }

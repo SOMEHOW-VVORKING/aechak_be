@@ -13,11 +13,11 @@ data class PostDetailResponse(
     val pet: SnsPetResponse?,
     @field:Schema(description = "금지어를 가린 뒤의 캡션. 없으면 null")
     val caption: String?,
-    @field:Schema(description = "작성자가 단 순서대로 정규화한 해시태그 이름. 아직 해시태그를 받지 않아 빈 배열이다")
+    @field:Schema(description = "작성자가 단 순서대로 정규화한 해시태그 이름(# 없음)")
     val hashtags: List<String>,
-    @field:Schema(description = "사진 표시용 URL. 첫 항목이 대표 이미지다")
+    @field:Schema(description = "사진 표시용 URL. 첫 항목이 대표 이미지다. 사진 게시물이 아니면 빈 배열")
     val photoUrls: List<String>,
-    @field:Schema(description = "영상 게시물이 아니면 null. 아직 영상을 받지 않아 늘 null이다")
+    @field:Schema(description = "영상 게시물이 아니면 null. photoUrls가 비고 video가 null이면 텍스트 게시물이다")
     val video: PostVideoResponse?,
     val likeCount: Long,
     val commentCount: Long,
@@ -51,7 +51,7 @@ data class PostDetailResponse(
                 caption = result.caption,
                 hashtags = result.hashtags,
                 photoUrls = result.photoUrls,
-                video = null,
+                video = result.video?.let { PostVideoResponse(it.url, it.thumbnailUrl, it.durationMs) },
                 likeCount = result.likeCount,
                 commentCount = result.commentCount,
                 repostCount = result.repostCount,

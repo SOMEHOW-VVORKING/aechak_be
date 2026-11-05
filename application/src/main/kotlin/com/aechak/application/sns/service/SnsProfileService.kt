@@ -33,6 +33,27 @@ class SnsProfileService(
         if (pair.blockedByMe) throw BusinessException(SnsErrorCode.SNS_USER_BLOCKED_BY_VIEWER)
     }
 
+    /** 나를 차단한 사용자는 publicId와 닉네임만 채운다. 서로 차단이면 blockedByMe도 true다. */
+    fun toBlockedByTargetResult(
+        target: UserPublicProfileResult,
+        pair: SnsPairStateView,
+    ): SnsProfileResult =
+        SnsProfileResult(
+            publicId = target.publicId,
+            nickname = checkNotNull(target.nickname),
+            profileImageUrl = null,
+            bio = null,
+            pets = null,
+            postCount = null,
+            followerCount = null,
+            followingCount = null,
+            isMe = false,
+            following = pair.following,
+            blockedByMe = pair.blockedByMe,
+            mutedByMe = pair.mutedByMe,
+            blockingMe = true,
+        )
+
     /** 내가 차단한 사용자는 publicId, 닉네임, 이미지만 채우고 소개글, 펫, 세 수는 null이다. */
     fun toBlockedResult(
         target: UserPublicProfileResult,
@@ -51,6 +72,7 @@ class SnsProfileService(
             following = pair.following,
             blockedByMe = true,
             mutedByMe = pair.mutedByMe,
+            blockingMe = false,
         )
 
     /** 통계 행이 없으면 세 수는 0이다. */
@@ -74,6 +96,7 @@ class SnsProfileService(
             following = pair.following,
             blockedByMe = false,
             mutedByMe = pair.mutedByMe,
+            blockingMe = false,
         )
     }
 }
