@@ -6,6 +6,7 @@ import com.aechak.seller.dashboard.response.SellerDashboardSummaryResponse
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
@@ -21,7 +22,7 @@ class SellerDashboardController(
     /** 셀러센터 첫 화면 집계 — 처리 대기 건수·정산 요약·상품 상태 요약을 한 번에 내린다. */
     @GetMapping("/summary")
     fun getSummary(
-        @Valid @ModelAttribute request: SellerDashboardSummaryRequest,
+        @Valid @ModelAttribute @ParameterObject request: SellerDashboardSummaryRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SellerDashboardSummaryResponse>> =
         ResponseEntity.ok(
