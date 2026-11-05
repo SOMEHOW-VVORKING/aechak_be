@@ -6,7 +6,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 --rev REV --dataset 100k|1m|10m|mirror|local [--first-boot] [--ready-timeout SEC] [--env KEY=VALUE]..." >&2
+  echo "usage: $0 --rev REV --dataset 100k|1m|10m|100m|mirror|local [--first-boot] [--ready-timeout SEC] [--env KEY=VALUE]..." >&2
   exit 2
 }
 
@@ -69,7 +69,7 @@ if [ "$MODE" = aws ]; then
   done
   case "$DATASET" in
     mirror) DB_HOST=$(jq -er '.mirror.value.address' "$OUTPUTS"); DB_PORT=$(jq -er '.mirror.value.port' "$OUTPUTS") ;;
-    100k | 1m | 10m)
+    100k | 1m | 10m | 100m)
       DB_HOST=$(jq -er --arg d "$DATASET" '.rds.value[$d].address' "$OUTPUTS")
       DB_PORT=$(jq -er --arg d "$DATASET" '.rds.value[$d].port' "$OUTPUTS") ;;
     *) usage ;;
