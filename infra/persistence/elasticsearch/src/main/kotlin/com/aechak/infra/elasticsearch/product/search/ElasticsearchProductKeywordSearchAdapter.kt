@@ -82,13 +82,7 @@ class ElasticsearchProductKeywordSearchAdapter(
                 pageResponses.flatMap { it.hits().hits() }.sortedWith(BY_PRICE_THEN_ID_DESC).take(condition.limit)
             }
         val countTotals = responses.drop(pages.size).map { it.totalHits() }
-        val total =
-            when (countTotals.size) {
-                0 -> null
-                1 -> countTotals[0]
-                else -> countTotals[0] + countTotals[1] - countTotals[2]
-            }
-        return Hits(hits, total)
+        return Hits(hits, if (countTotals.isEmpty()) null else countTotals.sum())
     }
 
     /**
@@ -107,9 +101,8 @@ class ElasticsearchProductKeywordSearchAdapter(
 
             ProductKeywordSearchSort.PRICE_ASC -> {
                 val common = filters(condition, now, withPrice = false)
-                val discounted = discountedAt(now)
-                val onDiscountFilters = common + discounted + priceRange(condition, "discount_price")
-                val regularFilters = common + bool { it.mustNot(discounted) } + priceRange(condition, "regular_price")
+                val onDiscountFilters = common + discountedAt(now) + priceRange(condition, "discount_price")
+                val regularFilters = common + notDiscountedAt(now) + priceRange(condition, "regular_price")
                 listOf(
                     search(condition, onDiscountFilters, listOf(fieldSort("discount_price", SortOrder.Asc), idDesc)),
                     search(condition, regularFilters, listOf(fieldSort("regular_price", SortOrder.Asc), idDesc)),
@@ -125,8 +118,7 @@ class ElasticsearchProductKeywordSearchAdapter(
     /**
      * 첫 페이지 총개수를 세는 크기 0 요청들
      * 가격 필터가 없으면 요청 시각과 무관한 요청 하나라 색인이 바뀔 때까지 ES 요청 캐시가 같은 개수를 재사용함
-     * 가격 필터가 있으면 할인 중이 아닌 상품을 must_not으로 세는 것이 느려서
-     * (할인 중이고 할인가가 범위 안) + (정가가 범위 안) - (할인 중이고 정가가 범위 안)의 세 요청으로 셈
+     * 가격 필터가 있으면 할인 중인 상품(할인가가 범위 안)과 아닌 상품(정가가 범위 안)을 따로 세어 더함
      */
     private fun countRequests(
         condition: ProductKeywordSearchCondition,
@@ -136,11 +128,9 @@ class ElasticsearchProductKeywordSearchAdapter(
             return listOf(countRequest(filters(condition, now)))
         }
         val common = filters(condition, now, withPrice = false)
-        val discounted = discountedAt(now)
         return listOf(
-            countRequest(common + discounted + priceRange(condition, "discount_price")),
-            countRequest(common + priceRange(condition, "regular_price")),
-            countRequest(common + discounted + priceRange(condition, "regular_price")),
+            countRequest(common + discountedAt(now) + priceRange(condition, "discount_price")),
+            countRequest(common + notDiscountedAt(now) + priceRange(condition, "regular_price")),
         )
     }
 
@@ -225,12 +215,11 @@ class ElasticsearchProductKeywordSearchAdapter(
         max: Long?,
         now: Long,
     ): Query {
-        val discounted = discountedAt(now)
         val inRange = { field: String -> range(field, gte = min?.let(JsonData::of), lte = max?.let(JsonData::of)) }
         return bool {
             it
-                .should(bool { b -> b.filter(discounted, inRange("discount_price")) })
-                .should(bool { b -> b.filter(inRange("regular_price")).mustNot(discounted) })
+                .should(bool { b -> b.filter(discountedAt(now), inRange("discount_price")) })
+                .should(bool { b -> b.filter(notDiscountedAt(now), inRange("regular_price")) })
                 .minimumShouldMatch("1")
         }
     }
@@ -242,6 +231,17 @@ class ElasticsearchProductKeywordSearchAdapter(
                 missingOr("discount_start_at", range("discount_start_at", lte = JsonData.of(now))),
                 missingOr("discount_end_at", range("discount_end_at", gte = JsonData.of(now))),
             )
+        }
+
+    /** 요청 시각에 할인 중이 아닌 상품. 할인가가 없거나, 시작이 요청 시각 뒤거나, 끝이 요청 시각 앞인 상품 */
+    private fun notDiscountedAt(now: Long): Query =
+        bool {
+            it
+                .should(
+                    bool { b -> b.mustNot(exists("discount_price")) },
+                    range("discount_start_at", gte = JsonData.of(now + 1)),
+                    range("discount_end_at", lte = JsonData.of(now - 1)),
+                ).minimumShouldMatch("1")
         }
 
     private fun missingOr(
