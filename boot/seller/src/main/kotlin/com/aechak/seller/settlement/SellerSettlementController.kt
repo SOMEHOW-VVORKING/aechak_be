@@ -8,6 +8,7 @@ import com.aechak.seller.settlement.response.SellerSettlementMonthsResponse
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
@@ -24,7 +25,7 @@ class SellerSettlementController(
     /** 내 정산 목록 — 주문 하나가 한 행이다. 월·상태 필터 + 오프셋 페이지네이션 */
     @GetMapping
     fun getMySettlements(
-        @Valid @ModelAttribute request: SellerSettlementSearchRequest,
+        @Valid @ModelAttribute @ParameterObject request: SellerSettlementSearchRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SellerSettlementListResponse>> =
         ResponseEntity.ok(
