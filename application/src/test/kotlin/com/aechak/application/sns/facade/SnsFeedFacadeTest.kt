@@ -47,11 +47,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
- * 계약: 인기 순위 저장소(Redis)가 실패해도 첫 페이지는 DB에서 계산한 순위로 한 페이지를 다음 커서 없이 주고 다음 페이지는 90002인지.
- * 통합 테스트의 Redis 컨테이너로는 연결 실패, 시간 초과, 남긴 직후 키가 없어지는 경우를 만들 수 없어 예외를 던지거나 남긴 키를 돌려주지 않는 저장소로 본다.
+ * 계약: 인기 순위 저장소(Redis)가 실패해도 첫 페이지는 DB에서 계산한 순위로 한 페이지를 다음 커서 없이 주고 다음 페이지는 90002인지,
+ * 같은 분에 다른 요청이 먼저 남긴 순위가 있으면 계산한 순위 대신 그 순위를 따르는지.
+ * 통합 테스트의 Redis 컨테이너로는 연결 실패, 시간 초과, 남긴 직후 키가 없어지는 경우, 읽은 뒤 남기기 전에 다른 요청이 먼저 남기는 순서를 만들 수 없어 예외를 던지거나 남긴 키를 돌려주지 않는 저장소로 본다.
  * 깨지면 Redis 장애가 인기 피드를 500으로 만들거나 남기지 못한 순위의 커서를 내줘 다음 페이지가 다른 순위를 읽는다.
  */
 class SnsFeedFacadeTest {
@@ -82,6 +84,18 @@ class SnsFeedFacadeTest {
         assertEquals(listOf("post-3", "post-2"), page.items.map { it.post.publicId }, "계산한 순위의 앞에서 크기만큼 줘야 한다")
         assertNull(page.nextCursor, "다음 페이지에 쓸 순위가 없으니 커서를 주면 안 된다")
         assertFalse(page.hasNext, "다음 페이지가 없어야 한다")
+    }
+
+    @Test
+    fun `같은 분에 다른 요청이 먼저 순위를 남겼으면 계산한 순위 대신 먼저 남긴 순위를 따른다`() {
+        val store = RaceLostSnapshotStore(winner = listOf(1L, 2L, 3L))
+
+        val page = facade(store).popular(SnsFeedQuery(viewerId = null, cursor = null, size = 2))
+
+        assertEquals(listOf("post-1", "post-2"), page.items.map { it.post.publicId }, "먼저 남긴 순위의 앞에서 크기만큼 줘야 한다")
+        val cursor = SnsFeedCursorCodec.decodePopular(assertNotNull(page.nextCursor, "남은 순위가 있으면 다음 커서가 있어야 한다"))
+        assertEquals(store.savedMinute, cursor.epochMinute, "커서는 순위를 남긴 분을 가리켜야 한다")
+        assertEquals(2, cursor.offset, "커서는 읽은 자리 다음을 가리켜야 한다")
     }
 
     @Test
@@ -126,6 +140,22 @@ private class LosingSnapshotStore : SnsPopularSnapshotStore {
         epochMinute: Long,
         postIds: List<Long>,
     ) = Unit
+}
+
+/** 처음 읽을 때는 키가 없고 저장은 다른 요청이 먼저 남긴 순위 때문에 무시되며 다시 읽으면 그 순위를 준다. SET NX 경쟁에서 진 경우다 */
+private class RaceLostSnapshotStore(
+    private val winner: List<Long>,
+) : SnsPopularSnapshotStore {
+    var savedMinute: Long? = null
+
+    override fun find(epochMinute: Long): List<Long>? = if (savedMinute == epochMinute) winner else null
+
+    override fun saveIfAbsent(
+        epochMinute: Long,
+        postIds: List<Long>,
+    ) {
+        savedMinute = epochMinute
+    }
 }
 
 /** 순위 쿼리는 정해 둔 순위를 돌려주고 모든 게시물을 볼 수 있다고 답한다 */

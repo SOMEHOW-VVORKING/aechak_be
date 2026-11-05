@@ -1,5 +1,7 @@
 package com.aechak.api.sns
 
+import com.aechak.application.sns.port.SnsPopularSnapshotStore
+import org.hibernate.SessionFactory
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -10,6 +12,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -21,6 +24,9 @@ import kotlin.test.assertTrue
 class PopularFeedIntegrationTest : SnsPostIntegrationTestBase() {
     @Autowired
     private lateinit var redisTemplate: StringRedisTemplate
+
+    @Autowired
+    private lateinit var snapshotStore: SnsPopularSnapshotStore
 
     // DB는 테스트마다 비우지만 Redis는 남아서 같은 분에 앞 테스트가 남긴 순위를 지운다
     @BeforeEach
@@ -180,6 +186,41 @@ class PopularFeedIntegrationTest : SnsPostIntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(90002))
     }
 
+    @Test
+    fun `같은 분에 순위를 다시 남겨도 먼저 남긴 순위가 그대로다`() {
+        val minute = Instant.now().epochSecond / 60
+
+        snapshotStore.saveIfAbsent(minute, listOf(1L, 2L))
+        snapshotStore.saveIfAbsent(minute, listOf(3L))
+
+        assertEquals(listOf(1L, 2L), snapshotStore.find(minute), "늦게 계산한 요청이 먼저 남긴 순위를 덮으면 안 된다")
+    }
+
+    @Test
+    fun `20개 페이지와 5개 페이지의 쿼리 수가 같다`() {
+        val viewerId = onboardedUser()
+        val authors = List(5) { onboardedUser().also { defaultPet(it) } }
+        repeat(25) {
+            val authorId = authors[it % authors.size]
+            scoredPost(1, authorId, postBody(photoKeys = listOf(tmpPhotoKey(authorId)), hashtags = listOf("산책")))
+        }
+        val statistics = em.entityManagerFactory.unwrap(SessionFactory::class.java).statistics
+        statistics.isStatisticsEnabled = true
+
+        // 두 요청 모두 순위를 계산하게 해 분이 바뀌어도 순위 쿼리 수가 같다
+        deleteRankings()
+        statistics.clear()
+        assertEquals(20, feedPage("popular", viewerId, size = 20).postIds().size, "20개 페이지여야 한다")
+        val twenty = statistics.prepareStatementCount
+        deleteRankings()
+        statistics.clear()
+        assertEquals(5, feedPage("popular", viewerId, size = 5).postIds().size, "5개 페이지여야 한다")
+        val five = statistics.prepareStatementCount
+
+        assertNotNull(twenty.takeIf { it > 0 }, "쿼리 수를 셌어야 한다")
+        assertEquals(five, twenty, "카드 조립의 쿼리 수가 게시물 수와 상관없어야 한다")
+    }
+
     /** 리포스트를 count번 받은 원글. 리포스트한 사람은 모두 다르다 */
     private fun repostedPost(count: Int): String {
         val publicId = createdPublicId(onboardedUser())
@@ -191,8 +232,9 @@ class PopularFeedIntegrationTest : SnsPostIntegrationTestBase() {
     private fun scoredPost(
         repostCount: Int,
         authorId: Long = onboardedUser(),
+        body: String = postBody(),
     ): String {
-        val publicId = createdPublicId(authorId)
+        val publicId = createdPublicId(authorId, body)
         jdbcTemplate.update(
             "insert into sns_post_stats (post_id, repost_count, created_at, updated_at) " +
                 "select id, ?, now(6), now(6) from sns_posts where public_id = ?",
