@@ -1,5 +1,6 @@
 package com.aechak.seller.config
 
+import com.aechak.api.support.HandlerQueryObjects
 import com.aechak.api.support.HandlerStatuses
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.api.support.OpenApiDocContract
@@ -93,8 +94,26 @@ class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
     @Test
     fun `상태 필드에 허용값이 붙어 있다`() {
         val missing = OpenApiDocContract.statusPropertiesWithoutAllowedValues(spec.schemas, FREE_FORM_STATUS_PROPERTIES)
+        val missingInQuery = OpenApiDocContract.statusPropertiesWithoutAllowedValues(spec.queryParameters, FREE_FORM_STATUS_PROPERTIES)
 
         assertTrue(missing.isEmpty(), "허용값 없이 문자열로만 나가는 상태 필드가 있다: $missing")
+        assertTrue(missingInQuery.isEmpty(), "허용값 없이 문자열로만 나가는 상태 쿼리 파라미터가 있다: $missingInQuery")
+    }
+
+    @Test
+    fun `쿼리 파라미터가 요청 객체 하나로 접히지 않고 이름마다 문서에 적힌다`() {
+        assertTrue(
+            spec.collapsedQueryParameters.isEmpty(),
+            "쿼리 파라미터가 객체 스키마 하나로 접혀 프런트가 개별 이름을 읽지 못하는 자리가 있다: ${spec.collapsedQueryParameters}",
+        )
+    }
+
+    @Test
+    fun `쿼리 객체가 바인딩하는 이름이 빠짐없이 그 경로의 쿼리 파라미터로 문서에 적힌다`() {
+        val undocumented =
+            OpenApiDocContract.undocumentedQueryObjectFields(HandlerQueryObjects.of(context, BASE_PACKAGE), spec.queryParameters)
+
+        assertTrue(undocumented.isEmpty(), "서버는 받는데 문서에 없는 쿼리 파라미터가 있다: $undocumented")
     }
 
     @Test
@@ -129,12 +148,12 @@ class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `목록 조회 필터의 허용값이 서버가 받는 값과 같다`() {
-        assertEquals(names<SaleStatus>(), spec.allowedValues("SellerProductSearchRequest", "saleStatus"))
-        assertEquals(names<InspectionStatus>(), spec.allowedValues("SellerProductSearchRequest", "inspectionStatus"))
-        assertEquals(names<ClaimType>(), spec.allowedValues("SellerClaimSearchRequest", "claimType"))
-        assertEquals(names<ClaimStatus>(), spec.allowedValues("SellerClaimSearchRequest", "status"))
-        assertEquals(names<RefundStatus>(), spec.allowedValues("SellerClaimSearchRequest", "refundStatus"))
-        assertEquals(names<SellerClaimPendingStage>(), spec.allowedValues("SellerClaimSearchRequest", "pendingStage"))
+        assertEquals(names<SaleStatus>(), spec.allowedQueryValues(PRODUCTS, "saleStatus"))
+        assertEquals(names<InspectionStatus>(), spec.allowedQueryValues(PRODUCTS, "inspectionStatus"))
+        assertEquals(names<ClaimType>(), spec.allowedQueryValues(CLAIMS, "claimType"))
+        assertEquals(names<ClaimStatus>(), spec.allowedQueryValues(CLAIMS, "status"))
+        assertEquals(names<RefundStatus>(), spec.allowedQueryValues(CLAIMS, "refundStatus"))
+        assertEquals(names<SellerClaimPendingStage>(), spec.allowedQueryValues(CLAIMS, "pendingStage"))
     }
 
     /**
@@ -154,14 +173,14 @@ class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
 
         assertEquals(screenVocabulary, spec.allowedValues("SellerSettlementListItemResponse", "status"))
         assertEquals(screenVocabulary, spec.allowedValues("SellerSettlementDetailResponse", "status"))
-        assertEquals(screenVocabulary, spec.allowedValues("SellerSettlementSearchRequest", "status"))
+        assertEquals(screenVocabulary, spec.allowedQueryValues(SETTLEMENTS, "status"))
     }
 
     /** 정산 필터는 enum 이름이 아니라 손으로 쓴 분기로 받으므로, 문서 값이 그 분기를 통과하는지까지 본다. */
     @Test
     fun `문서가 적은 정산 필터 값은 서버 파서가 전부 받는다`() {
         val parsed =
-            spec.allowedValues("SellerSettlementSearchRequest", "status").associateWith { value ->
+            spec.allowedQueryValues(SETTLEMENTS, "status").associateWith { value ->
                 SellerSettlementSearchRequest(status = value).toQuery(sellerId = 1L).status
             }
 
@@ -176,7 +195,7 @@ class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
     fun `셀러 주문 상태 필터의 허용값이 서버가 받는 세그먼트 코드와 같다`() {
         assertEquals(
             SellerOrderStatusFilter.entries.map { it.code }.toSet(),
-            spec.allowedValues("SellerOrderSearchRequest", "status"),
+            spec.allowedQueryValues(ORDERS, "status"),
             "문서의 허용값과 서버가 실제로 받는 코드가 다르다",
         )
     }
@@ -206,6 +225,10 @@ class SellerOpenApiContractIntegrationTest : IntegrationTestBase() {
 
     companion object {
         private const val BASE_PACKAGE = "com.aechak.seller"
+        private const val PRODUCTS = "GET /api/v1/sellers/me/products"
+        private const val CLAIMS = "GET /api/v1/sellers/me/claims"
+        private const val SETTLEMENTS = "GET /api/v1/sellers/me/settlements"
+        private const val ORDERS = "GET /api/v1/sellers/me/orders"
 
         /** 초안 페이로드는 request·response 패키지 밖에 있어 따로 지목한다. */
         private val DTO_PACKAGES = setOf("com.aechak.seller.product.support")
