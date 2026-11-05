@@ -14,7 +14,7 @@ class ProductStatsService(
     fun getStatsByProductIds(productIds: List<Long>): Map<Long, ProductStats> =
         productStatsRepository.findAllByProductIds(productIds).associateBy { it.productId }
 
-    /** 리뷰에서 재계산한 절대값으로 평점 집계를 반영 */
+    /** 리뷰에서 재계산한 절대값으로 평점 집계와 검색 인기순용 상품 리뷰 수를 같은 트랜잭션에서 반영 */
     fun applyReviewStats(
         productId: Long,
         reviewCount: Int,
@@ -22,5 +22,6 @@ class ProductStatsService(
         averageRating: BigDecimal?,
     ) {
         productStatsRepository.upsertReviewStats(productId, reviewCount, ratingSum, averageRating)
+        productStatsRepository.updateProductReviewCount(productId, reviewCount)
     }
 }

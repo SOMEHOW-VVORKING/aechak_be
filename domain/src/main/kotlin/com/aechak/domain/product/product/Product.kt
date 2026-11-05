@@ -36,7 +36,13 @@ import java.time.LocalDateTime
     // 개발·테스트 스키마뿐이다 — ddl-auto=none인 운영에는 products DDL 이관 마이그레이션이
     // 같은 이름으로 넣어야 붙는다. 조건부 ALTER를 V59에 넣었다가 뺐다: products가 없는 분기가
     // 어느 테스트에서도 실행되지 않아 검증되지 않는 코드가 된다.
-    indexes = [Index(name = "ix_products_seller_id", columnList = "seller_id, id")],
+    indexes = [
+        Index(name = "ix_products_seller_id", columnList = "seller_id, id"),
+        // 검색 인기순과 낮은 가격순을 인덱스 순서로 읽는다. 운영에는 마이그레이션이 같은 이름으로 만든다.
+        Index(name = "ix_products_popular", columnList = "review_count DESC, id DESC"),
+        Index(name = "ix_products_discount_price", columnList = "discount_price, id DESC"),
+        Index(name = "ix_products_regular_price", columnList = "regular_price, id DESC"),
+    ],
 )
 class Product protected constructor(
     category: Category,
@@ -94,6 +100,10 @@ class Product protected constructor(
     @Column(nullable = false, length = 30)
     var inspectionStatus: InspectionStatus = InspectionStatus.APPROVED
         protected set
+
+    /** 검색 인기순 정렬용 리뷰 수. 리뷰 통계 반영이 네이티브 UPDATE로만 쓰고 Hibernate는 쓰지 않는다 */
+    @Column(nullable = false, insertable = false, updatable = false, columnDefinition = "INT DEFAULT 0")
+    val reviewCount: Int = 0
 
     @Version
     var version: Int = 0

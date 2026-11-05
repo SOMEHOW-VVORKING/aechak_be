@@ -26,7 +26,7 @@ internal val category = QCategory.category
 internal val parent = QCategory("parent") // 중분류 서브트리 필터, 부모 카테고리 status 검증용 별칭
 internal val grandParent = QCategory("grandParent") // 조부모(대분류) status 검증용 별칭
 internal val seller = QSeller.seller
-internal val productStats = QProductStats.productStats // 인기순 정렬과 별점 필터, 표시용 별점/리뷰 수
+internal val productStats = QProductStats.productStats // 별점 필터, 표시용 별점/리뷰 수
 
 internal fun <T> visibleProductQuery(
     queryFactory: JPAQueryFactory,
@@ -88,7 +88,7 @@ internal fun catalogViewProjection(effectivePrice: NumberExpression<Long>): Expr
         Expressions.asBoolean(true),
     )
 
-/** 인기순 정렬과 커서용 리뷰 수. 조인이 없거나 행이 없으면 coalesce 0 */
+/** 표시용 리뷰 수. 조인이 없거나 행이 없으면 coalesce 0 */
 internal fun reviewCountScore(): NumberExpression<Int> =
     CaseBuilder()
         .`when`(productStats.reviewCount.isNull)
