@@ -108,6 +108,39 @@ class SavedTabIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `차단 관계이거나 뮤트한 작성자의 저장이 페이지 경계에 끼어 있어도 페이지마다 크기만큼 차고 중복과 누락이 없다`() {
+        val userId = onboardedUser()
+        val authorId = onboardedUser()
+        val blockedByMe = onboardedUser()
+        val blockingMe = onboardedUser()
+        val mutedAuthor = onboardedUser()
+        val visible = List(4) { createdPublicId(authorId) }
+        // 보이는 저장 사이마다 숨길 작성자의 저장을 끼운다
+        val saved =
+            listOf(
+                visible[0],
+                createdPublicId(blockedByMe),
+                visible[1],
+                createdPublicId(mutedAuthor),
+                visible[2],
+                createdPublicId(blockingMe),
+                visible[3],
+            )
+        saved.forEach { save(it, userId).andExpect(status().isCreated) }
+        relate(userId, blockedByMe, "block")
+        relate(blockingMe, userId, "block")
+        relate(userId, mutedAuthor, "mute")
+
+        val first = savesPage(userId, size = 2)
+        val second = savesPage(userId, cursor = first["nextCursor"] as String, size = 2)
+
+        assertEquals(listOf(visible[3], visible[2]), first.cellIds(), "첫 페이지는 숨긴 저장을 건너뛰고 크기만큼 차야 한다")
+        assertEquals(true, first["hasNext"], "보이는 저장이 남았으면 다음 페이지가 있어야 한다")
+        assertEquals(listOf(visible[1], visible[0]), second.cellIds(), "다음 페이지도 숨긴 저장 없이 남은 저장으로 차야 한다")
+        assertEquals(false, second["hasNext"], "마지막 페이지여야 한다")
+    }
+
+    @Test
     fun `저장한 글이 없으면 빈 목록이다`() {
         val page = savesPage(onboardedUser())
 
