@@ -34,6 +34,12 @@ interface PetProfileJpaRepository : JpaRepository<PetProfile, Long> {
         userId: Long,
         status: PetStatus,
     ): Long
+
+    @Query("select p from PetProfile p join fetch p.breed where p.id in :ids and p.status = :status")
+    fun findAllByIdInAndStatusWithBreed(
+        @Param("ids") ids: Collection<Long>,
+        @Param("status") status: PetStatus,
+    ): List<PetProfile>
 }
 
 @Repository
@@ -53,4 +59,7 @@ class PetProfileRepositoryAdapter(
         jpaRepository.findAllByUserIdAndStatusOrderByUpdatedAtDescIdDesc(userId, PetStatus.ACTIVE)
 
     override fun countActiveByUserId(userId: Long): Long = jpaRepository.countByUserIdAndStatus(userId, PetStatus.ACTIVE)
+
+    override fun findAllActiveByIdIn(ids: Collection<Long>): List<PetProfile> =
+        jpaRepository.findAllByIdInAndStatusWithBreed(ids, PetStatus.ACTIVE)
 }

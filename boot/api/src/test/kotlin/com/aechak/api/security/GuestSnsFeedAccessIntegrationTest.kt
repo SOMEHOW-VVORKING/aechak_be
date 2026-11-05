@@ -9,6 +9,7 @@ import org.springframework.http.HttpHeaders
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -17,8 +18,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 
 /**
- * 토큰 없는 요청과 온보딩 전 토큰이 SNS 리포스트 경로에 닿지 못하는지 고정한다.
- * 깨지면 로그인하지 않았거나 온보딩을 마치지 않은 사용자가 리포스트를 남긴다.
+ * 토큰 없는 요청에 SNS 탐색과 인기 피드만 열고 팔로잉 피드와 리포스트는 막는지, 온보딩 전 토큰이 리포스트 경로에 닿지 못하는지 고정한다.
+ * 깨지면 비로그인 사용자가 탐색 피드를 보지 못하거나 팔로잉 피드를 부르거나 로그인하지 않았거나 온보딩을 마치지 않은 사용자가 리포스트를 남긴다.
  */
 class GuestSnsFeedAccessIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -36,6 +37,30 @@ class GuestSnsFeedAccessIntegrationTest : IntegrationTestBase() {
                 .webAppContextSetup(context)
                 .addFilters<DefaultMockMvcBuilder>(securityFilterChain)
                 .build()
+    }
+
+    @Test
+    fun `토큰 없이 탐색 피드를 부르면 200이다`() {
+        mockMvc
+            .perform(get("/api/v1/sns/feeds/explore"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.items").isArray)
+    }
+
+    @Test
+    fun `토큰 없이 인기 피드를 부르면 200이다`() {
+        mockMvc
+            .perform(get("/api/v1/sns/feeds/popular"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.items").isArray)
+    }
+
+    @Test
+    fun `토큰 없이 팔로잉 피드를 부르면 401 20004다`() {
+        mockMvc
+            .perform(get("/api/v1/sns/feeds/following"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
     }
 
     @Test

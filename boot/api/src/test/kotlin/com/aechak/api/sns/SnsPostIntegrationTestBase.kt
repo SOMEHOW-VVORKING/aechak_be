@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.time.LocalDateTime
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -236,6 +237,81 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
                     .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(actorId)}"),
             ).andExpect(status().is2xxSuccessful)
     }
+
+    /** actor가 target에게 건 차단, 뮤트, 팔로우(block, mute, follow) 중 하나를 푼다. */
+    protected fun unrelate(
+        actorId: Long,
+        targetId: Long,
+        action: String,
+    ) {
+        mockMvc
+            .perform(
+                delete("/api/v1/sns/users/${publicIdOf(targetId)}/$action")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(actorId)}"),
+            ).andExpect(status().is2xxSuccessful)
+    }
+
+    /** 게시 시각을 옮긴다. 피드의 기간 경계와 순서는 이 시각으로 만든다. */
+    protected fun backdatePost(
+        publicId: String,
+        createdAt: LocalDateTime,
+    ) {
+        jdbcTemplate.update("update sns_posts set created_at = ? where public_id = ?", createdAt, publicId)
+    }
+
+    /** reposter가 이 원글에 한 리포스트의 시각을 옮긴다. */
+    protected fun backdateRepost(
+        reposterId: Long,
+        publicId: String,
+        createdAt: LocalDateTime,
+    ) {
+        jdbcTemplate.update(
+            "update sns_reposts r join sns_posts p on p.id = r.post_id set r.created_at = ? where r.reposter_id = ? and p.public_id = ?",
+            createdAt,
+            reposterId,
+            publicId,
+        )
+    }
+
+    protected fun postCreatedAt(publicId: String): LocalDateTime =
+        jdbcTemplate.queryForObject("select created_at from sns_posts where public_id = ?", LocalDateTime::class.java, publicId)!!
+
+    /** 피드(following, explore, popular)를 부른다. */
+    protected fun getFeed(
+        kind: String,
+        viewerId: Long? = null,
+        cursor: String? = null,
+        size: Int? = null,
+    ): ResultActions {
+        val request = get("/api/v1/sns/feeds/$kind")
+        cursor?.let { request.param("cursor", it) }
+        size?.let { request.param("size", it.toString()) }
+        if (viewerId != null) request.header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}")
+        return mockMvc.perform(request)
+    }
+
+    /** 피드 한 페이지를 200으로 받고 data 객체를 돌려준다. */
+    protected fun feedPage(
+        kind: String,
+        viewerId: Long? = null,
+        cursor: String? = null,
+        size: Int? = null,
+    ): Map<String, Any?> {
+        val json =
+            getFeed(kind, viewerId, cursor, size)
+                .andExpect(status().isOk)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        return JsonPath.read(json, "$.data")
+    }
+
+    /** 피드 페이지의 항목. */
+    @Suppress("UNCHECKED_CAST")
+    protected fun Map<String, Any?>.feedItems(): List<Map<String, Any?>> = this["items"] as List<Map<String, Any?>>
+
+    /** 피드 페이지 카드의 게시물 publicId를 순서대로 돌려준다. */
+    protected fun Map<String, Any?>.postIds(): List<String> = feedItems().map { (it["post"] as Map<*, *>)["publicId"] as String }
 
     protected fun postRow(publicId: String): Map<String, Any?> =
         jdbcTemplate.queryForMap("select * from sns_posts where public_id = ?", publicId)
