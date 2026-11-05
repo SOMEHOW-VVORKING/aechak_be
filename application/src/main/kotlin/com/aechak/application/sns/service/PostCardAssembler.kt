@@ -11,6 +11,7 @@ import com.aechak.domain.sns.follow.repository.FollowRepository
 import com.aechak.domain.sns.post.enums.PostMediaKind
 import com.aechak.domain.sns.post.enums.PostMediaType
 import com.aechak.domain.sns.repost.repository.RepostRepository
+import com.aechak.domain.sns.save.repository.SaveRepository
 import org.springframework.stereotype.Service
 
 /** 게시물을 상세와 같은 카드나 프로필 탭 칸으로 조립한다. 피드 카드와 상세가 카드 매핑 하나를 쓴다 */
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service
 class PostCardAssembler(
     private val feedQueryPort: SnsFeedQueryPort,
     private val repostRepository: RepostRepository,
+    private val saveRepository: SaveRepository,
     private val followRepository: FollowRepository,
     private val petProfileUseCase: PetProfileUseCase,
     private val fileUseCase: FileUseCase,
@@ -37,6 +39,7 @@ class PostCardAssembler(
         val hashtags = feedQueryPort.findHashtagNames(postIds).groupBy({ it.postId }, { it.name })
         val pets = petProfileUseCase.getActivePetsByIds(cards.values.mapNotNull { it.petId }.toSet()).associateBy { it.petId }
         val reposted = viewerId?.let { repostRepository.findRepostedPostIdsAmong(it, postIds) }.orEmpty()
+        val saved = viewerId?.let { saveRepository.findSavedPostIdsAmong(it, postIds) }.orEmpty()
         val authorIds = cards.values.map { it.authorId }.toSet()
         val followees = viewerId?.let { followRepository.findFolloweeIdsAmong(it, authorIds) }.orEmpty()
         return postIds.mapNotNull { postId ->
@@ -74,8 +77,7 @@ class PostCardAssembler(
                 following = !isMine && card.authorId in followees,
                 mutedByMe = card.authorId in mutedIds,
                 reposted = postId in reposted,
-                // 저장은 아직 없어 false다
-                saved = false,
+                saved = postId in saved,
             )
         }
     }

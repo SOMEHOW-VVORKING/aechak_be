@@ -11,16 +11,17 @@ import java.time.temporal.ChronoUnit
 import java.util.Base64
 
 /**
- * 피드와 프로필 탭 목록의 keyset 커서.
+ * 피드, 프로필 탭, 저장됨 탭 목록의 keyset 커서.
  * 페이로드는 태그로 시작하는 `:` 구분 값을 base64url(패딩 없음)로 감싼 값이고 사용자 id는 싣지 않는다.
  * 시각은 오프셋 없는 LocalDateTime을 UTC 기준 epoch 마이크로초로 담는다.
- * 프로필 탭 커서의 범위 해시는 목록 주인 publicId와 태그로 만들어 다른 주인의 목록에서 거절한다.
+ * 프로필 탭과 저장됨 탭 커서의 범위 해시는 목록 주인 publicId와 태그로 만들어 다른 주인의 목록에서 거절한다.
  *  - 팔로잉 fl:{anchor}:{lastTime}:{lastPostPublicId}
  *  - 탐색 ex:{anchor}:{lastPostPublicId}
  *  - 인기 pp:{epochMinute}:{offset}
  *  - 그리드 gp:{scopeHash}:{lastPostPublicId}
  *  - 영상 탭 gv:{scopeHash}:{lastPostPublicId}
  *  - 리포스트 탭 gr:{scopeHash}:{lastRepostId}
+ *  - 저장됨 탭 sv:{scopeHash}:{lastSaveId}
  */
 object SnsFeedCursorCodec {
     private const val SEPARATOR = ":"
@@ -28,6 +29,7 @@ object SnsFeedCursorCodec {
     private const val EXPLORE_TAG = "ex"
     private const val POPULAR_TAG = "pp"
     private const val USER_REPOSTS_TAG = "gr"
+    private const val MY_SAVES_TAG = "sv"
 
     // 해시 입력 필드 구분자 (제어 문자 U+001F)
     private const val CANONICAL_SEPARATOR = "\u001F"
@@ -111,6 +113,17 @@ object SnsFeedCursorCodec {
         cursor: String,
         ownerPublicId: String,
     ): Long = decodeScoped(cursor, USER_REPOSTS_TAG, ownerPublicId).toLongOrNull()?.takeIf { it > 0 } ?: invalidCursor()
+
+    fun encodeMySaves(
+        userPublicId: String,
+        lastSaveId: Long,
+    ): String = encode(MY_SAVES_TAG, scopeHash(userPublicId, MY_SAVES_TAG), lastSaveId.toString())
+
+    /** 저장됨 탭 커서의 마지막 저장 행 id. 형식, 태그, 범위 해시가 요청과 다르거나 id가 양수가 아니면 INVALID_CURSOR */
+    fun decodeMySaves(
+        cursor: String,
+        userPublicId: String,
+    ): Long = decodeScoped(cursor, MY_SAVES_TAG, userPublicId).toLongOrNull()?.takeIf { it > 0 } ?: invalidCursor()
 
     private fun encode(
         tag: String,

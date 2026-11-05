@@ -191,6 +191,24 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
         )
 
+    protected fun save(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            post("/api/v1/sns/posts/$publicId/save")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
+    protected fun unsave(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            delete("/api/v1/sns/posts/$publicId/save")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
     protected fun updateBody(
         caption: String? = "공원 다녀왔어요",
         hashtags: List<String> = emptyList(),

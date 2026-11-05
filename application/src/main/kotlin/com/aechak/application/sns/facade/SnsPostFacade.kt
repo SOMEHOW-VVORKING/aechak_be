@@ -12,9 +12,11 @@ import com.aechak.application.sns.service.PostAccessService
 import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.PostCommandService
 import com.aechak.application.sns.service.RepostService
+import com.aechak.application.sns.service.SaveService
 import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.application.sns.usecase.command.CreatePostCommand
 import com.aechak.application.sns.usecase.command.RepostPostCommand
+import com.aechak.application.sns.usecase.command.SavePostCommand
 import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.application.sns.usecase.result.CreatePostResult
 import com.aechak.application.sns.usecase.result.SnsHashtagSearchResult
@@ -45,6 +47,7 @@ class SnsPostFacade(
     private val postAccessService: PostAccessService,
     private val hashtagService: HashtagService,
     private val repostService: RepostService,
+    private val saveService: SaveService,
     private val postCardAssembler: PostCardAssembler,
     private val postRepository: PostRepository,
     private val moderationUseCase: ModerationUseCase,
@@ -166,6 +169,24 @@ class SnsPostFacade(
         tx.execute {
             val post = postRepository.findByPublicId(command.publicId) ?: throw BusinessException(SnsErrorCode.SNS_POST_UNAVAILABLE)
             repostService.unrepost(command.userId, post.id)
+        }
+    }
+
+    // 본인 글과 뮤트한 작성자의 글도 저장한다
+    override fun save(command: SavePostCommand) {
+        tx.execute {
+            val post = postAccessService.requirePublished(command.publicId)
+            postAccessService.requireActiveAuthor(userUseCase.findPublicProfileById(post.authorId))
+            postAccessService.requireNotBlocked(post.authorId, command.userId)
+            saveService.save(command.userId, post.id)
+        }
+    }
+
+    // 끄기는 상태, 작성자, 관계를 보지 않아 볼 수 없게 된 게시물의 저장도 지운다
+    override fun unsave(command: SavePostCommand) {
+        tx.execute {
+            val post = postRepository.findByPublicId(command.publicId) ?: throw BusinessException(SnsErrorCode.SNS_POST_UNAVAILABLE)
+            saveService.unsave(command.userId, post.id)
         }
     }
 

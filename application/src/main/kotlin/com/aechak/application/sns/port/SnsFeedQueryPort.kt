@@ -5,6 +5,7 @@ import com.aechak.application.sns.port.view.SnsFeedRepostView
 import com.aechak.application.sns.port.view.SnsPostCardView
 import com.aechak.application.sns.port.view.SnsPostHashtagView
 import com.aechak.application.sns.port.view.SnsPostMediaView
+import com.aechak.application.sns.port.view.SnsSaveView
 import com.aechak.application.sns.port.view.SnsUserRepostView
 import java.time.LocalDateTime
 
@@ -76,6 +77,17 @@ interface SnsFeedQueryPort {
         lastRepostId: Long?,
         limit: Int,
     ): List<SnsUserRepostView>
+
+    /**
+     * 저장됨 탭 한 페이지. 사용자의 저장을 행 id 내림차순으로 lastSaveId 뒤부터 limit개 읽는다.
+     * 게시물이 PUBLISHED이고 작성자가 볼 수 있으며 숨김 밖인 것만 싣는다.
+     */
+    fun findSavePage(
+        userId: Long,
+        hiddenUserIds: Set<Long>,
+        lastSaveId: Long?,
+        limit: Int,
+    ): List<SnsSaveView>
 
     /** postIds 중 지금 볼 수 있는 글. PUBLISHED이고 작성자 프로필이 있으며 작성자가 숨김 사용자가 아니다 */
     fun findVisiblePostIds(

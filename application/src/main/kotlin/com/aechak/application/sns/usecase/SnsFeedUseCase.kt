@@ -26,4 +26,7 @@ interface SnsFeedUseCase {
     // 프로필 리포스트 탭. 주인이 리포스트한 원글을 최근 리포스트순 칸으로 주고 보는 사람과 차단 관계인 작성자의 원글을 뺀다.
     // 보는 사람이 주인이 아니면 뮤트한 작성자의 원글도 뺀다. 주인 판정은 그리드 탭과 같다
     fun userReposts(query: SnsPostTabQuery): CursorPageResult<SnsPostGridItemResult>
+
+    // 저장됨 탭. 내가 저장한 글을 최근 저장순 칸으로 주고 차단 관계이거나 뮤트한 작성자의 글을 뺀다. 로그인이 필요하다
+    fun mySaves(query: SnsFeedQuery): CursorPageResult<SnsPostGridItemResult>
 }

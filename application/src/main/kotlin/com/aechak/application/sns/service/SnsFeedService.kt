@@ -3,6 +3,7 @@ package com.aechak.application.sns.service
 import com.aechak.application.sns.port.SnsFeedQueryPort
 import com.aechak.application.sns.port.SnsPostTab
 import com.aechak.application.sns.port.view.SnsFeedEntryView
+import com.aechak.application.sns.port.view.SnsSaveView
 import com.aechak.application.sns.port.view.SnsUserRepostView
 import com.aechak.application.sns.support.PopularScore
 import com.aechak.application.sns.support.SnsFeedCursorCodec
@@ -159,6 +160,18 @@ class SnsFeedService(
         return CursorPageResult.of(fetched = fetched, size = query.size) {
             SnsFeedCursorCodec.encodeUserReposts(ownerPublicId, it.repostId)
         }
+    }
+
+    /** 저장됨 탭 한 페이지. 내 저장을 최근순으로 고르고 숨김 사용자의 글은 뺀다 */
+    fun mySavesPage(
+        query: SnsFeedQuery,
+        userId: Long,
+        userPublicId: String,
+        hiddenUserIds: Set<Long>,
+    ): CursorPageResult<SnsSaveView> {
+        val lastSaveId = query.cursor?.let { SnsFeedCursorCodec.decodeMySaves(it, userPublicId) }
+        val fetched = feedQueryPort.findSavePage(userId, hiddenUserIds, lastSaveId, CursorPageSize.fetchLimit(query.size))
+        return CursorPageResult.of(fetched = fetched, size = query.size) { SnsFeedCursorCodec.encodeMySaves(userPublicId, it.saveId) }
     }
 
     /** 커서의 마지막 게시물. 그사이 지운 게시물도 위치로 쓰므로 상태를 보지 않는다 */

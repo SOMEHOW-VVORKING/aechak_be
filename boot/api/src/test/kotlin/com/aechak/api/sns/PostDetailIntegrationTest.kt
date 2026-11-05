@@ -267,9 +267,20 @@ class PostDetailIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `저장한 사람만 saved가 true다`() {
+        val publicId = createdPublicId(onboardedUser())
+        val saverId = onboardedUser()
+        save(publicId, saverId).andExpect(status().isCreated)
+
+        assertEquals(true, postDetail(publicId, saverId)["saved"])
+        assertEquals(false, postDetail(publicId, onboardedUser())["saved"])
+    }
+
+    @Test
     fun `비로그인은 reposted와 saved가 false다`() {
         val publicId = createdPublicId(onboardedUser())
         repost(publicId, onboardedUser()).andExpect(status().isCreated)
+        save(publicId, onboardedUser()).andExpect(status().isCreated)
 
         val detail = postDetail(publicId)
 
