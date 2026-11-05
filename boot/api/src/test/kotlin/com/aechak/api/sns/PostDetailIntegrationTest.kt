@@ -191,6 +191,26 @@ class PostDetailIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `영상 게시물은 영상 주소와 썸네일 주소와 길이를 싣고 사진은 비어 있다`() {
+        val authorId = onboardedUser()
+        val videoKey = tmpVideoKey(authorId)
+        val thumbnailKey = tmpPhotoKey(authorId)
+        val publicId = createdPublicId(authorId, postBody(caption = null, video = videoJson(videoKey, thumbnailKey)))
+
+        val detail = postDetail(publicId)
+
+        assertEquals(emptyList<Any>(), detail["photoUrls"])
+        assertEquals(
+            mapOf(
+                "url" to "https://fake-cdn.local/${promotedKeyOf(videoKey)}",
+                "thumbnailUrl" to "https://fake-cdn.local/${promotedKeyOf(thumbnailKey)}",
+                "durationMs" to 42_500,
+            ),
+            detail["video"],
+        )
+    }
+
+    @Test
     fun `텍스트 게시물은 사진이 없고 영상이 null이다`() {
         val authorId = onboardedUser()
         val publicId = createdPublicId(authorId, postBody(caption = "산책 코스 추천받아요"))

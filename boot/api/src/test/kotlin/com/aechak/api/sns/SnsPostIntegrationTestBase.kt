@@ -100,8 +100,17 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         purpose: UploadPurpose = UploadPurpose.SNS_POST_IMAGE,
     ): String = "${FileKey.tmpPrefixOf(userId, purpose)}${Ulid.generate()}.jpg"
 
+    /** 이 사용자가 게시물 영상 용도로 발급받았을 tmp 키. */
+    protected fun tmpVideoKey(userId: Long): String = "${FileKey.tmpPrefixOf(userId, UploadPurpose.SNS_POST_VIDEO)}${Ulid.generate()}.mp4"
+
     /** 이 tmp 키를 승격한 영구 키. 게시물 사진은 승격마다 새 키라 fake의 기록에서 찾는다. */
     protected fun promotedKeyOf(tmpKey: String): String = fakeFileStorage.promotedKeyOf(tmpKey)
+
+    protected fun videoJson(
+        key: String,
+        thumbnailKey: String,
+        durationMs: Int = 42_500,
+    ): String = """{"key":"$key","thumbnailKey":"$thumbnailKey","durationMs":$durationMs}"""
 
     protected fun postBody(
         caption: String? = "산책 다녀왔어요",

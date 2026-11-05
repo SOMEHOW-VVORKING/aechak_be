@@ -78,6 +78,18 @@ class PostUpdateDeleteIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `영상 게시물을 지우면 영상과 썸네일 파일을 모두 지운다`() {
+        val authorId = onboardedUser()
+        val videoKey = tmpVideoKey(authorId)
+        val thumbnailKey = tmpPhotoKey(authorId)
+        val publicId = createdPublicId(authorId, postBody(caption = null, video = videoJson(videoKey, thumbnailKey)))
+
+        deletePost(publicId, authorId).andExpect(status().isNoContent)
+
+        assertTrue(fakeFileStorage.deletedKeys.containsAll(listOf(promotedKeyOf(videoKey), promotedKeyOf(thumbnailKey))))
+    }
+
+    @Test
     fun `같은 tmp 키로 게시한 두 게시물 중 하나를 지워도 다른 쪽 파일은 남고 지운 파일을 다시 만들지 않는다`() {
         val authorId = onboardedUser()
         val tmpKey = tmpPhotoKey(authorId)
