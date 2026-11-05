@@ -59,7 +59,7 @@ class ProductKeywordSearchQueryAdapter(
             .where(product.publicId.eq(publicId))
             .fetchOne()
 
-    private fun nameContains(keyword: String): Predicate = product.name.containsIgnoreCase(keyword)
+    private fun nameContains(keyword: String): Predicate = product.name.contains(keyword)
 
     private fun filterPredicate(
         filter: ProductKeywordFilter,
