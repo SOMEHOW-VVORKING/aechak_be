@@ -45,5 +45,11 @@ class PostMedia protected constructor(
             storageKey: String,
             sortOrder: Int,
         ): PostMedia = PostMedia(PostMediaKind.IMAGE, storageKey, sortOrder, thumbnailKey = null, durationMs = null)
+
+        fun video(
+            storageKey: String,
+            thumbnailKey: String?,
+            durationMs: Int,
+        ): PostMedia = PostMedia(PostMediaKind.VIDEO, storageKey, sortOrder = 0, thumbnailKey = thumbnailKey, durationMs = durationMs)
     }
 }

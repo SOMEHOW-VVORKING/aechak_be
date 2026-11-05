@@ -12,6 +12,7 @@ import com.aechak.domain.sns.post.Post
 import com.aechak.webcommon.http.CustomHttpHeaders
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
+import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -36,7 +37,7 @@ class PostController(
     @ResponseStatus(HttpStatus.CREATED)
     fun createPost(
         @RequestHeader(CustomHttpHeaders.IDEMPOTENCY_KEY) idempotencyKey: String,
-        @RequestBody request: CreatePostRequest,
+        @Valid @RequestBody request: CreatePostRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<CreatePostResponse>> {
         validateIdempotencyKey(idempotencyKey)

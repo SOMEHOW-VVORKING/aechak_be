@@ -126,10 +126,18 @@ class Post protected constructor(
         hashtagIds.forEachIndexed { index, hashtagId -> if (hashtagId !in kept) _hashtags += PostHashtag.of(hashtagId, index) }
     }
 
+    /** 게시 요청의 영상 하나. 요청에 썸네일 키가 없을 수 있어 첨부 규칙이 거른다 */
+    data class VideoSpec(
+        val key: String,
+        val thumbnailKey: String?,
+        val durationMs: Int,
+    )
+
     companion object {
         const val UK_AUTHOR_IDEMPOTENCY = "uk_sns_posts_author_idempotency"
         const val CAPTION_MAX_CODE_POINTS = 2_200
         const val MAX_PHOTOS = 10
+        const val MAX_VIDEO_DURATION_MS = 60_000
         const val MAX_HASHTAGS = 30
         const val IDEMPOTENCY_KEY_MAX_LENGTH = 100
 
@@ -137,14 +145,21 @@ class Post protected constructor(
             authorId: Long,
             caption: String?,
             photoKeys: List<String>,
+            video: VideoSpec?,
             hashtagIds: List<Long>,
             petId: Long?,
             idempotencyKey: String,
         ): Post {
-            val normalized = validateDraft(caption, photoKeys)
-            val mediaType = if (photoKeys.isEmpty()) PostMediaType.TEXT else PostMediaType.PHOTO
+            val normalized = validateDraft(caption, photoKeys, video)
+            val mediaType =
+                when {
+                    video != null -> PostMediaType.VIDEO
+                    photoKeys.isNotEmpty() -> PostMediaType.PHOTO
+                    else -> PostMediaType.TEXT
+                }
             val post = Post(authorId, normalized, mediaType, petId, idempotencyKey)
             photoKeys.forEachIndexed { index, key -> post._media += PostMedia.image(key, index) }
+            video?.let { post._media += PostMedia.video(it.key, it.thumbnailKey, it.durationMs) }
             hashtagIds.forEachIndexed { index, hashtagId -> post._hashtags += PostHashtag.of(hashtagId, index) }
             return post
         }
@@ -160,11 +175,19 @@ class Post protected constructor(
         fun validateDraft(
             caption: String?,
             photoKeys: List<String>,
+            video: VideoSpec?,
         ): String? {
             val normalized = normalizeCaption(caption)
-            if (normalized == null && photoKeys.isEmpty()) throw BusinessException(SnsErrorCode.SNS_POST_EMPTY)
+            if (normalized == null && photoKeys.isEmpty() && video == null) throw BusinessException(SnsErrorCode.SNS_POST_EMPTY)
             if (photoKeys.size > MAX_PHOTOS || photoKeys.toSet().size != photoKeys.size) {
                 throw BusinessException(SnsErrorCode.SNS_POST_INVALID_MEDIA)
+            }
+            if (video != null) {
+                // 영상은 사진 없이 하나만 오고 영상과 다른 썸네일이 있어야 한다
+                if (photoKeys.isNotEmpty() || video.thumbnailKey == null || video.thumbnailKey == video.key) {
+                    throw BusinessException(SnsErrorCode.SNS_POST_INVALID_MEDIA)
+                }
+                if (video.durationMs > MAX_VIDEO_DURATION_MS) throw BusinessException(SnsErrorCode.SNS_POST_VIDEO_TOO_LONG)
             }
             return normalized
         }
