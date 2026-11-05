@@ -22,4 +22,10 @@ interface ProductStatsRepository {
         ratingSum: Long,
         averageRating: BigDecimal?,
     )
+
+    /** 검색 인기순 정렬이 읽는 products.review_count를 리뷰 수 절대값으로 갱신. 상품 @Version은 올리지 않음 */
+    fun updateProductReviewCount(
+        productId: Long,
+        reviewCount: Int,
+    )
 }

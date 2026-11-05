@@ -14,6 +14,7 @@ import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.repository.CategoryRepository
 import com.aechak.domain.product.error.ProductErrorCode
+import org.springframework.dao.QueryTimeoutException
 import org.springframework.stereotype.Service
 import java.text.Normalizer
 import java.time.LocalDateTime
@@ -32,24 +33,32 @@ class ProductKeywordSearchService(
         val categoryIds = searchableCategoryIds(filter.categoryId)
         val anchor = query.cursor?.let { resolveCursor(it, query.sort, filter, now) }
         val queryNow = anchor?.anchorNow ?: now
-        val fetched =
-            productKeywordSearchPort.search(
-                ProductKeywordSearchCondition(
-                    filter = filter,
-                    categoryIds = categoryIds,
-                    sort = query.sort,
-                    lastId = anchor?.lastId,
-                    lastReviewCount = anchor?.lastReviewCount,
-                    lastPrice = anchor?.lastPrice,
-                    limit = CursorPageSize.fetchLimit(query.size),
-                    now = queryNow,
-                ),
+        val condition =
+            ProductKeywordSearchCondition(
+                filter = filter,
+                categoryIds = categoryIds,
+                sort = query.sort,
+                lastId = anchor?.lastId,
+                lastReviewCount = anchor?.lastReviewCount,
+                lastPrice = anchor?.lastPrice,
+                limit = CursorPageSize.fetchLimit(query.size),
+                now = queryNow,
             )
+        // 첫 페이지에서만 총개수 계산
+        val (fetched, totalCount) =
+            try {
+                if (query.cursor == null) {
+                    productKeywordSearchPort.searchFirstPage(condition).let { it.fetched to it.totalCount }
+                } else {
+                    productKeywordSearchPort.search(condition) to null
+                }
+            } catch (e: QueryTimeoutException) {
+                throw BusinessException(ProductErrorCode.PRODUCT_SEARCH_TIMEOUT, e)
+            }
         return CursorPageResult.of(
             fetched = fetched,
             size = query.size,
-            // 첫 페이지에서만 총개수 계산
-            totalCount = if (query.cursor == null) productKeywordSearchPort.countMatching(filter, categoryIds, queryNow) else null,
+            totalCount = totalCount,
         ) { last -> encodeCursor(query.sort, filter, last, queryNow) }
     }
 
