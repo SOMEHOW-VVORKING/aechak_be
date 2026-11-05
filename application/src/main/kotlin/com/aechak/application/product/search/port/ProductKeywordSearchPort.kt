@@ -9,6 +9,7 @@ interface ProductKeywordSearchPort {
     /** 목록과 동일한 필터를 적용한 총개수 */
     fun countMatching(
         filter: ProductKeywordFilter,
+        categoryIds: Set<Long>,
         now: LocalDateTime,
     ): Long
 
