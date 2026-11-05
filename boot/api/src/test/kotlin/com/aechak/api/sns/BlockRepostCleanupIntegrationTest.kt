@@ -30,6 +30,17 @@ class BlockRepostCleanupIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `두 사람이 지운 원글에 한 리포스트도 차단하면 지워지고 두 원글의 수가 1씩 준다`() {
+        val s = repostedEachOther()
+        deletePost(s.myPost, s.me).andExpect(status().isNoContent)
+        deletePost(s.otherPost, s.other).andExpect(status().isNoContent)
+
+        relate(s.me, s.other, "block")
+
+        expectCleanedUp(s)
+    }
+
+    @Test
     fun `차단해도 제3자의 리포스트는 남는다`() {
         val s = repostedEachOther()
 

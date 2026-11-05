@@ -74,6 +74,8 @@ class RepostRepositoryAdapter(
     ): Set<Long> = jpaRepository.findPostIds(reposterId, postIds).toSet()
 
     // 잠금 순서를 지키려고 원글과 조인한 읽기는 잠그지 않고 리포스트 행만 id로 지운다
+    // shortcut: 찾는 쿼리는 리포스트한 사람의 리포스트 행을 모두 읽고 원글 조인으로 작성자를 거르며 지울 행마다 DELETE를 하나씩 보낸다.
+    // 한 사용자의 리포스트가 1만 개를 넘거나 차단 응답 P95가 100ms를 넘으면 sns_reposts에 author_id를 두고 (reposter_id, author_id) 인덱스로 찾는다.
     override fun deleteBetween(
         reposterId: Long,
         authorId: Long,

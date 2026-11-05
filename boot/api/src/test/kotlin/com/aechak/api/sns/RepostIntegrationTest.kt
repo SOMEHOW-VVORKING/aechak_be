@@ -94,6 +94,15 @@ class RepostIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `본인이 지운 원글을 본인이 리포스트하면 130600이 아니라 404 130400이다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        deletePost(publicId, authorId).andExpect(status().isNoContent)
+
+        expectUnavailable(repost(publicId, authorId))
+    }
+
+    @Test
     fun `탈퇴한 작성자의 원글 리포스트는 404 130400이다`() {
         val authorId = onboardedUser()
         val publicId = createdPublicId(authorId)
