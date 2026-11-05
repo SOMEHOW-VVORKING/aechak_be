@@ -10,7 +10,7 @@ import jakarta.persistence.Index
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
 
-/** user가 post를 저장한 관계. 행은 저장소 원자 삽입과 삭제로만 바꾼다 */
+/** 행은 저장소 원자 삽입과 삭제로만 바꾼다 */
 @Entity
 @Table(
     name = "sns_saves",

@@ -4,7 +4,6 @@ import com.aechak.application.sns.usecase.result.SnsFeedItemResult
 import com.aechak.application.support.CursorPageResult
 import io.swagger.v3.oas.annotations.media.Schema
 
-/** 피드 한 페이지. 목록 응답과 달리 totalCount가 없다 */
 data class SnsFeedPageResponse(
     @field:Schema(description = "같은 원글은 한 페이지에 한 번만 나온다")
     val items: List<SnsFeedItemResponse>,

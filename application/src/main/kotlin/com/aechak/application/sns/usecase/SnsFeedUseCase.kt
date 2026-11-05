@@ -6,7 +6,6 @@ import com.aechak.application.sns.usecase.result.SnsFeedItemResult
 import com.aechak.application.sns.usecase.result.SnsPostGridItemResult
 import com.aechak.application.support.CursorPageResult
 
-/** SNS 피드 진입점. 응답 페이지에는 totalCount가 없다 */
 interface SnsFeedUseCase {
     // 팔로잉 피드. 나와 내가 팔로우한 사용자의 원글과 리포스트를 원글마다 가장 늦은 이벤트에 한 번 싣는다. 로그인이 필요하다
     fun following(query: SnsFeedQuery): CursorPageResult<SnsFeedItemResult>

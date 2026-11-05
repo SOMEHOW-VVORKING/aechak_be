@@ -269,7 +269,7 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
             ).andExpect(status().is2xxSuccessful)
     }
 
-    /** 게시 시각을 옮긴다. 피드의 기간 경계와 순서는 이 시각으로 만든다. */
+    /** 피드의 기간 경계와 순서는 이 시각으로 만든다. */
     protected fun backdatePost(
         publicId: String,
         createdAt: LocalDateTime,
@@ -277,7 +277,6 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         jdbcTemplate.update("update sns_posts set created_at = ? where public_id = ?", createdAt, publicId)
     }
 
-    /** reposter가 이 원글에 한 리포스트의 시각을 옮긴다. */
     protected fun backdateRepost(
         reposterId: Long,
         publicId: String,
@@ -308,7 +307,6 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         return mockMvc.perform(request)
     }
 
-    /** 피드 한 페이지를 200으로 받고 data 객체를 돌려준다. */
     protected fun feedPage(
         kind: String,
         viewerId: Long? = null,
@@ -324,11 +322,9 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         return JsonPath.read(json, "$.data")
     }
 
-    /** 피드 페이지의 항목. */
     @Suppress("UNCHECKED_CAST")
     protected fun Map<String, Any?>.feedItems(): List<Map<String, Any?>> = this["items"] as List<Map<String, Any?>>
 
-    /** 피드 페이지 카드의 게시물 publicId를 순서대로 돌려준다. */
     protected fun Map<String, Any?>.postIds(): List<String> = feedItems().map { (it["post"] as Map<*, *>)["publicId"] as String }
 
     protected fun postRow(publicId: String): Map<String, Any?> =
@@ -353,7 +349,7 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
             .queryForList("select post_count from sns_user_stats where user_id = ?", Int::class.java, userId)
             .firstOrNull()
 
-    /** 원글 통계 행의 repost_count. 행이 없으면 null이다. */
+    /** 통계 행이 없으면 null이다. */
     protected fun repostCountOf(publicId: String): Int? =
         jdbcTemplate
             .queryForList(
@@ -362,7 +358,6 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
                 publicId,
             ).firstOrNull()
 
-    /** reposter가 이 원글에 한 리포스트 행 수. */
     protected fun repostRowCount(
         reposterId: Long,
         publicId: String,

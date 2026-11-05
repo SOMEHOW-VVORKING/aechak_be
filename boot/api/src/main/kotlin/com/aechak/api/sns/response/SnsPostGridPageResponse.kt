@@ -5,7 +5,6 @@ import com.aechak.application.support.CursorPageResult
 import com.aechak.domain.sns.post.enums.PostMediaType
 import io.swagger.v3.oas.annotations.media.Schema
 
-/** 프로필 탭 한 페이지. 목록 응답과 달리 totalCount가 없다 */
 data class SnsPostGridPageResponse(
     val items: List<SnsPostGridItemResponse>,
     val nextCursor: String?,

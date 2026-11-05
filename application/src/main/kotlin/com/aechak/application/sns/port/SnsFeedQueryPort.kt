@@ -9,7 +9,7 @@ import com.aechak.application.sns.port.view.SnsSaveView
 import com.aechak.application.sns.port.view.SnsUserRepostView
 import java.time.LocalDateTime
 
-/** 피드와 카드 읽기 전용 포트. 볼 수 있는 작성자는 프로필 행이 있는 사용자다 */
+/** 볼 수 있는 작성자는 프로필 행이 있는 사용자다 */
 interface SnsFeedQueryPort {
     /**
      * 팔로잉 피드 한 페이지. 원천은 나와 내가 팔로우하는 사용자 중 볼 수 있고 숨김 밖인 사용자다.

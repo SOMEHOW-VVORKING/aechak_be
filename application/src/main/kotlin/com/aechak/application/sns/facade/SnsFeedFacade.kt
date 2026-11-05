@@ -25,7 +25,7 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 
-/** SNS 피드와 프로필 탭 진입점. 금지어 판정과 파일 승격을 쓰지 않아 게시물 쪽 SnsPostFacade와 나눠 둔다 */
+/** SNS 피드와 프로필 탭 진입점 */
 @Service
 class SnsFeedFacade(
     private val snsFeedService: SnsFeedService,
@@ -102,7 +102,6 @@ class SnsFeedFacade(
         return cellPage(page.items.map { it.postId }, page)
     }
 
-    /** 페이지의 게시물을 프로필 탭 칸으로 조립한다 */
     private fun cellPage(
         postIds: List<Long>,
         page: CursorPageResult<*>,
@@ -161,7 +160,7 @@ class SnsFeedFacade(
         return PopularRanking(cursor.epochMinute, stored)
     }
 
-    /** 페이지의 게시물을 카드로 조립한다. reposters는 게시물 publicId별 리포스트 표시이고 팔로잉 피드만 채운다 */
+    /** reposters는 게시물 publicId별 리포스트 표시이고 팔로잉 피드만 채운다 */
     private fun cardPage(
         postIds: List<Long>,
         page: CursorPageResult<*>,

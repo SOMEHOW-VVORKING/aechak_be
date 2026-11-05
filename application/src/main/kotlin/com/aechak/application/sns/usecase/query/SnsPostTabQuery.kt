@@ -2,7 +2,7 @@ package com.aechak.application.sns.usecase.query
 
 import com.aechak.application.support.CursorPageSize
 
-/** 프로필 탭 입력. viewerId가 null이면 비로그인이다 */
+/** viewerId가 null이면 비로그인이다 */
 data class SnsPostTabQuery(
     val viewerId: Long?,
     val ownerPublicId: String,

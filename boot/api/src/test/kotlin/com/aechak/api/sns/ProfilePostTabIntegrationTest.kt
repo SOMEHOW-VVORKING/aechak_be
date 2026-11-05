@@ -368,7 +368,6 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
         assertEquals(false, second["hasNext"], "마지막 페이지여야 한다")
     }
 
-    /** 영상 게시물을 게시하고 publicId를 돌려준다. */
     private fun videoPost(
         ownerId: Long,
         caption: String? = null,
@@ -389,7 +388,6 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
         return mockMvc.perform(request)
     }
 
-    /** 프로필 탭 한 페이지를 200으로 받고 data 객체를 돌려준다. */
     private fun tabPage(
         tab: String,
         ownerId: Long,
@@ -406,7 +404,6 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
         return JsonPath.read(json, "$.data")
     }
 
-    /** 탭 페이지 칸의 게시물 publicId를 순서대로 돌려준다. */
     private fun Map<String, Any?>.cellIds(): List<String> = feedItems().map { it["publicId"] as String }
 
     companion object {

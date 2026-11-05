@@ -167,7 +167,6 @@ class BlockedPairRepostIntegrationTest : SnsPostIntegrationTestBase() {
         viewerId: Long,
     ): ResultActions = mockMvc.perform(get(path).header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}"))
 
-    /** 보는 사람의 토큰으로 목록 경로를 불러 200의 data 객체를 돌려준다 */
     private fun dataOf(
         path: String,
         viewerId: Long,
@@ -187,7 +186,7 @@ class BlockedPairRepostIntegrationTest : SnsPostIntegrationTestBase() {
         viewerId: Long,
     ): List<String> = dataOf("/api/v1/sns/users/${publicIdOf(ownerId)}/reposts", viewerId).ids()
 
-    /** 목록 항목의 publicId. 프로필 탭과 저장됨 탭은 게시물, 팔로우 목록은 사용자의 publicId다 */
+    /** 프로필 탭과 저장됨 탭은 게시물, 팔로우 목록은 사용자의 publicId다 */
     private fun Map<String, Any?>.ids(): List<String> = feedItems().map { it["publicId"] as String }
 
     /** 팔로잉 피드 카드마다 게시물 publicId와 리포스트한 사람의 publicId. 리포스트 표시가 없으면 null이다 */

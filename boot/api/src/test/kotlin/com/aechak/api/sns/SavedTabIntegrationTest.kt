@@ -180,7 +180,7 @@ class SavedTabIntegrationTest : SnsPostIntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(20004))
     }
 
-    /** 저장됨 탭을 부른다. userId가 null이면 토큰 없이 부른다. */
+    /** userId가 null이면 토큰 없이 부른다. */
     private fun getSaves(
         userId: Long?,
         cursor: String? = null,
@@ -193,7 +193,6 @@ class SavedTabIntegrationTest : SnsPostIntegrationTestBase() {
         return mockMvc.perform(request)
     }
 
-    /** 저장됨 탭 한 페이지를 200으로 받고 data 객체를 돌려준다. */
     private fun savesPage(
         userId: Long,
         cursor: String? = null,
@@ -208,6 +207,5 @@ class SavedTabIntegrationTest : SnsPostIntegrationTestBase() {
         return JsonPath.read(json, "$.data")
     }
 
-    /** 탭 페이지 칸의 게시물 publicId를 순서대로 돌려준다. */
     private fun Map<String, Any?>.cellIds(): List<String> = feedItems().map { it["publicId"] as String }
 }

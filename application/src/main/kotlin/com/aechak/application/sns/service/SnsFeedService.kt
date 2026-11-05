@@ -22,7 +22,6 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
-/** 피드와 프로필 탭 커서를 풀고 목록 포트로 한 페이지의 게시물을 고른다 */
 @Service
 class SnsFeedService(
     private val feedQueryPort: SnsFeedQueryPort,

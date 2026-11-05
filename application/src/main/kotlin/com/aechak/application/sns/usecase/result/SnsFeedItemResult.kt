@@ -1,6 +1,6 @@
 package com.aechak.application.sns.usecase.result
 
-/** 피드 카드 하나. post는 상세와 같은 결과이고 repostedBy는 팔로잉 피드에서만 채운다 */
+/** post는 상세와 같은 결과이고 repostedBy는 팔로잉 피드에서만 채운다 */
 data class SnsFeedItemResult(
     val post: SnsPostDetailResult,
     val repostedBy: SnsFeedReposterResult?,

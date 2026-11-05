@@ -222,7 +222,6 @@ class SaveIntegrationTest : SnsPostIntegrationTestBase() {
         }
     }
 
-    /** user가 이 게시물에 한 저장 행 수. */
     private fun saveRowCount(
         userId: Long,
         publicId: String,
@@ -234,7 +233,6 @@ class SaveIntegrationTest : SnsPostIntegrationTestBase() {
             publicId,
         )!!
 
-    /** 피드 페이지 카드마다 게시물 publicId와 saved. */
     private fun savedOfCards(page: Map<String, Any?>): Map<Any?, Any?> =
         page.feedItems().map { it["post"] as Map<*, *> }.associate { it["publicId"] to it["saved"] }
 

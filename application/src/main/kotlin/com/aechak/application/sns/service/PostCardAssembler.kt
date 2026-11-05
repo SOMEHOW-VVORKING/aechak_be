@@ -14,7 +14,7 @@ import com.aechak.domain.sns.repost.repository.RepostRepository
 import com.aechak.domain.sns.save.repository.SaveRepository
 import org.springframework.stereotype.Service
 
-/** 게시물을 상세와 같은 카드나 프로필 탭 칸으로 조립한다. 피드 카드와 상세가 카드 매핑 하나를 쓴다 */
+/** 피드 카드와 상세가 이 카드 매핑 하나를 함께 쓴다 */
 @Service
 class PostCardAssembler(
     private val feedQueryPort: SnsFeedQueryPort,

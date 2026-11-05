@@ -2,7 +2,7 @@ package com.aechak.application.sns.usecase.query
 
 import com.aechak.application.support.CursorPageSize
 
-/** 피드 입력. viewerId가 null이면 비로그인이다 */
+/** viewerId가 null이면 비로그인이다 */
 data class SnsFeedQuery(
     val viewerId: Long?,
     val cursor: String?,
