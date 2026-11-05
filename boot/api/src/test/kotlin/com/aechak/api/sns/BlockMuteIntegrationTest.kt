@@ -1,9 +1,13 @@
 package com.aechak.api.sns
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.application.sns.usecase.SnsUseCase
+import com.aechak.application.sns.usecase.command.MuteUserCommand
 import com.aechak.domain.user.user.User
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
@@ -18,11 +22,15 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * 통합: 차단과 뮤트의 켜기와 끄기가 실 보안 필터체인과 MySQL을 지나 계약대로 멱등하게 동작하는지.
  * 깨지면 반복 요청이 오류를 내거나 상대가 건 차단이 지워지거나 차단이 뮤트를 지우거나 대상 판정이 계약과 달라지거나
- * 차단 뒤 팔로우가 남아 수가 관계 행 수와 어긋난다.
+ * 차단 뒤 팔로우가 남아 수가 관계 행 수와 어긋나거나 동시 뮤트가 교착으로 실패한다.
  */
 class BlockMuteIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -30,6 +38,9 @@ class BlockMuteIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var securityFilterChain: FilterChainProxy
+
+    @Autowired
+    private lateinit var snsUseCase: SnsUseCase
 
     private lateinit var mockMvc: MockMvc
 
@@ -315,6 +326,32 @@ class BlockMuteIntegrationTest : IntegrationTestBase() {
         expectUnavailable(unmute(me, "01JZZZZZZZZZZZZZZZZZZZZZZZ"))
     }
 
+    @Nested
+    inner class Concurrency {
+        @Test
+        fun `뮤트한 상태에서 해제 하나와 뮤트 둘을 동시에 보내도 교착 없이 모두 성공하고 행은 많아야 1개다`() {
+            repeat(60) { round ->
+                val me = onboardedUser("muterace$round")
+                val target = onboardedUser("mutedrace$round")
+                mute(me, target.publicId).andExpect(status().isCreated)
+                val command = MuteUserCommand(me.id, target.publicId)
+
+                // 해제가 지운 행을 두 뮤트가 함께 기다리다 해제가 커밋되면 둘이 같은 키에 삽입하려고 다툰다
+                val errors =
+                    runConcurrently(
+                        listOf(
+                            { snsUseCase.unmute(command) },
+                            { snsUseCase.mute(command) },
+                            { snsUseCase.mute(command) },
+                        ),
+                    )
+
+                assertTrue(errors.isEmpty(), "해제와 뮤트의 동시 요청에서 교착이나 오류가 나면 안 된다: $errors")
+                assertTrue(muteCount(me.id, target.id) <= 1, "뮤트 행은 많아야 1개여야 한다")
+            }
+        }
+    }
+
     private fun block(
         actor: Seeded,
         targetPublicId: String,
@@ -422,6 +459,33 @@ class BlockMuteIntegrationTest : IntegrationTestBase() {
         actions
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value(130000))
+    }
+
+    private fun runConcurrently(tasks: List<() -> Unit>): List<Throwable> {
+        val ready = CountDownLatch(tasks.size)
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(tasks.size)
+        val errors = Collections.synchronizedList(mutableListOf<Throwable>())
+        try {
+            val futures =
+                tasks.map { task ->
+                    pool.submit {
+                        ready.countDown()
+                        start.await()
+                        try {
+                            task()
+                        } catch (e: Throwable) {
+                            errors.add(e)
+                        }
+                    }
+                }
+            ready.await(5, TimeUnit.SECONDS)
+            start.countDown()
+            futures.forEach { it.get(20, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdownNow()
+        }
+        return errors
     }
 
     private data class Seeded(
