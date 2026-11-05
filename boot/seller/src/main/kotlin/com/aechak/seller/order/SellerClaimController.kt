@@ -14,6 +14,7 @@ import com.aechak.seller.order.response.SellerClaimListResponse
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -34,7 +35,7 @@ class SellerClaimController(
 ) {
     @GetMapping
     fun search(
-        @Valid @ModelAttribute request: SellerClaimSearchRequest,
+        @Valid @ModelAttribute @ParameterObject request: SellerClaimSearchRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SellerClaimListResponse>> =
         ResponseEntity.ok(

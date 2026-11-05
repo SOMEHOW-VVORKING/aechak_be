@@ -8,6 +8,7 @@ import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
@@ -23,7 +24,7 @@ class ProductController(
 ) {
     @GetMapping
     fun getProducts(
-        @Valid @ModelAttribute request: ProductSearchRequest,
+        @Valid @ModelAttribute @ParameterObject request: ProductSearchRequest,
         @AuthenticationPrincipal principal: AuthPrincipal?,
     ): ResponseEntity<ApiResponse<ProductListResponse>> =
         ResponseEntity.ok(

@@ -8,6 +8,7 @@ import com.aechak.seller.review.response.SellerReviewReplyResponse
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -34,7 +35,7 @@ class SellerReviewController(
     /** 내 상품 리뷰 목록 — 상품·별점·답글 여부 필터 + 커서 페이지네이션. 별점 분포 요약은 첫 페이지에만 실린다. */
     @GetMapping
     fun getMyProductReviews(
-        @Valid @ModelAttribute request: SellerReviewSearchRequest,
+        @Valid @ModelAttribute @ParameterObject request: SellerReviewSearchRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SellerReviewListResponse>> =
         ResponseEntity.ok(
