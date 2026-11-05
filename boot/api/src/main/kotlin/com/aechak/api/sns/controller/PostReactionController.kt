@@ -2,6 +2,7 @@ package com.aechak.api.sns.controller
 
 import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.application.sns.usecase.command.RepostPostCommand
+import com.aechak.application.sns.usecase.command.SavePostCommand
 import com.aechak.websecurity.authentication.AuthPrincipal
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -35,6 +36,26 @@ class PostReactionController(
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<Void> {
         snsPostUseCase.unrepost(RepostPostCommand(principal.userId, publicId))
+        return ResponseEntity.noContent().build()
+    }
+
+    @PostMapping("/{publicId}/save")
+    @ResponseStatus(HttpStatus.CREATED)
+    fun save(
+        @PathVariable publicId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<Void> {
+        snsPostUseCase.save(SavePostCommand(principal.userId, publicId))
+        return ResponseEntity.status(HttpStatus.CREATED).build()
+    }
+
+    @DeleteMapping("/{publicId}/save")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun unsave(
+        @PathVariable publicId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<Void> {
+        snsPostUseCase.unsave(SavePostCommand(principal.userId, publicId))
         return ResponseEntity.noContent().build()
     }
 }

@@ -1,17 +1,23 @@
 package com.aechak.infra.persistence.sns.feed
 
 import com.aechak.application.sns.port.SnsFeedQueryPort
+import com.aechak.application.sns.port.SnsPostTab
 import com.aechak.application.sns.port.view.SnsFeedEntryView
 import com.aechak.application.sns.port.view.SnsFeedRepostView
 import com.aechak.application.sns.port.view.SnsPostCardView
 import com.aechak.application.sns.port.view.SnsPostHashtagView
 import com.aechak.application.sns.port.view.SnsPostMediaView
+import com.aechak.application.sns.port.view.SnsSaveView
+import com.aechak.application.sns.port.view.SnsUserRepostView
 import com.aechak.domain.sns.follow.QFollow
 import com.aechak.domain.sns.hashtag.QHashtag
 import com.aechak.domain.sns.post.QPost
 import com.aechak.domain.sns.post.QPostHashtag
 import com.aechak.domain.sns.post.QPostMedia
+import com.aechak.domain.sns.post.enums.PostMediaType
 import com.aechak.domain.sns.post.enums.PostStatus
+import com.aechak.domain.sns.repost.QRepost
+import com.aechak.domain.sns.save.QSave
 import com.aechak.domain.sns.stats.QSnsPostStats
 import com.aechak.domain.user.user.QUser
 import com.aechak.domain.user.user.QUserProfile
@@ -31,6 +37,8 @@ private val media = QPostMedia.postMedia
 private val postHashtag = QPostHashtag.postHashtag
 private val hashtag = QHashtag.hashtag
 private val stats = QSnsPostStats.snsPostStats
+private val repost = QRepost.repost
+private val save = QSave.save
 private val follow = QFollow.follow
 private val user = QUser.user
 private val profile = QUserProfile.userProfile
@@ -215,6 +223,71 @@ class SnsFeedQueryAdapter(
             .fetch()
     }
 
+    override fun findUserPostPage(
+        authorId: Long,
+        tab: SnsPostTab,
+        lastCreatedAt: LocalDateTime?,
+        lastPostId: Long?,
+        limit: Int,
+    ): List<SnsFeedEntryView> =
+        queryFactory
+            .select(Projections.constructor(SnsFeedEntryView::class.java, post.id, post.publicId, post.createdAt))
+            .from(post)
+            .where(
+                post.authorId.eq(authorId),
+                post.mediaType.eq(PostMediaType.VIDEO).takeIf { tab == SnsPostTab.VIDEOS },
+                post.status.eq(PostStatus.PUBLISHED),
+                lastCreatedAt?.let {
+                    post.createdAt.lt(it).or(post.createdAt.eq(it).and(post.id.lt(lastPostId)))
+                },
+            ).orderBy(post.createdAt.desc(), post.id.desc())
+            .limit(limit.toLong())
+            .fetch()
+
+    // shortcut: 지운 원글과 숨김 작성자의 원글을 건너뛰며 limit개를 채울 때까지 리포스트 행을 읽어 한 페이지에 읽는 행 수에 상한이 없다.
+    // 한 사용자의 리포스트가 5만 건을 넘거나 리포스트 탭 P95가 300ms를 넘으면 한 번에 읽는 리포스트 행 수에 상한을 두고 빈 페이지도 커서를 넘기게 바꾼다
+    override fun findUserRepostPage(
+        reposterId: Long,
+        hiddenUserIds: Set<Long>,
+        lastRepostId: Long?,
+        limit: Int,
+    ): List<SnsUserRepostView> =
+        queryFactory
+            .select(Projections.constructor(SnsUserRepostView::class.java, repost.id, repost.postId))
+            .from(repost)
+            .join(post)
+            .on(post.id.eq(repost.postId))
+            .where(
+                repost.reposterId.eq(reposterId),
+                lastRepostId?.let { repost.id.lt(it) },
+                post.status.eq(PostStatus.PUBLISHED),
+                visibleUser(post.authorId),
+                hiddenUserIds.takeIf { it.isNotEmpty() }?.let { post.authorId.notIn(it) },
+            ).orderBy(repost.id.desc())
+            .limit(limit.toLong())
+            .fetch()
+
+    override fun findSavePage(
+        userId: Long,
+        hiddenUserIds: Set<Long>,
+        lastSaveId: Long?,
+        limit: Int,
+    ): List<SnsSaveView> =
+        queryFactory
+            .select(Projections.constructor(SnsSaveView::class.java, save.id, save.postId))
+            .from(save)
+            .join(post)
+            .on(post.id.eq(save.postId))
+            .where(
+                save.userId.eq(userId),
+                lastSaveId?.let { save.id.lt(it) },
+                post.status.eq(PostStatus.PUBLISHED),
+                visibleUser(post.authorId),
+                hiddenUserIds.takeIf { it.isNotEmpty() }?.let { post.authorId.notIn(it) },
+            ).orderBy(save.id.desc())
+            .limit(limit.toLong())
+            .fetch()
+
     override fun findVisiblePostIds(
         postIds: Collection<Long>,
         hiddenUserIds: Set<Long>,
@@ -242,6 +315,7 @@ class SnsFeedQueryAdapter(
                     profile.nickname,
                     profile.profileImageKey,
                     post.petId,
+                    post.mediaType,
                     post.caption,
                     post.editedAt,
                     post.createdAt,

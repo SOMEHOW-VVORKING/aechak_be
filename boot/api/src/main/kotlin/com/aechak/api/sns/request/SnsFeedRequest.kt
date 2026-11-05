@@ -1,6 +1,7 @@
 package com.aechak.api.sns.request
 
 import com.aechak.application.sns.usecase.query.SnsFeedQuery
+import com.aechak.application.sns.usecase.query.SnsPostTabQuery
 import com.aechak.application.support.CursorPageSize
 import org.hibernate.validator.constraints.Range
 
@@ -14,4 +15,9 @@ data class SnsFeedRequest(
     val size: Int = CursorPageSize.DEFAULT,
 ) {
     fun toQuery(viewerId: Long?) = SnsFeedQuery(viewerId = viewerId, cursor = cursor, size = size)
+
+    fun toTabQuery(
+        viewerId: Long?,
+        ownerPublicId: String,
+    ) = SnsPostTabQuery(viewerId = viewerId, ownerPublicId = ownerPublicId, cursor = cursor, size = size)
 }

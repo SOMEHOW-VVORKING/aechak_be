@@ -1,7 +1,9 @@
 package com.aechak.application.sns.support
 
+import com.aechak.application.sns.port.SnsPostTab
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
@@ -9,18 +11,28 @@ import java.time.temporal.ChronoUnit
 import java.util.Base64
 
 /**
- * 피드와 프로필 탭 목록의 keyset 커서.
+ * 피드, 프로필 탭, 저장됨 탭 목록의 keyset 커서.
  * 페이로드는 태그로 시작하는 `:` 구분 값을 base64url(패딩 없음)로 감싼 값이고 사용자 id는 싣지 않는다.
  * 시각은 오프셋 없는 LocalDateTime을 UTC 기준 epoch 마이크로초로 담는다.
+ * 프로필 탭과 저장됨 탭 커서의 범위 해시는 목록 주인 publicId와 태그로 만들어 다른 주인의 목록에서 거절한다.
  *  - 팔로잉 fl:{anchor}:{lastTime}:{lastPostPublicId}
  *  - 탐색 ex:{anchor}:{lastPostPublicId}
  *  - 인기 pp:{epochMinute}:{offset}
+ *  - 그리드 gp:{scopeHash}:{lastPostPublicId}
+ *  - 영상 탭 gv:{scopeHash}:{lastPostPublicId}
+ *  - 리포스트 탭 gr:{scopeHash}:{lastRepostId}
+ *  - 저장됨 탭 sv:{scopeHash}:{lastSaveId}
  */
 object SnsFeedCursorCodec {
     private const val SEPARATOR = ":"
     private const val FOLLOWING_TAG = "fl"
     private const val EXPLORE_TAG = "ex"
     private const val POPULAR_TAG = "pp"
+    private const val USER_REPOSTS_TAG = "gr"
+    private const val MY_SAVES_TAG = "sv"
+
+    // 해시 입력 필드 구분자 (제어 문자 U+001F)
+    private const val CANONICAL_SEPARATOR = "\u001F"
 
     /** 팔로잉 피드 커서. anchor는 첫 페이지의 기준 시각이고 lastTime은 마지막 카드의 정렬 시각이다 */
     data class FollowingCursor(
@@ -78,6 +90,41 @@ object SnsFeedCursorCodec {
         )
     }
 
+    fun encodeUserPosts(
+        tab: SnsPostTab,
+        ownerPublicId: String,
+        lastPostPublicId: String,
+    ): String = encode(tab.tag(), scopeHash(ownerPublicId, tab.tag()), lastPostPublicId)
+
+    /** 그리드나 영상 탭 커서의 마지막 게시물 공개 ID. 형식, 태그, 범위 해시가 요청과 다르면 INVALID_CURSOR */
+    fun decodeUserPosts(
+        cursor: String,
+        tab: SnsPostTab,
+        ownerPublicId: String,
+    ): String = decodeScoped(cursor, tab.tag(), ownerPublicId).toTokenOrInvalid()
+
+    fun encodeUserReposts(
+        ownerPublicId: String,
+        lastRepostId: Long,
+    ): String = encode(USER_REPOSTS_TAG, scopeHash(ownerPublicId, USER_REPOSTS_TAG), lastRepostId.toString())
+
+    /** 리포스트 탭 커서의 마지막 리포스트 행 id. 형식, 태그, 범위 해시가 요청과 다르거나 id가 양수가 아니면 INVALID_CURSOR */
+    fun decodeUserReposts(
+        cursor: String,
+        ownerPublicId: String,
+    ): Long = decodeScoped(cursor, USER_REPOSTS_TAG, ownerPublicId).toLongOrNull()?.takeIf { it > 0 } ?: invalidCursor()
+
+    fun encodeMySaves(
+        userPublicId: String,
+        lastSaveId: Long,
+    ): String = encode(MY_SAVES_TAG, scopeHash(userPublicId, MY_SAVES_TAG), lastSaveId.toString())
+
+    /** 저장됨 탭 커서의 마지막 저장 행 id. 형식, 태그, 범위 해시가 요청과 다르거나 id가 양수가 아니면 INVALID_CURSOR */
+    fun decodeMySaves(
+        cursor: String,
+        userPublicId: String,
+    ): Long = decodeScoped(cursor, MY_SAVES_TAG, userPublicId).toLongOrNull()?.takeIf { it > 0 } ?: invalidCursor()
+
     private fun encode(
         tag: String,
         vararg values: String,
@@ -102,6 +149,32 @@ object SnsFeedCursorCodec {
         if (parts.size != valueCount + 1 || parts[0] != tag) invalidCursor()
         return parts.drop(1)
     }
+
+    /** 범위 해시 뒤의 마지막 항목. 태그나 범위 해시가 요청과 다르면 INVALID_CURSOR */
+    private fun decodeScoped(
+        cursor: String,
+        tag: String,
+        ownerPublicId: String,
+    ): String {
+        val (hash, last) = decode(cursor, tag, 2)
+        if (hash != scopeHash(ownerPublicId, tag)) invalidCursor()
+        return last
+    }
+
+    private fun scopeHash(
+        ownerPublicId: String,
+        tag: String,
+    ): String {
+        val canonical = listOf(ownerPublicId, tag).joinToString(CANONICAL_SEPARATOR)
+        val digest = MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray(Charsets.UTF_8))
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(digest)
+    }
+
+    private fun SnsPostTab.tag(): String =
+        when (this) {
+            SnsPostTab.POSTS -> "gp"
+            SnsPostTab.VIDEOS -> "gv"
+        }
 
     private fun LocalDateTime.toEpochMicros(): Long = ChronoUnit.MICROS.between(Instant.EPOCH, toInstant(ZoneOffset.UTC))
 

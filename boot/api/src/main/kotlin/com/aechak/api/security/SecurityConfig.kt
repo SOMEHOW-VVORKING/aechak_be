@@ -91,6 +91,9 @@ class SecurityConfig {
                         "$basePath/sns/posts/*", // 게시물 상세. 하위 경로는 닫힌 채로 남는다
                         "$basePath/sns/feeds/explore",
                         "$basePath/sns/feeds/popular",
+                        "$basePath/sns/users/*/posts",
+                        "$basePath/sns/users/*/videos",
+                        "$basePath/sns/users/*/reposts",
                     ).permitAll()
                     .anyRequest()
                     .authenticated()

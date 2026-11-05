@@ -2,6 +2,7 @@ package com.aechak.application.sns.usecase
 
 import com.aechak.application.sns.usecase.command.CreatePostCommand
 import com.aechak.application.sns.usecase.command.RepostPostCommand
+import com.aechak.application.sns.usecase.command.SavePostCommand
 import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.application.sns.usecase.result.CreatePostResult
 import com.aechak.application.sns.usecase.result.SnsHashtagSearchResult
@@ -31,4 +32,10 @@ interface SnsPostUseCase {
 
     // 리포스트를 취소한다. 게시물은 publicId로만 찾고 상태와 관계는 보지 않는다
     fun unrepost(command: RepostPostCommand)
+
+    // 게시물을 저장한다. 이미 저장 중이면 그대로 둔다
+    fun save(command: SavePostCommand)
+
+    // 저장을 취소한다. 게시물은 publicId로만 찾고 상태와 관계는 보지 않는다
+    fun unsave(command: SavePostCommand)
 }

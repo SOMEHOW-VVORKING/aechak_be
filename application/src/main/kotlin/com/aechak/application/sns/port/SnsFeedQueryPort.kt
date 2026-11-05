@@ -5,6 +5,8 @@ import com.aechak.application.sns.port.view.SnsFeedRepostView
 import com.aechak.application.sns.port.view.SnsPostCardView
 import com.aechak.application.sns.port.view.SnsPostHashtagView
 import com.aechak.application.sns.port.view.SnsPostMediaView
+import com.aechak.application.sns.port.view.SnsSaveView
+import com.aechak.application.sns.port.view.SnsUserRepostView
 import java.time.LocalDateTime
 
 /** 피드와 카드 읽기 전용 포트. 볼 수 있는 작성자는 프로필 행이 있는 사용자다 */
@@ -55,6 +57,37 @@ interface SnsFeedQueryPort {
         repostWeight: Int,
         limit: Int,
     ): List<Long>
+
+    /** 프로필 그리드나 영상 탭 한 페이지. 작성자의 PUBLISHED 원글을 (created_at, id) 내림차순으로 last 뒤부터 limit개 읽는다 */
+    fun findUserPostPage(
+        authorId: Long,
+        tab: SnsPostTab,
+        lastCreatedAt: LocalDateTime?,
+        lastPostId: Long?,
+        limit: Int,
+    ): List<SnsFeedEntryView>
+
+    /**
+     * 프로필 리포스트 탭 한 페이지. 리포스트한 사람의 리포스트를 행 id 내림차순으로 lastRepostId 뒤부터 limit개 읽는다.
+     * 원글이 PUBLISHED이고 원글 작성자가 볼 수 있으며 숨김 밖인 것만 싣는다.
+     */
+    fun findUserRepostPage(
+        reposterId: Long,
+        hiddenUserIds: Set<Long>,
+        lastRepostId: Long?,
+        limit: Int,
+    ): List<SnsUserRepostView>
+
+    /**
+     * 저장됨 탭 한 페이지. 사용자의 저장을 행 id 내림차순으로 lastSaveId 뒤부터 limit개 읽는다.
+     * 게시물이 PUBLISHED이고 작성자가 볼 수 있으며 숨김 밖인 것만 싣는다.
+     */
+    fun findSavePage(
+        userId: Long,
+        hiddenUserIds: Set<Long>,
+        lastSaveId: Long?,
+        limit: Int,
+    ): List<SnsSaveView>
 
     /** postIds 중 지금 볼 수 있는 글. PUBLISHED이고 작성자 프로필이 있으며 작성자가 숨김 사용자가 아니다 */
     fun findVisiblePostIds(
