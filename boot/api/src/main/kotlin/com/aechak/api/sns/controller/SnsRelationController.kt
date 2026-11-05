@@ -9,6 +9,7 @@ import com.aechak.application.sns.usecase.command.MuteUserCommand
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -68,13 +69,13 @@ class SnsRelationController(
 
     @GetMapping("/me/blocks")
     fun getMyBlocks(
-        @Valid @ModelAttribute request: SnsRelationListRequest,
+        @Valid @ModelAttribute @ParameterObject request: SnsRelationListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SnsRelationPageResponse>> = getMyRelations(request, principal, SnsRelationKind.BLOCK)
 
     @GetMapping("/me/mutes")
     fun getMyMutes(
-        @Valid @ModelAttribute request: SnsRelationListRequest,
+        @Valid @ModelAttribute @ParameterObject request: SnsRelationListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SnsRelationPageResponse>> = getMyRelations(request, principal, SnsRelationKind.MUTE)
 

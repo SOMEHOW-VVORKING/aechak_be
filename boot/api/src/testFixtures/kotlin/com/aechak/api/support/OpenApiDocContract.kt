@@ -135,6 +135,22 @@ object OpenApiDocContract {
             }.sorted()
     }
 
+    /**
+     * 쿼리 객체가 바인딩하는 이름 중 그 경로의 쿼리 파라미터로 문서에 없는 것을 찾는다.
+     * 객체가 접히지 않았어도 필드가 숨겨지거나 빠지면 프런트는 그 파라미터를 보낼 줄 모름.
+     */
+    fun undocumentedQueryObjectFields(
+        boundFields: Map<String, Set<String>>,
+        documentedQueryParameters: Map<String, Map<String, Set<String>>>,
+    ): List<String> {
+        require(boundFields.isNotEmpty()) { "쿼리 객체를 받는 핸들러를 하나도 모으지 못했다. 검사가 빈 채로 통과한다" }
+        return boundFields
+            .flatMap { (operation, fields) ->
+                val documented = documentedQueryParameters[operation]?.keys.orEmpty()
+                (fields - documented).map { "$operation ?$it" }
+            }.sorted()
+    }
+
     /** 상태·클레임 종류인데 허용값이 없는 프로퍼티를 찾는다. */
     fun statusPropertiesWithoutAllowedValues(
         schemas: DocumentedSchemas,
