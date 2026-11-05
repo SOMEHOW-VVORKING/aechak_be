@@ -22,10 +22,4 @@ interface RepostRepository {
         reposterId: Long,
         postIds: Collection<Long>,
     ): Set<Long>
-
-    /** reposter가 author의 글에 한 리포스트를 원글 상태와 관계없이 지우고 실제로 지운 행의 원글 id를 돌려준다 */
-    fun deleteBetween(
-        reposterId: Long,
-        authorId: Long,
-    ): List<Long>
 }

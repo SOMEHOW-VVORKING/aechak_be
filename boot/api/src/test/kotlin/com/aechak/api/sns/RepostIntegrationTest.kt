@@ -1,6 +1,5 @@
 package com.aechak.api.sns
 
-import com.aechak.application.sns.postdeletion.usecase.SnsPostDeletionUseCase
 import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.application.sns.usecase.SnsUseCase
 import com.aechak.application.sns.usecase.command.BlockUserCommand
@@ -29,9 +28,6 @@ class RepostIntegrationTest : SnsPostIntegrationTestBase() {
 
     @Autowired
     private lateinit var snsUseCase: SnsUseCase
-
-    @Autowired
-    private lateinit var snsPostDeletionUseCase: SnsPostDeletionUseCase
 
     @Test
     fun `리포스트는 201이고 원글의 리포스트 수를 1 올리며 취소는 204이고 다시 내린다`() {
@@ -200,7 +196,7 @@ class RepostIntegrationTest : SnsPostIntegrationTestBase() {
         }
 
         @Test
-        fun `리포스트와 차단을 동시에 보내면 어느 순서든 두 사람 사이 리포스트가 남지 않고 수가 행 수와 같다`() {
+        fun `리포스트와 차단을 동시에 보내면 교착 없이 성공한 리포스트만 남고 수가 행 수와 같다`() {
             repeat(5) {
                 val authorId = onboardedUser()
                 val userId = onboardedUser()
@@ -217,57 +213,9 @@ class RepostIntegrationTest : SnsPostIntegrationTestBase() {
                 // 차단이 먼저 끝나면 리포스트가 130400으로 거부되는 것이 맞다
                 val unexpected = errors.filterNot { it is BusinessException && it.errorCode == SnsErrorCode.SNS_POST_UNAVAILABLE }
                 assertTrue(unexpected.isEmpty(), "리포스트와 차단의 동시 요청에서 교착이나 예상 밖 오류가 나면 안 된다: $unexpected")
-                assertEquals(0, repostRowCount(userId, publicId), "차단 뒤 두 사람 사이 리포스트가 남으면 안 된다")
-                assertEquals(1, repostCountOf(publicId), "다른 사람의 리포스트 하나만 수에 남아야 한다")
-            }
-        }
-
-        @Test
-        fun `리포스트 취소와 차단을 동시에 보내도 원글 수는 한 번만 준다`() {
-            repeat(5) {
-                val authorId = onboardedUser()
-                val userId = onboardedUser()
-                val userPublicId = publicIdOf(userId)
-                val publicId = createdPublicId(authorId)
-                repost(publicId, onboardedUser()).andExpect(status().isCreated)
-                repost(publicId, userId).andExpect(status().isCreated)
-
-                val errors =
-                    runConcurrently(
-                        listOf(
-                            { snsPostUseCase.unrepost(RepostPostCommand(userId, publicId)) },
-                            { snsUseCase.block(BlockUserCommand(authorId, userPublicId)) },
-                        ),
-                    )
-
-                assertTrue(errors.isEmpty(), "리포스트 취소와 차단의 동시 요청에서 오류가 나면 안 된다: $errors")
-                assertEquals(0, repostRowCount(userId, publicId), "취소하거나 차단한 뒤 리포스트가 남으면 안 된다")
-                assertEquals(1, repostCountOf(publicId), "수가 2에서 1로 한 번만 줄어야 한다")
-            }
-        }
-
-        @Test
-        fun `차단과 상대의 글 삭제를 동시에 보내도 둘 다 성공한다`() {
-            repeat(5) {
-                val authorId = onboardedUser()
-                val authorPublicId = publicIdOf(authorId)
-                val userId = onboardedUser()
-                val publicId = createdPublicId(authorId)
-                repost(publicId, onboardedUser()).andExpect(status().isCreated)
-                repost(publicId, userId).andExpect(status().isCreated)
-
-                val errors =
-                    runConcurrently(
-                        listOf(
-                            { snsUseCase.block(BlockUserCommand(userId, authorPublicId)) },
-                            { snsPostDeletionUseCase.deleteByAuthor(authorId, publicId) },
-                        ),
-                    )
-
-                assertTrue(errors.isEmpty(), "차단과 글 삭제의 동시 요청에서 교착이나 오류가 나면 안 된다: $errors")
-                assertEquals("DELETED", postRow(publicId)["status"], "글이 지워져야 한다")
-                assertEquals(0, repostRowCount(userId, publicId), "지운 글에 한 리포스트도 차단으로 지워져야 한다")
-                assertEquals(1, repostCountOf(publicId), "다른 사람의 리포스트 하나만 수에 남아야 한다")
+                val rows = repostRowCount(userId, publicId)
+                assertEquals(if (errors.size == 3) 0 else 1, rows, "차단보다 먼저 성공한 리포스트는 차단 뒤에도 남고 모두 거부되면 행이 없어야 한다")
+                assertEquals(1 + rows, repostCountOf(publicId), "원글 수가 다른 사람의 리포스트 1과 남은 행 수의 합이어야 한다")
             }
         }
     }

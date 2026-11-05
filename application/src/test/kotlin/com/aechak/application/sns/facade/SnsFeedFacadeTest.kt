@@ -349,11 +349,6 @@ private class UnusedRepostRepository : RepostRepository {
         reposterId: Long,
         postIds: Collection<Long>,
     ): Set<Long> = throw UnsupportedOperationException()
-
-    override fun deleteBetween(
-        reposterId: Long,
-        authorId: Long,
-    ): List<Long> = throw UnsupportedOperationException()
 }
 
 private class UnusedSaveRepository : SaveRepository {
