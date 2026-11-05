@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.testcontainers.containers.GenericContainer
+import org.testcontainers.elasticsearch.ElasticsearchContainer
 import org.testcontainers.mysql.MySQLContainer
 
 /**
@@ -34,7 +35,17 @@ class IntegrationTestConfig {
         // 인증 코드와 발송 제한 저장소. MySQL과 같은 이유로 빈이 아니라 수동 start.
         private val redis = GenericContainer("redis:7.4").withExposedPorts(REDIS_PORT).apply { start() }
 
-        /** 각 테스트 베이스의 @DynamicPropertySource가 호출해 datasource와 redis를 이 컨테이너들로 연결한다. */
+        // 검색 색인. Elasticsearch 자동 구성이 주소를 처음 읽을 때 뜬다. 그 자동 구성이 없는 batch와 seller 테스트에서는 뜨지 않는다
+        private val elasticsearch by lazy {
+            ElasticsearchContainer("docker.elastic.co/elasticsearch/elasticsearch:9.2.6")
+                .withEnv("xpack.security.enabled", "false")
+                .withEnv("ES_JAVA_OPTS", "-Xms512m -Xmx512m")
+                // 로컬 디스크 사용률이 높아도 샤드를 배정하도록 디스크 기준을 끈다
+                .withEnv("cluster.routing.allocation.disk.threshold_enabled", "false")
+                .apply { start() }
+        }
+
+        /** 각 테스트 베이스의 @DynamicPropertySource가 호출해 datasource, redis, elasticsearch를 이 컨테이너들로 연결한다. */
         @JvmStatic
         fun registerContainers(registry: DynamicPropertyRegistry) {
             registry.add("spring.datasource.url", mysql::getJdbcUrl)
@@ -42,6 +53,7 @@ class IntegrationTestConfig {
             registry.add("spring.datasource.password", mysql::getPassword)
             registry.add("spring.data.redis.host", redis::getHost)
             registry.add("spring.data.redis.port") { redis.getMappedPort(REDIS_PORT) }
+            registry.add("spring.elasticsearch.uris") { "http://${elasticsearch.httpHostAddress}" }
         }
     }
 
