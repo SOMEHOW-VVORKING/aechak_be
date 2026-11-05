@@ -70,58 +70,59 @@ class ElasticsearchProductKeywordSearchAdapter(
     ): Hits? {
         if (condition.categoryIds.isEmpty()) return null
         val now = ProductSearchIndex.epochMicros(condition.now)
-        val idDesc = fieldSort("id", SortOrder.Desc)
-        return when (condition.sort) {
-            ProductKeywordSearchSort.POPULAR -> {
-                single(condition, filters(condition, now), listOf(fieldSort("review_count", SortOrder.Desc), idDesc), trackTotalHits)
+        // 가격 필터가 없으면 개수가 요청 시각과 무관해 크기 0 요청으로 따로 세고 ES 요청 캐시가 같은 개수를 재사용함
+        val separateCount = trackTotalHits && condition.filter.minPrice == null && condition.filter.maxPrice == null
+        val pages = pageRequests(condition, now, trackTotalHits && !separateCount)
+        val count = if (separateCount) countRequest(filters(condition, now)) else null
+        val responses = awaitAll(pages + listOfNotNull(count))
+        val pageResponses = responses.take(pages.size)
+        val hits =
+            if (pageResponses.size == 1) {
+                pageResponses.single().hits().hits()
+            } else {
+                // 낮은 가격순 두 결과를 (가격, id 내림차순)으로 합침
+                pageResponses.flatMap { it.hits().hits() }.sortedWith(BY_PRICE_THEN_ID_DESC).take(condition.limit)
             }
-
-            ProductKeywordSearchSort.PRICE_ASC -> {
-                priceAsc(condition, now, idDesc, trackTotalHits)
+        val total =
+            when {
+                count != null -> responses.last().totalHits()
+                trackTotalHits -> pageResponses.sumOf { it.totalHits() }
+                else -> null
             }
-
-            ProductKeywordSearchSort.LATEST -> {
-                single(condition, filters(condition, now), listOf(idDesc), trackTotalHits)
-            }
-        }
-    }
-
-    private fun single(
-        condition: ProductKeywordSearchCondition,
-        filters: List<Query>,
-        sorts: List<SortOptions>,
-        trackTotalHits: Boolean,
-    ): Hits {
-        val response = awaitAll(listOf(search(condition, filters, sorts, trackTotalHits))).single()
-        return Hits(response.hits().hits(), response.hits().total()?.value())
+        return Hits(hits, total)
     }
 
     /**
-     * 낮은 가격순. 요청 시각에 할인 중인 상품은 할인가, 아닌 상품은 정가 필드로 따로 정렬해 받은 뒤 (가격, id 내림차순)으로 합침
-     * 두 집합이 겹치지 않아 총개수는 합이고, 유효가격을 문서마다 계산하지 않아 색인된 필드 정렬을 그대로 씀
+     * 정렬마다 상위 limit개 요청. 낮은 가격순은 요청 시각에 할인 중인 상품은 할인가, 아닌 상품은 정가 필드로 따로 정렬해 받음
+     * 두 집합이 겹치지 않아 개수는 합이고, 유효가격을 문서마다 계산하지 않아 색인된 필드 정렬을 그대로 씀
      */
-    private fun priceAsc(
+    private fun pageRequests(
         condition: ProductKeywordSearchCondition,
         now: Long,
-        idDesc: SortOptions,
         trackTotalHits: Boolean,
-    ): Hits {
-        val common = filters(condition, now, withPrice = false)
-        val discounted = discountedAt(now)
-        val onDiscountFilters = common + discounted + priceRange(condition, "discount_price")
-        val regularFilters = common + bool { it.mustNot(discounted) } + priceRange(condition, "regular_price")
-        val (onDiscount, regular) =
-            awaitAll(
+    ): List<CompletableFuture<SearchResponse<Map<*, *>>>> {
+        val idDesc = fieldSort("id", SortOrder.Desc)
+        return when (condition.sort) {
+            ProductKeywordSearchSort.POPULAR -> {
+                val sorts = listOf(fieldSort("review_count", SortOrder.Desc), idDesc)
+                listOf(search(condition, filters(condition, now), sorts, trackTotalHits))
+            }
+
+            ProductKeywordSearchSort.PRICE_ASC -> {
+                val common = filters(condition, now, withPrice = false)
+                val discounted = discountedAt(now)
+                val onDiscountFilters = common + discounted + priceRange(condition, "discount_price")
+                val regularFilters = common + bool { it.mustNot(discounted) } + priceRange(condition, "regular_price")
                 listOf(
                     search(condition, onDiscountFilters, listOf(fieldSort("discount_price", SortOrder.Asc), idDesc), trackTotalHits),
                     search(condition, regularFilters, listOf(fieldSort("regular_price", SortOrder.Asc), idDesc), trackTotalHits),
-                ),
-            )
-        val byPriceThenIdDesc =
-            compareBy<Hit<Map<*, *>>> { it.sort()[0].longValue() }.thenByDescending { it.sort()[1].longValue() }
-        val hits = (onDiscount.hits().hits() + regular.hits().hits()).sortedWith(byPriceThenIdDesc).take(condition.limit)
-        val total = if (trackTotalHits) onDiscount.hits().total()!!.value() + regular.hits().total()!!.value() else null
-        return Hits(hits, total)
+                )
+            }
+
+            ProductKeywordSearchSort.LATEST -> {
+                listOf(search(condition, filters(condition, now), listOf(idDesc), trackTotalHits))
+            }
+        }
     }
 
     private fun search(
@@ -140,6 +141,20 @@ class ElasticsearchProductKeywordSearchAdapter(
                     .sort(sorts)
                 searchAfter(condition)?.let { s.searchAfter(it) }
                 s
+            },
+            Map::class.java,
+        )
+
+    /** 일치 문서 수만 세는 크기 0 요청. 색인이 바뀌지 않는 동안 같은 요청은 ES 요청 캐시에서 답함 */
+    private fun countRequest(filters: List<Query>): CompletableFuture<SearchResponse<Map<*, *>>> =
+        client.search(
+            { s ->
+                s
+                    .index(ProductSearchIndex.NAME)
+                    .size(0)
+                    .trackTotalHits { it.enabled(true) }
+                    .requestCache(true)
+                    .query { q -> q.bool { it.filter(filters) } }
             },
             Map::class.java,
         )
@@ -288,6 +303,8 @@ class ElasticsearchProductKeywordSearchAdapter(
 
     private fun Map<*, *>.long(key: String): Long? = (this[key] as Number?)?.toLong()
 
+    private fun SearchResponse<*>.totalHits(): Long = hits().total()!!.value()
+
     private fun bool(build: (co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder) -> Any): Query =
         Query.of { q ->
             q.bool {
@@ -313,4 +330,9 @@ class ElasticsearchProductKeywordSearchAdapter(
         gte: JsonData? = null,
         lte: JsonData? = null,
     ): Query = Query.of { q -> q.range { r -> r.untyped { it.field(field).gte(gte).lte(lte) } } }
+
+    companion object {
+        private val BY_PRICE_THEN_ID_DESC =
+            compareBy<Hit<Map<*, *>>> { it.sort()[0].longValue() }.thenByDescending { it.sort()[1].longValue() }
+    }
 }
