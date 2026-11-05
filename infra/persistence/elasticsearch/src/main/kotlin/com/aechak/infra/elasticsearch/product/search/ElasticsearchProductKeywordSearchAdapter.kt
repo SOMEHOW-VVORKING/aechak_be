@@ -70,11 +70,9 @@ class ElasticsearchProductKeywordSearchAdapter(
     ): Hits? {
         if (condition.categoryIds.isEmpty()) return null
         val now = ProductSearchIndex.epochMicros(condition.now)
-        // 가격 필터가 없으면 개수가 요청 시각과 무관해 크기 0 요청으로 따로 세고 ES 요청 캐시가 같은 개수를 재사용함
-        val separateCount = trackTotalHits && condition.filter.minPrice == null && condition.filter.maxPrice == null
-        val pages = pageRequests(condition, now, trackTotalHits && !separateCount)
-        val count = if (separateCount) countRequest(filters(condition, now)) else null
-        val responses = awaitAll(pages + listOfNotNull(count))
+        val pages = pageRequests(condition, now)
+        val counts = if (trackTotalHits) countRequests(condition, now) else emptyList()
+        val responses = awaitAll(pages + counts)
         val pageResponses = responses.take(pages.size)
         val hits =
             if (pageResponses.size == 1) {
@@ -83,29 +81,28 @@ class ElasticsearchProductKeywordSearchAdapter(
                 // 낮은 가격순 두 결과를 (가격, id 내림차순)으로 합침
                 pageResponses.flatMap { it.hits().hits() }.sortedWith(BY_PRICE_THEN_ID_DESC).take(condition.limit)
             }
+        val countTotals = responses.drop(pages.size).map { it.totalHits() }
         val total =
-            when {
-                count != null -> responses.last().totalHits()
-                trackTotalHits -> pageResponses.sumOf { it.totalHits() }
-                else -> null
+            when (countTotals.size) {
+                0 -> null
+                1 -> countTotals[0]
+                else -> countTotals[0] + countTotals[1] - countTotals[2]
             }
         return Hits(hits, total)
     }
 
     /**
-     * 정렬마다 상위 limit개 요청. 낮은 가격순은 요청 시각에 할인 중인 상품은 할인가, 아닌 상품은 정가 필드로 따로 정렬해 받음
-     * 두 집합이 겹치지 않아 개수는 합이고, 유효가격을 문서마다 계산하지 않아 색인된 필드 정렬을 그대로 씀
+     * 정렬마다 상위 limit개 요청. 개수는 세지 않음
+     * 낮은 가격순은 요청 시각에 할인 중인 상품은 할인가, 아닌 상품은 정가 필드로 따로 정렬해 받아 색인된 필드 정렬을 그대로 씀
      */
     private fun pageRequests(
         condition: ProductKeywordSearchCondition,
         now: Long,
-        trackTotalHits: Boolean,
     ): List<CompletableFuture<SearchResponse<Map<*, *>>>> {
         val idDesc = fieldSort("id", SortOrder.Desc)
         return when (condition.sort) {
             ProductKeywordSearchSort.POPULAR -> {
-                val sorts = listOf(fieldSort("review_count", SortOrder.Desc), idDesc)
-                listOf(search(condition, filters(condition, now), sorts, trackTotalHits))
+                listOf(search(condition, filters(condition, now), listOf(fieldSort("review_count", SortOrder.Desc), idDesc)))
             }
 
             ProductKeywordSearchSort.PRICE_ASC -> {
@@ -114,29 +111,50 @@ class ElasticsearchProductKeywordSearchAdapter(
                 val onDiscountFilters = common + discounted + priceRange(condition, "discount_price")
                 val regularFilters = common + bool { it.mustNot(discounted) } + priceRange(condition, "regular_price")
                 listOf(
-                    search(condition, onDiscountFilters, listOf(fieldSort("discount_price", SortOrder.Asc), idDesc), trackTotalHits),
-                    search(condition, regularFilters, listOf(fieldSort("regular_price", SortOrder.Asc), idDesc), trackTotalHits),
+                    search(condition, onDiscountFilters, listOf(fieldSort("discount_price", SortOrder.Asc), idDesc)),
+                    search(condition, regularFilters, listOf(fieldSort("regular_price", SortOrder.Asc), idDesc)),
                 )
             }
 
             ProductKeywordSearchSort.LATEST -> {
-                listOf(search(condition, filters(condition, now), listOf(idDesc), trackTotalHits))
+                listOf(search(condition, filters(condition, now), listOf(idDesc)))
             }
         }
+    }
+
+    /**
+     * 첫 페이지 총개수를 세는 크기 0 요청들
+     * 가격 필터가 없으면 요청 시각과 무관한 요청 하나라 색인이 바뀔 때까지 ES 요청 캐시가 같은 개수를 재사용함
+     * 가격 필터가 있으면 할인 중이 아닌 상품을 must_not으로 세는 것이 느려서
+     * (할인 중이고 할인가가 범위 안) + (정가가 범위 안) - (할인 중이고 정가가 범위 안)의 세 요청으로 셈
+     */
+    private fun countRequests(
+        condition: ProductKeywordSearchCondition,
+        now: Long,
+    ): List<CompletableFuture<SearchResponse<Map<*, *>>>> {
+        if (condition.filter.minPrice == null && condition.filter.maxPrice == null) {
+            return listOf(countRequest(filters(condition, now)))
+        }
+        val common = filters(condition, now, withPrice = false)
+        val discounted = discountedAt(now)
+        return listOf(
+            countRequest(common + discounted + priceRange(condition, "discount_price")),
+            countRequest(common + priceRange(condition, "regular_price")),
+            countRequest(common + discounted + priceRange(condition, "regular_price")),
+        )
     }
 
     private fun search(
         condition: ProductKeywordSearchCondition,
         filters: List<Query>,
         sorts: List<SortOptions>,
-        trackTotalHits: Boolean,
     ): CompletableFuture<SearchResponse<Map<*, *>>> =
         client.search(
             { s ->
                 s
                     .index(ProductSearchIndex.NAME)
                     .size(condition.limit)
-                    .trackTotalHits { it.enabled(trackTotalHits) }
+                    .trackTotalHits { it.enabled(false) }
                     .query { q -> q.bool { it.filter(filters) } }
                     .sort(sorts)
                 searchAfter(condition)?.let { s.searchAfter(it) }
