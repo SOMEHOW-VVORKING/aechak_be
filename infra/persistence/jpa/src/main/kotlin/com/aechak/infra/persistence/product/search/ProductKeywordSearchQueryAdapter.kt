@@ -15,14 +15,17 @@ import com.aechak.infra.persistence.product.seller
 import com.querydsl.core.BooleanBuilder
 import com.querydsl.core.types.OrderSpecifier
 import com.querydsl.core.types.Predicate
+import com.querydsl.core.types.dsl.Expressions
 import com.querydsl.core.types.dsl.NumberExpression
 import com.querydsl.jpa.impl.JPAQueryFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
 
 @Repository
 class ProductKeywordSearchQueryAdapter(
     private val queryFactory: JPAQueryFactory,
+    @Value("\${aechak.search.fulltext-enabled:false}") private val fulltextEnabled: Boolean,
 ) : ProductKeywordSearchPort {
     override fun search(condition: ProductKeywordSearchCondition): List<ProductCatalogView> {
         val effectivePrice = effectivePrice(condition.now)
@@ -53,7 +56,31 @@ class ProductKeywordSearchQueryAdapter(
             .where(product.publicId.eq(publicId))
             .fetchOne()
 
-    private fun nameContains(keyword: String): Predicate = product.name.contains(keyword)
+    /**
+     * 상품명 부분 일치 조건. FULLTEXT가 켜져 있고 phrase를 만들 수 있으면 MATCH로 후보를 좁히고 LIKE로 결과를 LIKE와 같게 맞춤
+     */
+    private fun nameContains(keyword: String): Predicate {
+        val contains = product.name.contains(keyword)
+        val phrase = if (fulltextEnabled) fulltextPhrase(keyword) else null
+        return phrase?.let { matchAgainst(it).and(contains) } ?: contains
+    }
+
+    private fun matchAgainst(phrase: String) =
+        Expressions
+            .numberTemplate(Double::class.javaObjectType, "function('match_against',{0},{1})", product.name, Expressions.constant(phrase))
+            .gt(0.0)
+
+    /**
+     * 검색어를 불리언 모드 구문 검색 phrase로 바꿈. 영숫자와 _ 밖의 문자(연산자 + - * ( ) < > ~ @ " 포함)는 공백 하나로 바꿈
+     * ngram(토큰 2글자)이 LIKE 결과를 놓치는 검색어면 null. 2글자 미만 조각, ASCII 밖 구분 문자, 라틴 글자가 있는 경우
+     */
+    private fun fulltextPhrase(keyword: String): String? {
+        val words = keyword.split(NON_WORD).filter { it.isNotEmpty() }
+        val hasShortWord = words.any { it.codePointCount(0, it.length) < 2 }
+        if (words.isEmpty() || hasShortWord) return null
+        if (NON_ASCII_DELIMITER.containsMatchIn(keyword) || LATIN_LETTER.containsMatchIn(keyword)) return null
+        return words.joinToString(" ", "\"", "\"")
+    }
 
     private fun filterPredicate(
         filter: ProductKeywordFilter,
@@ -117,4 +144,14 @@ class ProductKeywordSearchQueryAdapter(
             ProductKeywordSearchSort.PRICE_ASC -> arrayOf(effectivePrice.asc(), product.id.desc())
             ProductKeywordSearchSort.LATEST -> arrayOf(product.id.desc())
         }
+
+    companion object {
+        private val NON_WORD = Regex("[^\\p{L}\\p{Nd}_]+")
+
+        // ngram이 구분 문자로 보지만 구문 검색에서 앞뒤 조각의 일치를 놓치는 ASCII 밖 문자(가운데점, 전각 공백, 이모지 등)
+        private val NON_ASCII_DELIMITER = Regex("[^\\p{L}\\p{Nd}_\\x00-\\x7F]")
+
+        // 기본 불용어(a, at, it 등)가 든 ngram 토큰은 색인되지 않아 라틴 글자가 든 검색어는 MATCH가 일치를 놓칠 수 있음
+        private val LATIN_LETTER = Regex("[A-Za-z]")
+    }
 }

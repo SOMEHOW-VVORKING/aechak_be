@@ -5,6 +5,7 @@ import com.aechak.application.file.port.FileStorage
 import com.aechak.application.user.verification.support.VerificationCodeGenerator
 import com.aechak.domain.user.social.enums.SocialProvider
 import com.aechak.domain.user.social.vo.ProviderUser
+import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
@@ -46,6 +47,27 @@ class IntegrationTestConfig {
 
     @Bean
     fun databaseCleaner(jdbcTemplate: JdbcTemplate) = DatabaseCleaner(jdbcTemplate)
+
+    /** ddl-auto가 만들지 못하는 상품명 FULLTEXT 인덱스를 컨텍스트 시작 뒤 products에 없을 때만 추가한다 */
+    @Bean
+    fun productNameFulltextIndex(jdbcTemplate: JdbcTemplate) =
+        ApplicationRunner {
+            val missing =
+                jdbcTemplate.queryForObject(
+                    """
+                    SELECT EXISTS(
+                        SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products'
+                    ) AND NOT EXISTS(
+                        SELECT 1 FROM information_schema.STATISTICS
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND INDEX_NAME = 'ft_products_name'
+                    )
+                    """.trimIndent(),
+                    Boolean::class.java,
+                )
+            if (missing == true) {
+                jdbcTemplate.execute("ALTER TABLE products ADD FULLTEXT INDEX ft_products_name (name) WITH PARSER ngram")
+            }
+        }
 
     /** 실 어댑터면 펫 사진 승격이 자격증명 없이 AWS로 나감 */
     @Bean

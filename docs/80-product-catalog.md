@@ -19,6 +19,11 @@
 - **트랜잭션**: 조회이므로 `ProductFacade`가 `@Transactional(readOnly = true)` 경계를 소유한다(20 §2-1).
 - **출력**: `CursorPageResult<ProductSummaryResult>` — `items`, `totalCount?`, `nextCursor?`, `hasNext`.
 - **키워드 검색과의 관계**: 키워드 검색(`GET /search/products`)은 노출 조건이 같지만 `visibleProductQuery`를 공유하지 않고 자기 기본 쿼리(`ProductKeywordSearchQuerySupport`)를 쓴다. 카테고리 체인 조인 대신 application이 계산한 활성 카테고리 id 목록으로 거른다.
+- **키워드 검색의 상품명 술어**: 기본은 `LIKE '%검색어%'`다. `aechak.search.fulltext-enabled=true`이면 ngram FULLTEXT 인덱스(`ft_products_name`)에 `MATCH AGAINST` 불리언 모드 구문 검색을 걸어 후보를 좁히고, 같은 LIKE로 다시 걸러 결과를 LIKE와 같게 맞춘다.
+  - 구문 검색만으로는 LIKE보다 많이 찾는다. 상품명에 띄어 쓴 ngram(`강아 아지`)이나 다른 구분 문자(`강아지-사료`)도 일치하기 때문이다.
+  - MATCH가 LIKE 결과를 놓치는 검색어는 LIKE만 쓴다. 2글자 미만 조각이 있는 검색어(`개`, `사료 강`)는 2글자 ngram 토큰이 없어서다. ASCII 밖 구분 문자(가운데점, 전각 공백, 이모지)가 든 검색어는 구문 검색이 구분 문자 앞뒤 조각의 일치를 놓쳐서다. 라틴 글자가 든 검색어(`cat`)는 `innodb_ft_enable_stopword`가 켜져 있으면 불용어가 든 토큰이 색인에서 빠져서다.
+  - 영숫자와 `_` 밖의 문자(불리언 연산자 `+ - * ( ) < > ~ @ "` 포함)는 phrase 안에서 공백으로 바꾼다. 연산자로 해석되지 않고 LIKE 재검사가 글자 그대로 맞춘다.
+  - 프로퍼티 기본값은 false다. 인덱스는 마이그레이션만 만들고 ddl-auto는 만들지 못해서, 인덱스가 없는 DB에서 켜면 MATCH가 오류 1191을 낸다.
 
 ---
 
