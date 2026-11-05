@@ -6,6 +6,7 @@ import com.aechak.application.sns.usecase.SnsFeedUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
@@ -22,7 +23,7 @@ class SnsPostTabController(
     @GetMapping("/users/{publicId}/posts")
     fun userPosts(
         @PathVariable publicId: String,
-        @Valid @ModelAttribute request: SnsFeedRequest,
+        @Valid @ModelAttribute @ParameterObject request: SnsFeedRequest,
         @AuthenticationPrincipal principal: AuthPrincipal?,
     ): ResponseEntity<ApiResponse<SnsPostGridPageResponse>> =
         ResponseEntity.ok(
@@ -32,7 +33,7 @@ class SnsPostTabController(
     @GetMapping("/users/{publicId}/videos")
     fun userVideos(
         @PathVariable publicId: String,
-        @Valid @ModelAttribute request: SnsFeedRequest,
+        @Valid @ModelAttribute @ParameterObject request: SnsFeedRequest,
         @AuthenticationPrincipal principal: AuthPrincipal?,
     ): ResponseEntity<ApiResponse<SnsPostGridPageResponse>> =
         ResponseEntity.ok(
@@ -42,7 +43,7 @@ class SnsPostTabController(
     @GetMapping("/users/{publicId}/reposts")
     fun userReposts(
         @PathVariable publicId: String,
-        @Valid @ModelAttribute request: SnsFeedRequest,
+        @Valid @ModelAttribute @ParameterObject request: SnsFeedRequest,
         @AuthenticationPrincipal principal: AuthPrincipal?,
     ): ResponseEntity<ApiResponse<SnsPostGridPageResponse>> =
         ResponseEntity.ok(
@@ -51,7 +52,7 @@ class SnsPostTabController(
 
     @GetMapping("/me/saves")
     fun mySaves(
-        @Valid @ModelAttribute request: SnsFeedRequest,
+        @Valid @ModelAttribute @ParameterObject request: SnsFeedRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SnsPostGridPageResponse>> =
         ResponseEntity.ok(ApiResponse.of(SnsPostGridPageResponse.from(snsFeedUseCase.mySaves(request.toQuery(principal.userId)))))
