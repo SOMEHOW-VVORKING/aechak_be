@@ -18,6 +18,9 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter
 import org.springframework.security.web.AuthenticationEntryPoint
 import org.springframework.security.web.SecurityFilterChain
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
+import org.springframework.security.web.util.matcher.AndRequestMatcher
+import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
@@ -42,6 +45,7 @@ class SecurityConfig {
         userStatusReader: UserStatusReader,
         objectMapper: ObjectMapper,
         @Value("\${api.base-path}") basePath: String,
+        @Value("\${management.server.port:#{null}}") managementPort: Int?,
     ): SecurityFilterChain {
         http
             .cors { } // corsConfigurationSource 빈 자동 적용
@@ -64,9 +68,16 @@ class SecurityConfig {
                     ).permitAll()
                     .requestMatchers("/actuator/health")
                     .permitAll()
+                    // prometheus는 management.server.port로 들어온 요청만 연다
+                    .requestMatchers(
+                        AndRequestMatcher(
+                            PathPatternRequestMatcher.pathPattern("/actuator/prometheus"),
+                            RequestMatcher { managementPort != null && it.localPort == managementPort },
+                        ),
+                    ).permitAll()
                     .requestMatchers(HttpMethod.POST, "$basePath/webhooks/portone") // 신원은 JWT가 아니라 포트원 서명이 보증
                     .permitAll()
-                    // 게스트 카탈로그. 와일드카드는 세그먼트 한 칸이라 상품 상세는 열리고,
+                    // 게스트 카탈로그. 와일드카드는 세그먼트 한 칸이라 상품 상세와 리뷰 요약은 열리고,
                     // 로그인을 요구하는 /products/{productId}/reviews 는 닫힌 채로 남는다.
                     // 홈은 아직 비회원에게 열지 않아 여기에 넣지 않는다.
                     .requestMatchers(
@@ -74,8 +85,10 @@ class SecurityConfig {
                         "$basePath/products",
                         "$basePath/products/*",
                         "$basePath/products/*/options",
+                        "$basePath/products/*/review-summary",
                         "$basePath/search/products",
                         "$basePath/sns/users/*", // 한 칸 와일드카드라 /followers, /followings는 닫힌 채로 남는다
+                        "$basePath/sns/posts/*", // 게시물 상세. 하위 경로는 닫힌 채로 남는다
                     ).permitAll()
                     .anyRequest()
                     .authenticated()
@@ -91,7 +104,7 @@ class SecurityConfig {
                     userStatusReader,
                     objectMapper,
                     onboardingAllowedPaths(basePath),
-                    restrictedWritePathPrefixes(basePath),
+                    restrictedWritePathPatterns(basePath),
                 ),
                 BearerTokenAuthenticationFilter::class.java,
             )
@@ -115,17 +128,24 @@ class SecurityConfig {
         )
 
     /**
-     * 이용 제한(RESTRICTED) 계정에게 막을 경로 접두 — 쓰기 메서드에만 적용된다.
+     * 이용 제한(RESTRICTED) 계정에게 막을 경로 패턴 — 쓰기 메서드에만 적용된다.
      *
      * 화면이 약속한 제한 범위는 "일부 기능(리뷰 작성, 채팅 등)"이다. 채팅은 아직 없으므로
      * 지금 존재하는 커뮤니티성 쓰기만 담는다 — 리뷰 작성/삭제, SNS 활동, 문의 등록.
      * 주문·결제는 뺀다: 이용 제한은 거래를 끊는 제재가 아니고, 거래를 끊어야 하는 제재는 임시/영구 정지다.
+     *
+     * **커뮤니티성 쓰기를 새로 열면 여기에 함께 넣는다.** 넣지 않으면 제재가 그 경로에만 효력이 없고,
+     * 게이트는 조용히 통과하므로 테스트가 없으면 드러나지 않는다. 상품 문의가 그 자리였다.
      */
-    private fun restrictedWritePathPrefixes(basePath: String): Set<String> =
+    private fun restrictedWritePathPatterns(basePath: String): Set<String> =
         setOf(
-            "$basePath/reviews",
-            "$basePath/sns",
-            "$basePath/inquiries",
+            "$basePath/reviews/**",
+            "$basePath/sns/**",
+            // 앱 서비스 문의(계정·결제·배송). 상품 문의와 다른 BC다
+            "$basePath/inquiries/**",
+            // 상품 문의 — 등록은 상품 하위 경로, 철회는 별도 리소스라 접두 하나로 담기지 않는다
+            "$basePath/products/*/inquiries",
+            "$basePath/product-inquiries/**",
         )
 
     /**

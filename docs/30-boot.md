@@ -34,7 +34,9 @@ JWT에 상태를 박지 않고 매 요청 `users.status`를 프로젝션 조회�
 | SUSPENDED · BANNED · WITHDRAWN · 유저 없음 | 403(20005) |
 
 - **유효 상태**는 저장값이 아니다 — 기간이 지난 임시 정지는 ACTIVE로 본다(`UserStatus.effective`). 이 판정은 `UserStatusReader` 포트가 책임지므로 호출부(필터·토큰 회전)가 반복하지 않는다.
-- RESTRICTED의 제한 경로는 api의 `restrictedWritePathPrefixes` — 리뷰·SNS·문의 등 커뮤니티성 쓰기다. 주문·결제는 넣지 않는다: 이용 제한은 거래를 끊는 제재가 아니고, 거래를 끊어야 하는 제재는 임시/영구 정지다.
+- RESTRICTED의 제한 경로는 api의 `restrictedWritePathPatterns` — 리뷰·SNS·문의(앱 서비스 문의와 상품 문의) 등 커뮤니티성 쓰기다. 주문·결제는 넣지 않는다: 이용 제한은 거래를 끊는 제재가 아니고, 거래를 끊어야 하는 제재는 임시/영구 정지다. 커뮤니티성 쓰기를 새로 열면 이 목록에 함께 넣는다(빠지면 게이트가 조용히 통과한다).
+- **이 목록은 거부 목록이라 판정이 라우팅과 같은 경로를 봐야 한다.** 그래서 접두 문자열·AntPathMatcher가 아니라 `PathPattern`(MVC 매핑과 같은 판정)으로 견준다. 이유 둘 — ① 상품 문의 등록이 `/products/{id}/inquiries`로 가변 세그먼트를 중간에 끼고 있어 접두로 표현되지 않는다. ② MVC는 경로 세그먼트를 **디코딩해** 핸들러를 찾으므로 `/products/{id}/%69nquiries`도 문의 등록으로 라우팅되는데, 원문 `requestURI`를 문자열로 견주면 걸리지 않아 제재가 우회됐다(`SanctionedAccountGateIntegrationTest`가 인코딩 요청까지 고정한다). 허용 목록인 `onboardingAllowedPaths`는 어긋나면 막는 쪽으로 실패하므로 원문 비교로 둔다.
+- **셀러센터·어드민은 제한 경로가 비어 있다**(두 보트의 `UserStatusFilter`에 `emptySet()`). 의도된 정책이다 — 셀러의 문의 답변·리뷰 답글은 응대이고, 응대에는 답변 기한과 지표가 걸려 있다. 구매자로서의 커뮤니티 제재(RESTRICTED)로 응대를 끊으면 기다리는 구매자가 손해를 보고 셀러는 자기 잘못이 아닌 기한을 넘긴다. 셀러의 공개 글을 끊어야 하는 제재는 임시/영구 정지(SUSPENDED·BANNED)이고 그것은 모든 보트에서 403(20005)으로 전면 차단된다.
 - 게이트는 필터 하나가 아니다. 소셜 로그인(`SocialLoginService`)과 refresh 회전(`TokenService`)도 같은 상태를 보고 SUSPENDED·BANNED·WITHDRAWN을 끊는다 — 필터만 막으면 토큰 수명이 연장된다.
 
 ## 2. Controller 규칙
@@ -209,7 +211,8 @@ class OrderMessageConsumer(private val someUseCase: SomeUseCase) {
   `application.order.seller` 에 두면 batch의 제외 필터에 걸려 배치가 쓸 수 없고, 복제해 두면 전이 순서·이력 기록이 갈린다.
 - **Flyway 미탑재**: 스키마 관리는 api가 유일 소유자. seller 단독 배포 시 새 마이그레이션은 api 선배포가 전제.
 - 인증: 토큰 발급은 api 소관 — 여기는 RS256 검증만 한다(web-security JwtConfig 공유, 같은 키 주입).
-- 온보딩 허용 경로 없음 — 셀러센터 전 EP가 ACTIVE 전용(UserStatusFilter 화이트리스트 empty).
+- 온보딩 허용 경로 없음 — 온보딩 미완(PENDING_ONBOARDING) 계정은 셀러센터 전 EP에서 403(UserStatusFilter 화이트리스트 empty).
+  제한 경로도 비어 있어 RESTRICTED는 셀러센터를 통과한다 — 의도된 정책이고 근거는 §1-1에 적었다.
 - 배포: ECS 서비스 `aechak-seller-api-dev` + ALB host 규칙(`seller-api-<env>` 도메인). JWT는 공개키만 주입한 검증 전용 모드 — 발급은 api 소관.
 
 ## 6. batch
@@ -228,6 +231,7 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 │                               # ClaimAutoApproveSchedule — 셀러 미응답 클레임의 자동승인과 환불(매시, 기본 꺼짐)
 │   └── config/                  # 배치별 정책값(@ConfigurationProperties) — 켜고 끄는 플래그 포함
 ├── settlement/                  # SettlementExecutionSchedule — 정산 집행(매일 05:00 KST, 기준일 1회, 기본 꺼짐)
+├── review/                      # ReviewSummaryRequestSchedule — 리뷰 AI 요약 요청(매시 15분, 회차당 상품 30개, 기본 꺼짐)
 ├── job/{도메인}/                 # (예정) Spring Batch Job/Step — ItemProcessor 등에서 UseCase 호출
 └── support/
     └── BusinessSkipPolicy.kt    # (예정) BusinessException → errorCode 로깅 + 스킵 판단 (HTTP 개념 없음)
@@ -260,6 +264,10 @@ boot/batch/src/main/kotlin/com/aechak/batch/
   경합 자체는 건마다 결제 결과를 먼저 확정한 뒤(외부 조회이므로 트랜잭션 밖) 그래도 결제대기로 남은 건만 취소하는 순서로 줄인다.
 - **배송 배치는 `order.delivery.enabled`로 꺼 둘 수 있고 기본값이 false다.** 켜면 송장 등록 시각만 보고 주문을 배송완료로 넘기므로,
   택배사 추적 연동 없이 켜면 실제로 도착하지 않은 주문에 구매확정 기한이 시작된다.
+- **리뷰 요약 요청 배치는 `review.summary.enabled`로 꺼 둘 수 있고 기본값이 false다.** 켜면 AI 서버에 요약을 요청해
+  모델 호출 비용이 든다. AI 서버의 `enable_review_summary`를 먼저 켜야 한다. 거꾸로 켜면 소비하는 쪽이 없어 요청이 토픽에 쌓이고
+  응답 대기 30분이 지날 때마다 같은 상품을 다시 요청한다. 선별 스캔에는 `application.review.summary.request`만 올린다.
+  결과 반영과 조회 파사드는 api 몫이다.
 - **추적 갱신 배치는 `order.delivery.tracking.enabled`로 꺼 둘 수 있고 기본값이 false다.** 지금 조립할 수 있는 추적 어댑터는
   외부를 부르지 않는 목뿐이라, 켜면 `[모의]` 표식이 붙은 가짜 상태가 발송에 쌓여 구매자·셀러 주문 조회에 그대로 뜬다.
   목 어댑터 자체도 기본 꺼짐이고 운영 프로파일에서는 켜도 조립되지 않는다 — 스위치가 둘로 갈려 있어 하나만 켜도 가짜 값이 들어가지 않는다.
@@ -278,6 +286,7 @@ boot/batch/src/main/kotlin/com/aechak/batch/
 ```
 boot/admin/src/main/java/com/aechak/admin/
 ├── AdminApplication.java
+├── audit/           # 감사 로그 조회 컨트롤러 + 기록 인터셉터·@AdminAudited/@AdminAuditExempt
 ├── claim/           # 클레임 조회·개입 컨트롤러 + request/response
 ├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config} · InspectionScanConfig · ClaimAmountScanConfig · AdminReviewScanConfig
 ├── inspection/      # AI 검수 지표 컨트롤러 + response
@@ -320,9 +329,38 @@ boot/admin/src/main/java/com/aechak/admin/
   `order.dispatch.sla-days`를 그대로 읽어 같은 주문을 두 화면이 같게 본다. 셀러가 신고하는 `avgDispatchDays`는 쓰지 않는다 —
   셀러마다 기준이 갈려 "지연 N건"이 셀러 간 비교 불가가 되고, 영업일을 날짜로 환산할 휴일 달력이 없다.
   배송 정체(`order.delivery.sla-days`)는 셀러 화면에 없는 어드민 전용 축이다.
+  - **두 축의 시계가 시작하는 지점이 다르다.** 발송 축은 주문 시각(`orders.created_at`)에서, 배송 축은 발송 시각
+    (주문에 붙은 가장 늦은 `shipments.dispatched_at`, 없으면 주문 시각)에서 센다. 배송 축도 주문 시각에서 재면 발송이
+    늦은 주문이 송장을 받는 순간 발송 축에서 빠지고 배송 축에 그대로 걸려, 사유만 "배송 정체"로 바뀐 채 다시 나타난다 —
+    운영자가 셀러를 독촉해야 할 건에 택배사를 쫓는다. 발송 기록이 없는 배송중 주문의 시계를 멈추면 그 주문이 두 축
+    어디에도 안 잡혀 영구히 보이지 않으므로 주문 시각으로 되돌린다.
+  - **지표 카드의 금액(`totalOrderAmount`)은 주문 금액 합이지 실제 수납액이 아니다.** 상품금액 + 셀러배송비 - 안분
+    쿠폰할인이고 적립금은 빠지지 않는다 — 적립금은 주문그룹 단위로 쓰이는데 그룹 하나가 셀러별 주문 여럿으로 쪼개져
+    셀러별 주문에 안분할 근거가 없다. 그래서 정산·대사 숫자와 맞춰 볼 값이 아니다. 취소 주문과 취소·반품으로 종결된
+    품목은 목록 행의 금액과 같은 규칙으로 함께 빠진다.
 - **셀러 발송 독촉(`POST /admin/orders/{orderId}/dispatch-nudges`)은 기록만 남긴다.** 어드민 모듈은 발송 어댑터(`:ses-client`)를
   의존하지 않아 `EmailSender` 구현이 조립되지 않는다 — 그래서 응답에 발송을 주장하는 필드를 두지 않는다. 발송을 붙이는 시점에
   의존·스캔과 응답 계약을 함께 고친다. 같은 주문 반복 독촉은 `order.dispatch.nudge-cooldown-hours` 간격으로 묶고, 주문 행
   선점 조회로 동시 요청을 직렬화한다(409·50501).
+- **운영자 조치는 감사 로그에 남는다(SCRUM-318).** 기록은 쓰기 핸들러에 붙은 `@AdminAudited`를 보고
+  `AdminAuditInterceptor`가 핸들러가 끝난 뒤 쓴다. 유스케이스마다 기록 호출을 흩뿌리지 않는 이유는
+  그 방식이 빠뜨리기 쉽고 **빠뜨린 것이 보이지 않기** 때문이다 — 쓰기 핸들러에 `@AdminAudited`나
+  `@AdminAuditExempt`(이유 필수) 중 하나가 없으면 `AdminAuditCoverageTest`가 빌드를 끊는다.
+  - 인터셉터가 스스로 아는 것은 봉투(운영자·시각·조치·결과·IP·추적 id)까지다. 사유와 기록 시점의
+    대상 이름은 요청 본문·애그리거트에만 있으므로 그걸 아는 자리가 `AdminAuditContextHolder`로 올린다.
+  - 거부당한 시도도 남는다(결과 FAILURE + HTTP 상태). 다만 **모듈 게이트가 끊은 401·403은 남지 않는다** —
+    Security 필터 구간에서 끝나 DispatcherServlet에 닿지 않는다.
+  - **기록 실패는 조치를 되돌리지 않는다.** 쓰기는 REQUIRES_NEW로 자기 트랜잭션에서 커밋하고,
+    실패는 파사드가 삼켜 ERROR 로그로만 남긴다. 반대로 했다면 감사 테이블 사고 한 번이 모든 운영 조치를 멈춘다.
+  - **수정·삭제 경로를 만들지 않는다.** 도메인 포트는 `append`만 열고 컨트롤러에 쓰기 핸들러가 없다.
+  - 지금 기록하는 조치는 입점 심사 승인·거부, 관리자 승격·강등, 상품 검수 승인·반려, 클레임 개입,
+    **회원 제재·해제, 서비스 문의 답변, 리뷰 블라인드·해제·삭제**다. 조치를 더하는 사람이 할 일은
+    쓰기 핸들러에 애너테이션 하나를 붙이는 것뿐이고, 기록 코드를 쓰지 않는다. 면제를 고르면 `reason`에
+    그 판단을 적는다 — 커버리지 테스트는 "어느 쪽인지 정했나"만 본다. 문의의 처리중·보류 전이가
+    지금 유일한 면제다(처리 흐름 표시이고 그 결과는 문의 행이 들고 있다).
+  - 사유 칸에는 고정 어휘를 사람이 읽는 문구로 옮겨 싣는다(`SanctionReasonCode.label`·
+    `ReviewBlindReason.label`). 열거 이름을 그대로 실으면 운영자가 조치 이력마다 코드를 해독해야 한다.
+  - `X-Trace-Id` 필터를 WebConfig가 등록한다(시큐리티 체인보다 앞). 이 모듈의 로그 패턴은 전부터
+    `%X{traceId}`를 쓰는데 등록이 빠져 있었고, 감사 행의 추적 id도 같은 값이다.
 - DB 마이그레이션은 api 단일 소유 그대로 — admin은 접속만 한다.
 - 배포: ECS 서비스 `aechak-admin-dev` + ALB host 규칙(`admin-api-<env>` 도메인). `admin-<env>`는 어드민 웹(FE) 몫이라 API는 api 레이블을 붙인다.

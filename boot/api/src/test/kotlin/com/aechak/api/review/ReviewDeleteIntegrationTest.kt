@@ -20,7 +20,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
-import org.springframework.kafka.test.context.EmbeddedKafka
 import org.springframework.security.oauth2.jwt.JwtClaimsSet
 import org.springframework.security.oauth2.jwt.JwtEncoder
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters
@@ -38,15 +37,6 @@ import java.time.Instant
  * 리뷰 삭제 API(DELETE /reviews/{id}) 통합 테스트.
  * 삭제가 평점 재집계 이벤트를 아웃박스로 발행하므로 Flyway·임베디드 Kafka가 있는 KafkaIntegrationTestBase를 상속한다.
  */
-@EmbeddedKafka(
-    partitions = 1,
-    topics = [
-        com.aechak.infra.kafka.Topics.ORDER,
-        com.aechak.infra.kafka.Topics.ORDER_DLT,
-        com.aechak.infra.kafka.Topics.REVIEW,
-        com.aechak.infra.kafka.Topics.REVIEW_DLT,
-    ],
-)
 class ReviewDeleteIntegrationTest : KafkaIntegrationTestBase() {
     @Autowired
     private lateinit var context: WebApplicationContext

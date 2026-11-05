@@ -105,6 +105,13 @@ order:
     page-size: 100        # 스캔 한 페이지 건수
     max-pages: 10         # 한 회차 페이지 상한. 남은 적체는 다음 회차가 이어 받는다
 
+review:
+  summary:
+    # 기본값 false. 켜면 AI 서버에 리뷰 요약을 요청해 모델 호출 비용이 든다. AI 서버의 enable_review_summary를 먼저 켠다
+    enabled: ${REVIEW_SUMMARY_ENABLED:false}
+    cron: "0 15 * * * *"        # 매시 15분. 정각에 도는 다른 배치와 겹치지 않게
+    max-products-per-run: 30    # 한 회차 요청 상품 상한. 요청한 적 없는 상품, 오래전에 요청한 상품부터
+
 # PII 암호화 키 — api와 동일 키(같은 데이터를 복호). dev·prod는 SSM, local·test는 프로파일 파일의 고정 키가 덮는다.
 aechak:
   pii:

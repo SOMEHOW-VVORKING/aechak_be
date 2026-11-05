@@ -124,7 +124,7 @@ class SnsFacade(
     ): SnsProfileResult {
         val target = snsProfileService.requireVisible(found)
         val pair = snsVisibilityService.findPairState(viewerId, target.userId)
-        snsProfileService.requireNotBlockedByTarget(pair)
+        if (pair.blockedByTarget) return snsProfileService.toBlockedByTargetResult(target, pair)
         if (pair.blockedByMe) return snsProfileService.toBlockedResult(target, pair)
         return snsProfileService.toResult(target, viewerId, pair, petProfileUseCase.getPets(target.userId).pets)
     }

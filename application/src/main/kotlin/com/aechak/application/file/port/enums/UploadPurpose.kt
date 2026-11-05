@@ -4,6 +4,10 @@ enum class UploadPurpose(
     val prefix: String,
     val category: StorageCategory,
     val allowedFileTypes: Set<FileType>,
+    // 업로드 길이 상한(바이트). 있으면 발급 요청에 길이가 필수이고 그 길이를 PUT 서명에 넣는다
+    val maxBytes: Long? = null,
+    // true면 승격할 때마다 새 영구 키를 만든다. 한 tmp 파일을 여러 번 승격해도 영구 파일끼리 덮어쓰거나 지우지 않는다
+    val newKeyOnPromote: Boolean = false,
 ) {
     USER_PROFILE(
         "users/profile",
@@ -39,5 +43,21 @@ enum class UploadPurpose(
         "reviews/images",
         StorageCategory.MEDIA,
         setOf(FileType.PNG, FileType.JPEG, FileType.WEBP),
+    ),
+    SNS_POST_IMAGE(
+        "sns/posts/images",
+        StorageCategory.MEDIA,
+        setOf(FileType.PNG, FileType.JPEG, FileType.WEBP),
+        maxBytes = 10_485_760,
+        newKeyOnPromote = true,
+    ),
+
+    // 서버가 변환하지 않고 올린 파일을 그대로 공개한다
+    SNS_POST_VIDEO(
+        "sns/posts/videos",
+        StorageCategory.MEDIA,
+        setOf(FileType.MP4, FileType.MOV),
+        maxBytes = 104_857_600,
+        newKeyOnPromote = true,
     ),
 }

@@ -1,0 +1,75 @@
+# 노트북에서 kit를 개발하고 smoke로 확인하는 스택이다. 여기서 나온 수치는 기록하지 않는다.
+# 로컬 개발 DB(docker-compose.yml)와 볼륨과 포트를 나눠 개발 데이터를 건드리지 않는다.
+# api는 apihost/restart.sh가 띄운다(PERF_ENV=local apihost/restart.sh --rev REV --dataset local [--first-boot]).
+# api 환경변수는 restart.sh가 .perf/local/api.env에 쓰고, jar 경로는 API_JAR로 받는다.
+name: aechak-perf
+
+services:
+  mysql:
+    image: mysql:8.4.10
+    ports:
+      - "127.0.0.1:13306:3306"
+    environment:
+      MYSQL_DATABASE: aechak
+      MYSQL_ROOT_PASSWORD: local
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # 상품 10만 건(테이블과 인덱스 합 수십 MB)이 다 들어간다
+      - --innodb-buffer-pool-size=512M
+      - --slow-query-log=ON
+      - --long-query-time=0.1
+      - --slow-query-log-file=/var/lib/mysql/slow.log
+      # 검색 쿼리가 1024바이트를 넘어서 기본값이면 커서 조건만 다른 쿼리가 한 다이제스트로 합쳐진다
+      - --max-digest-length=4096
+      - --performance-schema-max-digest-length=4096
+      # explain.sh가 api가 보낸 SQL 원문을 읽는다
+      - --performance-schema-max-sql-text-length=4096
+      - --performance-schema-consumer-events-statements-history-long=ON
+    cpus: 2.0
+    mem_limit: 1g
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-plocal"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7.2.15
+
+  kafka:
+    image: apache/kafka:3.8.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx512m
+
+  api:
+    image: eclipse-temurin:21.0.12_8-jre
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:18080:8080"
+      - "127.0.0.1:18081:8081"
+    env_file:
+      - path: ${API_ENV_FILE:-.perf/local/api.env}
+        required: false
+    command: ["java", "-jar", "/app/app.jar"]
+    cpus: 1.0
+    mem_limit: 2g
+    volumes:
+      - ${API_JAR:-../../boot/api/build/libs/api.jar}:/app/app.jar:ro
+
+volumes:
+  mysql-data:

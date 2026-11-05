@@ -1,0 +1,22 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 5s
+      httpMethod: POST
+
+  # 인스턴스 역할(기본 SDK 체인)로 RDS 지표와 CloudWatch Logs를 읽는다
+  - name: CloudWatch
+    uid: cloudwatch
+    type: cloudwatch
+    editable: false
+    jsonData:
+      authType: default
+      defaultRegion: ap-northeast-2

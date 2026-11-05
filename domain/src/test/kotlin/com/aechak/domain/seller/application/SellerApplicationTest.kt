@@ -12,6 +12,7 @@ import kotlin.test.assertFailsWith
 /**
  * 계약 — 신청서 상태 가드·재작성 전이·서류 교체 의미론.
  * 깨지면 제출된 신청서가 수정되거나, 반려 후 재작성이 막히거나, 서류가 종류당 여러 장 쌓인다.
+ * 탈퇴 취소가 깨지면 승인된 신청이 취소되거나 탈퇴로 취소된 신청이 승인된다.
  */
 class SellerApplicationTest {
     private fun draft() = SellerApplication.draft(userId = 1L, businessType = BusinessType.PERSONAL_GENERAL)
@@ -132,6 +133,46 @@ class SellerApplicationTest {
         val application = draft().apply { submit() }
 
         val ex = assertFailsWith<BusinessException> { application.registerDocument(idCard()) }
+
+        assertEquals(SellerErrorCode.APPLICATION_STATUS_TRANSITION_NOT_ALLOWED, ex.errorCode)
+    }
+
+    @Test
+    fun `승인 전 신청은 cancel하면 CANCELLED가 된다`() {
+        listOf(draft(), draft().apply { submit() }, rejected()).forEach { application ->
+            val before = application.status
+
+            application.cancel()
+
+            assertEquals(ApplicationStatus.CANCELLED, application.status, "$before 신청은 탈퇴 시 취소돼야 한다")
+        }
+    }
+
+    @Test
+    fun `APPROVED와 CANCELLED 신청은 cancel해도 그대로다`() {
+        val approved =
+            draft().apply {
+                submit()
+                approve(reviewerAdminId = 10L)
+            }
+        val cancelled = draft().apply { cancel() }
+
+        approved.cancel()
+        cancelled.cancel()
+
+        assertEquals(ApplicationStatus.APPROVED, approved.status, "승인된 신청은 셀러 계정의 근거라 취소하지 않는다")
+        assertEquals(ApplicationStatus.CANCELLED, cancelled.status)
+    }
+
+    @Test
+    fun `CANCELLED 신청은 승인할 수 없다`() {
+        val application =
+            draft().apply {
+                submit()
+                cancel()
+            }
+
+        val ex = assertFailsWith<BusinessException> { application.approve(reviewerAdminId = 10L) }
 
         assertEquals(SellerErrorCode.APPLICATION_STATUS_TRANSITION_NOT_ALLOWED, ex.errorCode)
     }

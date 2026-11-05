@@ -1,5 +1,6 @@
 package com.aechak.application.inspection.facade;
 
+import com.aechak.application.audit.support.AdminAuditContextHolder;
 import com.aechak.application.file.usecase.FileUseCase;
 import com.aechak.application.inspection.port.view.ReviewTargetProductView;
 import com.aechak.application.inspection.service.InspectionQueryService;
@@ -79,7 +80,9 @@ public class AdminProductInspectionFacade implements AdminProductInspectionUseCa
     @Transactional(isolation = Isolation.READ_COMMITTED)
     @Override
     public void approve(long adminId, String productPublicId) {
-        long productId = reviewQueueService.getReviewTarget(productPublicId).getProductId();
+        ReviewTargetProductView target = reviewQueueService.getReviewTarget(productPublicId);
+        AdminAuditContextHolder.INSTANCE.label(target.getProductName());
+        long productId = target.getProductId();
         reviewQueueService.approveByAdmin(productId, LocalDateTime.now());
         log.info("관리자가 상품 검수를 승인했다. adminId={} productId={}", adminId, productId);
     }
@@ -88,7 +91,10 @@ public class AdminProductInspectionFacade implements AdminProductInspectionUseCa
     @Transactional(isolation = Isolation.READ_COMMITTED)
     @Override
     public void reject(long adminId, String productPublicId, String reason) {
-        long productId = reviewQueueService.getReviewTarget(productPublicId).getProductId();
+        ReviewTargetProductView target = reviewQueueService.getReviewTarget(productPublicId);
+        // 감사 기록에 남길 그 시점의 상품명 — 상품이 개명·삭제되면 복원할 수 없는 값이다
+        AdminAuditContextHolder.INSTANCE.label(target.getProductName());
+        long productId = target.getProductId();
         reviewQueueService.rejectByAdmin(productId, reason, LocalDateTime.now());
         log.info("관리자가 상품 검수를 반려했다. adminId={} productId={}", adminId, productId);
     }

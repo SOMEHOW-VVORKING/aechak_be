@@ -12,6 +12,9 @@ enum class FileType(
     JPEG("image/jpeg", "jpg"),
     WEBP("image/webp", "webp"),
 
+    MP4("video/mp4", "mp4"),
+    MOV("video/quicktime", "mov"),
+
     PDF("application/pdf", "pdf"),
     ;
 

@@ -1,0 +1,76 @@
+# api 호스트(EC2 m7i.large) 스택. 측정 대상은 api 하나이고 나머지는 api 부팅 요건(redis, kafka)과 수집기다.
+# restart.sh가 띄운다. api 환경변수는 /opt/perf/state/api.env, jar는 API_JAR, 로그 스트림 이름은 API_LOG_STREAM으로 받는다.
+name: aechak-perf-api
+
+services:
+  api:
+    image: eclipse-temurin:21.0.12_8-jre
+    container_name: perf-api
+    depends_on: [redis, kafka]
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    env_file:
+      - path: ${API_ENV_FILE:-/opt/perf/state/api.env}
+        required: false
+    command: ["java", "-jar", "/app/app.jar"]
+    # dev Fargate 태스크와 같은 1 vCPU, 2GB
+    cpus: 1.0
+    mem_limit: 2g
+    volumes:
+      - ${API_JAR:-/opt/perf/jars/api.jar}:/app/app.jar:ro
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ap-northeast-2
+        awslogs-group: /perf/aechak-api
+        awslogs-stream: ${API_LOG_STREAM:-api-unknown}
+
+  redis:
+    image: redis:7.2.15
+
+  kafka:
+    image: apache/kafka:3.8.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx512m
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    network_mode: host
+    pid: host
+    command: ["--path.rootfs=/host", "--web.listen-address=:9100"]
+    volumes:
+      - /:/host:ro,rslave
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.6
+    privileged: true
+    devices:
+      - /dev/kmsg
+    ports:
+      - "8088:8080"
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=5s
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.service
+      - --disable_metrics=advtcp,cpu_topology,cpuset,hugetlb,memory_numa,percpu,process,referenced_memory,resctrl,sched,tcp,udp
+    # AL2023은 cgroup v2라 /sys/fs/cgroup 전체와 docker 상태 디렉터리를 읽어야 컨테이너별 지표가 나온다
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      # docker 컨테이너 정보는 containerd 소켓으로 읽는다. AL2023 docker는 /run/containerd의 시스템 containerd를 쓴다
+      - /run/containerd:/run/containerd:ro

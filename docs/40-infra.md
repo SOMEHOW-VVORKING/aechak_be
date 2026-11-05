@@ -92,7 +92,7 @@ allowedDelay를 넘기면 HOLD로 전이돼 수동 재개를 기다린다(재개
 
 ## 3. infra/client
 
-- 구체 모듈은 용도별로 추가한다 — 현재 `client/pg-client`·`client/social-client`·`client/s3-client`·`client/ses-client`·`client/sms-client`·`client/tracking-client`.
+- 구체 모듈은 용도별로 추가한다 — 현재 `client/pg-client`·`client/social-client`·`client/s3-client`·`client/ses-client`·`client/sms-client`·`client/tracking-client`·`client/ai-client`.
 - `pg-client`: 확정 흐름의 `PaymentGatewayPort` 어댑터(포트원 V2, `PortOneAdapter`)와 **대사 소스** `PaymentReconciliationSourcePort` 어댑터 둘
   (`reconciliation/` — 포트원 `GET /payments` 기반 `PortOneReconciliationSource`, 토스페이먼츠 직접 연동용 `TossPaymentsReconciliationSource`).
   소스 어댑터는 설정으로 켜고 끈다(`payment.reconciliation.portone.enabled` 기본 켜짐, `payment.toss.enabled` 기본 꺼짐) —
@@ -104,6 +104,13 @@ allowedDelay를 넘기면 HOLD로 전이돼 수동 재개를 기다린다(재개
   스위치(`order.delivery.tracking.mock.enabled`)는 기본 꺼짐이고 운영 프로파일에서는 켜도 조립되지 않는다.
   pg-client의 대사 소스와 같은 이유로 Boot의 `@ConditionalOnProperty` 대신 Framework `Condition`을 쓴다.
   실연동은 이 모듈에 어댑터를 하나 더하고 목 스위치를 끄는 것으로 끝난다 — 포트·도메인·배치는 그대로다.
+- `ai-client`: 셀러 폼 초안 포트(`ProductDraftAutofillPort`, application 소유)의 어댑터. AI 서버의 초안 앱에 동기 HTTP 한 번을 치고,
+  403·409·503·422·타임아웃을 전부 `UNAVAILABLE` 결과로 번역한다 — 예외를 던지지 않는다. 초안은 보조 기능이라 그 실패가 셀러의 등록을
+  막아서는 안 된다. 공유 비밀 헤더는 어댑터가 요청마다 싣고, AI 쪽은 비밀이 비면 전건 403이다(fail closed).
+  주소(`aechak.ai.draft.base-url`)와 비밀이 **둘 다** 있을 때만 조립된다 — 비면 포트가 null이 되어 파사드가 UNAVAILABLE을 돌리므로
+  값이 없는 local·test도 그대로 뜬다. pg-client의 대사 소스와 같은 이유로 Boot의 `@ConditionalOnProperty` 대신 Framework `Condition`을 쓴다.
+  AI 응답의 `fieldStatus`·`basis`는 BE 열거로 거울질하지 않고 `Map<String,String>`으로 통과시킨다 — AI 쪽 열거가 늘면 역직렬화가 터져
+  셀러가 500을 본다.
 - `sms-client`: SmsSender 포트(application 소유)의 어댑터. 실발송(CoolSMS)은 dev·staging·prod 프로필, 그 외는 발송 생략(로그) 어댑터가 뜬다 — 실발송 프로필에서 키 미주입이면 부팅 실패. SDK가 HTTP 타임아웃을 50초로 고정해 두어, 어댑터가 전용 풀(동시 발송 상한 = 격벽)에 발송을 맡기고 5초까지만 기다린다 — 초과·포화는 즉시 예외로 드러나 application의 보상 경로를 탄다. 단, 타임아웃은 대기 포기일 뿐 발송 취소가 아니다(SDK가 취소를 노출하지 않음) — 5초를 넘겨 완료된 발송은 소각된 코드로 도착할 수 있고, 어댑터가 warn 로그로 남긴다.
 
 ```kotlin

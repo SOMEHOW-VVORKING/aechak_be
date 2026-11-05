@@ -75,7 +75,7 @@ class PetProfileIntegrationTest : IntegrationTestBase() {
         otherToken = mintAccessToken(otherId)
         dogBreedId = createBreed(Species.DOG, "말티즈")
         catBreedId = createBreed(Species.CAT, "코리안숏헤어")
-        (fileStorage as FakeFileStorage).clearPromoted()
+        (fileStorage as FakeFileStorage).reset()
     }
 
     @Test
