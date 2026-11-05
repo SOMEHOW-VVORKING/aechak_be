@@ -150,18 +150,22 @@ class BlockMuteIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `서로 차단하면 두 사람 모두 상대 프로필이 404 130000이다`() {
+    fun `서로 차단하면 두 사람 모두 상대의 기본 프로필을 받는다`() {
         val me = onboardedUser("bothme")
         val other = onboardedUser("bothother")
         block(me, other.publicId).andExpect(status().isCreated)
         block(other, me.publicId).andExpect(status().isCreated)
 
-        expectUnavailable(profile(me, other.publicId))
-        expectUnavailable(profile(other, me.publicId))
+        listOf(profile(me, other.publicId), profile(other, me.publicId)).forEach {
+            it
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.data.blockingMe").value(true))
+                .andExpect(jsonPath("$.data.blockedByMe").value(true))
+        }
     }
 
     @Test
-    fun `서로 차단한 뒤 한쪽만 해제해도 해제한 사람에게 404가 이어진다`() {
+    fun `서로 차단한 뒤 한쪽만 해제해도 해제한 사람은 기본 프로필을 계속 받는다`() {
         val me = onboardedUser("halfme")
         val other = onboardedUser("halfother")
         block(me, other.publicId).andExpect(status().isCreated)
@@ -169,9 +173,13 @@ class BlockMuteIntegrationTest : IntegrationTestBase() {
 
         unblock(me, other.publicId).andExpect(status().isNoContent)
 
-        expectUnavailable(profile(me, other.publicId))
+        profile(me, other.publicId)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.blockingMe").value(true))
+            .andExpect(jsonPath("$.data.blockedByMe").value(false))
         profile(other, me.publicId)
             .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.blockingMe").value(false))
             .andExpect(jsonPath("$.data.blockedByMe").value(true))
     }
 

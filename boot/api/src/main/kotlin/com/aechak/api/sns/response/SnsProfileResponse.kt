@@ -19,6 +19,7 @@ data class SnsProfileResponse(
     val following: Boolean,
     val blockedByMe: Boolean,
     val mutedByMe: Boolean,
+    val blockingMe: Boolean,
 ) {
     data class SnsPetResponse(
         val breedLabel: String,
@@ -44,6 +45,7 @@ data class SnsProfileResponse(
                 following = result.following,
                 blockedByMe = result.blockedByMe,
                 mutedByMe = result.mutedByMe,
+                blockingMe = result.blockingMe,
             )
     }
 }
