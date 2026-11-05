@@ -6,15 +6,12 @@ import com.aechak.application.product.search.port.ProductKeywordSearchCondition
 import com.aechak.application.product.search.port.ProductKeywordSearchPort
 import com.aechak.application.product.search.port.ProductKeywordSearchSort
 import com.aechak.domain.product.product.enums.SaleStatus
-import com.aechak.infra.persistence.product.category
 import com.aechak.infra.persistence.product.effectivePrice
-import com.aechak.infra.persistence.product.parent
 import com.aechak.infra.persistence.product.product
 import com.aechak.infra.persistence.product.productStats
 import com.aechak.infra.persistence.product.reviewCountScore
 import com.aechak.infra.persistence.product.searchViewProjection
 import com.aechak.infra.persistence.product.seller
-import com.aechak.infra.persistence.product.visibleProductQuery
 import com.querydsl.core.BooleanBuilder
 import com.querydsl.core.types.OrderSpecifier
 import com.querydsl.core.types.Predicate
@@ -30,9 +27,7 @@ class ProductKeywordSearchQueryAdapter(
     override fun search(condition: ProductKeywordSearchCondition): List<ProductCatalogView> {
         val effectivePrice = effectivePrice(condition.now)
         val reviewScore = reviewCountScore()
-        return visibleProductQuery(queryFactory, searchViewProjection(effectivePrice, reviewScore))
-            .leftJoin(productStats)
-            .on(productStats.productId.eq(product.id))
+        return keywordSearchBaseQuery(queryFactory, searchViewProjection(effectivePrice, reviewScore), condition.categoryIds)
             .where(
                 nameContains(condition.filter.keyword),
                 filterPredicate(condition.filter, effectivePrice),
@@ -44,11 +39,10 @@ class ProductKeywordSearchQueryAdapter(
 
     override fun countMatching(
         filter: ProductKeywordFilter,
+        categoryIds: Set<Long>,
         now: LocalDateTime,
     ): Long =
-        visibleProductQuery(queryFactory, product.count())
-            .leftJoin(productStats)
-            .on(productStats.productId.eq(product.id))
+        keywordSearchBaseQuery(queryFactory, product.count(), categoryIds)
             .where(nameContains(filter.keyword), filterPredicate(filter, effectivePrice(now)))
             .fetchOne() ?: 0L
 
@@ -66,8 +60,6 @@ class ProductKeywordSearchQueryAdapter(
         effectivePrice: NumberExpression<Long>,
     ): Predicate? {
         val builder = BooleanBuilder()
-        // 중분류 필터: 해당 중분류와 그 아래 소분류 상품
-        filter.categoryId?.let { builder.and(category.id.eq(it).or(parent.id.eq(it))) }
         // 가격대: 유효가격(할인 반영) 기준
         filter.minPrice?.let { builder.and(effectivePrice.goe(it)) }
         filter.maxPrice?.let { builder.and(effectivePrice.loe(it)) }

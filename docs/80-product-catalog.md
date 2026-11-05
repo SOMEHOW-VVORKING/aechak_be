@@ -18,6 +18,7 @@
 - **흐름**: `GET /products` → `ProductController` → `ProductUseCase`(구현 `ProductFacade`) → `ProductService`.
 - **트랜잭션**: 조회이므로 `ProductFacade`가 `@Transactional(readOnly = true)` 경계를 소유한다(20 §2-1).
 - **출력**: `CursorPageResult<ProductSummaryResult>` — `items`, `totalCount?`, `nextCursor?`, `hasNext`.
+- **키워드 검색과의 관계**: 키워드 검색(`GET /search/products`)은 노출 조건이 같지만 `visibleProductQuery`를 공유하지 않고 자기 기본 쿼리(`ProductKeywordSearchQuerySupport`)를 쓴다. 카테고리 체인 조인 대신 application이 계산한 활성 카테고리 id 목록으로 거른다.
 
 ---
 
