@@ -67,10 +67,10 @@ class ProductKeywordSearchFulltextIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `2글자 이상 검색어는 목록과 총개수 SQL 모두 MATCH AGAINST와 LIKE를 함께 건다`() {
+    fun `2글자 이상 검색어는 첫 페이지 SQL에 MATCH AGAINST와 LIKE를 함께 건다`() {
         val sql = captureSql { search("강아지") }
 
-        assertEquals(2, sql.size, "첫 페이지는 목록과 총개수 두 쿼리: $sql")
+        assertEquals(1, sql.size, "첫 페이지는 목록과 윈도 총개수를 한 쿼리로 센다: $sql")
         sql.forEach {
             assertTrue(MATCH_AGAINST.containsMatchIn(it), "MATCH AGAINST 불리언 모드로 렌더링돼야 한다: $it")
             assertTrue(it.contains(" like "), "LIKE 재검사가 함께 걸려야 한다: $it")
@@ -81,7 +81,7 @@ class ProductKeywordSearchFulltextIntegrationTest : IntegrationTestBase() {
     fun `2글자 미만 검색어의 SQL은 MATCH 없이 LIKE만 건다`() {
         val sql = captureSql { search("개") }
 
-        assertEquals(2, sql.size, "첫 페이지는 목록과 총개수 두 쿼리: $sql")
+        assertEquals(1, sql.size, "첫 페이지는 목록과 윈도 총개수를 한 쿼리로 센다: $sql")
         sql.forEach {
             assertTrue(!MATCH_AGAINST.containsMatchIn(it) && it.contains(" like "), "LIKE만 걸려야 한다: $it")
         }

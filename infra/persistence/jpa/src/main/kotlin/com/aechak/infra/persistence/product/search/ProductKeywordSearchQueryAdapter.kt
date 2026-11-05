@@ -3,6 +3,7 @@ package com.aechak.infra.persistence.product.search
 import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.application.product.search.port.ProductKeywordFilter
 import com.aechak.application.product.search.port.ProductKeywordSearchCondition
+import com.aechak.application.product.search.port.ProductKeywordSearchFirstPage
 import com.aechak.application.product.search.port.ProductKeywordSearchPort
 import com.aechak.application.product.search.port.ProductKeywordSearchSort
 import com.aechak.domain.product.product.enums.SaleStatus
@@ -13,41 +14,32 @@ import com.aechak.infra.persistence.product.reviewCountScore
 import com.aechak.infra.persistence.product.searchViewProjection
 import com.aechak.infra.persistence.product.seller
 import com.querydsl.core.BooleanBuilder
+import com.querydsl.core.types.Expression
 import com.querydsl.core.types.OrderSpecifier
 import com.querydsl.core.types.Predicate
+import com.querydsl.core.types.Projections
 import com.querydsl.core.types.dsl.Expressions
 import com.querydsl.core.types.dsl.NumberExpression
+import com.querydsl.jpa.impl.JPAQuery
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Repository
-import java.time.LocalDateTime
 
 @Repository
 class ProductKeywordSearchQueryAdapter(
     private val queryFactory: JPAQueryFactory,
     @Value("\${aechak.search.fulltext-enabled:false}") private val fulltextEnabled: Boolean,
 ) : ProductKeywordSearchPort {
-    override fun search(condition: ProductKeywordSearchCondition): List<ProductCatalogView> {
-        val effectivePrice = effectivePrice(condition.now)
-        val reviewScore = reviewCountScore()
-        return keywordSearchBaseQuery(queryFactory, searchViewProjection(effectivePrice, reviewScore), condition.categoryIds)
-            .where(
-                nameContains(condition.filter.keyword),
-                filterPredicate(condition.filter, effectivePrice),
-                keyset(condition, effectivePrice, reviewScore),
-            ).orderBy(*orderBy(condition.sort, effectivePrice, reviewScore))
-            .limit(condition.limit.toLong())
-            .fetch()
-    }
+    override fun search(condition: ProductKeywordSearchCondition): List<ProductCatalogView> = searchQuery(condition) { it }.fetch()
 
-    override fun countMatching(
-        filter: ProductKeywordFilter,
-        categoryIds: Set<Long>,
-        now: LocalDateTime,
-    ): Long =
-        keywordSearchBaseQuery(queryFactory, product.count(), categoryIds)
-            .where(nameContains(filter.keyword), filterPredicate(filter, effectivePrice(now)))
-            .fetchOne() ?: 0L
+    override fun searchFirstPage(condition: ProductKeywordSearchCondition): ProductKeywordSearchFirstPage {
+        val rows = searchQuery(condition) { Projections.tuple(it, WINDOW_TOTAL) }.fetch()
+        return ProductKeywordSearchFirstPage(
+            fetched = rows.map { it.get(0, ProductCatalogView::class.java)!! },
+            // 일치 행이 없으면 윈도 값을 실을 행도 없음
+            totalCount = rows.firstOrNull()?.get(WINDOW_TOTAL) ?: 0L,
+        )
+    }
 
     override fun findIdByPublicId(publicId: String): Long? =
         queryFactory
@@ -55,6 +47,22 @@ class ProductKeywordSearchQueryAdapter(
             .from(product)
             .where(product.publicId.eq(publicId))
             .fetchOne()
+
+    /** 검색 목록 쿼리. select로 목록 projection을 감싸 다른 열을 덧붙일 수 있음 */
+    private fun <T> searchQuery(
+        condition: ProductKeywordSearchCondition,
+        select: (Expression<ProductCatalogView>) -> Expression<T>,
+    ): JPAQuery<T> {
+        val effectivePrice = effectivePrice(condition.now)
+        val reviewScore = reviewCountScore()
+        return keywordSearchBaseQuery(queryFactory, select(searchViewProjection(effectivePrice, reviewScore)), condition.categoryIds)
+            .where(
+                nameContains(condition.filter.keyword),
+                filterPredicate(condition.filter, effectivePrice),
+                keyset(condition, effectivePrice, reviewScore),
+            ).orderBy(*orderBy(condition.sort, effectivePrice, reviewScore))
+            .limit(condition.limit.toLong())
+    }
 
     /**
      * 상품명 부분 일치 조건. FULLTEXT가 켜져 있고 phrase를 만들 수 있으면 MATCH로 후보를 좁히고 LIKE로 결과를 LIKE와 같게 맞춤
@@ -146,6 +154,9 @@ class ProductKeywordSearchQueryAdapter(
         }
 
     companion object {
+        // LIMIT 적용 전 일치 행 전체 수
+        private val WINDOW_TOTAL = Expressions.numberTemplate(Long::class.javaObjectType, "count(*) over()")
+
         private val NON_WORD = Regex("[^\\p{L}\\p{Nd}_]+")
 
         // ngram이 구분 문자로 보지만 구문 검색에서 앞뒤 조각의 일치를 놓치는 ASCII 밖 문자(가운데점, 전각 공백, 이모지 등)
