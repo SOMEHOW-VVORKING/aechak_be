@@ -77,7 +77,7 @@ class SnsFeedService(
 
     /**
      * 탐색 피드 한 페이지. 첫 페이지는 지금이 기준 시각이고 다음 페이지는 커서의 기준 시각에서 7일을 센다.
-     * 7일 안의 글이 20개에 못 미치면 7일이 지난 글을 기간 없이 이어서 준다.
+     * 첫 페이지에서 7일 안의 글이 20개에 못 미치면 그 스크롤은 7일이 지난 글까지 기간 없이 이어서 준다.
      */
     fun explorePage(
         query: SnsFeedQuery,
@@ -88,28 +88,23 @@ class SnsFeedService(
         val anchor = cursor?.anchor ?: LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)
         val last = cursor?.let { findLastPost(it.lastPostPublicId) }
         val from = anchor.minusDays(EXPLORE_DAYS)
-        val page = { lowerBound: LocalDateTime? ->
+        // 넓힐지는 첫 페이지에서 정하고 다음 페이지는 커서를 따른다.
+        // shortcut: 넓힌 탐색은 기간 없이 거꾸로 읽어서 팔로우와 숨김으로 걸러지는 글이 많은 사람은 지난 글을 오래 훑는다.
+        // 탐색 피드 P95가 500ms를 넘으면 훑은 위치를 커서에 담아 요청마다 훑는 글 수를 제한한다
+        val widened = cursor?.widened ?: isExploreSparse(query.viewerId, hiddenUserIds, from, anchor)
+        val fetched =
             feedQueryPort.findExplorePage(
                 query.viewerId,
                 hiddenUserIds,
-                lowerBound,
+                if (widened) null else from,
                 anchor,
                 last?.createdAt,
                 last?.id,
                 CursorPageSize.fetchLimit(query.size),
             )
+        return CursorPageResult.of(fetched = fetched, size = query.size) {
+            SnsFeedCursorCodec.encodeExplore(anchor, widened, it.publicId)
         }
-        val inWindow = page(from)
-        // 이 페이지에서 7일 안의 글을 다 읽었을 때만 7일 안의 글 수를 센다
-        val fetched =
-            if (inWindow.size <= query.size &&
-                isExploreSparse(query.viewerId, hiddenUserIds, from, anchor)
-            ) {
-                page(null)
-            } else {
-                inWindow
-            }
-        return CursorPageResult.of(fetched = fetched, size = query.size) { SnsFeedCursorCodec.encodeExplore(anchor, it.publicId) }
     }
 
     /** 지금 인기 순위를 정할 분. 순위 키와 인기 커서가 이 값을 쓴다 */

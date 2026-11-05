@@ -19,13 +19,16 @@ class SnsFeedCursorCodecTest {
     private val lastPostPublicId = "01JG3A5C7E9G1J3K5M7P9R1T3V"
 
     @Test
-    fun `탐색 커서를 왕복하면 기준 시각과 마지막 게시물 공개 ID가 보존된다`() {
+    fun `탐색 커서를 왕복하면 기준 시각, 넓힘 여부, 마지막 게시물 공개 ID가 보존된다`() {
         val anchor = LocalDateTime.of(2026, 11, 5, 9, 30, 15, 123_456_000)
 
-        val decoded = SnsFeedCursorCodec.decodeExplore(SnsFeedCursorCodec.encodeExplore(anchor, lastPostPublicId))
+        listOf(true, false).forEach { widened ->
+            val decoded = SnsFeedCursorCodec.decodeExplore(SnsFeedCursorCodec.encodeExplore(anchor, widened, lastPostPublicId))
 
-        assertEquals(anchor, decoded.anchor, "기준 시각이 보존되어야 한다")
-        assertEquals(lastPostPublicId, decoded.lastPostPublicId, "마지막 게시물 공개 ID가 보존되어야 한다")
+            assertEquals(anchor, decoded.anchor, "기준 시각이 보존되어야 한다")
+            assertEquals(widened, decoded.widened, "넓힘 여부가 보존되어야 한다")
+            assertEquals(lastPostPublicId, decoded.lastPostPublicId, "마지막 게시물 공개 ID가 보존되어야 한다")
+        }
     }
 
     @Test
@@ -33,9 +36,9 @@ class SnsFeedCursorCodecTest {
         val anchor = LocalDateTime.of(2026, 11, 5, 9, 30, 15, 123_456_789)
         val expectedMicros = Instant.parse("2026-11-05T09:30:15.123456Z").let { it.epochSecond * 1_000_000 + it.nano / 1_000 }
 
-        val cursor = SnsFeedCursorCodec.encodeExplore(anchor, lastPostPublicId)
+        val cursor = SnsFeedCursorCodec.encodeExplore(anchor, false, lastPostPublicId)
 
-        assertEquals("ex:$expectedMicros:$lastPostPublicId", decodeRaw(cursor), "시각은 UTC 기준 epoch 마이크로초여야 한다")
+        assertEquals("ex:$expectedMicros:0:$lastPostPublicId", decodeRaw(cursor), "시각은 UTC 기준 epoch 마이크로초여야 한다")
         assertEquals(
             LocalDateTime.of(2026, 11, 5, 9, 30, 15, 123_456_000),
             SnsFeedCursorCodec.decodeExplore(cursor).anchor,
@@ -55,12 +58,13 @@ class SnsFeedCursorCodecTest {
     }
 
     @Test
-    fun `칸 수, 시각, 공개 ID가 형식에 맞지 않는 커서는 거절한다`() {
-        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("ex:1")) }
-        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("ex:1:$lastPostPublicId:x")) }
-        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("ex:not-a-number:$lastPostPublicId")) }
-        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("ex:0:$lastPostPublicId")) }
-        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("ex:1:")) }
+    fun `칸 수, 시각, 넓힘 값, 공개 ID가 형식에 맞지 않는 커서는 거절한다`() {
+        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("ex:1:$lastPostPublicId")) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("ex:1:0:$lastPostPublicId:x")) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("ex:not-a-number:0:$lastPostPublicId")) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("ex:0:0:$lastPostPublicId")) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("ex:1:2:$lastPostPublicId")) }
+        assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("ex:1:0:")) }
     }
 
     @Test
@@ -91,7 +95,7 @@ class SnsFeedCursorCodecTest {
 
     @Test
     fun `탐색 커서와 인기 커서는 서로의 목록에서 거절한다`() {
-        val explore = SnsFeedCursorCodec.encodeExplore(LocalDateTime.of(2026, 11, 5, 9, 30), lastPostPublicId)
+        val explore = SnsFeedCursorCodec.encodeExplore(LocalDateTime.of(2026, 11, 5, 9, 30), false, lastPostPublicId)
 
         assertCursorRejected { SnsFeedCursorCodec.decodePopular(explore) }
         assertCursorRejected { SnsFeedCursorCodec.decodeExplore(SnsFeedCursorCodec.encodePopular(29_897_280L, 0)) }
@@ -111,7 +115,7 @@ class SnsFeedCursorCodecTest {
 
     @Test
     fun `팔로잉 커서는 다른 목록의 커서와 시각이 양수가 아닌 커서를 거절한다`() {
-        val explore = SnsFeedCursorCodec.encodeExplore(LocalDateTime.of(2026, 11, 5, 9, 30), lastPostPublicId)
+        val explore = SnsFeedCursorCodec.encodeExplore(LocalDateTime.of(2026, 11, 5, 9, 30), false, lastPostPublicId)
 
         assertCursorRejected { SnsFeedCursorCodec.decodeFollowing(explore) }
         assertCursorRejected { SnsFeedCursorCodec.decodeExplore(encodeRaw("fl:1:2:$lastPostPublicId")) }
@@ -134,7 +138,7 @@ class SnsFeedCursorCodecTest {
     @Test
     fun `다른 주인의 그리드 커서와 다른 목록의 커서는 거절한다`() {
         val cursor = SnsFeedCursorCodec.encodeUserPosts(SnsPostTab.POSTS, OWNER_PUBLIC_ID, lastPostPublicId)
-        val explore = SnsFeedCursorCodec.encodeExplore(LocalDateTime.of(2026, 11, 5, 9, 30), lastPostPublicId)
+        val explore = SnsFeedCursorCodec.encodeExplore(LocalDateTime.of(2026, 11, 5, 9, 30), false, lastPostPublicId)
 
         assertCursorRejected { SnsFeedCursorCodec.decodeUserPosts(cursor, SnsPostTab.POSTS, OTHER_OWNER_PUBLIC_ID) }
         assertCursorRejected { SnsFeedCursorCodec.decodeUserPosts(explore, SnsPostTab.POSTS, OWNER_PUBLIC_ID) }

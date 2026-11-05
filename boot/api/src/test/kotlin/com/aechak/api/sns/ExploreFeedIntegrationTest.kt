@@ -153,6 +153,29 @@ class ExploreFeedIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `첫 페이지에서 넓힌 스크롤은 그사이 7일 안의 글이 20개가 돼도 7일이 지난 글을 이어서 준다`() {
+        val viewerId = onboardedUser()
+        val authorId = onboardedUser()
+        val mutedId = onboardedUser()
+        val old = List(2) { createdPublicId(authorId) }
+        backdatePost(old[0], LocalDateTime.now().minusDays(9))
+        backdatePost(old[1], LocalDateTime.now().minusDays(8))
+        val recent = List(19) { createdPublicId(authorId) }
+        createdPublicId(mutedId)
+        relate(viewerId, mutedId, "mute")
+        // 뮤트한 사용자의 글이 빠져 7일 안의 글이 19개라 첫 페이지에서 넓힌다
+        val first = feedPage("explore", viewerId)
+        assertEquals(recent.reversed() + old[1], first.postIds(), "7일 안의 글 19개 뒤에 7일이 지난 글이 이어져야 한다")
+
+        // 뮤트를 풀어 7일 안의 글이 20개가 된다
+        unrelate(viewerId, mutedId, "mute")
+        val second = feedPage("explore", viewerId, cursor = first["nextCursor"] as String)
+
+        assertEquals(listOf(old[0]), second.postIds(), "첫 페이지에서 정한 대로 7일이 지난 글을 이어서 줘야 한다")
+        assertEquals(false, second["hasNext"], "더 부를 글이 없어야 한다")
+    }
+
+    @Test
     fun `보여줄 글이 없으면 빈 목록이다`() {
         val page = feedPage("explore", onboardedUser())
 
@@ -181,7 +204,7 @@ class ExploreFeedIntegrationTest : SnsPostIntegrationTestBase() {
         val recent = List(20) { createdPublicId(authorId).also { backdatePost(it, now.minusHours(2)) } }
         assertTrue(aging !in feedPage("explore", size = 30).postIds(), "지금 기준으로는 7일이 지난 글이 없어야 한다")
 
-        val page = feedPage("explore", cursor = SnsFeedCursorCodec.encodeExplore(now.minusHours(1), recent.first()), size = 30)
+        val page = feedPage("explore", cursor = SnsFeedCursorCodec.encodeExplore(now.minusHours(1), false, recent.first()), size = 30)
 
         assertEquals(listOf(aging), page.postIds(), "커서의 기준 시각으로 7일을 세야 한다")
     }
@@ -309,7 +332,11 @@ class ExploreFeedIntegrationTest : SnsPostIntegrationTestBase() {
             90002,
         )
         expectError(
-            getFeed("explore", viewerId, cursor = SnsFeedCursorCodec.encodeExplore(LocalDateTime.now(), "01JF9W3Q6R8T2V4X7Z9B1C3D5J")),
+            getFeed(
+                "explore",
+                viewerId,
+                cursor = SnsFeedCursorCodec.encodeExplore(LocalDateTime.now(), false, "01JF9W3Q6R8T2V4X7Z9B1C3D5J"),
+            ),
             90002,
         )
     }

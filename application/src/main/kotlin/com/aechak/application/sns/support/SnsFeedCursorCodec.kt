@@ -16,7 +16,7 @@ import java.util.Base64
  * 시각은 오프셋 없는 LocalDateTime을 UTC 기준 epoch 마이크로초로 담는다.
  * 프로필 탭과 저장됨 탭 커서의 범위 해시는 목록 주인 publicId와 태그로 만들어 다른 주인의 목록에서 거절한다.
  *  - 팔로잉 fl:{anchor}:{lastTime}:{lastPostPublicId}
- *  - 탐색 ex:{anchor}:{lastPostPublicId}
+ *  - 탐색 ex:{anchor}:{widened}:{lastPostPublicId}
  *  - 인기 pp:{epochMinute}:{offset}
  *  - 그리드 gp:{scopeHash}:{lastPostPublicId}
  *  - 영상 탭 gv:{scopeHash}:{lastPostPublicId}
@@ -53,21 +53,23 @@ object SnsFeedCursorCodec {
         return FollowingCursor(anchor.toTimeOrInvalid(), lastTime.toTimeOrInvalid(), lastPostPublicId.toTokenOrInvalid())
     }
 
-    /** 탐색 피드 커서. anchor는 첫 페이지의 기준 시각이다 */
+    /** 탐색 피드 커서. anchor는 첫 페이지의 기준 시각이고 widened는 첫 페이지에서 7일이 지난 글까지 넓혔는지다 */
     data class ExploreCursor(
         val anchor: LocalDateTime,
+        val widened: Boolean,
         val lastPostPublicId: String,
     )
 
     fun encodeExplore(
         anchor: LocalDateTime,
+        widened: Boolean,
         lastPostPublicId: String,
-    ): String = encode(EXPLORE_TAG, anchor.toEpochMicros().toString(), lastPostPublicId)
+    ): String = encode(EXPLORE_TAG, anchor.toEpochMicros().toString(), if (widened) "1" else "0", lastPostPublicId)
 
-    /** 형식이나 태그가 다르거나 시각이 양수가 아니면 INVALID_CURSOR */
+    /** 형식이나 태그가 다르거나 시각이 양수가 아니거나 넓힘 값이 0이나 1이 아니면 INVALID_CURSOR */
     fun decodeExplore(cursor: String): ExploreCursor {
-        val (anchor, lastPostPublicId) = decode(cursor, EXPLORE_TAG, 2)
-        return ExploreCursor(anchor.toTimeOrInvalid(), lastPostPublicId.toTokenOrInvalid())
+        val (anchor, widened, lastPostPublicId) = decode(cursor, EXPLORE_TAG, 3)
+        return ExploreCursor(anchor.toTimeOrInvalid(), widened.toFlagOrInvalid(), lastPostPublicId.toTokenOrInvalid())
     }
 
     /** 인기 피드 커서. epochMinute은 순위를 정한 분이고 offset은 그 순위에서 다음에 읽을 자리다 */
@@ -184,6 +186,13 @@ object SnsFeedCursorCodec {
     }
 
     private fun String.toTokenOrInvalid(): String = takeIf { it.isNotBlank() } ?: invalidCursor()
+
+    private fun String.toFlagOrInvalid(): Boolean =
+        when (this) {
+            "1" -> true
+            "0" -> false
+            else -> invalidCursor()
+        }
 
     private fun invalidCursor(): Nothing = throw BusinessException(CommonErrorCode.INVALID_CURSOR)
 }

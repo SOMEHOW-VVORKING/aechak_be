@@ -11,7 +11,7 @@ interface SnsFeedUseCase {
     fun following(query: SnsFeedQuery): CursorPageResult<SnsFeedItemResult>
 
     // 탐색 피드. 기준 시각에서 7일 안의 원글을 최신순으로 주고 로그인이면 나, 팔로우, 차단, 뮤트한 사용자의 글을 뺀다.
-    // 7일 안의 글이 20개에 못 미치면 7일이 지난 글을 이어서 준다
+    // 첫 페이지에서 7일 안의 글이 20개에 못 미치면 그 스크롤은 7일이 지난 글을 이어서 준다
     fun explore(query: SnsFeedQuery): CursorPageResult<SnsFeedItemResult>
 
     // 인기 피드. 72시간 안의 원글을 점수순으로 주고 20개에 못 미치면 72시간이 지난 글을 점수순으로 잇는다.
