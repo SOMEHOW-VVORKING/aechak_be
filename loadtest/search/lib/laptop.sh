@@ -400,7 +400,7 @@ cmd_reindex() {
   need_outputs
   [ -n "$ES_ID" ] || die 1 "ES 호스트가 없다. terraform을 es_enabled=true로 apply하고 make outputs"
   cmd_sync
-  on_runner "bash $RUNNER_SCRIPTS/lib/remote.sh reindex $(q "$DATASET" "$rev")" 4200
+  on_runner "bash $RUNNER_SCRIPTS/lib/remote.sh reindex $(q "$DATASET" "$rev")" 9000
 }
 
 cmd_fetch() {

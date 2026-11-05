@@ -8,7 +8,7 @@
 
 | 층 | 구성 | 쓰는 단계 |
 |---|---|---|
-| 측정층 | RDS `db.m7g.large`(데이터 크기마다 하나, `aechak-perf-100k`와 `aechak-perf-1m`), api 호스트 EC2 `m7i.large`(api 컨테이너는 dev 태스크와 같은 1 vCPU, 2GB), 러너 EC2 `c7g.large`(k6와 모니터링), T07부터 ES 호스트 `m7g.large` | 모든 단계의 수치 |
+| 측정층 | RDS `db.m7g.large`(데이터 크기마다 하나, `aechak-perf-100k`, `aechak-perf-1m`, `aechak-perf-10m`), api 호스트 EC2 `m7i.large`(api 컨테이너는 dev 태스크와 같은 1 vCPU, 2GB), 러너 EC2 `c7g.large`(k6와 모니터링), T07부터 ES 호스트 `m7g.large` | 모든 단계의 수치 |
 | 운영 거울층 | 10만 건 기준 스냅샷을 dev와 prod가 쓰는 `db.t4g.micro`로 복원한 `aechak-perf-mirror`. 나머지는 측정층과 같고 manifest는 10만 건 것과 비교한다 | T01과 T10만 |
 
 측정층은 버스트 크레딧이 없는 고정 성능 인스턴스라서 앞 측정이 쓴 크레딧이 뒤 측정에 섞이지 않는다. 운영 거울층은 실제 서비스 크기에서 같은 셀을 돌려 측정층 숫자가 현실과 얼마나 다른지 보여 준다. 거울층에서는 `CPUCreditBalance`와 `CPUSurplusCreditBalance`를 함께 기록한다. 거울층 RDS는 unlimited 모드라 크레딧이 바닥나도 CPU가 기준 성능으로 깎이지 않고 초과분 요금만 붙으므로 그 셀도 유효하다. 대신 크레딧이 바닥난 시각과 초과 크레딧 최대값, `CPUSurplusCreditsCharged`를 결과에 적어 다음 거울층 측정(T10)이 같은 상태에서 돌았는지 비교한다.
@@ -60,7 +60,7 @@ make down
 | `make manifest DATASET=..` | manifest를 다시 만든다 |
 | `make prom` | 러너 Prometheus 9090을 localhost:19090으로 |
 | `make shell-runner`, `make shell-api` | SSM 세션 |
-| `make reindex DATASET= REV=` | 엔진을 es로 둔 api를 재색인 속성(`AECHAK_SEARCH_ES_REINDEX_ON_STARTUP=true`)과 함께 다시 띄우고 ES 색인 문서 수가 상품 수와 같아질 때까지 기다린다. 걸린 시간과 색인 크기를 `REINDEX_DONE` 줄로 남긴다 |
+| `make reindex DATASET= REV=` | 엔진을 es로 둔 api를 재색인 속성(`AECHAK_SEARCH_ES_REINDEX_ON_STARTUP=true`)과 함께 다시 띄우고 ES 색인 문서 수가 상품 수와 같아질 때까지 기다린다. 재색인이 끝나야 api가 준비 상태가 되므로 준비 대기를 2시간까지 늘린다. 걸린 시간과 색인 크기를 `REINDEX_DONE` 줄로 남긴다 |
 
 `make jar`는 `loadtest/` 밖에 커밋하지 않은 변경이 있으면 멈춘다. `ALLOW_DIRTY=1`이면 rev 뒤에 `-dirty-<diff 해시>`를 붙여 빌드한다. HEAD가 아닌 커밋은 `.perf/build/` 아래 임시 워크트리에서 빌드한다. `SKIP_TESTS=1`이면 검색 테스트를 건너뛰고 `search_test_exit=skipped`로 적는다.
 

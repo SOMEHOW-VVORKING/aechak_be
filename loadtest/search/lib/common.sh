@@ -159,12 +159,17 @@ ssm_run() {
 
 # restart_api [restart.sh 인자...]: api를 재시작하고 API_READY 줄이 나오면 0
 restart_api() {
-  local out rc=0 a cmd="/opt/perf/bin/kit-pull && bash /opt/perf/kit/search/apihost/restart.sh"
+  local out rc=0 a prev='' to=900 cmd="/opt/perf/bin/kit-pull && bash /opt/perf/kit/search/apihost/restart.sh"
   if [ "$LOCAL" = 1 ]; then
     out=$(x env PERF_ENV=local bash "$KIT/apihost/restart.sh" "$@") || rc=$?
   else
-    for a in "$@"; do cmd="$cmd $(printf '%q' "$a")"; done
-    out=$(ssm_run "$API_ID" "$cmd" 900) || rc=$?
+    for a in "$@"; do
+      cmd="$cmd $(printf '%q' "$a")"
+      # 준비 대기를 늘리면 SSM 명령 상한도 그만큼 늘린다
+      if [ "$prev" = --ready-timeout ]; then to=$((a + 660)); fi
+      prev=$a
+    done
+    out=$(ssm_run "$API_ID" "$cmd" "$to") || rc=$?
   fi
   printf '%s\n' "$out" >&2
   if is_dry; then return 0; fi
