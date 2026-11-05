@@ -29,6 +29,8 @@ import org.springframework.stereotype.Repository
 class ProductKeywordSearchQueryAdapter(
     private val queryFactory: JPAQueryFactory,
     @Value("\${aechak.search.fulltext-enabled:false}") private val fulltextEnabled: Boolean,
+    // Hibernate가 초 단위로 반올림해 500 미만이면 타임아웃이 걸리지 않음
+    @Value("\${aechak.search.query-timeout-ms:3000}") private val queryTimeoutMs: Int,
 ) : ProductKeywordSearchPort {
     override fun search(condition: ProductKeywordSearchCondition): List<ProductCatalogView> = searchQuery(condition) { it }.fetch()
 
@@ -62,6 +64,7 @@ class ProductKeywordSearchQueryAdapter(
                 keyset(condition, effectivePrice, reviewScore),
             ).orderBy(*orderBy(condition.sort, effectivePrice, reviewScore))
             .limit(condition.limit.toLong())
+            .setHint(QUERY_TIMEOUT_HINT, queryTimeoutMs)
     }
 
     /**
@@ -154,6 +157,8 @@ class ProductKeywordSearchQueryAdapter(
         }
 
     companion object {
+        private const val QUERY_TIMEOUT_HINT = "jakarta.persistence.query.timeout"
+
         // LIMIT 적용 전 일치 행 전체 수
         private val WINDOW_TOTAL = Expressions.numberTemplate(Long::class.javaObjectType, "count(*) over()")
 

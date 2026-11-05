@@ -2,6 +2,7 @@ package com.aechak.api.product.search
 
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.domain.product.category.Category
+import com.aechak.domain.product.error.ProductErrorCode
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.seller.seller.Seller
 import com.jayway.jsonpath.JsonPath
@@ -13,13 +14,15 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.security.web.FilterChainProxy
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import javax.sql.DataSource
 
 /**
- * 키워드 검색 첫 페이지의 윈도 총개수가 따로 센 개수와 같은지 고정하는 통합 테스트
+ * 키워드 검색 첫 페이지의 윈도 총개수가 따로 센 개수와 같은지, 쿼리 타임아웃이 검색 오류 코드로 바뀌는지 고정하는 통합 테스트
  */
 class ProductKeywordSearchCountTimeoutIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -27,6 +30,9 @@ class ProductKeywordSearchCountTimeoutIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var securityFilterChain: FilterChainProxy
+
+    @Autowired
+    private lateinit var dataSource: DataSource
 
     private lateinit var mockMvc: MockMvc
 
@@ -69,6 +75,22 @@ class ProductKeywordSearchCountTimeoutIntegrationTest : IntegrationTestBase() {
             assertEquals(separate, JsonPath.read<Int>(firstPage, "$.data.totalCount"), "$params 윈도 총개수")
         }
         assertFalse(JsonPath.read<Boolean>(search(mapOf("keyword" to "강아지", "size" to "3")), "$.data.hasNext"), "정확히 size면 다음 페이지가 없다")
+    }
+
+    @Test
+    fun `검색 쿼리가 타임아웃되면 검색 지연 오류 코드로 503을 반환한다`() {
+        // 다른 커넥션이 products 쓰기 락을 쥐면 검색 쿼리는 타임아웃까지 락을 기다린다
+        dataSource.connection.use { lockHolder ->
+            lockHolder.createStatement().use { it.execute("LOCK TABLES products WRITE") }
+            try {
+                mockMvc
+                    .perform(get("/api/v1/search/products").param("keyword", "사료"))
+                    .andExpect(status().isServiceUnavailable)
+                    .andExpect(jsonPath("$.errorCode").value(ProductErrorCode.PRODUCT_SEARCH_TIMEOUT.code))
+            } finally {
+                lockHolder.createStatement().use { it.execute("UNLOCK TABLES") }
+            }
+        }
     }
 
     // --- helpers ---

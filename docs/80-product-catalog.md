@@ -26,6 +26,9 @@
   - 프로퍼티 기본값은 false다. 인덱스는 마이그레이션만 만들고 ddl-auto는 만들지 못해서, 인덱스가 없는 DB에서 켜면 MATCH가 오류 1191을 낸다.
 - **키워드 검색의 총개수**: 첫 페이지(`cursor == null`)는 목록 쿼리에 `count(*) over()`를 붙여 목록과 총개수를 한 번에 읽는다(`ProductKeywordSearchPort.searchFirstPage`). 윈도 값은 LIMIT 전에 계산되므로 일치 행 전체 수다. 일치 행이 없으면 값을 실을 행도 없어서 0으로 둔다. 이후 페이지는 세지 않고 `null`이다.
   - MySQL은 윈도 값을 구하려고 일치 행 전부를 임시 테이블에 넣은 뒤 LIMIT을 적용한다. 일치 행이 적은 검색어는 별도 COUNT 스캔이 빠진 만큼 빨라진다. 일치 행이 많은 검색어는 별도 COUNT를 돌릴 때와 비슷하다.
+- **키워드 검색의 쿼리 타임아웃**: 목록 쿼리에 `jakarta.persistence.query.timeout` 힌트를 건다. 값은 `aechak.search.query-timeout-ms`(기본 3000)다.
+  - Hibernate가 밀리초를 초로 반올림해 JDBC에 넘기므로 500 미만은 타임아웃이 없는 것과 같다.
+  - 시간을 넘기면 드라이버가 서버에 `KILL QUERY`를 보내 쿼리를 멈춘다. 서비스는 이 예외(`QueryTimeoutException`)를 `PRODUCT_SEARCH_TIMEOUT`(40008, 503)으로 바꿔 던진다.
 
 ---
 
@@ -95,6 +98,7 @@
 
 - 커서 이상(디코드 실패, 형식·태그 불일치, 필터 불일치, 미래 시각, 없는 `publicId`)은 전부 `INVALID_CURSOR`(400)로 모은다 — 위조든 다른 정렬의 커서든 같은 응답.
 - 카테고리 필터는 **중분류(depth 2)까지만** 허용한다(`validateCategoryFilter`). 활성 카테고리가 아니면 `CATEGORY_NOT_FOUND`.
+- 키워드 검색 쿼리가 타임아웃되면 `PRODUCT_SEARCH_TIMEOUT`(40008, 503)이다. 과부하 때 생기는 실패라 잠시 뒤 다시 요청하면 된다.
 - `size` 형식 검증(1~100)은 boot 계층(`ProductSearchRequest`의 `@field:Range` + `@Valid`)에서 끝난다. application의 `ProductSearchQuery`는 `init`에서 같은 범위를 자기 불변식으로 다시 지킨다 — 검증 3층(00 §3-5)의 형식/불변식 이중 방어.
 
 ---
