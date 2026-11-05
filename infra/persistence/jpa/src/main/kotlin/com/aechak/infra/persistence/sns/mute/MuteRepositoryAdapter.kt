@@ -9,7 +9,7 @@ import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 
 interface MuteJpaRepository : JpaRepository<Mute, Long> {
-    // 멱등 원자 삽입. 중복 키에서 공유 잠금을 잡는 INSERT IGNORE와 달리 배타 잠금을 잡아 끄기와 켜기 둘이 겹쳐도 교착하지 않는다
+    // 멱등 원자 삽입. 중복 키에서 배타 잠금을 잡아 INSERT IGNORE보다 교착이 드물다. 끄기 하나와 켜기 둘이 겹쳐 드물게 나는 교착은 Facade가 한 번 다시 실행한다
     @Modifying
     @Query(
         value =

@@ -21,6 +21,7 @@ import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.application.sns.usecase.result.CreatePostResult
 import com.aechak.application.sns.usecase.result.SnsHashtagSearchResult
 import com.aechak.application.sns.usecase.result.SnsPostDetailResult
+import com.aechak.application.support.retryOnceOnDeadlock
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.common.error.BusinessException
@@ -172,13 +173,15 @@ class SnsPostFacade(
         }
     }
 
-    // 본인 글과 뮤트한 작성자의 글도 저장한다
+    // 본인 글과 뮤트한 작성자의 글도 저장한다. 끄기 하나와 켜기 둘이 겹쳐 교착으로 되돌아가면 한 번 다시 한다
     override fun save(command: SavePostCommand) {
-        tx.execute {
-            val post = postAccessService.requirePublished(command.publicId)
-            postAccessService.requireActiveAuthor(userUseCase.findPublicProfileById(post.authorId))
-            postAccessService.requireNotBlocked(post.authorId, command.userId)
-            saveService.save(command.userId, post.id)
+        retryOnceOnDeadlock {
+            tx.execute {
+                val post = postAccessService.requirePublished(command.publicId)
+                postAccessService.requireActiveAuthor(userUseCase.findPublicProfileById(post.authorId))
+                postAccessService.requireNotBlocked(post.authorId, command.userId)
+                saveService.save(command.userId, post.id)
+            }
         }
     }
 
