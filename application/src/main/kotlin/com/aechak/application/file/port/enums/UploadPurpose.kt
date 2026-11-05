@@ -51,4 +51,13 @@ enum class UploadPurpose(
         maxBytes = 10_485_760,
         newKeyOnPromote = true,
     ),
+
+    // 서버가 변환하지 않고 올린 파일을 그대로 공개한다
+    SNS_POST_VIDEO(
+        "sns/posts/videos",
+        StorageCategory.MEDIA,
+        setOf(FileType.MP4, FileType.MOV),
+        maxBytes = 104_857_600,
+        newKeyOnPromote = true,
+    ),
 }

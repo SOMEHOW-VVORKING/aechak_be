@@ -251,11 +251,105 @@ class PostCreateIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
-    fun `영상을 보내면 아직 90001이다`() {
+    fun `영상은 영상 용도로 썸네일은 사진 용도로 승격해 미디어 행 하나에 남긴다`() {
         val userId = onboardedUser()
-        val video = """{"key":"${tmpPhotoKey(userId)}","thumbnailKey":"${tmpPhotoKey(userId)}","durationMs":1000}"""
+        val videoKey = tmpVideoKey(userId)
+        val thumbnailKey = tmpPhotoKey(userId)
 
-        createPost(userId, postBody(caption = null, video = video))
+        val publicId = createdPublicId(userId, postBody(caption = null, video = videoJson(videoKey, thumbnailKey)))
+
+        assertEquals("VIDEO", postRow(publicId)["media_type"])
+        val media =
+            jdbcTemplate.queryForMap(
+                "select m.* from sns_post_media m join sns_posts p on p.id = m.post_id where p.public_id = ?",
+                publicId,
+            )
+        assertEquals("VIDEO", media["media_type"])
+        assertEquals(promotedKeyOf(videoKey), media["storage_key"])
+        assertEquals(promotedKeyOf(thumbnailKey), media["thumbnail_key"])
+        assertEquals(42_500, (media["duration_ms"] as Number).toInt())
+        assertTrue(promotedKeyOf(videoKey).startsWith("sns/posts/videos/"))
+        assertTrue(promotedKeyOf(thumbnailKey).startsWith("sns/posts/images/"))
+    }
+
+    @Test
+    fun `영상 게시가 커밋되면 영상과 썸네일의 tmp 키를 지운다`() {
+        val userId = onboardedUser()
+        val videoKey = tmpVideoKey(userId)
+        val thumbnailKey = tmpPhotoKey(userId)
+
+        createdPublicId(userId, postBody(caption = null, video = videoJson(videoKey, thumbnailKey)))
+
+        assertTrue(fakeFileStorage.deletedKeys.containsAll(listOf(videoKey, thumbnailKey)))
+    }
+
+    @Test
+    fun `영상 키를 사진 용도로 발급받은 키로 보내면 400 100003이다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = videoJson(tmpPhotoKey(userId), tmpPhotoKey(userId))))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(100003))
+        assertEquals(0, postCountOf(userId))
+    }
+
+    @Test
+    fun `썸네일 키를 영상 용도로 발급받은 키로 보내면 400 100003이다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = videoJson(tmpVideoKey(userId), tmpVideoKey(userId))))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(100003))
+        assertEquals(0, postCountOf(userId))
+    }
+
+    @Test
+    fun `썸네일 승격이 실패하면 먼저 승격한 영상 파일을 지운다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = videoJson(tmpVideoKey(userId), tmpPhotoKey(onboardedUser()))))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(100002))
+
+        assertEquals(1, fakeFileStorage.promotedKeys.size)
+        assertEquals(fakeFileStorage.promotedKeys, fakeFileStorage.deletedKeys)
+        assertEquals(0, postCountOf(userId))
+    }
+
+    @Test
+    fun `영상이 60초를 넘으면 130407이고 승격하지 않는다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = videoJson(tmpVideoKey(userId), tmpPhotoKey(userId), durationMs = 60_001)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(130407))
+        assertTrue(fakeFileStorage.promotedKeys.isEmpty())
+    }
+
+    @Test
+    fun `영상에 썸네일 키가 빠지면 90001이 아니라 130404다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = """{"key":"${tmpVideoKey(userId)}","durationMs":42500}"""))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(130404))
+    }
+
+    @Test
+    fun `영상 길이가 1보다 작으면 90001이다`() {
+        val userId = onboardedUser()
+
+        createPost(userId, postBody(caption = null, video = videoJson(tmpVideoKey(userId), tmpPhotoKey(userId), durationMs = 0)))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+    }
+
+    @Test
+    fun `영상 두 개는 요청 형식상 받을 수 없어 90001이다`() {
+        val userId = onboardedUser()
+        val video = videoJson(tmpVideoKey(userId), tmpPhotoKey(userId))
+
+        createPost(userId, postBody(caption = null, video = "[$video,$video]"))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90001))
         assertEquals(0, postCountOf(userId))
@@ -312,6 +406,31 @@ class PostCreateIntegrationTest : SnsPostIntegrationTestBase() {
             assertTrue(
                 fakeFileStorage.deletedKeys.containsAll(fakeFileStorage.promotedKeys - kept.toSet()),
                 "게시하지 못한 요청이 승격한 파일은 지워야 한다",
+            )
+        }
+
+        @Test
+        fun `같은 키 영상 게시를 동시에 보내면 게시하지 못한 요청이 승격한 영상과 썸네일을 지운다`() {
+            val userId = onboardedUser()
+            val video = CreatePostCommand.Video(tmpVideoKey(userId), tmpPhotoKey(userId), 42_500)
+            val command = CreatePostCommand(userId, Ulid.generate(), null, emptyList(), video = video)
+            val publicIds = Collections.synchronizedList(mutableListOf<String>())
+
+            val errors = runConcurrently(List(6) { { publicIds += snsPostUseCase.createPost(command).publicId } })
+
+            assertTrue(errors.isEmpty(), "같은 키 동시 게시는 오류 없이 같은 게시물을 돌려줘야 한다: $errors")
+            assertEquals(1, publicIds.toSet().size)
+            assertEquals(1, postCountOf(userId))
+            val media =
+                jdbcTemplate.queryForMap(
+                    "select m.* from sns_post_media m join sns_posts p on p.id = m.post_id where p.public_id = ?",
+                    publicIds.first(),
+                )
+            val kept = listOf(media["storage_key"] as String, media["thumbnail_key"] as String)
+            assertTrue(kept.none { it in fakeFileStorage.deletedKeys })
+            assertTrue(
+                fakeFileStorage.deletedKeys.containsAll(fakeFileStorage.promotedKeys - kept.toSet()),
+                "게시하지 못한 요청이 승격한 영상과 썸네일은 지워야 한다",
             )
         }
 

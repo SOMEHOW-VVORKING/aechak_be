@@ -26,6 +26,7 @@ class PostCommandService(
         authorId: Long,
         caption: String?,
         photoKeys: List<String>,
+        video: Post.VideoSpec?,
         hashtags: List<String>,
         petId: Long?,
         idempotencyKey: String,
@@ -33,7 +34,8 @@ class PostCommandService(
         // 태그 행을 작성자 통계 행보다 먼저 잠근다. 수정, 삭제와 순서가 엇갈리면 서로 교착한다
         hashtagRepository.adjustCounts(added = hashtags)
         val hashtagIds = hashtagRepository.findAllByNameIn(hashtags).associate { it.name to it.id }
-        val post = postRepository.save(Post.create(authorId, caption, photoKeys, hashtags.map(hashtagIds::getValue), petId, idempotencyKey))
+        val post =
+            postRepository.save(Post.create(authorId, caption, photoKeys, video, hashtags.map(hashtagIds::getValue), petId, idempotencyKey))
         snsUserStatsRepository.increasePostCount(authorId)
         return CreatePostResult(post.publicId)
     }
