@@ -9,8 +9,11 @@
 
 ## 1. persistence — A-1 결정(L2)
 
-- domain 포트의 어댑터가 여기 산다. 현재 구체 모듈은 `persistence/jpa`(:jpa-persistence).
+- domain 포트의 어댑터가 여기 산다. 현재 구체 모듈은 `persistence/jpa`(:jpa-persistence)와 `persistence/elasticsearch`(:elasticsearch-persistence).
 - Elasticsearch 등 새 저장 기술은 `persistence/elasticsearch`처럼 형제 모듈로 추가해 어댑터 교체로 흡수한다.
+- `persistence/elasticsearch`: 키워드 검색 포트(`ProductKeywordSearchPort`)의 Elasticsearch 어댑터와 색인 재작성 쓰기 포트(`ProductSearchIndexWriter`)의 어댑터.
+  `spring-boot-starter-elasticsearch`가 클라이언트를 자동 구성하고, 매퍼는 Jackson 3(`Jackson3JsonpMapper`)이다. 색인 매핑은 `resources/elasticsearch/products-index.json`에 있다.
+  색인 재작성은 jpa 모듈의 읽기 포트(`ProductSearchDocumentReader`)와 이 모듈의 쓰기 포트를 application 서비스가 잇는다. 두 infra 모듈은 서로 모른다.
 
 ```kotlin
 // 어댑터 템플릿
