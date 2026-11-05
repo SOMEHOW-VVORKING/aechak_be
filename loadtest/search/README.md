@@ -73,6 +73,7 @@ make down
 | `MAX_VUS_CAP` | 1500 | k6 VU 상한 |
 | `IDLE_RDS_CPU_MAX` | 5 | 변형 시작에서 기다리는 RDS CPU 유휴 기준(%) |
 | `RAMP_FLOOR_RATES` | `1 0.5 0.25`, QUICK은 `1 0.5` | ramp 첫 단계가 SLO를 못 지키면 내려가며 시도할 요청률 |
+| `RAMP_RATES` | `2 4 8 16 32 64 128 256` | ramp가 올라갈 요청률(QUICK에는 쓰지 않는다). 처리 한계가 256 req/s보다 높으면 더 높은 단계를 준다 |
 | `WARMUP_RATE` | 2 | 워밍업 요청률 |
 
 ## 셀과 시간

@@ -4,7 +4,7 @@ KIT_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 AWS_PROFILE ?= aechak
 export AWS_PROFILE DATASET REV STEP VARIANT DDL ENV CELLS LOCAL QUICK SKIP_TESTS ALLOW_DIRTY \
 	BEFORE_REV AFTER_REV BEFORE_DDL AFTER_DDL ENGINE LABEL RUN DRY_RUN \
-	BASE_RATE FORCE MAX_VUS_CAP IDLE_RDS_CPU_MAX RAMP_FLOOR_RATES WARMUP_RATE
+	BASE_RATE FORCE MAX_VUS_CAP IDLE_RDS_CPU_MAX RAMP_FLOOR_RATES RAMP_RATES WARMUP_RATE
 
 TARGETS := outputs jar sync up down init seed reseed manifest variant step explain equiv \
 	reindex graphs grafana prom shell-runner shell-api fetch
