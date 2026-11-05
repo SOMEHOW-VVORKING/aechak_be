@@ -19,6 +19,7 @@ import com.aechak.seller.product.response.SellerProductOptionsResponse
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -94,7 +95,7 @@ class SellerProductController(
     /** 내 상품 목록 — 필터·정렬·오프셋 페이지네이션 */
     @GetMapping
     fun getMyProducts(
-        @Valid @ModelAttribute request: SellerProductSearchRequest,
+        @Valid @ModelAttribute @ParameterObject request: SellerProductSearchRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SellerProductListResponse>> =
         ResponseEntity.ok(
