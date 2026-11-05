@@ -244,6 +244,8 @@ class SnsFeedQueryAdapter(
             .limit(limit.toLong())
             .fetch()
 
+    // shortcut: 지운 원글과 숨김 작성자의 원글을 건너뛰며 limit개를 채울 때까지 리포스트 행을 읽어 한 페이지에 읽는 행 수에 상한이 없다.
+    // 한 사용자의 리포스트가 5만 건을 넘거나 리포스트 탭 P95가 300ms를 넘으면 한 번에 읽는 리포스트 행 수에 상한을 두고 빈 페이지도 커서를 넘기게 바꾼다
     override fun findUserRepostPage(
         reposterId: Long,
         hiddenUserIds: Set<Long>,
