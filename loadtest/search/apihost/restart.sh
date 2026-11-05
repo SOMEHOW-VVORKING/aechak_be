@@ -75,6 +75,7 @@ if [ "$MODE" = aws ]; then
   DB_PASS=$(aws ssm get-parameter --name "$(jq -er '.db_password_param.value' "$OUTPUTS")" \
     --with-decryption --query Parameter.Value --output text)
   ENV_FILE=$STATE/api.env
+  ES_IP=$(jq -r '.es.value.private_ip // empty' "$OUTPUTS")
   HEALTH_URL=http://localhost:8081/actuator/health
   COMPOSE=(docker compose -p aechak-perf-api -f "$KIT_DIR/apihost/compose.yml")
   SUPPORT_SERVICES=(redis kafka node-exporter cadvisor)
@@ -128,6 +129,8 @@ umask 077
   kv MANAGEMENT_METRICS_DISTRIBUTION_PERCENTILESHISTOGRAM_HTTP_SERVER_REQUESTS true
   kv SPRING_FLYWAY_ENABLED "$FLYWAY"
   kv SPRING_JPA_HIBERNATE_DDL_AUTO "$DDL_AUTO"
+  # ES 호스트가 있을 때만 검색 엔진 주소를 준다. 엔진 선택은 --env AECHAK_SEARCH_ENGINE으로 한다
+  if [ -n "${ES_IP:-}" ]; then kv SPRING_ELASTICSEARCH_URIS "http://$ES_IP:9200"; fi
 } >"$ENV_FILE.tmp"
 # --env는 같은 키의 기본값을 대신한다
 for pair in ${EXTRA_ENV[@]+"${EXTRA_ENV[@]}"}; do

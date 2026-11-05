@@ -220,7 +220,9 @@ cmd_up() {
   wait_ssm $ids
   x aws rds wait db-instance-available --db-instance-identifier "$db"
   ssm_run "$API_ID" "$INIT_WAIT/opt/perf/bin/kit-pull" 900
-  if [ -n "$ES_ID" ]; then ssm_run "$ES_ID" "$INIT_WAIT/opt/perf/bin/kit-pull" 900; fi
+  if [ -n "$ES_ID" ]; then
+    ssm_run "$ES_ID" "$INIT_WAIT/opt/perf/bin/kit-pull && docker compose -f /opt/perf/kit/search/es/compose.yml up -d --wait" 900
+  fi
   ssm_run "$RUNNER_ID" "$INIT_WAIT/opt/perf/bin/kit-pull && bash /opt/perf/kit/monitoring/targets.sh --aws /opt/perf/state/outputs.json --dataset $(q "$ds") && docker compose -p aechak-perf-mon -f /opt/perf/kit/monitoring/compose.yml up -d --force-recreate" 1200
   log "up 완료: $ds ($db). make grafana로 화면을 연다"
 }
@@ -390,6 +392,17 @@ cmd_equiv() {
   x aws s3 cp --only-show-errors "s3://$BUCKET/results/equiv/$name.jsonl" "$KIT/results/equiv/$name.jsonl"
 }
 
+cmd_reindex() {
+  : "${DATASET:?DATASET 필요}" "${REV:?REV 필요}"
+  local rev
+  rev=$(variant_rev "$REV")
+  need_jar "$rev"
+  need_outputs
+  [ -n "$ES_ID" ] || die 1 "ES 호스트가 없다. terraform을 es_enabled=true로 apply하고 make outputs"
+  cmd_sync
+  on_runner "bash $RUNNER_SCRIPTS/lib/remote.sh reindex $(q "$DATASET" "$rev")" 4200
+}
+
 cmd_fetch() {
   local id
   : "${RUN:?RUN 필요(run id나 그 앞부분)}"
@@ -419,7 +432,7 @@ case ${1:?target} in
   step) cmd_step ;;
   explain) VARIANT=${VARIANT:-explain} CELLS=explain cmd_variant ;;
   equiv) cmd_equiv ;;
-  reindex) die 1 "reindex는 ES 단계에서 만든다" ;;
+  reindex) cmd_reindex ;;
   graphs) x "$KIT/tools/.venv/bin/python" -I "$KIT/tools/graphs.py" --raw "$KIT/results/raw" --out "$KIT/results/graphs" ;;
   grafana) forward 3000 13000 ;;
   prom) forward 9090 19090 ;;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 러너(또는 노트북 local)에서 DB 준비 작업을 한다. lib/laptop.sh가 SSM으로 부르거나 LOCAL=1이면 직접 부른다
-#   users D | seed D | manifest D [seeded_at] | init D | equiv D STEP ENGINE REV [LABEL]
+#   users D | seed D | manifest D [seeded_at] | init D | equiv D STEP ENGINE REV [LABEL] | reindex D REV
 # shellcheck disable=SC2119
 set -euo pipefail
 # shellcheck source=lib/common.sh
@@ -68,6 +68,27 @@ do_equiv() {  # STEP ENGINE REV [LABEL]
   if [ -n "$BUCKET" ]; then x aws s3 cp --only-show-errors "$out" "s3://$BUCKET/results/equiv/$name.jsonl"; fi
 }
 
+# 엔진을 es로 둔 api를 재색인 속성과 함께 다시 띄우고 색인 문서 수가 상품 수와 같아질 때까지 기다린다
+do_reindex() {  # REV
+  # 색인 이름은 앱의 상품 검색 색인과 같다
+  local rev=${1:?rev} index=products want got='' t0 i size
+  [ -n "$ES_URL" ] || die 1 "ES 호스트가 없다. terraform을 es_enabled=true로 apply하고 make outputs"
+  want=$(echo 'SELECT COUNT(*) FROM products' | sql)
+  # 이전 색인이 남아 있으면 문서 수가 처음부터 같아 보여서 먼저 지운다
+  curl -sS -o /dev/null -X DELETE "$ES_URL/$index" || true
+  t0=$(now_ms)
+  restart_api --rev "$rev" --dataset "$DS" --env AECHAK_SEARCH_ENGINE=es --env AECHAK_SEARCH_ES_REINDEX_ON_STARTUP=true \
+    || die "$E_API" "api가 준비되지 않았다"
+  for i in $(seq 1 720); do
+    got=$(curl -fsS --max-time 5 "$ES_URL/$index/_count" 2>/dev/null | jq -r '.count // empty' || true)
+    if [ "$got" = "$want" ]; then break; fi
+    sleep 5
+  done
+  [ "$got" = "$want" ] || die 1 "재색인이 끝나지 않았다(색인 ${got:-0}건, 상품 ${want}건)"
+  size=$(curl -fsS "$ES_URL/_cat/indices/$index?h=store.size&bytes=mb" | tr -d ' ')
+  log "REINDEX_DONE dataset=$DS docs=$want seconds=$(( ($(now_ms) - t0) / 1000 )) store_mb=$size (api 재시작 포함)"
+}
+
 case $action in
   users) do_users ;;
   seed|reseed) do_seed ;;
@@ -77,5 +98,6 @@ case $action in
     do_seed
     do_manifest "$(TZ=Asia/Seoul date '+%Y-%m-%dT%H:%M:%S%z')" ;;
   equiv) shift 2; do_equiv "$@" ;;
+  reindex) shift 2; do_reindex "$@" ;;
   *) die 1 "알 수 없는 action: $action" ;;
 esac
