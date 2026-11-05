@@ -145,7 +145,8 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
         val ownerId = onboardedUser()
         val authorId = onboardedUser()
         val first = createdPublicId(authorId, postBody(photoKeys = listOf(tmpPhotoKey(authorId))))
-        val second = videoPost(authorId)
+        val thumbnailKey = tmpPhotoKey(authorId)
+        val second = createdPublicId(authorId, postBody(caption = null, video = videoJson(tmpVideoKey(authorId), thumbnailKey)))
         val third = createdPublicId(authorId, postBody(caption = "텍스트 글"))
         createdPublicId(ownerId)
         // 게시 순서와 다르게 리포스트한다
@@ -155,6 +156,11 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
 
         assertEquals(listOf(first, third, second), page.cellIds(), "주인의 원글 없이 원글의 공개 ID가 최근 리포스트순이어야 한다")
         assertEquals(listOf("PHOTO", "TEXT", "VIDEO"), page.feedItems().map { it["mediaType"] }, "칸은 원글 기준이어야 한다")
+        assertEquals(
+            "https://fake-cdn.local/${promotedKeyOf(thumbnailKey)}",
+            page.feedItems().last()["thumbnailUrl"],
+            "리포스트한 영상 칸은 원글 영상의 썸네일이어야 한다",
+        )
     }
 
     @Test
@@ -212,6 +218,7 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
         tx.execute { em.find(User::class.java, withdrawn).withdraw() }
 
         assertEquals(listOf(visible), tabPage("reposts", ownerId, onboardedUser()).cellIds(), "볼 수 없는 원글은 빠져야 한다")
+        assertEquals(listOf(visible), tabPage("reposts", ownerId).cellIds(), "비로그인에게도 볼 수 없는 원글은 빠져야 한다")
     }
 
     @Test
@@ -252,6 +259,40 @@ class ProfilePostTabIntegrationTest : SnsPostIntegrationTestBase() {
         getTab("videos", publicIdOf(ownerId), cursor = cursor)
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(90002))
+    }
+
+    @Test
+    fun `리포스트 탭에 다른 주인의 커서나 그리드 커서를 보내면 90002다`() {
+        val ownerId = onboardedUser()
+        val otherId = onboardedUser()
+        val authorId = onboardedUser()
+        repeat(2) {
+            val publicId = createdPublicId(authorId)
+            repost(publicId, ownerId).andExpect(status().isCreated)
+            repost(publicId, otherId).andExpect(status().isCreated)
+            createdPublicId(otherId)
+        }
+        val repostCursor = tabPage("reposts", ownerId, size = 1)["nextCursor"] as String
+        val gridCursor = tabPage("posts", otherId, size = 1)["nextCursor"] as String
+
+        listOf(repostCursor, gridCursor).forEach { cursor ->
+            getTab("reposts", publicIdOf(otherId), cursor = cursor)
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.errorCode").value(90002))
+        }
+    }
+
+    @Test
+    fun `세 탭 모두 크기가 1부터 100을 벗어나면 400 90001이다`() {
+        val ownerId = onboardedUser()
+
+        TABS.forEach { tab ->
+            listOf(0, 101).forEach { size ->
+                getTab(tab, publicIdOf(ownerId), size = size)
+                    .andExpect(status().isBadRequest)
+                    .andExpect(jsonPath("$.errorCode").value(90001))
+            }
+        }
     }
 
     @Test
