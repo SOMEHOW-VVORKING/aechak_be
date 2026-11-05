@@ -51,6 +51,9 @@ querydsl-ksp-codegen = { module = "io.github.openfeign.querydsl:querydsl-ksp-cod
 spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-starter-flyway" }  # flyway-core + Boot 4 분리형 자동 구성(spring-boot-flyway)
 flyway-mysql = { module = "org.flywaydb:flyway-mysql" }    # Flyway 10+ MySQL 지원 분리 모듈
 
+# --- infra:persistence:elasticsearch: 키워드 검색 어댑터 ---
+spring-boot-starter-elasticsearch = { module = "org.springframework.boot:spring-boot-starter-elasticsearch" }  # elasticsearch-java 클라이언트와 자동 구성
+
 # --- 인증(ACC-01): 자체 RS256 JWT·소셜 id_token 검증 ---
 spring-boot-starter-oauth2-resource-server = { module = "org.springframework.boot:spring-boot-starter-oauth2-resource-server" }
 spring-security-oauth2-jose = { module = "org.springframework.security:spring-security-oauth2-jose" }

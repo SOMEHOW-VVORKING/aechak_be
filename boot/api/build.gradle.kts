@@ -9,6 +9,7 @@ dependencies {
     implementation(project(":pii"))                     // PII 암호화 엔진+키 조립 — 루트 스캔이 PiiCryptoConfig를 활성화
     implementation(project(":application"))
     implementation(project(":jpa-persistence"))         // 도메인 포트의 구현체 조립. 다른 infra 모듈도 어댑터가 생기면 여기 추가
+    implementation(project(":elasticsearch-persistence")) // 키워드 검색 Elasticsearch 어댑터. aechak.search.engine=es일 때만 검색에 쓴다
     implementation(project(":social-client"))           // 소셜 id_token 검증 어댑터(ACC-01)
     implementation(project(":sms-client"))              // SMS 발송 어댑터(전화 인증)
     implementation(project(":redis"))                   // refresh token 저장소 어댑터(ACC-01)
