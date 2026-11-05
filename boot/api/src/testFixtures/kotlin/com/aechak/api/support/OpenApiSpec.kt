@@ -13,9 +13,20 @@ class OpenApiSpec private constructor(
     val schemas: DocumentedSchemas,
     /** "POST /api/v1/orders/{id}/confirm" -> 문서가 적은 응답 코드들 */
     val operationResponseCodes: Map<String, Set<String>>,
+    /** "GET /api/v1/order-groups" -> (쿼리 파라미터 이름 -> 문서가 못박은 허용값) */
+    val queryParameters: Map<String, Map<String, Set<String>>>,
+    /** 쿼리 파라미터가 객체 스키마 하나로 접혀 개별 이름이 문서에 없는 자리. "GET /api/v1/products ?request" */
+    val collapsedQueryParameters: List<String>,
+    /** "GET /api/v1/search/products" -> 문서가 필수로 적은 쿼리 파라미터 이름들 */
+    val requiredQueryParameters: Map<String, Set<String>>,
     private val schemaNode: JsonNode,
 ) {
     fun propertyNames(schema: String): Set<String> = schemas[schema]?.keys ?: emptySet()
+
+    fun allowedQueryValues(
+        operation: String,
+        parameter: String,
+    ): Set<String> = queryParameters[operation]?.get(parameter) ?: emptySet()
 
     fun allowedValues(
         schema: String,
@@ -56,10 +67,12 @@ class OpenApiSpec private constructor(
                     .path("paths")
                     .properties()
                     .flatMap { (path, verbs) ->
-                        verbs.properties().map { (verb, operation) ->
-                            "${verb.uppercase()} $path" to operation.path("responses").propertyNames().toSet()
-                        }
+                        verbs.properties().map { (verb, operation) -> "${verb.uppercase()} $path" to operation }
                     }.toMap()
+            val queryParameters =
+                operations.mapValues { (_, operation) ->
+                    operation.path("parameters").filter { it.path("in").asString() == "query" }
+                }
             return OpenApiSpec(
                 schemaNode.properties().associate { (name, node) ->
                     name to
@@ -67,9 +80,35 @@ class OpenApiSpec private constructor(
                             property to allowedValuesOf(definition, schemaNode)
                         }
                 },
-                operations,
+                operations.mapValues { (_, operation) -> operation.path("responses").propertyNames().toSet() },
+                queryParameters.mapValues { (_, parameters) ->
+                    parameters.associate { it.path("name").asString() to allowedValuesOf(it.path("schema"), schemaNode) }
+                },
+                queryParameters
+                    .flatMap { (operation, parameters) ->
+                        parameters
+                            .filter { isObjectSchema(it.path("schema"), schemaNode) }
+                            .map { "$operation ?${it.path("name").asString()}" }
+                    }.sorted(),
+                queryParameters.mapValues { (_, parameters) ->
+                    parameters.filter { it.path("required").asBoolean() }.map { it.path("name").asString() }.toSet()
+                },
                 schemaNode,
             )
+        }
+
+        private fun isObjectSchema(
+            schema: JsonNode,
+            schemas: JsonNode,
+        ): Boolean {
+            val resolved =
+                schema
+                    .get(REF)
+                    ?.stringValue()
+                    ?.takeIf { it.startsWith(COMPONENTS_PREFIX) }
+                    ?.let { schemas.path(it.removePrefix(COMPONENTS_PREFIX)) }
+                    ?: schema
+            return resolved.has("properties")
         }
 
         /** 허용값은 인라인 enum·배열 items·널 허용 래퍼(oneOf 등)·components 참조 중 어디로든 나온다. */
