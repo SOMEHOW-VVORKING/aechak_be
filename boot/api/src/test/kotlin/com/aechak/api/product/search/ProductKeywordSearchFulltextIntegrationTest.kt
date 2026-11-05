@@ -70,18 +70,19 @@ class ProductKeywordSearchFulltextIntegrationTest : IntegrationTestBase() {
     fun `2글자 이상 검색어는 첫 페이지 SQL에 MATCH AGAINST와 LIKE를 함께 건다`() {
         val sql = captureSql { search("강아지") }
 
-        assertEquals(1, sql.size, "첫 페이지는 목록과 윈도 총개수를 한 쿼리로 센다: $sql")
-        sql.forEach {
-            assertTrue(MATCH_AGAINST.containsMatchIn(it), "MATCH AGAINST 불리언 모드로 렌더링돼야 한다: $it")
-            assertTrue(it.contains(" like "), "LIKE 재검사가 함께 걸려야 한다: $it")
-        }
+        val list = sql.filter { it.contains(" order by ") }
+        assertEquals(1, list.size, "첫 페이지는 목록과 윈도 총개수를 한 쿼리로 센다: $sql")
+        assertTrue(MATCH_AGAINST.containsMatchIn(list.single()), "MATCH AGAINST 불리언 모드로 렌더링돼야 한다: $list")
+        assertTrue(list.single().contains(" like "), "LIKE 재검사가 함께 걸려야 한다: $list")
+        val sample = sql.single { it.contains("sum(case") }
+        assertTrue(!MATCH_AGAINST.containsMatchIn(sample) && sample.contains(" like "), "경로를 고르는 표본 쿼리는 LIKE로 센다: $sample")
     }
 
     @Test
     fun `2글자 미만 검색어의 SQL은 MATCH 없이 LIKE만 건다`() {
-        val sql = captureSql { search("개") }
+        val sql = captureSql { search("개") }.filterNot { it.contains("sum(case") }
 
-        assertEquals(1, sql.size, "첫 페이지는 목록과 윈도 총개수를 한 쿼리로 센다: $sql")
+        assertTrue(sql.isNotEmpty(), "표본 쿼리 밖에 목록 쿼리가 있어야 한다")
         sql.forEach {
             assertTrue(!MATCH_AGAINST.containsMatchIn(it) && it.contains(" like "), "LIKE만 걸려야 한다: $it")
         }
@@ -100,7 +101,7 @@ class ProductKeywordSearchFulltextIntegrationTest : IntegrationTestBase() {
 
     @Test
     fun `상품명에 띄어 쓴 ngram이 있으면 MATCH에는 걸리지만 LIKE 재검사가 거른다`() {
-        assertTrue("강아 아지 간식" in matchOnly("\"강아지\""), "phrase가 ngram으로 바뀌어 띄어 쓴 강아 아지에도 일치한다")
+        assertTrue("강아 아지 간식" in matchOnly("+강아 +아지"), "ngram AND 검색은 띄어 쓴 강아 아지에도 일치한다")
 
         val names = productNames(search("강아지"))
 
@@ -111,8 +112,8 @@ class ProductKeywordSearchFulltextIntegrationTest : IntegrationTestBase() {
     @Test
     fun `공백이 든 검색어는 공백까지 연속 일치하는 상품만 남는다`() {
         assertTrue(
-            matchOnly("\"강아지 사료\"").containsAll(listOf("강아지  사료", "강아지-사료 세트")),
-            "구문 검색은 구분 문자의 종류와 개수를 보지 않는다",
+            matchOnly("+강아 +아지 +사료").containsAll(listOf("강아지  사료", "강아지-사료 세트", "사료 강아지 세트")),
+            "ngram AND 검색은 구분 문자의 종류와 개수, 단어 순서를 보지 않는다",
         )
 
         val names = productNames(search("강아지 사료"))
