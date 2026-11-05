@@ -11,28 +11,28 @@ import java.sql.DriverManager
 import javax.sql.DataSource
 
 /**
- * V89(products.review_count 컬럼, product_stats에서 채우기, 인기순과 낮은 가격순 정렬 인덱스)의 가드 분기를 본다.
+ * V91(products.review_count 컬럼, product_stats에서 채우기, 인기순과 낮은 가격순 정렬 인덱스)의 가드 분기를 본다.
  * 깨지면 products가 없는 새 DB에서 마이그레이션이 실패하거나, 기존 DB의 인기순이 리뷰 수를 0으로 읽는다.
- * 컨텍스트를 새로 띄우지 않으려고 공용 베이스를 쓴다. V89는 별도 DB에 적용한다.
+ * 컨텍스트를 새로 띄우지 않으려고 공용 베이스를 쓴다. V91는 별도 DB에 적용한다.
  */
-class V89ProductSearchSortIndexesMigrationIntegrationTest : IntegrationTestBase() {
+class V91ProductSearchSortIndexesMigrationIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var dataSource: DataSource
 
     @Test
     fun `products가 없는 DB에서는 아무것도 만들지 않고 성공으로 기록된다`() {
-        val url = recreateDatabase("v89_no_products")
+        val url = recreateDatabase("v91_no_products")
 
         flyway(url).migrate()
 
         assertThat(scalar(url, "SELECT COUNT(*) FROM information_schema.TABLES $IN_SCHEMA AND TABLE_NAME = 'products'")).isEqualTo("0")
-        assertThat(scalar(url, "SELECT success FROM flyway_schema_history WHERE version = '89'")).isEqualTo("1")
+        assertThat(scalar(url, "SELECT success FROM flyway_schema_history WHERE version = '91'")).isEqualTo("1")
     }
 
     @Test
     fun `변경 직전 DDL의 products에 컬럼과 인덱스를 만들고 product_stats의 리뷰 수로 채운다`() {
-        val url = recreateDatabase("v89_products")
-        migrateBeforeV89(url)
+        val url = recreateDatabase("v91_products")
+        migrateBeforeV91(url)
         execute(url, preChangeProductsDdl())
         execute(url, showCreate(sharedUrl(), "product_stats"))
         assertThat(reviewCountColumn(url)).describedAs("적용 전에는 컬럼이 없어야 ADD COLUMN 분기가 실제로 돈다").isEmpty()
@@ -52,8 +52,8 @@ class V89ProductSearchSortIndexesMigrationIntegrationTest : IntegrationTestBase(
 
     @Test
     fun `product_stats가 없으면 채우기만 건너뛰고 컬럼과 인덱스는 만든다`() {
-        val url = recreateDatabase("v89_no_stats")
-        migrateBeforeV89(url)
+        val url = recreateDatabase("v91_no_stats")
+        migrateBeforeV91(url)
         execute(url, preChangeProductsDdl())
         val product = insertProduct(url, "통계 테이블 없음")
 
@@ -70,7 +70,7 @@ class V89ProductSearchSortIndexesMigrationIntegrationTest : IntegrationTestBase(
         assertThat(sortIndexes(sharedUrl())).containsExactly(*SORT_INDEXES)
     }
 
-    /** 공용 테스트 스키마의 products DDL에서 V89가 더하는 컬럼과 인덱스를 뺀 것 */
+    /** 공용 테스트 스키마의 products DDL에서 V91가 더하는 컬럼과 인덱스를 뺀 것 */
     private fun preChangeProductsDdl(): String {
         val current = showCreate(sharedUrl(), "products")
         val ddl =
@@ -194,14 +194,14 @@ class V89ProductSearchSortIndexesMigrationIntegrationTest : IntegrationTestBase(
 
     private fun flyway(url: String): Flyway = Flyway.configure().dataSource(url, ROOT_USER, ROOT_PASSWORD).load()
 
-    /** V89 바로 앞 버전까지 적용한다 */
-    private fun migrateBeforeV89(url: String) {
+    /** V91 바로 앞 버전까지 적용한다 */
+    private fun migrateBeforeV91(url: String) {
         val previous =
             flyway(url)
                 .info()
                 .all()
                 .map { it.version }
-                .filter { it < V89 }
+                .filter { it < V91 }
                 .max()
         Flyway
             .configure()
@@ -217,7 +217,7 @@ class V89ProductSearchSortIndexesMigrationIntegrationTest : IntegrationTestBase(
         private const val ROOT_PASSWORD = "test"
 
         private const val IN_SCHEMA = "WHERE TABLE_SCHEMA = DATABASE()"
-        private val V89: MigrationVersion = MigrationVersion.fromVersion("89")
+        private val V91: MigrationVersion = MigrationVersion.fromVersion("91")
         private val SORT_INDEXES =
             arrayOf(
                 "ix_products_discount_price:1:discount_price:A",
