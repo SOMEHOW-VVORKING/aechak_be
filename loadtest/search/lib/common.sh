@@ -115,6 +115,24 @@ EOF
   echo "$out" | jq -sc add
 }
 
+# es_stats: products 색인의 요청 캐시와 refresh 누계를 JSON 한 줄로 찍는다
+es_stats() {
+  curl -sf --max-time 5 "$ES_URL/products/_stats/request_cache,refresh" | jq -ce '._all.total
+    | {rc_hit: .request_cache.hit_count, rc_miss: .request_cache.miss_count, rc_evictions: .request_cache.evictions,
+       rc_mem_bytes: .request_cache.memory_size_in_bytes, refresh: .refresh.total, ext_refresh: .refresh.external_total}'
+}
+
+# es_record <run 시작 es_stats> <out.json>: 끝 값을 다시 읽어 시작과 끝을 파일로 남기고 차이를 ENV_es_ 값에 둔다
+es_record() {
+  local a
+  a=$(es_stats || true)
+  if [ -z "$a" ]; then warn "ES 통계를 읽지 못했다: $2"; return 0; fi
+  jq -nc --argjson b "$1" --argjson a "$a" '{before: $b, after: $a}' > "$2"
+  IFS=$'\t' read -r ENV_es_rc_hits ENV_es_rc_misses ENV_es_rc_evictions ENV_es_rc_mem_bytes ENV_es_refreshes ENV_es_ext_refreshes <<<"$(
+    jq -rn --argjson b "$1" --argjson a "$a" '[$a.rc_hit - $b.rc_hit, $a.rc_miss - $b.rc_miss, $a.rc_evictions - $b.rc_evictions,
+      $a.rc_mem_bytes, $a.refresh - $b.refresh, $a.ext_refresh - $b.ext_refresh] | @tsv')"
+}
+
 # kit_hash: kit 소스(search의 sh, js, py, sql, yml, Makefile과 monitoring의 yml)를 경로 순서로 이어 붙인 sha256 앞 12자리
 kit_hash() {
   (cd "$KIT/.." && find search monitoring \( -path search/results -o -path search/jars -o -path search/.perf -o -path search/tools/.venv \
@@ -239,7 +257,7 @@ k6_eval() {
     | map(tostring) | join("\t")' "$1"
 }
 
-ENV_KEYS="run_id step dataset cell variant rep start_ms end_ms date_kst kit_version git_rev git_tree merge_base patch_id dirty jar jar_sha256 hibernate_core elasticsearch_java search_test_exit rds_id rds_class rds_engine_version buffer_pool_size_bytes param_max_digest_length param_perf_schema_max_digest_length param_long_query_time api_instance_type api_cpus api_mem runner_instance_type hikari_max applied_ddl schema_hash index_hash manifest_match search_env req_rate scenario max_vus k6_version bp_reads_delta bp_read_requests_delta bp_disk_read_flag dropped_iterations max_stable_rate k6_exit k6_max_rss_kb base_rate base_rate_source cw_complete skip_reason probe_rate capacity_rate request_timeout kit_hash ps_history_long trace_offset"
+ENV_KEYS="run_id step dataset cell variant rep start_ms end_ms date_kst kit_version git_rev git_tree merge_base patch_id dirty jar jar_sha256 hibernate_core elasticsearch_java search_test_exit rds_id rds_class rds_engine_version buffer_pool_size_bytes param_max_digest_length param_perf_schema_max_digest_length param_long_query_time api_instance_type api_cpus api_mem runner_instance_type hikari_max applied_ddl schema_hash index_hash manifest_match search_env req_rate scenario max_vus k6_version bp_reads_delta bp_read_requests_delta bp_disk_read_flag dropped_iterations max_stable_rate k6_exit k6_max_rss_kb base_rate base_rate_source cw_complete skip_reason probe_rate capacity_rate request_timeout kit_hash ps_history_long trace_offset keyword_set control_rate perturb perturb_params perturb_start_ms perturb_end_ms perturb_result es_rc_hits es_rc_misses es_rc_evictions es_rc_mem_bytes es_refreshes es_ext_refreshes"
 
 # write_env <file>: ENV_<key> 변수를 key=value로 쓴다. 비었으면 na
 write_env() {

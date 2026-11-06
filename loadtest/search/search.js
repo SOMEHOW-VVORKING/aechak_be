@@ -9,11 +9,15 @@
 // MIX=first는 첫 페이지만 보낸다.
 // 검색어, 필터, 요청 흐름은 반복 순번으로 정해서 같은 셀의 before와 after가 같은 순서로 요청한다.
 // TRACE_OFFSET(기본 0)은 순번에 더하는 값이라 steady 반복마다 다른 순서를 쓰게 한다.
+// KEYWORD_SET=diverse는 고정 검색어 9개 대신 keywords-diverse.js의 검색어로 고른다. sequential은 늘 고정 9개다.
+// CONTROL_RATE(기본 0)가 0보다 크면 rate와 spike에 DB만 쓰는 대조 요청(control.js, kind:control)을 초당 그만큼 더한다.
 // 예) k6 run --tag testid=RUN -e SCENARIO=rate -e REQ_RATE=8 -e DURATION=45s -e SUMMARY_FILE=x.json search.js
 import http from 'k6/http'
 import exec from 'k6/execution'
 import { check } from 'k6'
 import { Counter } from 'k6/metrics'
+import DIVERSE_KEYWORDS from './keywords-diverse.js'
+import { control as controlRequest, controlScenario } from './control.js'
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:18080/api/v1'
 const SCENARIO = __ENV.SCENARIO || 'smoke'
@@ -27,6 +31,8 @@ const SEQ_REPS = Number(__ENV.SEQ_REPS || 20)
 const SEQ_KEYWORDS = __ENV.SEQ_KEYWORDS || 'all'
 const SEQ_ONLY = __ENV.SEQ_ONLY || ''
 const TRACE_OFFSET = Number(__ENV.TRACE_OFFSET || 0)
+const KEYWORD_SET = __ENV.KEYWORD_SET || 'fixed'
+const CONTROL_RATE = Number(__ENV.CONTROL_RATE || 0)
 const REQS_PER_MIXED_ITER = 1.4
 // 페이징 반복은 첫 페이지와 다음 페이지 최대 둘을 차례로 보낸다
 const MAX_NEXT_PAGES = 2
@@ -34,6 +40,8 @@ const MAX_REQS_PER_MIXED_ITER = 1 + MAX_NEXT_PAGES
 
 if (!['smoke', 'rate', 'spike', 'sequential'].includes(SCENARIO)) throw new Error(`unknown SCENARIO ${SCENARIO}`)
 if (!['mixed', 'first'].includes(MIX)) throw new Error(`unknown MIX ${MIX}`)
+if (!['fixed', 'diverse'].includes(KEYWORD_SET)) throw new Error(`unknown KEYWORD_SET ${KEYWORD_SET}`)
+if (!(CONTROL_RATE >= 0)) throw new Error(`bad CONTROL_RATE ${__ENV.CONTROL_RATE}`)
 
 function seconds(d) {
   const m = /^(\d+(?:\.\d+)?)(ms|s|m)$/.exec(d)
@@ -61,7 +69,9 @@ const CLASSES = ['high', 'mid', 'low', 'rare', 'none']
 const CLASS_KEYWORDS = ['강아지', '사료', '관절', '한정판', '없는상품']
 const SORTS = ['popular', 'price_asc', 'latest']
 const MID_CATEGORIES = [11, 12, 13, 14, 15, 16, 21, 22, 23, 24, 25, 31, 32, 33]
-const TOTAL_WEIGHT = KEYWORDS.reduce((sum, k) => sum + k.w, 0)
+// rate, spike, smoke가 고르는 검색어. sequential은 KEYWORDS를 쓴다
+const PICK_KEYWORDS = KEYWORD_SET === 'diverse' ? DIVERSE_KEYWORDS : KEYWORDS
+const TOTAL_WEIGHT = PICK_KEYWORDS.reduce((sum, k) => sum + k.w, 0)
 // 요약에서 하위 지표로 보이는 값. 여기에 없는 값은 Prometheus에만 남고 요약에는 other로 합쳐진다
 const KNOWN_STATUS = ['0', '200', '400', '404', '429', '500', '502', '503', '504']
 const KNOWN_CODES = ['timeout', 'net', 'na', '90000', '90001', '90002', '40102']
@@ -108,6 +118,15 @@ function arrival(reqRate, mix, duration, extra) {
 }
 
 function buildScenarios() {
+  const s = mainScenarios()
+  if (CONTROL_RATE > 0 && (SCENARIO === 'rate' || SCENARIO === 'spike')) {
+    const duration = SCENARIO === 'rate' ? __ENV.DURATION || '180s' : `${SPIKE_SECONDS + PROBE_SECONDS}s`
+    s.control = controlScenario(CONTROL_RATE, duration, seconds(REQUEST_TIMEOUT))
+  }
+  return s
+}
+
+function mainScenarios() {
   switch (SCENARIO) {
     case 'smoke':
       return { smoke: { executor: 'constant-vus', vus: 1, duration: __ENV.DURATION || '30s', gracefulStop: gracefulStop(MIX) } }
@@ -144,13 +163,15 @@ function buildScenarios() {
   }
 }
 
+const KINDS = ['first', 'filtered', 'next', 'probe', 'seq'].concat(CONTROL_RATE > 0 ? ['control'] : [])
+
 // 요약 JSON에 태그별 하위 지표가 남도록 거는 기록용 기준(항상 통과)
 function recordOnly() {
   const t = {}
   const trend = s => (t[`http_req_duration{${s}}`] = ['max>=0'])
   const rate = s => (t[`http_req_failed{${s}}`] = ['rate>=0'])
   const count = (m, s) => (t[`${m}{${s}}`] = ['count>=0'])
-  for (const kind of ['first', 'filtered', 'next', 'probe', 'seq']) {
+  for (const kind of KINDS) {
     trend(`kind:${kind}`)
     rate(`kind:${kind}`)
     count('http_reqs', `kind:${kind}`)
@@ -191,11 +212,11 @@ function pick(k) {
 
 function pickKeyword() {
   let r = pick(0) * TOTAL_WEIGHT
-  for (const k of KEYWORDS) {
+  for (const k of PICK_KEYWORDS) {
     r -= k.w
     if (r <= 0) return k
   }
-  return KEYWORDS[KEYWORDS.length - 1]
+  return PICK_KEYWORDS[PICK_KEYWORDS.length - 1]
 }
 
 function search(params, tags) {
@@ -260,6 +281,10 @@ export default function () {
   else paging(k)
 }
 
+export function control() {
+  controlRequest(BASE_URL, REQUEST_TIMEOUT)
+}
+
 export function probe() {
   firstPage(pickKeyword(), 'probe')
 }
@@ -315,6 +340,8 @@ export function handleSummary(data) {
     seq_reps: SEQ_REPS,
     seq_keywords: SEQ_KEYWORDS,
     seq_only: SEQ_ONLY,
+    keyword_set: KEYWORD_SET,
+    control_rate: CONTROL_RATE,
   }
   const lines = [`run_id=${kit.run_id} scenario=${SCENARIO} mix=${MIX} req_rate=${REQ_RATE} effective_req_rate=${kit.effective_req_rate} max_vus=${MAX_VUS}`]
   const reqs = data.metrics.http_reqs
@@ -324,7 +351,7 @@ export function handleSummary(data) {
   if (failed) lines.push(`http_req_failed: rate=${(failed.values.rate * 100).toFixed(2)}%`)
   const dropped = data.metrics.dropped_iterations
   lines.push(`dropped_iterations: ${dropped ? dropped.values.count : 0}`)
-  const share = ['first', 'filtered', 'next', 'probe', 'seq']
+  const share = KINDS
     .map(kind => [kind, data.metrics[`http_reqs{kind:${kind}}`]])
     .filter(([, m]) => m && m.values.count)
     .map(([kind, m]) => `${kind}=${m.values.count}(${((m.values.count / total) * 100).toFixed(1)}%)`)

@@ -507,6 +507,47 @@ def sequential_section(runs):
     return out
 
 
+def control_section(runs):
+    """DB만 쓰는 대조 요청(kind:control). 대조 요청은 전체 열과 실제 req/s에도 섞여 있다."""
+    name = 'http_req_duration{kind:control}'
+    rows = [r for r in runs if metric(r, name, 'max')]
+    if not rows:
+        return []
+    out = ['### 대조 요청(DB만 쓰는 상품 상세)', '', '| run | 셀 | 요청 수 | 실패율 | p50/p95/p99/max (n) |', '|---|---|---|---|---|']
+    for r in rows:
+        failed = metric(r, 'http_req_failed{kind:control}', 'rate')
+        out.append(f'| `{r["id"]}` | {r["env"].get("cell", "-")} | {sample_count(r, name):,} '
+                   f'| {"-" if failed is None else f"{failed * 100:.2f}%"} | {latency(r, name)} |')
+    return out + ['']
+
+
+def perturb_window(env):
+    """교란 구간을 run 시작부터 센 초로 적는다(예: 60~120s)."""
+    try:
+        start = int(env['start_ms'])
+        return f'{(int(env["perturb_start_ms"]) - start) / 1000:.0f}~{(int(env["perturb_end_ms"]) - start) / 1000:.0f}s'
+    except (KeyError, ValueError):
+        return '-'
+
+
+def es_section(runs):
+    """ES 요청 캐시 적중과 refresh(run 구간 차이)와 교란 조건."""
+    rows = [r for r in runs if r['env'].get('es_rc_hits') is not None]
+    if not rows:
+        return []
+    out = ['### ES 요청 캐시와 교란', '',
+           '| run | 셀 | 교란 | 교란 값 | 교란 구간 | 교란 결과 | 캐시 적중 | 캐시 실패 | 적중률 | refresh | evictions | 끝 캐시 메모리 |',
+           '|---|---|---|---|---|---|---|---|---|---|---|---|']
+    for r in rows:
+        e = r['env']
+        hit, miss = int(e['es_rc_hits']), int(e.get('es_rc_misses') or 0)
+        rate = f'{hit / (hit + miss) * 100:.1f}%' if hit + miss else '-'
+        out.append(f'| `{r["id"]}` | {e.get("cell", "-")} | {e.get("perturb", "없음")} | {e.get("perturb_params", "-")} '
+                   f'| {perturb_window(e)} | {e.get("perturb_result", "-")} | {hit:,} | {miss:,} | {rate} '
+                   f'| {e.get("es_refreshes", "-")} | {e.get("es_rc_evictions", "-")} | {e.get("es_rc_mem_bytes", "-")} |')
+    return out + ['']
+
+
 BASE_SOURCES = {'own': '자기 ramp의 최대 안정 요청률', 'before': 'before의 기준 요청률', 'manual': '직접 지정',
                 'capacity': 'SLO 미충족, 자기 ramp의 처리 가능 요청률을 비교 부하로 씀'}
 
@@ -541,6 +582,7 @@ def render(step, runs, new_file, notes=(), ref=()):
         out += [f'{variant} 기준 요청률 {base} req/s ({label}). {rule}.', '']
     out += MAIN_HEADER + [main_row(r, notes_by_variant.get(r['env'].get('variant'), '')) for r in runs] + ['']
     out += steady_section(runs) + ramp_section(runs) + spike_section(runs, ref) + sequential_section(runs)
+    out += control_section(runs) + es_section(runs)
     return '\n'.join(out)
 
 
@@ -755,6 +797,16 @@ def self_test():
     table = '\n'.join(ramp_section([stage_run]))
     assert '최대 안정 요청률 2 req/s (4에서 실패).' in table
     assert '| 2 | 2 | 1 | 표본 부족(n=60) |' in table and '| 4 | 4 | 1 | 1 (n=120) |' in table, table
+
+    # 대조 요청은 kind:control 지표가 있는 run만 따로 적고 ES 표는 es_rc_hits가 있는 run만 적는다
+    ctl = lat_run('t13', 'steady', 30, start_ms='1000', perturb='delay', perturb_params='value=1000 at=60s for=60s',
+                  perturb_start_ms='61000', perturb_end_ms='121500', es_rc_hits='300', es_rc_misses='100', es_refreshes='0')
+    ctl['summary']['metrics'].update({'http_req_duration{kind:control}': {'values': {'med': 3, 'p(95)': 9, 'p(99)': 12, 'max': 40}},
+                                      'http_reqs{kind:control}': {'values': {'count': 180}},
+                                      'http_req_failed{kind:control}': {'values': {'rate': 0.0}}})
+    assert control_section([lat_run('a', 'steady', 1)]) == [] and es_section([lat_run('a', 'steady', 1)]) == []
+    assert '| `t13-steady` | steady | 180 | 0.00% | 3/9/12/40 (n=180) |' in control_section([ctl]), control_section([ctl])
+    assert '| delay | value=1000 at=60s for=60s | 60~120s | - | 300 | 100 | 75.0% | 0 |' in '\n'.join(es_section([ctl])), es_section([ctl])
     print('self-test ok')
 
 
