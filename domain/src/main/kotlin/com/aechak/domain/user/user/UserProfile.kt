@@ -61,6 +61,12 @@ class UserProfile protected constructor(
         this.profileImageKey = profileImageKey
     }
 
+    /** 운영자 프로필 초기화 — 이미지는 기본 이미지(key 없음)로 되돌리고 소개글을 비운다. 진입점은 User.resetProfileByOperator. */
+    fun resetByOperator() {
+        this.bio = null
+        this.profileImageKey = null
+    }
+
     companion object {
         /** 닉네임 UNIQUE 제약명 — @Table 선언과 커밋 시점 예외 번역(제약명 분기)이 공유한다. */
         const val UK_NICKNAME = "uk_user_profiles_nickname"
