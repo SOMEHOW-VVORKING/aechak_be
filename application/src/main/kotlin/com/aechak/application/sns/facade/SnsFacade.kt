@@ -17,12 +17,16 @@ import com.aechak.application.sns.usecase.result.SnsProfileResult
 import com.aechak.application.sns.usecase.result.SnsRelationItemResult
 import com.aechak.application.sns.usecase.result.SnsUserItemResult
 import com.aechak.application.support.CursorPageResult
+import com.aechak.application.support.retryOnceOnDeadlock
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.application.user.user.usecase.result.UserPublicProfileResult
 import org.springframework.stereotype.Service
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 
 @Service
 class SnsFacade(
@@ -35,7 +39,13 @@ class SnsFacade(
     private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
     private val fileUseCase: FileUseCase,
+    transactionManager: PlatformTransactionManager,
 ) : SnsUseCase {
+    private val readCommittedTx =
+        TransactionTemplate(transactionManager).apply {
+            isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
+        }
+
     @Transactional(readOnly = true)
     override fun getProfile(
         publicId: String,
@@ -97,11 +107,15 @@ class SnsFacade(
         blockService.unblock(command.userId, target.userId)
     }
 
-    // 뮤트는 통계 행을 잠그지 않는다. 갭 잠금을 줄이려고 차단과 같이 READ_COMMITTED
-    @Transactional(isolation = Isolation.READ_COMMITTED)
+    // 뮤트는 통계 행을 잠그지 않는다. 갭 잠금을 줄이려고 차단과 같이 READ_COMMITTED이고
+    // 끄기 하나와 켜기 둘이 겹쳐 교착으로 되돌아가면 한 번 다시 한다
     override fun mute(command: MuteUserCommand) {
-        val target = snsProfileService.requireVisible(userUseCase.findPublicProfile(command.targetPublicId))
-        muteService.mute(command.userId, target.userId)
+        retryOnceOnDeadlock {
+            readCommittedTx.executeWithoutResult {
+                val target = snsProfileService.requireVisible(userUseCase.findPublicProfile(command.targetPublicId))
+                muteService.mute(command.userId, target.userId)
+            }
+        }
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
