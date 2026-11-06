@@ -3,6 +3,8 @@ package com.aechak.infra.persistence.sns.search
 import com.aechak.application.sns.port.SnsPostMatch
 import com.aechak.application.sns.port.SnsSearchQueryPort
 import com.aechak.application.sns.port.view.SnsFeedEntryView
+import com.aechak.application.sns.port.view.SnsSearchHashtagView
+import com.aechak.application.sns.port.view.SnsSearchUserView
 import com.aechak.domain.sns.post.enums.PostStatus
 import com.aechak.infra.persistence.sns.feed.time
 import com.aechak.infra.persistence.sns.feed.visibleUserSql
@@ -105,6 +107,113 @@ class SnsSearchQueryAdapter(
     override fun count(match: SnsPostMatch): Long {
         val sql = match.toSql()
         return (nativeQuery("SELECT COUNT(*) FROM sns_posts p WHERE ${baseWhere(sql)}", sql).singleResult as Number).toLong()
+    }
+
+    // shortcut: 닉네임을 앞에 와일드카드가 붙은 LIKE로 찾아 user_profiles를 끝까지 읽고 맞는 행 전체를 정렬한다.
+    // 프로필이 10만 명을 넘거나 계정 검색 P95가 300ms를 넘으면 ngram FULLTEXT 색인으로 바꾼다
+    override fun findUserPage(
+        nickname: String,
+        viewerId: Long?,
+        lastBucket: Int?,
+        lastFollowerCount: Long?,
+        lastPublicId: String?,
+        limit: Int,
+    ): List<SnsSearchUserView> {
+        val blockingMe =
+            if (viewerId !=
+                null
+            ) {
+                "EXISTS (SELECT 1 FROM sns_blocks b WHERE b.blocker_id = u.id AND b.blocked_id = :viewerId)"
+            } else {
+                "0"
+            }
+        val sql =
+            """
+            SELECT x.id, x.public_id, x.nickname, x.profile_image_key, x.fc, x.bucket, x.blocking_me
+            FROM (
+                SELECT u.id, u.public_id, up.nickname, up.profile_image_key, COALESCE(st.follower_count, 0) AS fc,
+                       CASE WHEN up.nickname = :exact THEN 0 WHEN up.nickname LIKE :prefix ESCAPE '\\' THEN 1 ELSE 2 END AS bucket,
+                       $blockingMe AS blocking_me
+                FROM user_profiles up
+                JOIN users u ON u.id = up.user_id
+                LEFT JOIN sns_user_stats st ON st.user_id = u.id
+                WHERE up.nickname LIKE :contains ESCAPE '\\'
+            ) x
+            WHERE 1 = 1
+            """ +
+                // 내가 차단만 한 사용자는 빼고 나를 차단한 사용자는 내가 차단했어도 기본 프로필로 남긴다
+                (
+                    if (viewerId != null) {
+                        " AND (x.blocking_me = 1 OR NOT EXISTS (SELECT 1 FROM sns_blocks b2 WHERE b2.blocker_id = :viewerId AND b2.blocked_id = x.id))"
+                    } else {
+                        ""
+                    }
+                ) +
+                (
+                    if (lastBucket != null) {
+                        " AND (x.bucket > :lastBucket OR (x.bucket = :lastBucket AND (x.fc < :lastFc OR (x.fc = :lastFc AND x.public_id > :lastPublicId))))"
+                    } else {
+                        ""
+                    }
+                ) +
+                " ORDER BY x.bucket, x.fc DESC, x.public_id LIMIT :limit"
+        val contains = nicknameContainsPattern(nickname)
+        val query =
+            em
+                .createNativeQuery(sql)
+                .setParameter("exact", nickname)
+                // 앞의 %만 떼면 시작 일치 패턴이다
+                .setParameter("prefix", contains.removePrefix("%"))
+                .setParameter("contains", contains)
+                .setParameter("limit", limit)
+        if (viewerId != null) query.setParameter("viewerId", viewerId)
+        if (lastBucket != null) {
+            query
+                .setParameter(
+                    "lastBucket",
+                    lastBucket,
+                ).setParameter("lastFc", lastFollowerCount)
+                .setParameter("lastPublicId", lastPublicId)
+        }
+        return query.resultList.map { row ->
+            (row as Array<*>).let {
+                SnsSearchUserView(
+                    userId = (it[0] as Number).toLong(),
+                    publicId = it[1] as String,
+                    nickname = it[2] as String,
+                    profileImageKey = it[3] as String?,
+                    followerCount = (it[4] as Number).toLong(),
+                    bucket = (it[5] as Number).toInt(),
+                    blockingMe = (it[6] as Number).toInt() == 1,
+                )
+            }
+        }
+    }
+
+    override fun findHashtagPage(
+        name: String,
+        lastPostCount: Int?,
+        lastName: String?,
+        limit: Int,
+    ): List<SnsSearchHashtagView> {
+        val query =
+            em
+                .createNativeQuery(
+                    "SELECT h.name, h.post_count FROM sns_hashtags h WHERE h.post_count > 0 AND h.name LIKE :contains ESCAPE '\\\\'" +
+                        (
+                            if (lastPostCount !=
+                                null
+                            ) {
+                                " AND (h.post_count < :lastCount OR (h.post_count = :lastCount AND h.name > :lastName))"
+                            } else {
+                                ""
+                            }
+                        ) +
+                        " ORDER BY h.post_count DESC, h.name LIMIT :limit",
+                ).setParameter("contains", nicknameContainsPattern(name))
+                .setParameter("limit", limit)
+        if (lastPostCount != null) query.setParameter("lastCount", lastPostCount).setParameter("lastName", lastName)
+        return query.resultList.map { row -> (row as Array<*>).let { SnsSearchHashtagView(it[0] as String, (it[1] as Number).toInt()) } }
     }
 
     private fun nativeQuery(

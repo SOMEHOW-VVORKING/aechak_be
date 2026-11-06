@@ -3,7 +3,9 @@ package com.aechak.api.sns.controller
 import com.aechak.api.sns.request.SnsHashtagPostsRequest
 import com.aechak.api.sns.request.SnsSearchRequest
 import com.aechak.api.sns.response.SnsHashtagPostPageResponse
+import com.aechak.api.sns.response.SnsSearchHashtagPageResponse
 import com.aechak.api.sns.response.SnsSearchPostPageResponse
+import com.aechak.api.sns.response.SnsSearchUserPageResponse
 import com.aechak.application.sns.usecase.SnsSearchUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
@@ -26,6 +28,22 @@ class SnsSearchController(
         @AuthenticationPrincipal principal: AuthPrincipal?,
     ): ResponseEntity<ApiResponse<SnsSearchPostPageResponse>> =
         ResponseEntity.ok(ApiResponse.of(SnsSearchPostPageResponse.from(snsSearchUseCase.searchPosts(request.toQuery(principal?.userId)))))
+
+    @GetMapping("/sns/search/users")
+    fun searchUsers(
+        @Valid @ModelAttribute @ParameterObject request: SnsSearchRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal?,
+    ): ResponseEntity<ApiResponse<SnsSearchUserPageResponse>> =
+        ResponseEntity.ok(ApiResponse.of(SnsSearchUserPageResponse.from(snsSearchUseCase.searchUsers(request.toQuery(principal?.userId)))))
+
+    @GetMapping("/sns/search/hashtags")
+    fun searchHashtags(
+        @Valid @ModelAttribute @ParameterObject request: SnsSearchRequest,
+        @AuthenticationPrincipal principal: AuthPrincipal?,
+    ): ResponseEntity<ApiResponse<SnsSearchHashtagPageResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(SnsSearchHashtagPageResponse.from(snsSearchUseCase.searchHashtags(request.toQuery(principal?.userId)))),
+        )
 
     @GetMapping("/sns/hashtags/{name}/posts")
     fun hashtagPosts(

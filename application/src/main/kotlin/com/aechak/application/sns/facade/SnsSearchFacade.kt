@@ -1,7 +1,9 @@
 package com.aechak.application.sns.facade
 
+import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.sns.port.SnsPostMatch
 import com.aechak.application.sns.port.SnsSearchRankingStore
+import com.aechak.application.sns.service.FollowService
 import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.SnsFeedService
 import com.aechak.application.sns.service.SnsSearchService
@@ -14,7 +16,10 @@ import com.aechak.application.sns.usecase.query.SnsSearchSort
 import com.aechak.application.sns.usecase.result.SnsFeedItemResult
 import com.aechak.application.sns.usecase.result.SnsHashtagPostPageResult
 import com.aechak.application.sns.usecase.result.SnsHashtagResult
+import com.aechak.application.sns.usecase.result.SnsSearchUserResult
+import com.aechak.application.sns.usecase.result.SnsUserItemResult.SnsPetSummaryResult
 import com.aechak.application.support.CursorPageResult
+import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.sns.hashtag.Hashtag
@@ -22,6 +27,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.dao.DataAccessException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 import java.util.Locale
 
@@ -33,6 +39,9 @@ class SnsSearchFacade(
     private val snsVisibilityService: SnsVisibilityService,
     private val postCardAssembler: PostCardAssembler,
     private val rankingStore: SnsSearchRankingStore,
+    private val followService: FollowService,
+    private val petProfileUseCase: PetProfileUseCase,
+    private val fileUseCase: FileUseCase,
     transactionManager: PlatformTransactionManager,
 ) : SnsSearchUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -62,6 +71,32 @@ class SnsSearchFacade(
             postPage(SnsPostMatch.Tag(hashtag.id), TAG_SCOPE + hashtag.name, query.sort, query.cursor, query.size, query.viewerId) { it }
         return SnsHashtagPostPageResult(SnsHashtagResult.from(hashtag), page)
     }
+
+    @Transactional(readOnly = true)
+    override fun searchUsers(query: SnsSearchQuery): CursorPageResult<SnsSearchUserResult> {
+        val page = snsSearchService.userPage(query)
+        // 나를 차단한 사용자는 기본 프로필만 보여서 펫과 팔로우 여부를 읽지 않는다
+        val userIds = page.items.filterNot { it.blockingMe }.map { it.userId }
+        val followingIds = query.viewerId?.let { followService.findFollowingAmong(it, userIds) }.orEmpty()
+        val pets = petProfileUseCase.getDefaultPetSummaries(userIds).associateBy { it.userId }
+        return page.map {
+            val isMe = it.userId == query.viewerId
+            SnsSearchUserResult(
+                publicId = it.publicId,
+                nickname = it.nickname,
+                profileImageUrl = if (it.blockingMe) null else fileUseCase.resolveMediaUrl(it.profileImageKey),
+                petSummary = if (it.blockingMe) null else pets[it.userId]?.let(SnsPetSummaryResult::from),
+                followerCount = if (it.blockingMe) null else it.followerCount,
+                isMe = isMe,
+                following = !isMe && !it.blockingMe && it.userId in followingIds,
+                blockingMe = it.blockingMe,
+            )
+        }
+    }
+
+    @Transactional(readOnly = true)
+    override fun searchHashtags(query: SnsSearchQuery): CursorPageResult<SnsHashtagResult> =
+        snsSearchService.hashtagPage(query).map { SnsHashtagResult(it.name, it.postCount) }
 
     /** 맞는 원글 한 페이지를 카드로 만든다. finish는 같은 읽기 트랜잭션 안에서 페이지를 마무리한다 */
     private fun postPage(
