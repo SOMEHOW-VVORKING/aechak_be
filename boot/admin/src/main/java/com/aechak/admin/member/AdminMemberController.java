@@ -9,6 +9,7 @@ import com.aechak.application.audit.support.AdminAuditContextHolder;
 import com.aechak.application.support.CursorPageSize;
 import com.aechak.application.user.sanction.usecase.AdminMemberUseCase;
 import com.aechak.application.user.sanction.usecase.command.ReleaseSanctionCommand;
+import com.aechak.application.user.sanction.usecase.command.ResetMemberProfileCommand;
 import com.aechak.application.user.sanction.usecase.command.SanctionMemberCommand;
 import com.aechak.application.user.sanction.usecase.query.MemberSearchQuery;
 import com.aechak.domain.audit.auditlog.enums.AdminAuditAction;
@@ -100,6 +101,16 @@ public class AdminMemberController {
         AdminAuditContextHolder.INSTANCE.reason(strippedOrNull(body.reasonDetail()));
         adminMemberUseCase.release(
                 new ReleaseSanctionCommand(principal.getUserId(), userId, body.reasonDetail(), body.memo()));
+        return ResponseEntity.noContent().build();
+    }
+
+    /** 프로필 초기화 — 프로필 이미지를 기본 이미지로 되돌리고 소개글을 비운다. 제재와 별개라 이력 행을 남기지 않는다. */
+    @PostMapping("/{userId}/profile/reset")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @AdminAudited(value = AdminAuditAction.MEMBER_PROFILE_RESET, targetVar = "userId")
+    public ResponseEntity<Void> resetProfile(
+            @PathVariable long userId, @AuthenticationPrincipal AuthPrincipal principal) {
+        adminMemberUseCase.resetProfile(new ResetMemberProfileCommand(principal.getUserId(), userId));
         return ResponseEntity.noContent().build();
     }
 

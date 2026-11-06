@@ -2,6 +2,7 @@ package com.aechak.application.user.sanction.usecase
 
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.user.sanction.usecase.command.ReleaseSanctionCommand
+import com.aechak.application.user.sanction.usecase.command.ResetMemberProfileCommand
 import com.aechak.application.user.sanction.usecase.command.SanctionMemberCommand
 import com.aechak.application.user.sanction.usecase.query.MemberSearchQuery
 import com.aechak.application.user.sanction.usecase.result.MemberDetailResult
@@ -15,7 +16,7 @@ interface AdminMemberUseCase {
     /** 회원 목록 — 가입 역순. 상태 필터가 커서와 어긋나면 90002. */
     fun listMembers(query: MemberSearchQuery): CursorPageResult<MemberSummaryResult>
 
-    /** 회원 상세 — 없으면 30000. */
+    /** 회원 상세 — 현재 프로필 이미지와 소개글을 함께 준다. 없으면 30000. */
     fun getMember(userId: Long): MemberDetailResult
 
     /**
@@ -26,4 +27,10 @@ interface AdminMemberUseCase {
 
     /** 제재 해제 — 걸려 있는 제재가 없으면 30019. */
     fun release(command: ReleaseSanctionCommand)
+
+    /**
+     * 운영자 프로필 초기화 — 프로필 이미지를 기본 이미지로 되돌리고 소개글을 비운다. 제재와 별개라 계정 상태는 그대로다.
+     * 관리자 계정이나 없는 회원이면 30000, 프로필이 없는 계정(온보딩 전, 탈퇴)이면 30024.
+     */
+    fun resetProfile(command: ResetMemberProfileCommand)
 }

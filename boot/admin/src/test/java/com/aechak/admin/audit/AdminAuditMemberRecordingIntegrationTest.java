@@ -184,6 +184,53 @@ class AdminAuditMemberRecordingIntegrationTest extends IntegrationTestBase {
         assertThat(row.getResult()).isEqualTo(AdminAuditResult.FAILURE);
     }
 
+    @Test
+    void 프로필_초기화는_회원_대상의_초기화_조치로_남는다() throws Exception {
+        long targetId = createMember("초기화대상", UserRole.GENERAL);
+
+        resetProfile(targetId).andExpect(status().isNoContent());
+
+        AdminAuditLog row = onlyRow();
+        assertThat(row.getActorUserId()).isEqualTo(actorId);
+        assertThat(row.getAction()).isEqualTo(AdminAuditAction.MEMBER_PROFILE_RESET);
+        assertThat(row.getTargetType()).isEqualTo(AdminAuditTargetType.MEMBER);
+        assertThat(row.getTargetId()).isEqualTo(String.valueOf(targetId));
+        assertThat(row.getTargetLabel()).isEqualTo("초기화대상");
+        assertThat(row.getResult()).isEqualTo(AdminAuditResult.SUCCESS);
+        assertThat(row.getHttpStatus()).isEqualTo(204);
+    }
+
+    @Test
+    void 프로필이_없는_회원의_초기화_시도도_실패_행으로_남는다() throws Exception {
+        long targetId = createMember("탈퇴대상", UserRole.GENERAL);
+        sanction(targetId, "FORCE_WITHDRAW", "FALSE_REPORT", null, null).andExpect(status().isNoContent());
+
+        resetProfile(targetId)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(30024));
+
+        AdminAuditLog row = auditRows().get(1);
+        assertThat(row.getAction()).isEqualTo(AdminAuditAction.MEMBER_PROFILE_RESET);
+        assertThat(row.getTargetId()).isEqualTo(String.valueOf(targetId));
+        assertThat(row.getResult()).isEqualTo(AdminAuditResult.FAILURE);
+        assertThat(row.getHttpStatus()).isEqualTo(409);
+    }
+
+    @Test
+    void 관리자_계정_초기화_시도는_대상_이름이_채워진_실패_행을_남긴다() throws Exception {
+        long adminTargetId = createMember("다른운영자", UserRole.ADMIN);
+
+        resetProfile(adminTargetId)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value(30000));
+
+        AdminAuditLog row = onlyRow();
+        assertThat(row.getAction()).isEqualTo(AdminAuditAction.MEMBER_PROFILE_RESET);
+        assertThat(row.getTargetId()).isEqualTo(String.valueOf(adminTargetId));
+        assertThat(row.getTargetLabel()).isEqualTo("다른운영자");
+        assertThat(row.getResult()).isEqualTo(AdminAuditResult.FAILURE);
+    }
+
     /** 조회까지 남기면 조치가 조회 소음에 묻힌다 */
     @Test
     void 회원_조회는_행을_남기지_않는다() throws Exception {
@@ -200,6 +247,10 @@ class AdminAuditMemberRecordingIntegrationTest extends IntegrationTestBase {
         return mockMvc.perform(bearer(post(BASE + "/" + userId + "/sanctions"), actorToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(sanctionBody(action, reasonCode, durationDays, reasonDetail)));
+    }
+
+    private ResultActions resetProfile(long userId) throws Exception {
+        return mockMvc.perform(bearer(post(BASE + "/" + userId + "/profile/reset"), actorToken));
     }
 
     private ResultActions release(long userId, String reasonDetail) throws Exception {

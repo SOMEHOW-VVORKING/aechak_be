@@ -18,6 +18,7 @@ import com.aechak.application.sns.postdeletion.usecase.SnsPostDeletionUseCase
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.user.sanction.usecase.AdminMemberUseCase
 import com.aechak.application.user.sanction.usecase.command.ReleaseSanctionCommand
+import com.aechak.application.user.sanction.usecase.command.ResetMemberProfileCommand
 import com.aechak.application.user.sanction.usecase.command.SanctionMemberCommand
 import com.aechak.application.user.sanction.usecase.query.MemberSearchQuery
 import com.aechak.application.user.sanction.usecase.result.MemberDetailResult
@@ -356,6 +357,8 @@ private class RecordingAdminMemberUseCase : AdminMemberUseCase {
     override fun getMember(userId: Long): MemberDetailResult = unused()
 
     override fun release(command: ReleaseSanctionCommand): Unit = unused()
+
+    override fun resetProfile(command: ResetMemberProfileCommand): Unit = unused()
 }
 
 private class StubUserUseCase : UserUseCase {
