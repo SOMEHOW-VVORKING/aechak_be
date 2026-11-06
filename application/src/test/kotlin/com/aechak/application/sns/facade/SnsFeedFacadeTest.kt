@@ -46,6 +46,7 @@ import com.aechak.application.user.user.usecase.result.UserSummaryResult
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.sns.follow.repository.FollowRepository
+import com.aechak.domain.sns.like.repository.PostLikeRepository
 import com.aechak.domain.sns.post.Post
 import com.aechak.domain.sns.post.enums.PostMediaType
 import com.aechak.domain.sns.post.repository.PostRepository
@@ -135,6 +136,7 @@ class SnsFeedFacadeTest {
                 port,
                 UnusedRepostRepository(),
                 UnusedSaveRepository(),
+                NoPostLikeRepository(),
                 UnusedFollowRepository(),
                 NoPetProfileUseCase(),
                 KeyUrlFileUseCase(),
@@ -216,7 +218,9 @@ private class FakeFeedQueryPort(
     override fun findPopularRanking(
         from: LocalDateTime?,
         to: LocalDateTime,
+        likeWeight: Int,
         repostWeight: Int,
+        halfLifeHours: Int,
         limit: Int,
     ): List<Long> = ranking
 
@@ -363,6 +367,25 @@ private class UnusedSaveRepository : SaveRepository {
     ): Int = throw UnsupportedOperationException()
 
     override fun findSavedPostIdsAmong(
+        userId: Long,
+        postIds: Collection<Long>,
+    ): Set<Long> = throw UnsupportedOperationException()
+}
+
+private class NoPostLikeRepository : PostLikeRepository {
+    override fun insertIfAbsent(
+        postId: Long,
+        userId: Long,
+    ): Unit = throw UnsupportedOperationException()
+
+    override fun delete(
+        postId: Long,
+        userId: Long,
+    ): Int = throw UnsupportedOperationException()
+
+    override fun countByPostIds(postIds: Collection<Long>): Map<Long, Long> = postIds.associateWith { 0L }
+
+    override fun findLikedPostIdsAmong(
         userId: Long,
         postIds: Collection<Long>,
     ): Set<Long> = throw UnsupportedOperationException()

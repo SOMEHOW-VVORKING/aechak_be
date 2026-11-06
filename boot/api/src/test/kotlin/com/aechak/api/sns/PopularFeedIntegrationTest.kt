@@ -17,7 +17,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * 통합: 인기 피드가 72시간 안의 원글을 리포스트 수의 3배 점수순 카드로 주고(20개에 못 미치면 72시간이 지난 글을 점수순으로 잇고)
+ * 통합: 인기 피드가 72시간 안의 원글을 좋아요 수와 리포스트 수의 3배를 더하고 하루마다 절반이 되는 감쇠를 곱한 점수순 카드로 주고(20개에 못 미치면 72시간이 지난 글을 점수순으로 잇고)
  * 순위를 분마다 Redis 키 하나에 남겨 다음 페이지가 첫 페이지의 순위를 따르는지, 모든 페이지가 지금의 노출 판정으로 거르며 크기만큼 채우는지.
  * 깨지면 점수 0인 글이 나오거나 72시간 안의 글이 넉넉한데 지난 글이 끼거나 적은데 지난 글로 채우지 않거나
  * 내리는 동안 순위가 바뀌어 본 글이 다시 나오거나 숨긴 사용자의 글이 나온다.
@@ -77,9 +77,41 @@ class PopularFeedIntegrationTest : SnsPostIntegrationTestBase() {
         val oldLow = scoredPost(2)
         val oldHigh = scoredPost(5)
         backdatePost(oldLow, LocalDateTime.now().minusDays(5))
-        backdatePost(oldHigh, LocalDateTime.now().minusDays(10))
+        backdatePost(oldHigh, LocalDateTime.now().minusDays(4))
 
         assertEquals(listOf(recent, oldHigh, oldLow), feedPage("popular").postIds(), "72시간 안의 글 뒤에 지난 글이 점수순으로 이어져야 한다")
+    }
+
+    @Test
+    fun `점수는 좋아요 수와 리포스트 수의 3배를 더한 값이고 좋아요만 받은 글과 작성자 본인의 좋아요도 넣는다`() {
+        val twoLikes = likedPost(2)
+        val oneRepost = scoredPost(1)
+        val fourLikes = likedPost(4)
+        val authorId = onboardedUser()
+        val selfLiked = createdPublicId(authorId)
+        like(selfLiked, authorId).andExpect(status().isCreated)
+        backdatePost(selfLiked, LocalDateTime.now().minusHours(1))
+
+        assertEquals(
+            listOf(fourLikes, oneRepost, twoLikes, selfLiked),
+            feedPage("popular").postIds(),
+            "좋아요 1점, 리포스트 3점의 합으로 정렬하고 본인 좋아요만 받은 글도 나와야 한다",
+        )
+    }
+
+    @Test
+    fun `점수에 하루마다 절반이 되는 감쇠를 곱한다`() {
+        val dayOld = likedPost(3)
+        val fresh = likedPost(1)
+        val twoDaysOld = likedPost(3)
+        backdatePost(dayOld, LocalDateTime.now().minusHours(24))
+        backdatePost(twoDaysOld, LocalDateTime.now().minusHours(48))
+
+        assertEquals(
+            listOf(dayOld, fresh, twoDaysOld),
+            feedPage("popular").postIds(),
+            "하루 지난 3점(1.5)이 새 글 1점보다 앞이고 이틀 지난 3점(0.75)은 뒤여야 한다",
+        )
     }
 
     @Test
@@ -238,6 +270,13 @@ class PopularFeedIntegrationTest : SnsPostIntegrationTestBase() {
     private fun repostedPost(count: Int): String {
         val publicId = createdPublicId(onboardedUser())
         repeat(count) { repost(publicId, onboardedUser()).andExpect(status().isCreated) }
+        return publicId
+    }
+
+    /** 서로 다른 사용자 count명이 좋아요한 원글 */
+    private fun likedPost(count: Int): String {
+        val publicId = createdPublicId(onboardedUser())
+        repeat(count) { like(publicId, onboardedUser()).andExpect(status().isCreated) }
         return publicId
     }
 
