@@ -38,4 +38,11 @@ interface SnsUserListQueryPort {
         hiddenUserIds: Set<Long>,
         limit: Int,
     ): List<SnsLikerView>
+
+    /** 댓글에 좋아요한 사람을 최근에 누른 순서로 limit명. hiddenUserIds에 든 사용자는 빼고 채운다 */
+    fun findCommentLikers(
+        commentId: Long,
+        hiddenUserIds: Set<Long>,
+        limit: Int,
+    ): List<SnsLikerView>
 }

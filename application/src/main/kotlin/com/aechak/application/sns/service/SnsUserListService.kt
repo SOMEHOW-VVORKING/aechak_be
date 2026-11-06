@@ -59,4 +59,10 @@ class SnsUserListService(
         hiddenUserIds: Set<Long>,
         limit: Int,
     ): List<SnsLikerView> = userListQueryPort.findPostLikers(postId, hiddenUserIds, limit)
+
+    fun getCommentLikers(
+        commentId: Long,
+        hiddenUserIds: Set<Long>,
+        limit: Int,
+    ): List<SnsLikerView> = userListQueryPort.findCommentLikers(commentId, hiddenUserIds, limit)
 }
