@@ -21,6 +21,12 @@ interface SnsCommentQueryPort {
         rootIds: List<Long>,
     ): List<SnsCommentView>
 
+    /** 게시물마다 보는 사람에게 세는 댓글 수. 댓글이 없는 게시물은 0이다 */
+    fun countVisible(
+        postIds: Collection<Long>,
+        viewerId: Long?,
+    ): Map<Long, Long>
+
     /** 이 게시물의 댓글이고 보는 사람에게 보이면 조회 결과를, 아니면 null을 돌려준다. 사용자 표를 읽지 않는다 */
     fun findVisibleRef(
         scope: SnsCommentScope,

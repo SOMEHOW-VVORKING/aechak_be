@@ -41,6 +41,12 @@ class CommentQueryService(
             muted = snsVisibilityService.findMutedIds(viewerId),
         )
 
+    /** 상세와 피드 카드의 댓글 수. 섀도우 처리된 사용자에게만 자기 숨긴 댓글과 그 아래 대댓글이 더해진다 */
+    fun countVisible(
+        postIds: Collection<Long>,
+        viewerId: Long?,
+    ): Map<Long, Long> = commentQueryPort.countVisible(postIds, viewerId)
+
     /** 보는 사람에게 보이는 이 게시물의 댓글을 답글 대상으로 찾는다. 없거나 보이지 않으면 130700이다 */
     fun requireReplyTarget(
         scope: SnsCommentScope,

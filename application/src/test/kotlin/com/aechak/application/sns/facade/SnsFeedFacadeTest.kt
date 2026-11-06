@@ -7,10 +7,14 @@ import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.file.usecase.result.IssuePresignedUrlResult
 import com.aechak.application.file.usecase.result.PromoteFileResult
+import com.aechak.application.sns.port.SnsCommentQueryPort
+import com.aechak.application.sns.port.SnsCommentScope
 import com.aechak.application.sns.port.SnsFeedQueryPort
 import com.aechak.application.sns.port.SnsPopularSnapshotStore
 import com.aechak.application.sns.port.SnsPostTab
 import com.aechak.application.sns.port.SnsVisibilityQueryPort
+import com.aechak.application.sns.port.view.SnsCommentRefView
+import com.aechak.application.sns.port.view.SnsCommentView
 import com.aechak.application.sns.port.view.SnsFeedEntryView
 import com.aechak.application.sns.port.view.SnsFeedRepostView
 import com.aechak.application.sns.port.view.SnsPairStateView
@@ -19,6 +23,7 @@ import com.aechak.application.sns.port.view.SnsPostHashtagView
 import com.aechak.application.sns.port.view.SnsPostMediaView
 import com.aechak.application.sns.port.view.SnsSaveView
 import com.aechak.application.sns.port.view.SnsUserRepostView
+import com.aechak.application.sns.service.CommentQueryService
 import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.SnsFeedService
 import com.aechak.application.sns.service.SnsProfileService
@@ -136,6 +141,12 @@ class SnsFeedFacadeTest {
                 UnusedRepostRepository(),
                 UnusedSaveRepository(),
                 UnusedFollowRepository(),
+                CommentQueryService(
+                    NoCommentQueryPort(),
+                    SnsVisibilityService(UnusedVisibilityQueryPort()),
+                    KeyUrlFileUseCase(),
+                    UnusedUserUseCase(),
+                ),
                 NoPetProfileUseCase(),
                 KeyUrlFileUseCase(),
             ),
@@ -366,6 +377,29 @@ private class UnusedSaveRepository : SaveRepository {
         userId: Long,
         postIds: Collection<Long>,
     ): Set<Long> = throw UnsupportedOperationException()
+}
+
+private class NoCommentQueryPort : SnsCommentQueryPort {
+    override fun findRootPage(
+        scope: SnsCommentScope,
+        lastRootId: Long?,
+        limit: Int,
+    ): List<SnsCommentView> = throw UnsupportedOperationException()
+
+    override fun findReplies(
+        scope: SnsCommentScope,
+        rootIds: List<Long>,
+    ): List<SnsCommentView> = throw UnsupportedOperationException()
+
+    override fun countVisible(
+        postIds: Collection<Long>,
+        viewerId: Long?,
+    ): Map<Long, Long> = postIds.associateWith { 0L }
+
+    override fun findVisibleRef(
+        scope: SnsCommentScope,
+        commentPublicId: String,
+    ): SnsCommentRefView? = throw UnsupportedOperationException()
 }
 
 private class UnusedFollowRepository : FollowRepository {

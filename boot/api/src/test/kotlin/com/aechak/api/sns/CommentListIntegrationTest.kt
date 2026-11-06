@@ -335,6 +335,16 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
             assertEquals(listOf(byB), visibleCommentIds(postId, b))
             assertEquals(emptyList(), visibleCommentIds(postId, a))
             assertEquals(emptyList(), visibleCommentIds(postId, c))
+            assertCounts(b to 1, a to 0, c to 0)
+        }
+
+        @Test
+        fun `B에게 보이는 댓글 수는 공개 수에 B의 숨긴 댓글을 더한 값이다`() {
+            repeat(10) { seedComment(onboardedUser(), postId) }
+            relate(a, b, "mute")
+            seedComment(b, postId)
+
+            assertCounts(b to 11, c to 10, null to 10)
         }
 
         @Test
@@ -345,6 +355,7 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
 
             assertEquals(listOf(byB, byC), visibleCommentIds(postId, b))
             assertEquals(emptyList(), visibleCommentIds(postId, c))
+            assertCounts(b to 2, c to 0)
         }
 
         @Test
@@ -355,6 +366,7 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
             relate(c, b, "block")
 
             assertEquals(listOf(byB), visibleCommentIds(postId, b))
+            assertCounts(b to 2)
         }
 
         @Test
@@ -367,6 +379,7 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
             assertEquals(listOf(byB), visibleCommentIds(postId, b))
             assertEquals(emptyList(), visibleCommentIds(postId, c))
             assertEquals(emptyList(), visibleCommentIds(postId, a))
+            assertCounts(b to 1, c to 0, a to 0)
         }
 
         @Test
@@ -377,6 +390,7 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
 
             assertEquals(emptyList(), visibleCommentIds(postId, c))
             assertEquals(2, visibleCommentIds(postId, b).size)
+            assertCounts(c to 0, b to 2)
         }
 
         @Test
@@ -388,6 +402,7 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
             assertEquals(listOf(byC, byB), visibleCommentIds(postId, b))
             assertEquals(listOf(byC), visibleCommentIds(postId, c))
             assertEquals(listOf(byC), visibleCommentIds(postId, a))
+            assertCounts(b to 2, c to 1, a to 1)
         }
 
         @Test
@@ -398,6 +413,7 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
 
             assertEquals(emptyList(), visibleCommentIds(postId, d))
             assertEquals(listOf(byB, byC), visibleCommentIds(postId, b))
+            assertCounts(d to 0, b to 2)
         }
 
         @Test
@@ -407,6 +423,7 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
             relate(a, b, "mute")
 
             assertEquals(emptyList(), visibleCommentIds(postId, c))
+            assertCounts(c to 0)
         }
 
         @Test
@@ -416,6 +433,7 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
             unrelate(a, b, "mute")
 
             assertEquals(listOf(byB), visibleCommentIds(postId, c))
+            assertCounts(c to 1, a to 1)
         }
 
         @Test
@@ -427,6 +445,7 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
             assertEquals(listOf(byB), visibleCommentIds(otherPost, d))
             assertEquals(listOf(byB), visibleCommentIds(otherPost, c))
             assertEquals(emptyList(), visibleCommentIds(otherPost, a))
+            listOf(d, c, a).forEach { assertEquals(1, postDetail(otherPost, it)["commentCount"]) }
         }
 
         @Test
@@ -439,6 +458,7 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
 
             assertEquals(emptyList(), visibleCommentIds(postId, c))
             assertEquals(emptyList(), visibleCommentIds(postId, a))
+            assertCounts(c to 0, a to 0)
         }
 
         @Test
@@ -448,6 +468,12 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
             val byC = seedComment(c, postId)
 
             assertEquals(listOf(byC), visibleCommentIds(postId))
+            assertCounts(null to 1, b to 2)
+        }
+
+        /** 보는 사람(null은 비로그인)마다 상세 commentCount */
+        private fun assertCounts(vararg expected: Pair<Long?, Int>) {
+            expected.forEach { (viewer, count) -> assertEquals(count, postDetail(postId, viewer)["commentCount"], "viewer=$viewer") }
         }
     }
 

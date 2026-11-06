@@ -7,12 +7,15 @@ import com.aechak.application.sns.port.view.SnsCommentView
 import com.aechak.domain.sns.comment.QComment
 import com.aechak.domain.sns.comment.enums.CommentStatus
 import com.aechak.domain.sns.mute.QMute
+import com.aechak.domain.sns.post.QPost
 import com.aechak.domain.user.user.QUser
 import com.aechak.domain.user.user.QUserProfile
 import com.querydsl.core.types.ExpressionUtils
 import com.querydsl.core.types.Predicate
 import com.querydsl.core.types.Projections
 import com.querydsl.core.types.dsl.BooleanExpression
+import com.querydsl.core.types.dsl.Expressions
+import com.querydsl.core.types.dsl.NumberExpression
 import com.querydsl.core.types.dsl.NumberPath
 import com.querydsl.jpa.JPAExpressions
 import com.querydsl.jpa.impl.JPAQuery
@@ -82,6 +85,34 @@ class SnsCommentQueryAdapter(
             ).fetchOne()
     }
 
+    // shortcut: 상세와 카드마다 댓글 행을 센다. 행마다 sns_mutes 고유 인덱스를 두 번 찾고 최상위 댓글 작성자를 기본 키로 한 번 읽는다.
+    // 게시물 하나의 댓글이 1만 개를 넘거나 상세 P95가 200ms, 피드 P95가 300ms를 넘으면
+    // 공개 수를 게시물 통계 행에 저장하고 섀도우 처리된 작성자의 댓글만 볼 때 빼는 방식으로 바꾼다
+    override fun countVisible(
+        postIds: Collection<Long>,
+        viewerId: Long?,
+    ): Map<Long, Long> {
+        if (postIds.isEmpty()) return emptyMap()
+        val post = QPost("countedPost")
+        val root = QComment("countedRoot")
+        // 차단과 일반 뮤트는 보는 사람에게만 숨기므로 수를 줄이지 않는다. 섀도우 규칙과 ACTIVE만 쓴다
+        val rows =
+            queryFactory
+                .select(comment.post.id, comment.id.count())
+                .from(comment)
+                .join(comment.post, post)
+                .leftJoin(comment.parent, root)
+                .where(
+                    comment.post.id.`in`(postIds),
+                    comment.status.eq(CommentStatus.ACTIVE),
+                    notShadowed(comment.authorId, post.authorId, viewerId),
+                    comment.parent.isNull.or(notShadowed(root.authorId, post.authorId, viewerId)),
+                ).groupBy(comment.post.id)
+                .fetch()
+        val counts = rows.associate { it.get(0, Long::class.java)!! to it.get(1, Long::class.java)!! }
+        return postIds.associateWith { counts[it] ?: 0L }
+    }
+
     /** 작성자 표시 정보는 id 동등 LEFT JOIN으로 같은 쿼리에서 읽는다. 프로필 행이 없으면 null이다 */
     private fun selectViews(c: QComment): JPAQuery<SnsCommentView> =
         queryFactory
@@ -128,7 +159,7 @@ class SnsCommentQueryAdapter(
         scope: SnsCommentScope,
     ): Predicate? =
         ExpressionUtils.allOf(
-            notShadowed(authorId, scope),
+            notShadowed(authorId, Expressions.asNumber(scope.postAuthorId), scope.viewerId),
             // 빈 집합이면 NOT IN 조건을 빼 거르지 않는다
             scope.hidden.takeIf { it.isNotEmpty() }?.let { authorId.notIn(it) },
             scope.muted.takeIf { it.isNotEmpty() }?.let { authorId.notIn(it) },
@@ -140,7 +171,8 @@ class SnsCommentQueryAdapter(
      */
     private fun notShadowed(
         authorId: NumberPath<Long>,
-        scope: SnsCommentScope,
+        postAuthorId: NumberExpression<Long>,
+        viewerId: Long?,
     ): BooleanExpression {
         // 한 쿼리에서 댓글과 그 대댓글에 함께 걸리므로 댓글 별칭마다 다른 별칭을 쓴다
         val mute = QMute("shadowOf${authorId.metadata.parent!!.metadata.name}")
@@ -148,8 +180,8 @@ class SnsCommentQueryAdapter(
             JPAExpressions
                 .selectOne()
                 .from(mute)
-                .where(mute.muterId.eq(scope.postAuthorId), mute.mutedId.eq(authorId))
+                .where(mute.muterId.eq(postAuthorId), mute.mutedId.eq(authorId))
                 .notExists()
-        return scope.viewerId?.let { notMuted.or(authorId.eq(it)) } ?: notMuted
+        return viewerId?.let { notMuted.or(authorId.eq(it)) } ?: notMuted
     }
 }

@@ -223,7 +223,7 @@ class PostDetailIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
-    fun `좋아요와 댓글과 리포스트 수는 0이고 저장 수 필드는 없다`() {
+    fun `반응이 없으면 좋아요와 댓글과 리포스트 수는 0이고 저장 수 필드는 없다`() {
         val authorId = onboardedUser()
         val publicId = createdPublicId(authorId)
 
@@ -233,6 +233,15 @@ class PostDetailIntegrationTest : SnsPostIntegrationTestBase() {
             .andExpect(jsonPath("$.data.commentCount").value(0))
             .andExpect(jsonPath("$.data.repostCount").value(0))
             .andExpect(jsonPath("$.data.saveCount").doesNotExist())
+    }
+
+    @Test
+    fun `댓글과 대댓글이 달리면 상세의 댓글 수가 둘을 합친 수다`() {
+        val publicId = createdPublicId(onboardedUser())
+        val root = seedComment(onboardedUser(), publicId)
+        seedComment(onboardedUser(), publicId, parentPublicId = root)
+
+        assertEquals(2, postDetail(publicId)["commentCount"])
     }
 
     @Test
