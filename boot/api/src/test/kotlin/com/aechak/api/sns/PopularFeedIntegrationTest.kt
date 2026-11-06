@@ -17,7 +17,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * 통합: 인기 피드가 72시간 안의 원글을 리포스트 수의 3배 점수순 카드로 주고(20개에 못 미치면 72시간이 지난 글을 점수순으로 잇고)
+ * 통합: 인기 피드가 72시간 안의 원글을 공개 댓글 수의 2배와 리포스트 수의 3배를 더한 점수순 카드로 주고(20개에 못 미치면 72시간이 지난 글을 점수순으로 잇고)
  * 순위를 분마다 Redis 키 하나에 남겨 다음 페이지가 첫 페이지의 순위를 따르는지, 모든 페이지가 지금의 노출 판정으로 거르며 크기만큼 채우는지.
  * 깨지면 점수 0인 글이 나오거나 72시간 안의 글이 넉넉한데 지난 글이 끼거나 적은데 지난 글로 채우지 않거나
  * 내리는 동안 순위가 바뀌어 본 글이 다시 나오거나 숨긴 사용자의 글이 나온다.
@@ -80,6 +80,44 @@ class PopularFeedIntegrationTest : SnsPostIntegrationTestBase() {
         backdatePost(oldHigh, LocalDateTime.now().minusDays(10))
 
         assertEquals(listOf(recent, oldHigh, oldLow), feedPage("popular").postIds(), "72시간 안의 글 뒤에 지난 글이 점수순으로 이어져야 한다")
+    }
+
+    @Test
+    fun `점수는 공개 댓글 수의 2배와 리포스트 수의 3배를 더한 값이고 댓글만 받은 글과 작성자 본인의 댓글도 넣는다`() {
+        val twoComments = createdPublicId(onboardedUser())
+        repeat(2) { seedComment(onboardedUser(), twoComments) }
+        val oneRepost = scoredPost(1)
+        val authorId = onboardedUser()
+        val selfCommented = createdPublicId(authorId)
+        seedComment(authorId, selfCommented)
+
+        assertEquals(
+            listOf(twoComments, oneRepost, selfCommented),
+            feedPage("popular").postIds(),
+            "댓글 2점, 리포스트 3점의 합으로 정렬하고 본인 댓글만 받은 글도 나와야 한다",
+        )
+    }
+
+    @Test
+    fun `섀도우 처리된 댓글과 그 아래 대댓글, 지운 댓글은 점수에 넣지 않고 차단과 일반 뮤트로는 줄지 않는다`() {
+        val viewerId = onboardedUser()
+        val shadowAuthor = onboardedUser()
+        val shadowed = createdPublicId(shadowAuthor)
+        val shadowedId = onboardedUser()
+        val shadowedRoot = seedComment(shadowedId, shadowed)
+        seedComment(onboardedUser(), shadowed, parentPublicId = shadowedRoot)
+        relate(shadowAuthor, shadowedId, "mute")
+        val deleted = createdPublicId(onboardedUser())
+        deleteCommentRow(seedComment(onboardedUser(), deleted))
+        val hiddenFromViewer = createdPublicId(onboardedUser())
+        val blockedId = onboardedUser()
+        val mutedId = onboardedUser()
+        seedComment(blockedId, hiddenFromViewer)
+        seedComment(mutedId, hiddenFromViewer)
+        relate(viewerId, blockedId, "block")
+        relate(viewerId, mutedId, "mute")
+
+        assertEquals(listOf(hiddenFromViewer), feedPage("popular", viewerId).postIds(), "공개 댓글 수가 0인 글은 빠지고 보는 사람의 숨김은 점수를 줄이지 않아야 한다")
     }
 
     @Test

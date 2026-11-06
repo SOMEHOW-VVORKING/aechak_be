@@ -18,6 +18,7 @@ import com.querydsl.core.types.dsl.Expressions
 import com.querydsl.core.types.dsl.NumberExpression
 import com.querydsl.core.types.dsl.NumberPath
 import com.querydsl.jpa.JPAExpressions
+import com.querydsl.jpa.JPQLSubQuery
 import com.querydsl.jpa.impl.JPAQuery
 import com.querydsl.jpa.impl.JPAQueryFactory
 import org.springframework.stereotype.Repository
@@ -182,24 +183,46 @@ class SnsCommentQueryAdapter(
             scope.hidden.takeIf { it.isNotEmpty() }?.let { authorId.notIn(it) },
             scope.muted.takeIf { it.isNotEmpty() }?.let { authorId.notIn(it) },
         )
+}
 
-    /**
-     * 게시물 작성자가 뮤트한 사용자(섀도우 처리된 사용자)의 댓글은 그 사용자 본인에게만 보인다.
-     * 댓글을 쓴 시점과 상관없이 지금의 뮤트 관계로 정한다. uk_sns_mute_pair로 찾는다.
-     */
-    private fun notShadowed(
-        authorId: NumberPath<Long>,
-        postAuthorId: NumberExpression<Long>,
-        viewerId: Long?,
-    ): BooleanExpression {
-        // 한 쿼리에서 댓글과 그 대댓글에 함께 걸리므로 댓글 별칭마다 다른 별칭을 쓴다
-        val mute = QMute("shadowOf${authorId.metadata.parent!!.metadata.name}")
-        val notMuted =
-            JPAExpressions
-                .selectOne()
-                .from(mute)
-                .where(mute.muterId.eq(postAuthorId), mute.mutedId.eq(authorId))
-                .notExists()
-        return viewerId?.let { notMuted.or(authorId.eq(it)) } ?: notMuted
-    }
+/**
+ * 게시물 작성자가 뮤트한 사용자(섀도우 처리된 사용자)의 댓글은 그 사용자 본인에게만 보인다.
+ * 댓글을 쓴 시점과 상관없이 지금의 뮤트 관계로 정한다. uk_sns_mute_pair로 찾는다.
+ */
+private fun notShadowed(
+    authorId: NumberPath<Long>,
+    postAuthorId: NumberExpression<Long>,
+    viewerId: Long?,
+): BooleanExpression {
+    // 한 쿼리에서 댓글과 그 대댓글에 함께 걸리므로 댓글 별칭마다 다른 별칭을 쓴다
+    val mute = QMute("shadowOf${authorId.metadata.parent!!.metadata.name}")
+    val notMuted =
+        JPAExpressions
+            .selectOne()
+            .from(mute)
+            .where(mute.muterId.eq(postAuthorId), mute.mutedId.eq(authorId))
+            .notExists()
+    return viewerId?.let { notMuted.or(authorId.eq(it)) } ?: notMuted
+}
+
+/**
+ * 게시물의 공개 댓글 수. 비로그인 카드의 수와 같이 ACTIVE 댓글과 대댓글을 섀도우 규칙으로만 거르고 작성자 본인 댓글도 센다.
+ * 인기 점수 쿼리가 게시물마다 부르는 상관 서브쿼리다.
+ */
+internal fun publicCommentCount(
+    postId: NumberExpression<Long>,
+    postAuthorId: NumberExpression<Long>,
+): JPQLSubQuery<Long> {
+    val scored = QComment("scoredComment")
+    val root = QComment("scoredRoot")
+    return JPAExpressions
+        .select(scored.count())
+        .from(scored)
+        .leftJoin(scored.parent, root)
+        .where(
+            scored.post.id.eq(postId),
+            scored.status.eq(CommentStatus.ACTIVE),
+            notShadowed(scored.authorId, postAuthorId, null),
+            scored.parent.isNull.or(notShadowed(root.authorId, postAuthorId, null)),
+        )
 }

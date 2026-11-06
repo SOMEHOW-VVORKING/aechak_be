@@ -21,8 +21,10 @@ import com.aechak.domain.sns.save.QSave
 import com.aechak.domain.sns.stats.QSnsPostStats
 import com.aechak.domain.user.user.QUser
 import com.aechak.domain.user.user.QUserProfile
+import com.aechak.infra.persistence.sns.comment.publicCommentCount
 import com.querydsl.core.types.Projections
 import com.querydsl.core.types.dsl.BooleanExpression
+import com.querydsl.core.types.dsl.Expressions
 import com.querydsl.core.types.dsl.NumberExpression
 import com.querydsl.jpa.JPAExpressions
 import com.querydsl.jpa.impl.JPAQueryFactory
@@ -210,14 +212,24 @@ class SnsFeedQueryAdapter(
     override fun findPopularRanking(
         from: LocalDateTime?,
         to: LocalDateTime,
+        commentWeight: Int,
         repostWeight: Int,
         limit: Int,
     ): List<Long> {
-        val score = stats.repostCount.multiply(repostWeight)
+        // 리포스트가 없어 통계 행이 없는 글도 댓글로 점수를 받으므로 통계 행을 LEFT JOIN한다
+        val score =
+            Expressions.numberTemplate(
+                Long::class.javaObjectType,
+                "coalesce({0}, 0) * {1} + ({2}) * {3}",
+                stats.repostCount,
+                repostWeight,
+                publicCommentCount(post.id, post.authorId),
+                commentWeight,
+            )
         return queryFactory
             .select(post.id)
             .from(post)
-            .join(stats)
+            .leftJoin(stats)
             .on(stats.postId.eq(post.id))
             .where(
                 post.status.eq(PostStatus.PUBLISHED),
