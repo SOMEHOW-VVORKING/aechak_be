@@ -5,7 +5,6 @@ import jakarta.persistence.MappedSuperclass
 import jakarta.persistence.PrePersist
 import jakarta.persistence.PreUpdate
 import java.time.LocalDateTime
-import java.time.temporal.ChronoUnit
 
 /**
  * 전 엔티티 공통 시각 컬럼(created_at/updated_at) 베이스.
@@ -27,14 +26,13 @@ abstract class BaseEntity {
 
     @PrePersist
     protected fun prePersistBase() {
-        // DATETIME(6)은 나노초를 반올림해 저장하므로 미리 버려 메모리 값과 DB 값을 같게 한다
-        val now = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)
+        val now = dbNow()
         createdAt = now
         updatedAt = now
     }
 
     @PreUpdate
     protected fun preUpdateBase() {
-        updatedAt = LocalDateTime.now().truncatedTo(ChronoUnit.MICROS)
+        updatedAt = dbNow()
     }
 }

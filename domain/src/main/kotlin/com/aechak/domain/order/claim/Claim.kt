@@ -15,6 +15,7 @@ import com.aechak.domain.order.error.OrderErrorCode
 import com.aechak.domain.order.order.Order
 import com.aechak.domain.support.AggregateRoot
 import com.aechak.domain.support.Ulid
+import com.aechak.domain.support.dbNow
 import jakarta.persistence.CascadeType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
@@ -404,7 +405,7 @@ class Claim protected constructor(
                 sellerApprovalStatus = SellerApprovalStatus.REQUESTED
                 refundStatus = RefundStatus.NONE
                 settlementStatus = ClaimSettlementStatus.PENDING
-                requestedAt = LocalDateTime.now()
+                requestedAt = dbNow()
                 this.autoApproveDueAt = autoApproveDueAt
                 items.forEach { _items += it }
             }

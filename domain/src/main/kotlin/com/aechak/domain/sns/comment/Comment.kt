@@ -7,6 +7,7 @@ import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.post.Post
 import com.aechak.domain.support.AggregateRoot
 import com.aechak.domain.support.Ulid
+import com.aechak.domain.support.dbNow
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -85,7 +86,7 @@ class Comment protected constructor(
         val normalized = normalizeContent(content)
         if (normalized == this.content) return false
         this.content = normalized
-        editedAt = LocalDateTime.now()
+        editedAt = dbNow()
         return true
     }
 
@@ -94,7 +95,7 @@ class Comment protected constructor(
         if (status == CommentStatus.DELETED) return false
         status = CommentStatus.DELETED
         deletionReason = reason
-        deletedAt = LocalDateTime.now()
+        deletedAt = dbNow()
         if (reason != CommentDeletionReason.WITHDRAWAL) content = null
         return true
     }
