@@ -219,6 +219,24 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
         )
 
+    protected fun like(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            post("/api/v1/sns/posts/$publicId/like")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
+    protected fun unlike(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            delete("/api/v1/sns/posts/$publicId/like")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
     protected fun updateBody(
         caption: String? = "공원 다녀왔어요",
         hashtags: List<String> = emptyList(),

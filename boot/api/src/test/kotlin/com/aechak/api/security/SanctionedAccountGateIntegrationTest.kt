@@ -272,6 +272,16 @@ class SanctionedAccountGateIntegrationTest : IntegrationTestBase() {
             .andExpect(jsonPath("$.errorCode").value(ProductErrorCode.PRODUCT_NOT_FOUND.code))
     }
 
+    @Test
+    fun `이용 제한 계정의 SNS 게시물 좋아요는 403 20013으로 막힌다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        mockMvc
+            .perform(bearer(post("/api/v1/sns/posts/01JF9W3Q6R8T2V4X7Z9B1C3D5J/like"), mintAccessToken(userId)))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.ACCOUNT_RESTRICTED.code))
+    }
+
     /** 제한은 쓰기만 막는다 — 제한 계정도 상품 문의 목록은 읽어야 한다. */
     @Test
     fun `이용 제한 계정의 상품 문의 조회는 게이트를 통과한다`() {
