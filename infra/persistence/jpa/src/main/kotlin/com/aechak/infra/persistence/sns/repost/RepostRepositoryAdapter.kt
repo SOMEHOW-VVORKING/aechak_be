@@ -37,8 +37,8 @@ interface RepostJpaRepository : JpaRepository<Repost, Long> {
         @Param("postIds") postIds: Collection<Long>,
     ): List<Long>
 
-    @Query("select r.postId from Repost r where r.reposterId = :reposterId")
-    fun findAllPostIds(
+    @Query(value = "SELECT post_id FROM sns_reposts WHERE reposter_id = :reposterId FOR UPDATE", nativeQuery = true)
+    fun lockPostIds(
         @Param("reposterId") reposterId: Long,
     ): List<Long>
 
@@ -69,7 +69,7 @@ class RepostRepositoryAdapter(
         postIds: Collection<Long>,
     ): Set<Long> = jpaRepository.findPostIds(reposterId, postIds).toSet()
 
-    override fun findPostIdsByReposter(reposterId: Long): List<Long> = jpaRepository.findAllPostIds(reposterId)
+    override fun findPostIdsByReposterForUpdate(reposterId: Long): List<Long> = jpaRepository.lockPostIds(reposterId)
 
     override fun deleteAllByReposter(reposterId: Long) {
         jpaRepository.deleteAllByReposterId(reposterId)

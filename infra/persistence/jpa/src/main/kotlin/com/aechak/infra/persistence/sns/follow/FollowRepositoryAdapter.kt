@@ -45,6 +45,16 @@ interface FollowJpaRepository : JpaRepository<Follow, Long> {
         @Param("followeeId") followeeId: Long,
     ): List<Long>
 
+    @Query(value = "SELECT followee_id FROM sns_follows WHERE follower_id = :followerId FOR UPDATE", nativeQuery = true)
+    fun lockFolloweeIds(
+        @Param("followerId") followerId: Long,
+    ): List<Long>
+
+    @Query(value = "SELECT follower_id FROM sns_follows WHERE followee_id = :followeeId FOR UPDATE", nativeQuery = true)
+    fun lockFollowerIds(
+        @Param("followeeId") followeeId: Long,
+    ): List<Long>
+
     @Modifying
     @Query("delete from Follow f where f.followerId = :userId")
     fun deleteAllByFollower(
@@ -80,6 +90,11 @@ class FollowRepositoryAdapter(
     override fun findFolloweeIds(followerId: Long): List<Long> = jpaRepository.findAllFolloweeIds(followerId)
 
     override fun findFollowerIds(followeeId: Long): List<Long> = jpaRepository.findAllFollowerIds(followeeId)
+
+    // 잠금 읽기는 트랜잭션 스냅샷이 아니라 최신 커밋을 읽어 같은 트랜잭션의 DELETE가 지울 행과 같다
+    override fun findFolloweeIdsForUpdate(followerId: Long): List<Long> = jpaRepository.lockFolloweeIds(followerId)
+
+    override fun findFollowerIdsForUpdate(followeeId: Long): List<Long> = jpaRepository.lockFollowerIds(followeeId)
 
     // OR 조건 하나로 지우면 두 인덱스를 함께 못 써 표를 훑으므로 방향마다 지운다
     override fun deleteAllOf(userId: Long) {

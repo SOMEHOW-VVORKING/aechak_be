@@ -1,5 +1,6 @@
 package com.aechak.api.sns
 
+import com.aechak.application.sns.withdrawal.usecase.SnsWithdrawalUseCase
 import com.aechak.application.user.withdrawal.usecase.WithdrawalUseCase
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -12,6 +13,9 @@ import kotlin.test.assertTrue
 class SnsWithdrawalCleanupIntegrationTest : SnsPostIntegrationTestBase() {
     @Autowired
     private lateinit var withdrawalUseCase: WithdrawalUseCase
+
+    @Autowired
+    private lateinit var snsWithdrawalUseCase: SnsWithdrawalUseCase
 
     @Test
     fun `탈퇴한 사용자의 팔로우가 두 방향 모두 지워지고 상대의 수가 주며 탈퇴한 사용자의 통계 행은 사라진다`() {
@@ -31,6 +35,27 @@ class SnsWithdrawalCleanupIntegrationTest : SnsPostIntegrationTestBase() {
         assertEquals(0 to 1, followCounts(follower))
         assertEquals(0 to 1, followCounts(bystander))
         assertEquals(0, count("select count(*) from sns_user_stats where user_id = ?", withdrawn))
+    }
+
+    @Test
+    fun `탈퇴 트랜잭션이 첫 읽기를 한 뒤에 커밋된 팔로우와 리포스트도 지우고 상대의 수를 내린다`() {
+        val withdrawn = onboardedUser()
+        val lateFollower = onboardedUser()
+        val postId = createdPublicId(onboardedUser())
+
+        tx.execute {
+            // 일반 SELECT 한 번으로 이 트랜잭션의 스냅샷을 만든다
+            jdbcTemplate.queryForObject("select count(*) from sns_follows", Int::class.java)
+            Thread {
+                relate(lateFollower, withdrawn, "follow")
+                repost(postId, withdrawn).andExpect(status().isCreated)
+            }.apply { start() }.join()
+            snsWithdrawalUseCase.cleanUp(withdrawn)
+        }
+
+        assertEquals(0 to 0, followCounts(lateFollower))
+        assertEquals(0, repostCountOf(postId))
+        assertEquals(0, count("select count(*) from sns_follows where follower_id = ?", lateFollower))
     }
 
     @Test

@@ -371,7 +371,7 @@ internal class UnusedRepostRepository : RepostRepository {
         postIds: Collection<Long>,
     ): Set<Long> = throw UnsupportedOperationException()
 
-    override fun findPostIdsByReposter(reposterId: Long): List<Long> = throw UnsupportedOperationException()
+    override fun findPostIdsByReposterForUpdate(reposterId: Long): List<Long> = throw UnsupportedOperationException()
 
     override fun deleteAllByReposter(reposterId: Long) = throw UnsupportedOperationException()
 }
@@ -484,6 +484,10 @@ internal class UnusedFollowRepository : FollowRepository {
     override fun findFolloweeIds(followerId: Long): List<Long> = throw UnsupportedOperationException()
 
     override fun findFollowerIds(followeeId: Long): List<Long> = throw UnsupportedOperationException()
+
+    override fun findFolloweeIdsForUpdate(followerId: Long): List<Long> = throw UnsupportedOperationException()
+
+    override fun findFollowerIdsForUpdate(followeeId: Long): List<Long> = throw UnsupportedOperationException()
 
     override fun deleteAllOf(userId: Long) = throw UnsupportedOperationException()
 }

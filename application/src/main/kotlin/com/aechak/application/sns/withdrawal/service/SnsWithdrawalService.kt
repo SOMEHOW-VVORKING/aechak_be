@@ -28,16 +28,17 @@ class SnsWithdrawalService(
      * 다른 사용자가 이 사용자에게 건 차단과 뮤트는 남긴다. 이 사용자의 통계 행은 지운다.
      */
     fun removeRelations(userId: Long) {
-        // 팔로우와 차단처럼 통계 행을 user_id 오름차순으로 잠근다. 잠근 뒤에는 이 사용자의 팔로우가 바뀌지 않아 다시 읽는다
+        // 팔로우와 차단처럼 통계 행을 user_id 오름차순으로 잠근다. 잠근 뒤에는 이 사용자의 팔로우가 바뀌지 않는다.
+        // 트랜잭션 스냅샷 뒤에 커밋된 팔로우도 DELETE가 지우므로 지울 행은 잠금 읽기로 다시 읽는다
         snsUserStatsRepository.lockAllInUserIdOrder(followCounterpartsOf(userId) + userId)
-        val followeeIds = followRepository.findFolloweeIds(userId)
-        val followerIds = followRepository.findFollowerIds(userId)
+        val followeeIds = followRepository.findFolloweeIdsForUpdate(userId)
+        val followerIds = followRepository.findFollowerIdsForUpdate(userId)
         followRepository.deleteAllOf(userId)
         snsUserStatsRepository.decreaseFollowerCounts(followeeIds)
         snsUserStatsRepository.decreaseFollowingCounts(followerIds)
         snsUserStatsRepository.deleteByUserId(userId)
 
-        val repostedPostIds = repostRepository.findPostIdsByReposter(userId)
+        val repostedPostIds = repostRepository.findPostIdsByReposterForUpdate(userId)
         repostRepository.deleteAllByReposter(userId)
         snsPostStatsRepository.decreaseRepostCounts(repostedPostIds)
 
@@ -48,6 +49,7 @@ class SnsWithdrawalService(
         muteRepository.deleteAllByMuter(userId)
     }
 
+    // 잠그기 전이라 일반 읽기다. 잠금 읽기로 팔로우 행을 먼저 잡으면 통계 행부터 잠그는 팔로우, 언팔로우와 순서가 엇갈린다
     private fun followCounterpartsOf(userId: Long): List<Long> =
         followRepository.findFolloweeIds(userId) + followRepository.findFollowerIds(userId)
 }

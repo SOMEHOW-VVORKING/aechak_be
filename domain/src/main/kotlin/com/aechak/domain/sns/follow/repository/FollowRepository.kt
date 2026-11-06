@@ -26,6 +26,12 @@ interface FollowRepository {
     /** user를 팔로우하는 사용자 id */
     fun findFollowerIds(followeeId: Long): List<Long>
 
+    /** 쓰기 경로 전용. user가 건 팔로우 행을 잠금 읽기로 읽어 상대 id를 돌려준다 */
+    fun findFolloweeIdsForUpdate(followerId: Long): List<Long>
+
+    /** 쓰기 경로 전용. user에게 온 팔로우 행을 잠금 읽기로 읽어 상대 id를 돌려준다 */
+    fun findFollowerIdsForUpdate(followeeId: Long): List<Long>
+
     /** user가 건 팔로우와 user에게 온 팔로우를 모두 하드 삭제 */
     fun deleteAllOf(userId: Long)
 }
