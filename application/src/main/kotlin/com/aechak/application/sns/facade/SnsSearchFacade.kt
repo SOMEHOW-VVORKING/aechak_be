@@ -23,7 +23,9 @@ import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.sns.hashtag.Hashtag
+import com.aechak.domain.sns.search.event.SnsKeywordSearchedEvent
 import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.dao.DataAccessException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -42,6 +44,7 @@ class SnsSearchFacade(
     private val followService: FollowService,
     private val petProfileUseCase: PetProfileUseCase,
     private val fileUseCase: FileUseCase,
+    private val eventPublisher: ApplicationEventPublisher,
     transactionManager: PlatformTransactionManager,
 ) : SnsSearchUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -55,7 +58,10 @@ class SnsSearchFacade(
         // 캡션은 대소문자를 가리지 않아 소문자로 묶고 태그 단어도 함께 넣어 조건이 다른 두 검색이 순위와 커서를 나눠 쓰지 않게 한다
         val scope = WORDS_SCOPE + (query.words.map { it.lowercase(Locale.ROOT) } + query.tagWords).joinToString(SCOPE_SEPARATOR)
         return postPage(match, scope, query.sort, query.cursor, query.size, query.viewerId) { page ->
-            if (query.cursor == null) page.copy(totalCount = snsSearchService.count(match)) else page
+            if (query.cursor != null) return@postPage page
+            // 이 읽기 트랜잭션이 커밋된 뒤 최근 검색어를 비동기로 적재한다. 다음 페이지는 같은 검색이라 적재하지 않는다
+            query.viewerId?.let { eventPublisher.publishEvent(SnsKeywordSearchedEvent(it, query.keyword)) }
+            page.copy(totalCount = snsSearchService.count(match))
         }
     }
 

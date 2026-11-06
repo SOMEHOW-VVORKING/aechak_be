@@ -2,6 +2,7 @@ package com.aechak.api.sns
 
 import com.aechak.domain.user.user.User
 import com.jayway.jsonpath.JsonPath
+import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -11,6 +12,7 @@ import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.Duration
 import java.time.LocalDateTime
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -232,6 +234,54 @@ class SnsSearchPostIntegrationTest : SnsPostIntegrationTestBase() {
         assertEquals(mapOf("name" to "없는태그", "postCount" to 0), unknown["hashtag"])
         assertTrue(unknown.feedItems().isEmpty())
     }
+
+    @Test
+    fun `로그인 사용자의 게시물 검색 첫 페이지는 입력한 검색어 그대로 최근 검색어에 남는다`() {
+        val viewerId = onboardedUser()
+        createdPublicId(onboardedUser(), postBody(caption = "봄산책", hashtags = listOf("봄산책")))
+
+        searchPage("#봄산책", viewerId)
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            assertEquals(listOf("#봄산책"), recentKeywords(viewerId), "#를 떼지 않은 입력값이 남아야 한다")
+        }
+    }
+
+    @Test
+    fun `다음 페이지, 해시태그 게시물 목록, 계정과 해시태그 세그먼트, 비로그인 검색은 최근 검색어에 남지 않는다`() {
+        val viewerId = onboardedUser()
+        repeat(2) { createdPublicId(onboardedUser(), postBody(caption = "산책", hashtags = listOf("코코"))) }
+        val cursor = searchPage("산책", size = 1)["nextCursor"] as String
+
+        searchPage("산책", viewerId, cursor = cursor, size = 1)
+        hashtagPage("코코", viewerId)
+        mockMvc
+            .perform(
+                get(
+                    "/api/v1/sns/search/users",
+                ).param("keyword", "보리").header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}"),
+            ).andExpect(status().isOk)
+        mockMvc
+            .perform(
+                get(
+                    "/api/v1/sns/search/hashtags",
+                ).param("keyword", "보리").header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}"),
+            ).andExpect(status().isOk)
+        // 앞 요청들이 적재했다면 이 검색의 적재를 기다리는 동안 함께 남는다
+        searchPage("마지막", viewerId)
+
+        await().atMost(Duration.ofSeconds(5)).untilAsserted {
+            assertEquals(listOf("마지막"), recentKeywords(viewerId), "첫 페이지 게시물 검색만 남아야 한다")
+        }
+        assertEquals(0, jdbcTemplate.queryForObject("select count(*) from recent_searches where user_id <> ?", Int::class.java, viewerId))
+    }
+
+    private fun recentKeywords(userId: Long): List<String> =
+        jdbcTemplate.queryForList(
+            "select keyword from recent_searches where user_id = ? order by searched_at desc, id desc",
+            String::class.java,
+            userId,
+        )
 
     private fun scoredPost(
         repostCount: Int,
