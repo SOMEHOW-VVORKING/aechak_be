@@ -126,7 +126,15 @@ class SnsFeedService(
     private fun rank(
         from: LocalDateTime?,
         to: LocalDateTime,
-    ): List<Long> = feedQueryPort.findPopularRanking(from, to, PopularScore.REPOST, PopularScore.MAX_RANK)
+    ): List<Long> =
+        feedQueryPort.findPopularRanking(
+            from,
+            to,
+            PopularScore.LIKE,
+            PopularScore.REPOST,
+            PopularScore.HALF_LIFE_HOURS,
+            PopularScore.MAX_RANK,
+        )
 
     /**
      * 순위의 offset부터 지금 볼 수 있는 글로 size개를 채운다. 그사이 지운 글, 탈퇴 작성자, 숨김 사용자의 글은 건너뛴다.
