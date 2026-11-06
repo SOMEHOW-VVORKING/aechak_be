@@ -7,6 +7,8 @@ import io.swagger.v3.oas.annotations.media.Schema
 data class CreateCommentRequest(
     @field:Schema(description = "댓글 내용. NFC 정규화와 앞뒤 공백 정리 뒤 코드 포인트 500자까지")
     val content: String,
+    @field:Schema(description = "답글달기를 누른 댓글의 publicId. 대댓글을 가리키면 그 최상위 댓글 아래 붙는다. 최상위 댓글이면 생략하거나 null")
+    val parentPublicId: String? = null,
 ) {
     fun toCommand(
         userId: Long,
@@ -18,6 +20,6 @@ data class CreateCommentRequest(
             postPublicId = postPublicId,
             idempotencyKey = idempotencyKey,
             content = content,
-            parentPublicId = null,
+            parentPublicId = parentPublicId,
         )
 }

@@ -7,7 +7,11 @@ import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -191,6 +195,86 @@ class CommentCreateIntegrationTest : SnsPostIntegrationTestBase() {
         assertEquals(emptyList(), visibleCommentIds(postId, authorId))
     }
 
+    @Test
+    fun `대댓글을 쓰면 201과 최상위 댓글의 parentPublicId다`() {
+        val postId = createdPublicId(onboardedUser())
+        val root = seedComment(onboardedUser(), postId)
+
+        val reply = createdComment(onboardedUser(), postId, commentBody(parentPublicId = root))
+
+        assertEquals(root, reply["parentPublicId"])
+        assertEquals(true, reply["replyable"])
+        assertEquals(listOf(root, reply["publicId"]), visibleCommentIds(postId))
+    }
+
+    @Test
+    fun `대댓글에 단 답글은 최상위 댓글 아래 붙는다`() {
+        val postId = createdPublicId(onboardedUser())
+        val root = seedComment(onboardedUser(), postId)
+        val reply = seedComment(onboardedUser(), postId, parentPublicId = root)
+
+        val answer = createdComment(onboardedUser(), postId, commentBody(parentPublicId = reply))
+
+        assertEquals(root, answer["parentPublicId"])
+        assertEquals(listOf(root, reply, answer["publicId"]), visibleCommentIds(postId))
+    }
+
+    @Test
+    fun `대댓글을 같은 키로 두 번 보내면 행은 하나이고 두 번째도 최상위 댓글의 parentPublicId다`() {
+        val userId = onboardedUser()
+        val postId = createdPublicId(onboardedUser())
+        val root = seedComment(onboardedUser(), postId)
+        val reply = seedComment(onboardedUser(), postId, parentPublicId = root)
+        val key = Ulid.generate()
+
+        createdComment(userId, postId, commentBody(parentPublicId = reply), key)
+        val again = createdComment(userId, postId, commentBody(parentPublicId = reply), key)
+
+        assertEquals(root, again["parentPublicId"])
+        assertEquals(true, again["replyable"])
+        assertEquals(3, commentRowCount(postId))
+    }
+
+    @Test
+    fun `다른 사람 게시물에서 차단 관계인 사람의 댓글에 단 답글은 404 130700이다`() {
+        val userId = onboardedUser()
+        val blockedId = onboardedUser()
+        val postId = createdPublicId(onboardedUser())
+        val byBlocked = seedComment(blockedId, postId)
+        relate(blockedId, userId, "block")
+
+        expectError(createComment(userId, postId, commentBody(parentPublicId = byBlocked)), 404, 130700)
+    }
+
+    @Test
+    fun `지운 대댓글, 다른 게시물의 댓글, 없는 댓글에 단 답글은 404 130700이다`() {
+        val userId = onboardedUser()
+        val postId = createdPublicId(onboardedUser())
+        val root = seedComment(onboardedUser(), postId)
+        val deletedReply = seedComment(onboardedUser(), postId, parentPublicId = root, deletedBy = CommentDeletionReason.AUTHOR)
+        val elsewhere = seedComment(onboardedUser(), createdPublicId(onboardedUser()))
+
+        listOf(deletedReply, elsewhere, Ulid.generate()).forEach { parent ->
+            expectError(createComment(userId, postId, commentBody(parentPublicId = parent)), 404, 130700)
+        }
+        assertEquals(2, commentRowCount(postId))
+    }
+
+    @Test
+    fun `안내 문구만 남은 최상위 댓글과 그 아래 대댓글에 단 답글은 지운 사유와 상관없이 409 130705다`() {
+        val userId = onboardedUser()
+        CommentDeletionReason.entries.forEach { reason ->
+            val postId = createdPublicId(onboardedUser())
+            val root = seedComment(onboardedUser(), postId)
+            val reply = seedComment(onboardedUser(), postId, parentPublicId = root)
+            deleteCommentRow(root, reason)
+
+            expectError(createComment(userId, postId, commentBody(parentPublicId = root)), 409, 130705)
+            expectError(createComment(userId, postId, commentBody(parentPublicId = reply)), 409, 130705)
+            assertEquals(2, commentRowCount(postId), reason.name)
+        }
+    }
+
     @Nested
     inner class Concurrency {
         @Test
@@ -205,6 +289,51 @@ class CommentCreateIntegrationTest : SnsPostIntegrationTestBase() {
             assertTrue(errors.isEmpty(), errors.toString())
             assertEquals(1, publicIds.size)
             assertEquals(1, commentRowCount(postId))
+        }
+
+        @Test
+        fun `최상위 댓글을 지우는 중에 그 댓글에 단 답글은 삭제가 끝난 뒤 130705이다`() {
+            val postId = createdPublicId(onboardedUser())
+            val root = seedComment(onboardedUser(), postId)
+
+            expectReplyClosedWhileRootDeleting(postId, root, root)
+        }
+
+        @Test
+        fun `최상위 댓글을 지우는 중에 그 아래 대댓글에 단 답글도 삭제가 끝난 뒤 130705이다`() {
+            val postId = createdPublicId(onboardedUser())
+            val root = seedComment(onboardedUser(), postId)
+            val reply = seedComment(onboardedUser(), postId, parentPublicId = root)
+
+            expectReplyClosedWhileRootDeleting(postId, root, reply)
+        }
+
+        private fun expectReplyClosedWhileRootDeleting(
+            postId: String,
+            root: String,
+            parent: String,
+        ) {
+            val userId = onboardedUser()
+            val rowsBefore = commentRowCount(postId)
+            val pool = Executors.newSingleThreadExecutor()
+            try {
+                val later =
+                    tx.execute {
+                        // 삭제 요청처럼 최상위 댓글 행을 잠그고 지운 채 커밋을 미룬다
+                        jdbcTemplate.queryForList("select id from sns_comments where public_id = ? for update", root)
+                        jdbcTemplate.update(
+                            "update sns_comments set status = 'DELETED', deletion_reason = 'AUTHOR', deleted_at = now(6), content = null where public_id = ?",
+                            root,
+                        )
+                        val future = pool.submit<ResultActions> { createComment(userId, postId, commentBody(parentPublicId = parent)) }
+                        assertFailsWith<TimeoutException> { future.get(1, TimeUnit.SECONDS) }
+                        future
+                    }!!
+                expectError(later.get(30, TimeUnit.SECONDS), 409, 130705)
+            } finally {
+                pool.shutdownNow()
+            }
+            assertEquals(rowsBefore, commentRowCount(postId))
         }
     }
 

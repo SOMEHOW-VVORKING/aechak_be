@@ -2,6 +2,7 @@ package com.aechak.infra.persistence.sns.comment
 
 import com.aechak.application.sns.port.SnsCommentQueryPort
 import com.aechak.application.sns.port.SnsCommentScope
+import com.aechak.application.sns.port.view.SnsCommentRefView
 import com.aechak.application.sns.port.view.SnsCommentView
 import com.aechak.domain.sns.comment.QComment
 import com.aechak.domain.sns.comment.enums.CommentStatus
@@ -61,6 +62,24 @@ class SnsCommentQueryAdapter(
                 authorVisible(comment.authorId, scope),
             ).orderBy(comment.parent.id.asc(), comment.id.asc())
             .fetch()
+    }
+
+    override fun findVisibleRef(
+        scope: SnsCommentScope,
+        commentPublicId: String,
+    ): SnsCommentRefView? {
+        val root = QComment("refRoot")
+        return queryFactory
+            .select(Projections.constructor(SnsCommentRefView::class.java, comment.id, comment.parent.id, comment.authorId, comment.status))
+            .from(comment)
+            .leftJoin(comment.parent, root)
+            .where(
+                comment.publicId.eq(commentPublicId),
+                comment.post.id.eq(scope.postId),
+                authorVisible(comment.authorId, scope),
+                comment.parent.isNull.or(authorVisible(root.authorId, scope)),
+                visibleState(comment, scope),
+            ).fetchOne()
     }
 
     /** 작성자 표시 정보는 id 동등 LEFT JOIN으로 같은 쿼리에서 읽는다. 프로필 행이 없으면 null이다 */

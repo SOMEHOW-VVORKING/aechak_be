@@ -56,7 +56,13 @@ class SnsCommentFacade(
         return try {
             tx.execute {
                 val post = requireVisiblePost(command.postPublicId, command.userId)
-                val comment = commentCommandService.write(post, null, command.userId, content, command.idempotencyKey)
+                // 대댓글에 단 답글은 그 최상위 댓글 아래 붙는다. 차단 확인은 잠금 읽기가 아니다
+                val root =
+                    command.parentPublicId?.let {
+                        val target = commentQueryService.requireReplyTarget(commentQueryService.scopeOf(post, command.userId), it)
+                        commentCommandService.lockReplyRoot(target.parentId ?: target.id)
+                    }
+                val comment = commentCommandService.write(post, root, command.userId, content, command.idempotencyKey)
                 commentQueryService.itemOf(comment, command.userId)
             }!!
         } catch (e: DataIntegrityViolationException) {

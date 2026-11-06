@@ -3,6 +3,7 @@ package com.aechak.application.sns.service
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.sns.port.SnsCommentQueryPort
 import com.aechak.application.sns.port.SnsCommentScope
+import com.aechak.application.sns.port.view.SnsCommentRefView
 import com.aechak.application.sns.port.view.SnsCommentView
 import com.aechak.application.sns.support.CommentCursorCodec
 import com.aechak.application.sns.usecase.result.SnsCommentItemResult
@@ -11,9 +12,11 @@ import com.aechak.application.sns.usecase.result.SnsPostAuthorResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.support.CursorPageSize
 import com.aechak.application.user.user.usecase.UserUseCase
+import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.comment.Comment
 import com.aechak.domain.sns.comment.enums.CommentDeletionReason
 import com.aechak.domain.sns.comment.enums.CommentStatus
+import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.post.Post
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
@@ -37,6 +40,13 @@ class CommentQueryService(
             hidden = snsVisibilityService.findViewerFilter(viewerId),
             muted = snsVisibilityService.findMutedIds(viewerId),
         )
+
+    /** 보는 사람에게 보이는 이 게시물의 댓글을 답글 대상으로 찾는다. 없거나 보이지 않으면 130700이다 */
+    fun requireReplyTarget(
+        scope: SnsCommentScope,
+        commentPublicId: String,
+    ): SnsCommentRefView =
+        commentQueryPort.findVisibleRef(scope, commentPublicId) ?: throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
 
     /** 최상위 댓글 size개와 그 대댓글을 스레드 순서로 이어 붙인 한 페이지 */
     fun getPage(
