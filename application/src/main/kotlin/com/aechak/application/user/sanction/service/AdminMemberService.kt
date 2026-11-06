@@ -89,11 +89,13 @@ class AdminMemberService(
     fun resetProfile(command: ResetMemberProfileCommand) {
         // 행을 잠그고 읽는다 — 사용자의 프로필 수정도 같은 행을 잠그므로 두 쓰기가 차례로 적용된다
         val target =
-            userRepository
-                .findByIdForUpdate(command.targetUserId)
-                ?.takeIf { it.role == UserRole.GENERAL }
+            userRepository.findByIdForUpdate(command.targetUserId)
                 ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+        // 관리자 계정을 겨눈 거부 행에도 대상 이름이 남게 역할 판정보다 먼저 집는다
         AdminAuditContextHolder.label(target.nickname)
+        if (target.role != UserRole.GENERAL) {
+            throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+        }
         target.resetProfileByOperator()
     }
 

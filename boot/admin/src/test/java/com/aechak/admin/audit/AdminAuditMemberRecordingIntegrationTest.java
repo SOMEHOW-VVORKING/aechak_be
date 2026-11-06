@@ -216,6 +216,21 @@ class AdminAuditMemberRecordingIntegrationTest extends IntegrationTestBase {
         assertThat(row.getHttpStatus()).isEqualTo(409);
     }
 
+    @Test
+    void 관리자_계정_초기화_시도는_대상_이름이_채워진_실패_행을_남긴다() throws Exception {
+        long adminTargetId = createMember("다른운영자", UserRole.ADMIN);
+
+        resetProfile(adminTargetId)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value(30000));
+
+        AdminAuditLog row = onlyRow();
+        assertThat(row.getAction()).isEqualTo(AdminAuditAction.MEMBER_PROFILE_RESET);
+        assertThat(row.getTargetId()).isEqualTo(String.valueOf(adminTargetId));
+        assertThat(row.getTargetLabel()).isEqualTo("다른운영자");
+        assertThat(row.getResult()).isEqualTo(AdminAuditResult.FAILURE);
+    }
+
     /** 조회까지 남기면 조치가 조회 소음에 묻힌다 */
     @Test
     void 회원_조회는_행을_남기지_않는다() throws Exception {
