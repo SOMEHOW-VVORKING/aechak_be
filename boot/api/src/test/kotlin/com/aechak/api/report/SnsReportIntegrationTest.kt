@@ -2,12 +2,18 @@ package com.aechak.api.report
 
 import com.aechak.api.sns.SnsPostIntegrationTestBase
 import com.aechak.common.error.CommonErrorCode
+import com.aechak.domain.review.review.Review
 import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.report.PostReport
 import com.aechak.domain.sns.report.enums.PostReportReason
 import com.aechak.domain.sns.report.event.PostReportReceivedEvent
+import com.aechak.domain.user.error.UserErrorCode
+import com.aechak.domain.user.report.UserReport
+import com.aechak.domain.user.report.enums.ReportReasonCode
+import com.aechak.domain.user.report.event.UserReportReceivedEvent
 import com.aechak.domain.user.user.User
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -160,6 +166,104 @@ class SnsReportIntegrationTest : SnsPostIntegrationTestBase() {
         assertNoPostReport()
     }
 
+    // ---------- 프로필 유저 ----------
+
+    @Test
+    fun `SNS 프로필의 사용자를 publicId로 신고하면 사용자 신고로 저장하고 근거 리뷰 없이 접수 이벤트를 발행한다`() {
+        val targetId = onboardedUser()
+        val reporterId = onboardedUser()
+
+        postReport(reporterId, reportJson("SNS_USER", publicIdOf(targetId), "ABUSE"))
+            .andExpect(status().isCreated)
+
+        val report = userReports().single()
+        assertEquals(reporterId, report.reporter.id)
+        assertEquals(targetId, report.targetUser.id)
+        assertEquals(ReportReasonCode.ABUSE, report.reasonCode)
+        val event = recorded<UserReportReceivedEvent>().single()
+        assertEquals(targetId, event.targetUserId)
+        assertNull(event.reviewId)
+    }
+
+    @Test
+    fun `차단 관계와 상관없이 사용자를 신고할 수 있다`() {
+        val reporterId = onboardedUser()
+        val blockingMe = onboardedUser()
+        val blockedByMe = onboardedUser()
+        relate(blockingMe, reporterId, "block")
+        relate(reporterId, blockedByMe, "block")
+
+        postReport(reporterId, reportJson("SNS_USER", publicIdOf(blockingMe), "SPAM")).andExpect(status().isCreated)
+        postReport(reporterId, reportJson("SNS_USER", publicIdOf(blockedByMe), "SPAM")).andExpect(status().isCreated)
+
+        assertEquals(setOf(blockingMe, blockedByMe), userReports().map { it.targetUser.id }.toSet())
+    }
+
+    @Test
+    fun `자기 자신을 신고하면 400과 30200을 반환한다`() {
+        val userId = onboardedUser()
+
+        postReport(userId, reportJson("SNS_USER", publicIdOf(userId), "SPAM"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.SELF_REPORT_NOT_ALLOWED.code))
+        assertTrue(userReports().isEmpty())
+    }
+
+    @Test
+    fun `없거나 탈퇴했거나 온보딩 전인 사용자를 신고하면 404와 130000을 반환한다`() {
+        val reporterId = onboardedUser()
+        val withdrawnId = onboardedUser()
+        tx.execute { em.find(User::class.java, withdrawnId).withdraw() }
+        val pendingId =
+            tx.execute {
+                User
+                    .preRegister()
+                    .also { em.persist(it) }
+                    .also { em.flush() }
+                    .id
+            }!!
+
+        listOf("01JUNKNOWNUSER0000000000000", publicIdOf(withdrawnId), publicIdOf(pendingId)).forEach { publicId ->
+            postReport(reporterId, reportJson("SNS_USER", publicId, "SPAM"))
+                .andExpect(status().isNotFound)
+                .andExpect(jsonPath("$.errorCode").value(SnsErrorCode.SNS_USER_UNAVAILABLE.code))
+        }
+        assertTrue(userReports().isEmpty())
+    }
+
+    @Test
+    fun `리뷰 경로로 이미 신고한 사용자를 SNS에서 다시 신고하면 409와 30202를 반환한다`() {
+        val targetId = onboardedUser()
+        val reporterId = onboardedUser()
+        val reviewId =
+            tx.execute {
+                Review
+                    .write(
+                        productId = 1L,
+                        optionNameSnapshot = "기본",
+                        orderItemId = 1L,
+                        authorUserId = targetId,
+                        rating = 5,
+                        content = "좋은 상품입니다",
+                    ).also { em.persist(it) }
+                    .id
+            }!!
+        postReport(reporterId, reportJson("USER", reviewId.toString(), "SPAM")).andExpect(status().isCreated)
+
+        postReport(reporterId, reportJson("SNS_USER", publicIdOf(targetId), "ABUSE"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.USER_ALREADY_REPORTED.code))
+        assertEquals(1, userReports().size)
+    }
+
+    @Test
+    fun `사용자 신고도 기타 사유면 상세 내용이 있어야 해서 400과 30201을 반환한다`() {
+        postReport(onboardedUser(), reportJson("SNS_USER", publicIdOf(onboardedUser()), "OTHER", "   "))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(UserErrorCode.REPORT_REASON_REQUIRED.code))
+        assertTrue(userReports().isEmpty())
+    }
+
     private fun postReport(
         reporterId: Long,
         body: String,
@@ -189,6 +293,15 @@ class SnsReportIntegrationTest : SnsPostIntegrationTestBase() {
 
     private fun postReports(): List<PostReport> =
         tx.execute { em.createQuery("select r from PostReport r order by r.id", PostReport::class.java).resultList }!!
+
+    private fun userReports(): List<UserReport> =
+        tx.execute {
+            em
+                .createQuery(
+                    "select r from UserReport r join fetch r.reporter join fetch r.targetUser order by r.id",
+                    UserReport::class.java,
+                ).resultList
+        }!!
 
     private inline fun <reified T : Any> recorded(): List<T> = applicationEvents.stream(T::class.java).toList()
 

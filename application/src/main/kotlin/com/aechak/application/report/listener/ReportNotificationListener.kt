@@ -54,7 +54,7 @@ class ReportNotificationListener(
         notifyOps(
             targetType = "USER",
             reportId = event.reportId,
-            target = "사용자 id ${event.targetUserId} (리뷰 id ${event.reviewId} 작성자)",
+            target = "사용자 id ${event.targetUserId} (${event.reviewId?.let { "리뷰 id $it 작성자" } ?: "SNS 프로필"})",
             reasonCode = event.reasonCode.name,
             reasonText = event.reasonText,
             createdAt = event.createdAt,

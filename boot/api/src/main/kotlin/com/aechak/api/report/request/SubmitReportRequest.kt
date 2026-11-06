@@ -23,14 +23,18 @@ data class SubmitReportRequest(
     @field:NotNull(message = "신고 대상 종류는 필수입니다.")
     val targetType: ReportTargetType?,
     @field:NotBlank(message = "신고 대상 id는 필수입니다.")
-    @field:Schema(description = "PRODUCT는 상품 productId(ULID), REVIEW는 리뷰 id, USER는 신고할 사용자가 쓴 리뷰 id, SNS_POST는 게시물 publicId")
+    @field:Schema(
+        description =
+            "PRODUCT는 상품 productId(ULID), REVIEW는 리뷰 id, USER는 신고할 사용자가 쓴 리뷰 id. " +
+                "SNS_POST는 게시물 publicId, SNS_USER는 사용자 publicId",
+    )
     val targetId: String,
     @field:NotBlank(message = "신고 사유는 필수입니다.")
     @field:Schema(
         description =
             "PRODUCT는 FALSE_AD, INFO_ERROR, ILLEGAL, INAPPROPRIATE, OTHER. " +
                 "REVIEW와 USER는 FRAUD, ABUSE, SPAM, INAPPROPRIATE, OTHER. " +
-                "SNS_POST는 SPAM, ABUSE, INAPPROPRIATE, FRAUD, OTHER",
+                "SNS_POST와 SNS_USER는 SPAM, ABUSE, INAPPROPRIATE, FRAUD, OTHER",
     )
     val reasonCode: String,
     val reasonText: String? = null,
@@ -67,6 +71,14 @@ data class SubmitReportRequest(
             reasonText = reasonTextWithin(PostReport.REASON_TEXT_MAX),
         )
 
+    fun toSnsUserCommand(userId: Long): SubmitUserReportCommand =
+        SubmitUserReportCommand(
+            reporterId = userId,
+            reviewId = null,
+            reasonCode = parseEnum<ReportReasonCode>("reasonCode", reasonCode),
+            reasonText = reasonTextWithin(UserReport.REASON_TEXT_MAX),
+        )
+
     private fun parseReviewId(): Long =
         targetId.toLongOrNull()?.takeIf { it > 0 }
             ?: throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "targetId: 리뷰 id 형식이 올바르지 않습니다.")
@@ -95,4 +107,5 @@ enum class ReportTargetType {
     REVIEW,
     USER,
     SNS_POST,
+    SNS_USER,
 }

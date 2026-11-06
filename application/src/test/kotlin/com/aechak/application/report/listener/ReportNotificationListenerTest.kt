@@ -92,6 +92,22 @@ class ReportNotificationListenerTest {
     }
 
     @Test
+    fun `SNS 프로필에서 고른 사용자 신고는 근거 리뷰 대신 SNS 프로필로 적는다`() {
+        listener().handleUserReportReceived(
+            UserReportReceivedEvent(
+                reportId = 14L,
+                targetUserId = 5L,
+                reviewId = null,
+                reasonCode = ReportReasonCode.SPAM,
+                reasonText = null,
+                createdAt = receivedAt,
+            ),
+        )
+
+        assertTrue(sent.single().body.contains("- 대상: 사용자 id 5 (SNS 프로필)"), "근거 리뷰가 없으면 SNS 프로필로 적어야 한다")
+    }
+
+    @Test
     fun `SNS 게시물 신고는 제목에 SNS_POST를 담고 본문에 게시물 publicId를 적는다`() {
         listener().handleSnsPostReportReceived(
             PostReportReceivedEvent(
