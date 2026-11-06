@@ -6,6 +6,7 @@ import com.aechak.admin.report.response.AdminReportSummaryResponse;
 import com.aechak.admin.report.response.ReportHistoryResponse;
 import com.aechak.domain.product.report.enums.ProductReportReason;
 import com.aechak.domain.review.report.enums.ReviewReportReason;
+import com.aechak.domain.sns.report.enums.PostReportReason;
 import com.aechak.domain.user.report.enums.ReportReasonCode;
 import io.swagger.v3.core.converter.ModelConverters;
 import io.swagger.v3.oas.models.media.Schema;
@@ -35,7 +36,8 @@ class ReportReasonCodeSchemaTest {
     private static final Set<String> ALL_REPORT_REASONS = new TreeSet<>(Stream.of(
                     Arrays.stream(ProductReportReason.values()).map(Enum::name),
                     Arrays.stream(ReviewReportReason.values()).map(Enum::name),
-                    Arrays.stream(ReportReasonCode.values()).map(Enum::name))
+                    Arrays.stream(ReportReasonCode.values()).map(Enum::name),
+                    Arrays.stream(PostReportReason.values()).map(Enum::name))
             .flatMap(stream -> stream)
             .toList());
 

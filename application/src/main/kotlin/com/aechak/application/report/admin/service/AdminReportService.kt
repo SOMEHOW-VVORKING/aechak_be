@@ -15,7 +15,7 @@ import com.aechak.domain.report.error.ReportErrorCode
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 
-/** 신고 조회 로직 보관함 — Facade 에서만 호출된다. 세 신고 표를 한 목록으로 병합한다. */
+/** 신고 조회 로직 보관함 — Facade 에서만 호출된다. 신고 표들을 한 목록으로 병합한다. */
 @Service
 class AdminReportService(
     private val adminReportQueryPort: AdminReportQueryPort,
