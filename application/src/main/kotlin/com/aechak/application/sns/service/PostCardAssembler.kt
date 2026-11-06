@@ -23,6 +23,7 @@ class PostCardAssembler(
     private val saveRepository: SaveRepository,
     private val postLikeRepository: PostLikeRepository,
     private val followRepository: FollowRepository,
+    private val commentQueryService: CommentQueryService,
     private val petProfileUseCase: PetProfileUseCase,
     private val fileUseCase: FileUseCase,
 ) {
@@ -46,6 +47,7 @@ class PostCardAssembler(
         val liked = viewerId?.let { postLikeRepository.findLikedPostIdsAmong(it, postIds) }.orEmpty()
         val authorIds = cards.values.map { it.authorId }.toSet()
         val followees = viewerId?.let { followRepository.findFolloweeIdsAmong(it, authorIds) }.orEmpty()
+        val commentCounts = commentQueryService.countVisible(postIds, viewerId)
         return postIds.mapNotNull { postId ->
             val card = cards[postId] ?: return@mapNotNull null
             val (photos, videos) = media[postId].orEmpty().partition { it.mediaKind == PostMediaKind.IMAGE }
@@ -72,8 +74,7 @@ class PostCardAssembler(
                         )
                     },
                 likeCount = likeCounts.getValue(postId),
-                // 댓글은 아직 없어 0이다
-                commentCount = 0,
+                commentCount = commentCounts[postId] ?: 0,
                 repostCount = card.repostCount.toLong(),
                 edited = card.editedAt != null,
                 createdAt = card.createdAt,

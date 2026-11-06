@@ -50,6 +50,12 @@ class SnsUserListServiceTest {
                 hiddenUserIds: Set<Long>,
                 limit: Int,
             ): List<SnsLikerView> = emptyList()
+
+            override fun findCommentLikers(
+                commentId: Long,
+                hiddenUserIds: Set<Long>,
+                limit: Int,
+            ): List<SnsLikerView> = emptyList()
         }
     private val service = SnsUserListService(port)
 
