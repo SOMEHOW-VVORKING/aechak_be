@@ -11,9 +11,10 @@ import java.time.LocalDateTime;
 /**
  * 목록·상세의 신고 한 건.
  *
- * <p>targetKey는 화면이 대상을 다시 열 때 쓰는 식별자다 — 상품은 공개 식별자(ULID), 리뷰와 사용자는
- * 내부 id다. targetName은 상품명·리뷰 본문이고 사용자 신고에는 없다(닉네임이 그 자리를 대신한다).
- * reasonCode는 대상 종류별 신고 사유 어휘라 종류에 따라 허용값이 다르다 — 세 enum의 합집합을
+ * <p>targetKey는 화면이 대상을 다시 열 때 쓰는 식별자다 — 상품, 사용자, SNS 게시물은 공개 식별자(ULID), 리뷰는
+ * 내부 id다. targetName은 상품명·리뷰 본문·SNS 게시물 캡션이고 사용자 신고에는 없다(닉네임이 그 자리를 대신한다).
+ * 지운 SNS 게시물은 캡션이 비어 targetName이 null이다.
+ * reasonCode는 대상 종류별 신고 사유 어휘라 종류에 따라 허용값이 다르다 — 네 enum의 합집합을
  * {@code @Schema}로 못박는다(문자열 필드는 그것 말고 허용값을 실을 자리가 없다).
  */
 public record AdminReportSummaryResponse(
@@ -26,8 +27,8 @@ public record AdminReportSummaryResponse(
         @Schema(
                         description = "접수된 신고의 사유. 대상 종류별 어휘라 종류에 따라 허용값이 갈린다 — "
                                 + "PRODUCT=FALSE_AD·INFO_ERROR·ILLEGAL·INAPPROPRIATE·OTHER, "
-                                + "REVIEW·USER=FRAUD·ABUSE·SPAM·INAPPROPRIATE·OTHER. "
-                                + "허용값은 세 어휘의 합집합이다.",
+                                + "REVIEW·USER·SNS_POST=FRAUD·ABUSE·SPAM·INAPPROPRIATE·OTHER. "
+                                + "허용값은 네 어휘의 합집합이다.",
                         allowableValues = {
                             "ABUSE",
                             "FALSE_AD",

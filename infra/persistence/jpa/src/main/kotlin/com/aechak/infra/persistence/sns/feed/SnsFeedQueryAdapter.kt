@@ -11,6 +11,7 @@ import com.aechak.application.sns.port.view.SnsSaveView
 import com.aechak.application.sns.port.view.SnsUserRepostView
 import com.aechak.domain.sns.follow.QFollow
 import com.aechak.domain.sns.hashtag.QHashtag
+import com.aechak.domain.sns.like.QPostLike
 import com.aechak.domain.sns.post.QPost
 import com.aechak.domain.sns.post.QPostHashtag
 import com.aechak.domain.sns.post.QPostMedia
@@ -21,8 +22,10 @@ import com.aechak.domain.sns.save.QSave
 import com.aechak.domain.sns.stats.QSnsPostStats
 import com.aechak.domain.user.user.QUser
 import com.aechak.domain.user.user.QUserProfile
+import com.aechak.infra.persistence.sns.comment.publicCommentCount
 import com.querydsl.core.types.Projections
 import com.querydsl.core.types.dsl.BooleanExpression
+import com.querydsl.core.types.dsl.Expressions
 import com.querydsl.core.types.dsl.NumberExpression
 import com.querydsl.jpa.JPAExpressions
 import com.querydsl.jpa.impl.JPAQueryFactory
@@ -37,6 +40,7 @@ private val media = QPostMedia.postMedia
 private val postHashtag = QPostHashtag.postHashtag
 private val hashtag = QHashtag.hashtag
 private val stats = QSnsPostStats.snsPostStats
+private val postLike = QPostLike.postLike
 private val repost = QRepost.repost
 private val save = QSave.save
 private val follow = QFollow.follow
@@ -58,7 +62,7 @@ private fun createdBetween(
 ): BooleanExpression = from?.let { post.createdAt.between(it, to) } ?: post.createdAt.loe(to)
 
 /** visibleUser와 같은 조건의 네이티브 조각. 팔로잉 피드의 원천, 원글 작성자, 리포스트한 사람이 함께 쓴다 */
-private fun visibleUserSql(userIdColumn: String): String = "EXISTS (SELECT 1 FROM user_profiles vp WHERE vp.user_id = $userIdColumn)"
+internal fun visibleUserSql(userIdColumn: String): String = "EXISTS (SELECT 1 FROM user_profiles vp WHERE vp.user_id = $userIdColumn)"
 
 /** 팔로잉 피드 원천 src. 나와 내가 팔로우하는 사용자 중 볼 수 있고 숨김 밖인 사용자다 */
 private fun followingSourcesSql(hasHidden: Boolean): String =
@@ -71,7 +75,7 @@ private fun followingSourcesSql(hasHidden: Boolean): String =
     """
 
 /** 드라이버가 시각을 Timestamp로 주는 자리도 있고 LocalDateTime으로 주는 자리도 있어 둘을 함께 받는다 */
-private fun Array<*>.time(index: Int): LocalDateTime =
+internal fun Array<*>.time(index: Int): LocalDateTime =
     when (val value = this[index]) {
         is Timestamp -> value.toLocalDateTime()
         is LocalDateTime -> value
@@ -210,21 +214,60 @@ class SnsFeedQueryAdapter(
     override fun findPopularRanking(
         from: LocalDateTime?,
         to: LocalDateTime,
+        likeWeight: Int,
+        commentWeight: Int,
         repostWeight: Int,
+        halfLifeHours: Int,
         limit: Int,
     ): List<Long> {
-        val score = stats.repostCount.multiply(repostWeight)
+        // 리포스트가 없어 통계 행이 없는 글도 좋아요나 댓글로 점수를 받으므로 통계 행과 좋아요 행을 모두 LEFT JOIN한다.
+        // 댓글 수는 좋아요 행과 곱해지지 않게 상관 서브쿼리로 센다
+        val raw =
+            postLike.id
+                .count()
+                .multiply(likeWeight)
+                .add(
+                    stats.repostCount
+                        .coalesce(0)
+                        .max()
+                        .multiply(repostWeight),
+                ).add(
+                    Expressions.numberTemplate(
+                        Long::class.javaObjectType,
+                        "({0}) * {1}",
+                        publicCommentCount(post.id, post.authorId),
+                        commentWeight,
+                    ),
+                )
+        val ageSeconds =
+            Expressions.numberTemplate(
+                Long::class.java,
+                "(extract(epoch from {0}) - extract(epoch from {1}))",
+                Expressions.constant(to),
+                post.createdAt,
+            )
+        val score =
+            Expressions.numberTemplate(
+                Double::class.java,
+                "({0}) * power(0.5, ({1}) / ({2}))",
+                raw,
+                ageSeconds,
+                Expressions.constant(halfLifeHours * 3_600.0),
+            )
         return queryFactory
             .select(post.id)
             .from(post)
-            .join(stats)
+            .leftJoin(stats)
             .on(stats.postId.eq(post.id))
+            .leftJoin(postLike)
+            .on(postLike.postId.eq(post.id))
             .where(
                 post.status.eq(PostStatus.PUBLISHED),
                 createdBetween(from, to),
                 visibleUser(post.authorId),
-                score.gt(0),
-            ).orderBy(score.desc(), post.createdAt.desc(), post.id.desc())
+            ).groupBy(post.id, post.authorId, post.createdAt)
+            .having(raw.gt(0))
+            .orderBy(score.desc(), post.createdAt.desc(), post.id.desc())
             .limit(limit.toLong())
             .fetch()
     }
