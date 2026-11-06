@@ -13,7 +13,7 @@ class BlockService(
     private val followRepository: FollowRepository,
     private val snsUserStatsRepository: SnsUserStatsRepository,
 ) {
-    /** 상대가 나를 이미 차단했어도 진행한다. 통계 행은 팔로우와 같은 순서로 잠그고 두 방향 팔로우를 지운다 */
+    /** 상대가 나를 이미 차단했어도 진행한다. 통계 행은 팔로우와 같은 순서로 잠그고 두 방향 팔로우를 지운다. 두 사람이 서로의 글에 한 리포스트는 지우지 않는다 */
     fun block(
         userId: Long,
         targetUserId: Long,
