@@ -28,4 +28,7 @@ enum class CommonErrorCode(
     // 멀티파트는 업로드 엔드포인트가 없어도 도달한다 — DispatcherServlet이 핸들러를 찾기 전에 파싱한다.
     MALFORMED_MULTIPART(90010, "멀티파트 요청을 읽을 수 없습니다.", 400),
     PAYLOAD_TOO_LARGE(90011, "요청 본문이 너무 큽니다.", 413),
+
+    // 빈도 제한은 쓰는 BC가 늘어도 코드는 하나다
+    TOO_MANY_REQUESTS(90012, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.", 429),
 }
