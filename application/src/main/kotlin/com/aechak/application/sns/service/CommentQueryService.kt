@@ -21,6 +21,7 @@ import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.post.Post
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 /** 댓글 읽기. 보는 사람 기준 거르기는 포트의 조건식이 하고 이 서비스는 항목을 조립한다 */
 @Service
@@ -134,7 +135,8 @@ class CommentQueryService(
             content = comment.content,
             edited = comment.editedAt != null,
             isMine = comment.authorId == viewerId,
-            createdAt = comment.createdAt,
+            // 방금 저장한 엔티티는 나노초까지 들고 있어 DB 정밀도(DATETIME(6))로 맞춰 다시 읽은 값과 같게 한다
+            createdAt = comment.createdAt.truncatedTo(ChronoUnit.MICROS),
         )
     }
 
