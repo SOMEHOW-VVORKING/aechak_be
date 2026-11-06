@@ -22,6 +22,7 @@ import com.aechak.domain.sns.save.QSave
 import com.aechak.domain.sns.stats.QSnsPostStats
 import com.aechak.domain.user.user.QUser
 import com.aechak.domain.user.user.QUserProfile
+import com.aechak.infra.persistence.sns.comment.publicCommentCount
 import com.querydsl.core.types.Projections
 import com.querydsl.core.types.dsl.BooleanExpression
 import com.querydsl.core.types.dsl.Expressions
@@ -214,11 +215,13 @@ class SnsFeedQueryAdapter(
         from: LocalDateTime?,
         to: LocalDateTime,
         likeWeight: Int,
+        commentWeight: Int,
         repostWeight: Int,
         halfLifeHours: Int,
         limit: Int,
     ): List<Long> {
-        // 리포스트가 없어 통계 행이 없는 글도 좋아요로 점수를 받으므로 통계 행과 좋아요 행을 모두 LEFT JOIN한다
+        // 리포스트가 없어 통계 행이 없는 글도 좋아요나 댓글로 점수를 받으므로 통계 행과 좋아요 행을 모두 LEFT JOIN한다.
+        // 댓글 수는 좋아요 행과 곱해지지 않게 상관 서브쿼리로 센다
         val raw =
             postLike.id
                 .count()
@@ -228,6 +231,13 @@ class SnsFeedQueryAdapter(
                         .coalesce(0)
                         .max()
                         .multiply(repostWeight),
+                ).add(
+                    Expressions.numberTemplate(
+                        Long::class.javaObjectType,
+                        "({0}) * {1}",
+                        publicCommentCount(post.id, post.authorId),
+                        commentWeight,
+                    ),
                 )
         val ageSeconds =
             Expressions.numberTemplate(
@@ -255,7 +265,7 @@ class SnsFeedQueryAdapter(
                 post.status.eq(PostStatus.PUBLISHED),
                 createdBetween(from, to),
                 visibleUser(post.authorId),
-            ).groupBy(post.id, post.createdAt)
+            ).groupBy(post.id, post.authorId, post.createdAt)
             .having(raw.gt(0))
             .orderBy(score.desc(), post.createdAt.desc(), post.id.desc())
             .limit(limit.toLong())

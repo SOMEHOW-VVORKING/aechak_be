@@ -6,6 +6,7 @@ import com.aechak.application.sns.port.SnsSearchRankingStore
 import com.aechak.application.sns.port.view.SnsFeedEntryView
 import com.aechak.application.sns.port.view.SnsSearchHashtagView
 import com.aechak.application.sns.port.view.SnsSearchUserView
+import com.aechak.application.sns.service.CommentQueryService
 import com.aechak.application.sns.service.FollowService
 import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.SnsFeedService
@@ -95,6 +96,12 @@ class SnsSearchFacadeTest {
                 UnusedSaveRepository(),
                 NoPostLikeRepository(),
                 UnusedFollowRepository(),
+                CommentQueryService(
+                    NoCommentQueryPort(),
+                    SnsVisibilityService(UnusedVisibilityQueryPort()),
+                    KeyUrlFileUseCase(),
+                    UnusedUserUseCase(),
+                ),
                 NoPetProfileUseCase(),
                 KeyUrlFileUseCase(),
             ),
