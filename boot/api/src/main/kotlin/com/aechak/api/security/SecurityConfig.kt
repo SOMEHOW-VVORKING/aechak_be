@@ -94,6 +94,8 @@ class SecurityConfig {
                         "$basePath/sns/users/*/posts",
                         "$basePath/sns/users/*/videos",
                         "$basePath/sns/users/*/reposts",
+                        "$basePath/sns/search/*",
+                        "$basePath/sns/hashtags/*/posts",
                     ).permitAll()
                     .anyRequest()
                     .authenticated()
