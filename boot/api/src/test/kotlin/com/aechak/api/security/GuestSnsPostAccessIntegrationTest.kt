@@ -93,6 +93,57 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `토큰 없이 댓글을 쓰면 401 20004다`() {
+        val publicId = createdPublicId(onboardedUser())
+
+        mockMvc
+            .perform(
+                post("/api/v1/sns/posts/$publicId/comments")
+                    .header(CustomHttpHeaders.IDEMPOTENCY_KEY, "guest-key")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(commentBody()),
+            ).andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        assertEquals(0, commentRowCount(publicId))
+    }
+
+    @Test
+    fun `토큰 없이 댓글을 고치거나 지우면 401 20004다`() {
+        val commentId = seedComment(onboardedUser(), createdPublicId(onboardedUser()))
+
+        mockMvc
+            .perform(patch("/api/v1/sns/comments/$commentId").contentType(MediaType.APPLICATION_JSON).content(commentBody()))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        mockMvc
+            .perform(delete("/api/v1/sns/comments/$commentId"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        assertEquals("ACTIVE", commentRow(commentId)["status"])
+    }
+
+    @Test
+    fun `토큰 없이 댓글 단건을 부르면 401 20004다`() {
+        val commentId = seedComment(onboardedUser(), createdPublicId(onboardedUser()))
+
+        getComment(commentId, null)
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
+    fun `토큰 없이 댓글 목록을 부르면 200이고 isMine과 liked가 false다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        seedComment(authorId, publicId)
+
+        val item = commentPage(publicId).feedItems().single()
+
+        assertEquals(false, item["isMine"])
+        assertEquals(false, item["liked"])
+    }
+
+    @Test
     fun `토큰 없이 상세를 부르면 liked는 false이고 좋아요 수는 실제 값이다`() {
         val publicId = createdPublicId(onboardedUser())
         like(publicId, onboardedUser()).andExpect(status().isCreated)
