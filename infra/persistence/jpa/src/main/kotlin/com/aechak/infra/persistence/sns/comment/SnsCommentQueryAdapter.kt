@@ -5,6 +5,7 @@ import com.aechak.application.sns.port.SnsCommentScope
 import com.aechak.application.sns.port.view.SnsCommentView
 import com.aechak.domain.sns.comment.QComment
 import com.aechak.domain.sns.comment.enums.CommentStatus
+import com.aechak.domain.sns.mute.QMute
 import com.aechak.domain.user.user.QUser
 import com.aechak.domain.user.user.QUserProfile
 import com.querydsl.core.types.ExpressionUtils
@@ -102,14 +103,34 @@ class SnsCommentQueryAdapter(
         return c.status.eq(CommentStatus.ACTIVE).or(c.parent.isNull.and(hasVisibleReply))
     }
 
-    /** 이 사용자가 쓴 댓글이 보는 사람에게 숨겨지지 않는다. 차단 관계와 보는 사람의 뮤트다. 숨길 조건이 없으면 null이다 */
+    /** 이 사용자가 쓴 댓글이 보는 사람에게 숨겨지지 않는다. 섀도우 처리, 차단 관계, 보는 사람의 뮤트다 */
     private fun authorVisible(
         authorId: NumberPath<Long>,
         scope: SnsCommentScope,
     ): Predicate? =
         ExpressionUtils.allOf(
+            notShadowed(authorId, scope),
             // 빈 집합이면 NOT IN 조건을 빼 거르지 않는다
             scope.hidden.takeIf { it.isNotEmpty() }?.let { authorId.notIn(it) },
             scope.muted.takeIf { it.isNotEmpty() }?.let { authorId.notIn(it) },
         )
+
+    /**
+     * 게시물 작성자가 뮤트한 사용자(섀도우 처리된 사용자)의 댓글은 그 사용자 본인에게만 보인다.
+     * 댓글을 쓴 시점과 상관없이 지금의 뮤트 관계로 정한다. uk_sns_mute_pair로 찾는다.
+     */
+    private fun notShadowed(
+        authorId: NumberPath<Long>,
+        scope: SnsCommentScope,
+    ): BooleanExpression {
+        // 한 쿼리에서 댓글과 그 대댓글에 함께 걸리므로 댓글 별칭마다 다른 별칭을 쓴다
+        val mute = QMute("shadowOf${authorId.metadata.parent!!.metadata.name}")
+        val notMuted =
+            JPAExpressions
+                .selectOne()
+                .from(mute)
+                .where(mute.muterId.eq(scope.postAuthorId), mute.mutedId.eq(authorId))
+                .notExists()
+        return scope.viewerId?.let { notMuted.or(authorId.eq(it)) } ?: notMuted
+    }
 }

@@ -2,6 +2,8 @@ package com.aechak.api.sns
 
 import com.aechak.domain.sns.comment.enums.CommentDeletionReason
 import com.aechak.domain.user.user.User
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -305,6 +307,148 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
 
         assertEquals(emptyList(), visibleCommentIds(postId, viewerId))
         assertEquals(2, visibleCommentIds(postId, onboardedUser()).size)
+    }
+
+    /** A는 게시물 작성자, B는 A가 뮤트한(섀도우 처리된) 사용자, C와 D는 다른 사용자다 */
+    @Nested
+    inner class ShadowMute {
+        private var a = 0L
+        private var b = 0L
+        private var c = 0L
+        private var d = 0L
+        private lateinit var postId: String
+
+        @BeforeEach
+        fun setUp() {
+            a = onboardedUser()
+            b = onboardedUser()
+            c = onboardedUser()
+            d = onboardedUser()
+            postId = createdPublicId(a)
+        }
+
+        @Test
+        fun `뮤트당한 사용자의 댓글은 그 사용자에게만 보인다`() {
+            relate(a, b, "mute")
+            val byB = seedComment(b, postId)
+
+            assertEquals(listOf(byB), visibleCommentIds(postId, b))
+            assertEquals(emptyList(), visibleCommentIds(postId, a))
+            assertEquals(emptyList(), visibleCommentIds(postId, c))
+        }
+
+        @Test
+        fun `B의 숨긴 댓글 아래 다른 사람의 대댓글은 B에게만 보인다`() {
+            relate(a, b, "mute")
+            val byB = seedComment(b, postId)
+            val byC = seedComment(c, postId, parentPublicId = byB)
+
+            assertEquals(listOf(byB, byC), visibleCommentIds(postId, b))
+            assertEquals(emptyList(), visibleCommentIds(postId, c))
+        }
+
+        @Test
+        fun `B의 숨긴 댓글 아래 B와 차단 관계인 사람의 대댓글은 B에게도 보이지 않는다`() {
+            relate(a, b, "mute")
+            val byB = seedComment(b, postId)
+            seedComment(c, postId, parentPublicId = byB)
+            relate(c, b, "block")
+
+            assertEquals(listOf(byB), visibleCommentIds(postId, b))
+        }
+
+        @Test
+        fun `부모 댓글 작성자와 대댓글 작성자를 모두 뮤트하면 대댓글은 누구에게도 보이지 않는다`() {
+            val byB = seedComment(b, postId)
+            seedComment(c, postId, parentPublicId = byB)
+            relate(a, b, "mute")
+            relate(a, c, "mute")
+
+            assertEquals(listOf(byB), visibleCommentIds(postId, b))
+            assertEquals(emptyList(), visibleCommentIds(postId, c))
+            assertEquals(emptyList(), visibleCommentIds(postId, a))
+        }
+
+        @Test
+        fun `숨긴 댓글 아래 B의 대댓글은 다른 사람에게 둘 다 보이지 않는다`() {
+            relate(a, b, "mute")
+            val byB = seedComment(b, postId)
+            seedComment(b, postId, parentPublicId = byB)
+
+            assertEquals(emptyList(), visibleCommentIds(postId, c))
+            assertEquals(2, visibleCommentIds(postId, b).size)
+        }
+
+        @Test
+        fun `B가 남의 댓글에 단 대댓글은 B에게만 보인다`() {
+            relate(a, b, "mute")
+            val byC = seedComment(c, postId)
+            val byB = seedComment(b, postId, parentPublicId = byC)
+
+            assertEquals(listOf(byC, byB), visibleCommentIds(postId, b))
+            assertEquals(listOf(byC), visibleCommentIds(postId, c))
+            assertEquals(listOf(byC), visibleCommentIds(postId, a))
+        }
+
+        @Test
+        fun `뮤트 전에 쓴 댓글과 그 아래 대댓글도 B를 뺀 모든 사람에게 숨긴다`() {
+            val byB = seedComment(b, postId)
+            val byC = seedComment(c, postId, parentPublicId = byB)
+            relate(a, b, "mute")
+
+            assertEquals(emptyList(), visibleCommentIds(postId, d))
+            assertEquals(listOf(byB, byC), visibleCommentIds(postId, b))
+        }
+
+        @Test
+        fun `뮤트 전에 대댓글을 쓴 사람에게도 B의 댓글과 자기 대댓글이 보이지 않는다`() {
+            val byB = seedComment(b, postId)
+            seedComment(c, postId, parentPublicId = byB)
+            relate(a, b, "mute")
+
+            assertEquals(emptyList(), visibleCommentIds(postId, c))
+        }
+
+        @Test
+        fun `뮤트를 풀면 숨긴 댓글이 다시 보인다`() {
+            relate(a, b, "mute")
+            val byB = seedComment(b, postId)
+            unrelate(a, b, "mute")
+
+            assertEquals(listOf(byB), visibleCommentIds(postId, c))
+        }
+
+        @Test
+        fun `다른 사람 게시물에 쓴 B의 댓글은 뮤트한 A에게만 보이지 않는다`() {
+            relate(a, b, "mute")
+            val otherPost = createdPublicId(d)
+            val byB = seedComment(b, otherPost)
+
+            assertEquals(listOf(byB), visibleCommentIds(otherPost, d))
+            assertEquals(listOf(byB), visibleCommentIds(otherPost, c))
+            assertEquals(emptyList(), visibleCommentIds(otherPost, a))
+        }
+
+        @Test
+        fun `섀도우 처리된 작성자가 탈퇴해도 그 댓글과 아래 대댓글은 계속 숨긴다`() {
+            relate(a, b, "mute")
+            val byB = seedComment(b, postId)
+            seedComment(c, postId, parentPublicId = byB)
+            tx.execute { em.find(User::class.java, b).withdraw() }
+            deleteCommentRow(byB, CommentDeletionReason.WITHDRAWAL)
+
+            assertEquals(emptyList(), visibleCommentIds(postId, c))
+            assertEquals(emptyList(), visibleCommentIds(postId, a))
+        }
+
+        @Test
+        fun `뮤트당한 사용자가 로그아웃하고 보면 자기 댓글이 보이지 않는다`() {
+            relate(a, b, "mute")
+            seedComment(b, postId)
+            val byC = seedComment(c, postId)
+
+            assertEquals(listOf(byC), visibleCommentIds(postId))
+        }
     }
 
     private fun assertPlaceholder(
