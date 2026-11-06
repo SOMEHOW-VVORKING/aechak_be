@@ -229,8 +229,10 @@ private class FakeFeedQueryPort(
     override fun findPopularRanking(
         from: LocalDateTime?,
         to: LocalDateTime,
+        likeWeight: Int,
         commentWeight: Int,
         repostWeight: Int,
+        halfLifeHours: Int,
         limit: Int,
     ): List<Long> = ranking
 

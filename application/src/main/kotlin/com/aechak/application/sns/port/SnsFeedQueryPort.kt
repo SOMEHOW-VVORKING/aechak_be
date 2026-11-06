@@ -49,14 +49,16 @@ interface SnsFeedQueryPort {
 
     /**
      * 인기 순위. from과 to 사이의 PUBLISHED 원글 중 점수가 0보다 큰 글의 id를 점수, created_at, id 내림차순으로 limit개 읽는다.
-     * from이 null이면 to까지의 글을 기간 없이 읽는다. 점수는 공개 댓글 수와 리포스트 수에 각 가중치를 곱해 더한 값이고
-     * 보는 사람의 숨김 집합은 넣지 않는다.
+     * from이 null이면 to까지의 글을 기간 없이 읽는다. 점수는 좋아요 수, 공개 댓글 수, 리포스트 수에 각 가중치를 곱해 더하고
+     * to 기준 경과 시간이 halfLifeHours 지날 때마다 절반이 된다. 보는 사람의 숨김 집합은 넣지 않는다.
      */
     fun findPopularRanking(
         from: LocalDateTime?,
         to: LocalDateTime,
+        likeWeight: Int,
         commentWeight: Int,
         repostWeight: Int,
+        halfLifeHours: Int,
         limit: Int,
     ): List<Long>
 

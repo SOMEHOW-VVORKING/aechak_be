@@ -11,6 +11,7 @@ import com.aechak.application.sns.port.view.SnsSaveView
 import com.aechak.application.sns.port.view.SnsUserRepostView
 import com.aechak.domain.sns.follow.QFollow
 import com.aechak.domain.sns.hashtag.QHashtag
+import com.aechak.domain.sns.like.QPostLike
 import com.aechak.domain.sns.post.QPost
 import com.aechak.domain.sns.post.QPostHashtag
 import com.aechak.domain.sns.post.QPostMedia
@@ -39,6 +40,7 @@ private val media = QPostMedia.postMedia
 private val postHashtag = QPostHashtag.postHashtag
 private val hashtag = QHashtag.hashtag
 private val stats = QSnsPostStats.snsPostStats
+private val postLike = QPostLike.postLike
 private val repost = QRepost.repost
 private val save = QSave.save
 private val follow = QFollow.follow
@@ -212,32 +214,60 @@ class SnsFeedQueryAdapter(
     override fun findPopularRanking(
         from: LocalDateTime?,
         to: LocalDateTime,
+        likeWeight: Int,
         commentWeight: Int,
         repostWeight: Int,
+        halfLifeHours: Int,
         limit: Int,
     ): List<Long> {
-        // 리포스트가 없어 통계 행이 없는 글도 댓글로 점수를 받으므로 통계 행을 LEFT JOIN한다
-        // shortcut: 기간 안의 게시물마다 댓글 행을 센다. 순위 계산이 1초를 넘거나 72시간 안의 댓글이 10만 개를 넘으면 공개 댓글 수를 통계 행에 저장한다
+        // 리포스트가 없어 통계 행이 없는 글도 좋아요나 댓글로 점수를 받으므로 통계 행과 좋아요 행을 모두 LEFT JOIN한다.
+        // 댓글 수는 좋아요 행과 곱해지지 않게 상관 서브쿼리로 센다
+        val raw =
+            postLike.id
+                .count()
+                .multiply(likeWeight)
+                .add(
+                    stats.repostCount
+                        .coalesce(0)
+                        .max()
+                        .multiply(repostWeight),
+                ).add(
+                    Expressions.numberTemplate(
+                        Long::class.javaObjectType,
+                        "({0}) * {1}",
+                        publicCommentCount(post.id, post.authorId),
+                        commentWeight,
+                    ),
+                )
+        val ageSeconds =
+            Expressions.numberTemplate(
+                Long::class.java,
+                "(extract(epoch from {0}) - extract(epoch from {1}))",
+                Expressions.constant(to),
+                post.createdAt,
+            )
         val score =
             Expressions.numberTemplate(
-                Long::class.javaObjectType,
-                "coalesce({0}, 0) * {1} + ({2}) * {3}",
-                stats.repostCount,
-                repostWeight,
-                publicCommentCount(post.id, post.authorId),
-                commentWeight,
+                Double::class.java,
+                "({0}) * power(0.5, ({1}) / ({2}))",
+                raw,
+                ageSeconds,
+                Expressions.constant(halfLifeHours * 3_600.0),
             )
         return queryFactory
             .select(post.id)
             .from(post)
             .leftJoin(stats)
             .on(stats.postId.eq(post.id))
+            .leftJoin(postLike)
+            .on(postLike.postId.eq(post.id))
             .where(
                 post.status.eq(PostStatus.PUBLISHED),
                 createdBetween(from, to),
                 visibleUser(post.authorId),
-                score.gt(0),
-            ).orderBy(score.desc(), post.createdAt.desc(), post.id.desc())
+            ).groupBy(post.id, post.authorId, post.createdAt)
+            .having(raw.gt(0))
+            .orderBy(score.desc(), post.createdAt.desc(), post.id.desc())
             .limit(limit.toLong())
             .fetch()
     }
