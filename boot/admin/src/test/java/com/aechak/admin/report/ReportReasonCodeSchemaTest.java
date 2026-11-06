@@ -6,6 +6,7 @@ import com.aechak.admin.report.response.AdminReportSummaryResponse;
 import com.aechak.admin.report.response.ReportHistoryResponse;
 import com.aechak.domain.product.report.enums.ProductReportReason;
 import com.aechak.domain.review.report.enums.ReviewReportReason;
+import com.aechak.domain.sns.report.enums.PostReportReason;
 import com.aechak.domain.user.report.enums.ReportReasonCode;
 import io.swagger.v3.core.converter.ModelConverters;
 import io.swagger.v3.oas.models.media.Schema;
@@ -18,9 +19,9 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
 /**
- * 생성 문서에 실리는 {@code reasonCode} 허용값이 세 신고 사유 enum의 합집합과 같은지 못박는다.
+ * 생성 문서에 실리는 {@code reasonCode} 허용값이 네 신고 사유 enum의 합집합과 같은지 못박는다.
  *
- * <p>세 종류(상품·리뷰·사용자)의 사유 어휘가 서로 달라 공통 응답 필드는 문자열이다. 문자열 필드는
+ * <p>네 종류(상품, 리뷰, 사용자, SNS 게시물)의 사유 어휘가 서로 달라 공통 응답 필드는 문자열이다. 문자열 필드는
  * {@code @Schema(allowableValues)} 말고 허용값을 실을 자리가 없고, 그 목록은 손으로 적은 사본이라
  * 원본 enum이 늘면 조용히 낡는다. 어드민에는 전수 계약 테스트가 없으므로 이 축만 따로 지킨다.
  *
@@ -35,18 +36,19 @@ class ReportReasonCodeSchemaTest {
     private static final Set<String> ALL_REPORT_REASONS = new TreeSet<>(Stream.of(
                     Arrays.stream(ProductReportReason.values()).map(Enum::name),
                     Arrays.stream(ReviewReportReason.values()).map(Enum::name),
-                    Arrays.stream(ReportReasonCode.values()).map(Enum::name))
+                    Arrays.stream(ReportReasonCode.values()).map(Enum::name),
+                    Arrays.stream(PostReportReason.values()).map(Enum::name))
             .flatMap(stream -> stream)
             .toList());
 
     @Test
-    void 목록_응답의_신고_사유_허용값은_세_어휘의_합집합이다() {
+    void 목록_응답의_신고_사유_허용값은_네_어휘의_합집합이다() {
         assertThat(documentedReasonCodeEnum(AdminReportSummaryResponse.class))
                 .containsExactlyElementsOf(ALL_REPORT_REASONS);
     }
 
     @Test
-    void 이력_응답의_신고_사유_허용값은_세_어휘의_합집합이다() {
+    void 이력_응답의_신고_사유_허용값은_네_어휘의_합집합이다() {
         assertThat(documentedReasonCodeEnum(ReportHistoryResponse.class)).containsExactlyElementsOf(ALL_REPORT_REASONS);
     }
 

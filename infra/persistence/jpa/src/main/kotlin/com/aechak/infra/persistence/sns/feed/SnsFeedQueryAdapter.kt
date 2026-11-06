@@ -62,7 +62,7 @@ private fun createdBetween(
 ): BooleanExpression = from?.let { post.createdAt.between(it, to) } ?: post.createdAt.loe(to)
 
 /** visibleUser와 같은 조건의 네이티브 조각. 팔로잉 피드의 원천, 원글 작성자, 리포스트한 사람이 함께 쓴다 */
-private fun visibleUserSql(userIdColumn: String): String = "EXISTS (SELECT 1 FROM user_profiles vp WHERE vp.user_id = $userIdColumn)"
+internal fun visibleUserSql(userIdColumn: String): String = "EXISTS (SELECT 1 FROM user_profiles vp WHERE vp.user_id = $userIdColumn)"
 
 /** 팔로잉 피드 원천 src. 나와 내가 팔로우하는 사용자 중 볼 수 있고 숨김 밖인 사용자다 */
 private fun followingSourcesSql(hasHidden: Boolean): String =
@@ -75,7 +75,7 @@ private fun followingSourcesSql(hasHidden: Boolean): String =
     """
 
 /** 드라이버가 시각을 Timestamp로 주는 자리도 있고 LocalDateTime으로 주는 자리도 있어 둘을 함께 받는다 */
-private fun Array<*>.time(index: Int): LocalDateTime =
+internal fun Array<*>.time(index: Int): LocalDateTime =
     when (val value = this[index]) {
         is Timestamp -> value.toLocalDateTime()
         is LocalDateTime -> value

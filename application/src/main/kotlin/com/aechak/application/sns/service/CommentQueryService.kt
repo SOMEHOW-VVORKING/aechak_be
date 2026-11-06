@@ -30,6 +30,7 @@ class CommentQueryService(
     private val snsVisibilityService: SnsVisibilityService,
     private val fileUseCase: FileUseCase,
     private val userUseCase: UserUseCase,
+    private val likeService: LikeService,
 ) {
     fun scopeOf(
         post: Post,
@@ -51,8 +52,9 @@ class CommentQueryService(
         val view = commentQueryPort.findVisible(scope, comment.id) ?: throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
         val rootView =
             view.parentId?.let { commentQueryPort.findVisible(scope, it) ?: throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE) }
-        val parent = rootView?.let { toItem(it, null, null, scope.viewerId) }
-        return SnsCommentThreadResult(toItem(view, rootView?.publicId, parent?.status, scope.viewerId), parent)
+        val likes = likesOf(listOfNotNull(view.id, rootView?.id), scope.viewerId)
+        val parent = rootView?.let { toItem(it, null, null, scope.viewerId, likes) }
+        return SnsCommentThreadResult(toItem(view, rootView?.publicId, parent?.status, scope.viewerId, likes), parent)
     }
 
     /** 상세와 피드 카드의 댓글 수. 섀도우 처리된 사용자에게만 자기 숨긴 댓글과 그 아래 대댓글이 더해진다 */
@@ -68,6 +70,16 @@ class CommentQueryService(
     ): SnsCommentRefView =
         commentQueryPort.findVisibleRef(scope, commentPublicId) ?: throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
 
+    /** 좋아요할 수 있는 댓글의 id. 보이지 않거나 안내 문구만 남은 댓글이면 130700이다 */
+    fun requireLikeTarget(
+        scope: SnsCommentScope,
+        commentPublicId: String,
+    ): Long {
+        val ref = requireReplyTarget(scope, commentPublicId)
+        if (ref.status == CommentStatus.DELETED) throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
+        return ref.id
+    }
+
     /** 최상위 댓글 size개와 그 대댓글을 스레드 순서로 이어 붙인 한 페이지 */
     fun getPage(
         scope: SnsCommentScope,
@@ -79,21 +91,24 @@ class CommentQueryService(
             CursorPageResult.of(commentQueryPort.findRootPage(scope, lastRootId, CursorPageSize.fetchLimit(size)), size) {
                 CommentCursorCodec.encode(postPublicId, it.id)
             }
-        val replies = commentQueryPort.findReplies(scope, roots.items.map { it.id }).groupBy { it.parentId }
+        val replyViews = commentQueryPort.findReplies(scope, roots.items.map { it.id })
+        val likes = likesOf(roots.items.map { it.id } + replyViews.map { it.id }, scope.viewerId)
+        val replies = replyViews.groupBy { it.parentId }
         val items =
             roots.items.flatMap { root ->
-                val rootItem = toItem(root, null, null, scope.viewerId)
-                listOf(rootItem) + replies[root.id].orEmpty().map { toItem(it, root.publicId, rootItem.status, scope.viewerId) }
+                val rootItem = toItem(root, null, null, scope.viewerId, likes)
+                listOf(rootItem) + replies[root.id].orEmpty().map { toItem(it, root.publicId, rootItem.status, scope.viewerId, likes) }
             }
         return CursorPageResult(items, null, roots.nextCursor, roots.hasNext)
     }
 
     /** rootStatus는 대댓글이면 최상위 댓글 항목의 상태이고 최상위 댓글이면 null이다 */
-    fun toItem(
+    private fun toItem(
         view: SnsCommentView,
         parentPublicId: String?,
         rootStatus: SnsCommentItemStatus?,
         viewerId: Long?,
+        likes: CommentLikes,
     ): SnsCommentItemResult {
         val author =
             view.authorNickname?.let {
@@ -113,6 +128,8 @@ class CommentQueryService(
             edited = view.editedAt != null,
             isMine = view.authorId == viewerId,
             createdAt = view.createdAt,
+            likeCount = likes.counts[view.id] ?: 0,
+            liked = view.id in likes.liked,
         )
     }
 
@@ -126,6 +143,7 @@ class CommentQueryService(
     ): SnsCommentItemResult {
         val root = comment.parent
         val author = authorOf(comment.authorId)
+        val likes = likesOf(listOf(comment.id), viewerId)
         return item(
             publicId = comment.publicId,
             parentPublicId = root?.publicId,
@@ -137,8 +155,16 @@ class CommentQueryService(
             isMine = comment.authorId == viewerId,
             // 방금 저장한 엔티티는 나노초까지 들고 있어 DB 정밀도(DATETIME(6))로 맞춰 다시 읽은 값과 같게 한다
             createdAt = comment.createdAt.truncatedTo(ChronoUnit.MICROS),
+            likeCount = likes.counts[comment.id] ?: 0,
+            liked = comment.id in likes.liked,
         )
     }
+
+    /** 항목 댓글 id로 좋아요 수와 내 좋아요 여부를 한 번씩 읽는다 */
+    private fun likesOf(
+        commentIds: List<Long>,
+        viewerId: Long?,
+    ): CommentLikes = CommentLikes(likeService.countByCommentIds(commentIds), likeService.findLikedCommentIdsAmong(viewerId, commentIds))
 
     private fun authorOf(userId: Long): SnsPostAuthorResult? =
         userUseCase.findPublicProfileById(userId)?.let { profile ->
@@ -174,6 +200,8 @@ class CommentQueryService(
         edited: Boolean,
         isMine: Boolean,
         createdAt: LocalDateTime,
+        likeCount: Long,
+        liked: Boolean,
     ): SnsCommentItemResult {
         val active = status == SnsCommentItemStatus.ACTIVE
         return SnsCommentItemResult(
@@ -182,8 +210,8 @@ class CommentQueryService(
             status = status,
             author = author.takeIf { active },
             content = content.takeIf { active },
-            likeCount = 0,
-            liked = false,
+            likeCount = if (active) likeCount else 0,
+            liked = active && liked,
             edited = active && edited,
             replyable = active && (rootStatus ?: status) == SnsCommentItemStatus.ACTIVE,
             isMine = active && isMine,
@@ -191,3 +219,9 @@ class CommentQueryService(
         )
     }
 }
+
+/** 항목 댓글들의 좋아요 수와 보는 사람이 좋아요한 댓글 id */
+private class CommentLikes(
+    val counts: Map<Long, Long>,
+    val liked: Set<Long>,
+)

@@ -1,7 +1,6 @@
 package com.aechak.api.sns
 
 import com.aechak.api.support.IntegrationTestBase
-import com.aechak.application.sns.facade.SnsFacade
 import com.aechak.application.sns.usecase.SnsUseCase
 import com.aechak.application.sns.usecase.command.BlockUserCommand
 import com.aechak.application.sns.usecase.command.FollowUserCommand
@@ -28,7 +27,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.transaction.PlatformTransactionManager
-import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.context.WebApplicationContext
 import java.util.Collections
@@ -340,10 +339,10 @@ class FollowIntegrationTest : IntegrationTestBase() {
             val b = onboardedUser("gapb")
             val c = onboardedUser("gapc")
             val d = onboardedUser("gapd")
-            // 언팔로우 트랜잭션을 열어 둔 채 다른 쌍을 팔로우한다. 격리 수준은 SnsFacade.unfollow 선언을 그대로 쓴다
+            // 언팔로우 트랜잭션을 열어 둔 채 다른 쌍을 팔로우한다. 격리 수준은 SnsFacade.unfollow와 같은 READ_COMMITTED다
             val unfollowTx =
                 TransactionTemplate(transactionManager).apply {
-                    isolationLevel = unfollowIsolation().value()
+                    isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
                 }
             val deleted = CountDownLatch(1)
             val release = CountDownLatch(1)
@@ -376,12 +375,6 @@ class FollowIntegrationTest : IntegrationTestBase() {
             assertEquals(1L, followCount(c.id, d.id), "다른 쌍의 팔로우 행이 들어가야 한다")
             assertEquals(1L, followerCountOf(d.id), "다른 쌍 상대의 팔로워 수가 1이어야 한다")
         }
-
-        private fun unfollowIsolation() =
-            SnsFacade::class.java
-                .getMethod("unfollow", FollowUserCommand::class.java)
-                .getAnnotation(Transactional::class.java)
-                .isolation
     }
 
     /** 작업을 스레드마다 하나씩 동시에 출발시키고 난 예외를 모은다 */
