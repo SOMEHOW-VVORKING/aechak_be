@@ -12,7 +12,7 @@ public record ReportHistoryResponse(
                         description = "접수된 신고의 사유. 대상 종류별 어휘라 종류에 따라 허용값이 갈린다 — "
                                 + "PRODUCT=FALSE_AD·INFO_ERROR·ILLEGAL·INAPPROPRIATE·OTHER, "
                                 + "REVIEW·USER·SNS_POST=FRAUD·ABUSE·SPAM·INAPPROPRIATE·OTHER. "
-                                + "허용값은 세 어휘의 합집합이다.",
+                                + "허용값은 네 어휘의 합집합이다.",
                         allowableValues = {
                             "ABUSE",
                             "FALSE_AD",
