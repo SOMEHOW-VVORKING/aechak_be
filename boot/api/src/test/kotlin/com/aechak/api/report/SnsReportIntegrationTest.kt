@@ -1,6 +1,9 @@
 package com.aechak.api.report
 
 import com.aechak.api.sns.SnsPostIntegrationTestBase
+import com.aechak.application.sns.report.usecase.SnsReportUseCase
+import com.aechak.application.sns.report.usecase.command.SubmitCommentReportCommand
+import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.review.review.Review
 import com.aechak.domain.sns.comment.enums.CommentDeletionReason
@@ -38,6 +41,9 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 class SnsReportIntegrationTest : SnsPostIntegrationTestBase() {
     @Autowired
     private lateinit var applicationEvents: ApplicationEvents
+
+    @Autowired
+    private lateinit var snsReportUseCase: SnsReportUseCase
 
     // ---------- 게시물 ----------
 
@@ -228,6 +234,23 @@ class SnsReportIntegrationTest : SnsPostIntegrationTestBase() {
 
         assertEquals(2, commentReports().size)
         assertEquals(2, recorded<CommentReportReceivedEvent>().size)
+    }
+
+    @Test
+    fun `같은 신고자가 같은 댓글을 동시에 신고해도 한 건만 저장되고 나머지는 130804로 거절된다`() {
+        val comment = seedComment(onboardedUser(), createdPublicId(onboardedUser()))
+        val reporterId = onboardedUser()
+        // 빈도 제한(1분 5건)에 걸리지 않도록 4건만 보낸다
+        val command = SubmitCommentReportCommand(reporterId, comment, PostReportReason.SPAM, null)
+
+        val errors = runConcurrently(List(4) { { snsReportUseCase.submitCommentReport(command) } })
+
+        assertEquals(1, commentReports().size)
+        assertEquals(3, errors.size)
+        assertTrue(
+            errors.all { (it as? BusinessException)?.errorCode == SnsErrorCode.SNS_COMMENT_ALREADY_REPORTED },
+            "나머지는 모두 130804여야 한다: $errors",
+        )
     }
 
     @Test
