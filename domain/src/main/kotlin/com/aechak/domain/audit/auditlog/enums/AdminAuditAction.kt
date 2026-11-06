@@ -24,6 +24,7 @@ enum class AdminAuditAction(
     CLAIM_INTERVENED(AdminAuditTargetType.CLAIM, "클레임 개입"),
     MEMBER_SANCTIONED(AdminAuditTargetType.MEMBER, "회원 제재"),
     MEMBER_SANCTION_RELEASED(AdminAuditTargetType.MEMBER, "회원 제재 해제"),
+    MEMBER_PROFILE_RESET(AdminAuditTargetType.MEMBER, "회원 프로필 초기화"),
     INQUIRY_ANSWERED(AdminAuditTargetType.INQUIRY, "서비스 문의 답변"),
     REVIEW_BLINDED(AdminAuditTargetType.REVIEW, "리뷰 블라인드"),
     REVIEW_UNBLINDED(AdminAuditTargetType.REVIEW, "리뷰 블라인드 해제"),
