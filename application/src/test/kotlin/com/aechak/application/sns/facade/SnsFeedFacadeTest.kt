@@ -396,6 +396,11 @@ private class NoCommentQueryPort : SnsCommentQueryPort {
         viewerId: Long?,
     ): Map<Long, Long> = postIds.associateWith { 0L }
 
+    override fun findVisible(
+        scope: SnsCommentScope,
+        commentId: Long,
+    ): SnsCommentView? = throw UnsupportedOperationException()
+
     override fun findVisibleRef(
         scope: SnsCommentScope,
         commentPublicId: String,

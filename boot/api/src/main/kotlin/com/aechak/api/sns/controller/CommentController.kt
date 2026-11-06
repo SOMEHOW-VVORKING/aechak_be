@@ -5,6 +5,7 @@ import com.aechak.api.sns.request.SnsCommentListRequest
 import com.aechak.api.sns.request.UpdateCommentRequest
 import com.aechak.api.sns.response.SnsCommentItemResponse
 import com.aechak.api.sns.response.SnsCommentPageResponse
+import com.aechak.api.sns.response.SnsCommentThreadResponse
 import com.aechak.application.sns.usecase.SnsCommentUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
@@ -56,6 +57,13 @@ class CommentController(
         val result = snsCommentUseCase.createComment(request.toCommand(principal.userId, publicId, idempotencyKey))
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.of(SnsCommentItemResponse.from(result)))
     }
+
+    @GetMapping("/comments/{commentPublicId}")
+    fun getComment(
+        @PathVariable commentPublicId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<SnsCommentThreadResponse>> =
+        ResponseEntity.ok(ApiResponse.of(SnsCommentThreadResponse.from(snsCommentUseCase.getComment(principal.userId, commentPublicId))))
 
     @PatchMapping("/comments/{commentPublicId}")
     fun updateComment(

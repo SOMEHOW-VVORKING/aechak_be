@@ -103,6 +103,15 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `토큰 없이 댓글 단건을 부르면 401 20004다`() {
+        val commentId = seedComment(onboardedUser(), createdPublicId(onboardedUser()))
+
+        getComment(commentId, null)
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
     fun `토큰 없이 댓글 목록을 부르면 200이고 isMine과 liked가 false다`() {
         val authorId = onboardedUser()
         val publicId = createdPublicId(authorId)

@@ -27,6 +27,12 @@ interface SnsCommentQueryPort {
         viewerId: Long?,
     ): Map<Long, Long>
 
+    /** 이 게시물의 댓글이고 보는 사람에게 보이면 작성자 표시 정보와 함께, 아니면 null을 돌려준다 */
+    fun findVisible(
+        scope: SnsCommentScope,
+        commentId: Long,
+    ): SnsCommentView?
+
     /** 이 게시물의 댓글이고 보는 사람에게 보이면 조회 결과를, 아니면 null을 돌려준다. 사용자 표를 읽지 않는다 */
     fun findVisibleRef(
         scope: SnsCommentScope,

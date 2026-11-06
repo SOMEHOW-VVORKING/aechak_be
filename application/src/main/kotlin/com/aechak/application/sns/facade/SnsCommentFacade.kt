@@ -12,6 +12,7 @@ import com.aechak.application.sns.usecase.command.CreateCommentCommand
 import com.aechak.application.sns.usecase.command.UpdateCommentCommand
 import com.aechak.application.sns.usecase.query.SnsCommentListQuery
 import com.aechak.application.sns.usecase.result.SnsCommentItemResult
+import com.aechak.application.sns.usecase.result.SnsCommentThreadResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.common.error.BusinessException
@@ -53,6 +54,16 @@ class SnsCommentFacade(
         val post = requireVisiblePost(query.postPublicId, query.viewerId)
         val lastRootId = query.cursor?.let { CommentCursorCodec.decode(it, post.publicId) }
         return commentQueryService.getPage(commentQueryService.scopeOf(post, query.viewerId), post.publicId, lastRootId, query.size)
+    }
+
+    @Transactional(readOnly = true)
+    override fun getComment(
+        viewerId: Long,
+        commentPublicId: String,
+    ): SnsCommentThreadResult {
+        val comment = commentCommandService.requireByPublicId(commentPublicId)
+        val post = requireVisiblePost(comment.post.publicId, viewerId)
+        return commentQueryService.getThread(commentQueryService.scopeOf(post, viewerId), comment)
     }
 
     override fun createComment(command: CreateCommentCommand): SnsCommentItemResult {

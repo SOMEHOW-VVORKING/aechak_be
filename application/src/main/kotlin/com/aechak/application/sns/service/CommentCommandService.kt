@@ -33,6 +33,9 @@ class CommentCommandService(
         return root
     }
 
+    fun requireByPublicId(publicId: String): Comment =
+        commentRepository.findByPublicId(publicId) ?: throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
+
     /** 수정과 삭제가 쓰는 잠금 읽기. 없으면 130700이다 */
     fun lockForAuthor(publicId: String): Comment =
         commentRepository.findByPublicIdForUpdate(publicId) ?: throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)

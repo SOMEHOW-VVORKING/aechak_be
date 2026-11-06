@@ -484,6 +484,15 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         return JsonPath.read(json, "$.data")
     }
 
+    protected fun getComment(
+        commentPublicId: String,
+        viewerId: Long?,
+    ): ResultActions {
+        val request = get("/api/v1/sns/comments/$commentPublicId")
+        if (viewerId != null) request.header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}")
+        return mockMvc.perform(request)
+    }
+
     protected fun updateComment(
         commentPublicId: String,
         userId: Long,

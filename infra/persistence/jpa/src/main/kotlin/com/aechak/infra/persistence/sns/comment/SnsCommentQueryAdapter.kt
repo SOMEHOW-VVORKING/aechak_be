@@ -76,14 +76,32 @@ class SnsCommentQueryAdapter(
             .select(Projections.constructor(SnsCommentRefView::class.java, comment.id, comment.parent.id, comment.authorId, comment.status))
             .from(comment)
             .leftJoin(comment.parent, root)
-            .where(
-                comment.publicId.eq(commentPublicId),
-                comment.post.id.eq(scope.postId),
-                authorVisible(comment.authorId, scope),
-                comment.parent.isNull.or(authorVisible(root.authorId, scope)),
-                visibleState(comment, scope),
-            ).fetchOne()
+            .where(comment.publicId.eq(commentPublicId), visibleWithRoot(root, scope))
+            .fetchOne()
     }
+
+    override fun findVisible(
+        scope: SnsCommentScope,
+        commentId: Long,
+    ): SnsCommentView? {
+        val root = QComment("visibleRoot")
+        return selectViews(comment)
+            .leftJoin(comment.parent, root)
+            .where(comment.id.eq(commentId), visibleWithRoot(root, scope))
+            .fetchOne()
+    }
+
+    /** 이 게시물의 댓글이 보는 사람에게 보인다. root는 comment.parent를 LEFT JOIN한 별칭이다 */
+    private fun visibleWithRoot(
+        root: QComment,
+        scope: SnsCommentScope,
+    ): Predicate? =
+        ExpressionUtils.allOf(
+            comment.post.id.eq(scope.postId),
+            authorVisible(comment.authorId, scope),
+            comment.parent.isNull.or(authorVisible(root.authorId, scope)),
+            visibleState(comment, scope),
+        )
 
     // shortcut: 상세와 카드마다 댓글 행을 센다. 행마다 sns_mutes 고유 인덱스를 두 번 찾고 최상위 댓글 작성자를 기본 키로 한 번 읽는다.
     // 게시물 하나의 댓글이 1만 개를 넘거나 상세 P95가 200ms, 피드 P95가 300ms를 넘으면

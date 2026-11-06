@@ -8,6 +8,7 @@ import com.aechak.application.sns.port.view.SnsCommentView
 import com.aechak.application.sns.support.CommentCursorCodec
 import com.aechak.application.sns.usecase.result.SnsCommentItemResult
 import com.aechak.application.sns.usecase.result.SnsCommentItemStatus
+import com.aechak.application.sns.usecase.result.SnsCommentThreadResult
 import com.aechak.application.sns.usecase.result.SnsPostAuthorResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.support.CursorPageSize
@@ -40,6 +41,18 @@ class CommentQueryService(
             hidden = snsVisibilityService.findViewerFilter(viewerId),
             muted = snsVisibilityService.findMutedIds(viewerId),
         )
+
+    /** 댓글과 그 최상위 댓글을 목록과 같은 규칙으로 판정하고 조립한다. 보이지 않으면 130700이다 */
+    fun getThread(
+        scope: SnsCommentScope,
+        comment: Comment,
+    ): SnsCommentThreadResult {
+        val view = commentQueryPort.findVisible(scope, comment.id) ?: throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
+        val rootView =
+            view.parentId?.let { commentQueryPort.findVisible(scope, it) ?: throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE) }
+        val parent = rootView?.let { toItem(it, null, null, scope.viewerId) }
+        return SnsCommentThreadResult(toItem(view, rootView?.publicId, parent?.status, scope.viewerId), parent)
+    }
 
     /** 상세와 피드 카드의 댓글 수. 섀도우 처리된 사용자에게만 자기 숨긴 댓글과 그 아래 대댓글이 더해진다 */
     fun countVisible(
