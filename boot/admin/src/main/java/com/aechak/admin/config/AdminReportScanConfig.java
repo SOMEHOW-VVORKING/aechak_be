@@ -11,8 +11,8 @@ import org.springframework.context.annotation.Configuration;
  *
  * <p>이 패키지의 빈이 호출하는 비노출·제재 경로(application.product.product.service,
  * application.review.admin, application.user.sanction)는 이미 다른 스캔이 들여놓고 있어
- * 여기서 더 넣지 않는다.
+ * 여기서 더 넣지 않는다. SNS 게시물 운영자 삭제(application.sns.postdeletion)만 함께 넣는다.
  */
 @Configuration(proxyBeanMethods = false)
-@ComponentScan(basePackages = "com.aechak.application.report.admin")
+@ComponentScan(basePackages = {"com.aechak.application.report.admin", "com.aechak.application.sns.postdeletion"})
 public class AdminReportScanConfig {}

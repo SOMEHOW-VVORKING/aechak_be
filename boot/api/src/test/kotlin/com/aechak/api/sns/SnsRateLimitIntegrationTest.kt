@@ -11,6 +11,7 @@ import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -154,6 +155,33 @@ class SnsRateLimitIntegrationTest : SnsPostIntegrationTestBase() {
             assertTrue(ttl in 1..windowSeconds, "$key 는 창 길이 안에 만료되어야 한다: $ttl")
         }
     }
+
+    @Test
+    fun `신고는 게시물과 사용자 신고를 합쳐 1분 6번째가 429이고 거절된 요청은 1일 수를 쓰지 않는다`() {
+        val me = onboardedUser()
+        val posts = List(3) { createdPublicId(onboardedUser()) }
+        val users = List(3) { publicIdOf(onboardedUser()) }
+
+        posts.forEach { report(me, "SNS_POST", it).andExpect(status().isCreated) }
+        users.take(2).forEach { report(me, "SNS_USER", it).andExpect(status().isCreated) }
+        report(me, "SNS_USER", users[2])
+            .andExpect(status().isTooManyRequests)
+            .andExpect(jsonPath("$.errorCode").value(90012))
+
+        assertEquals("5", counterValue("sns:REPORT", me, 86_400), "거절된 신고는 1일 수를 올리지 않아야 한다")
+    }
+
+    private fun report(
+        userId: Long,
+        targetType: String,
+        targetId: String,
+    ): ResultActions =
+        mockMvc.perform(
+            post("/api/v1/reports")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"targetType":"$targetType","targetId":"$targetId","reasonCode":"SPAM"}"""),
+        )
 
     private fun relation(
         action: String,

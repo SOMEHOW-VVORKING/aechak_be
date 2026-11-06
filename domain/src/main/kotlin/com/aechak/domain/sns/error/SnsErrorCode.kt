@@ -46,4 +46,9 @@ enum class SnsErrorCode(
     SNS_COMMENT_TOO_LONG(130703, "댓글은 500자까지 쓸 수 있습니다.", 400),
     SNS_COMMENT_BLOCKED(130704, "부적절한 표현이 있어 댓글을 등록할 수 없습니다.", 400),
     SNS_COMMENT_REPLY_CLOSED(130705, "답글을 달 수 없는 댓글입니다.", 409),
+
+    // 게시물 신고 130800번대
+    SNS_POST_REPORT_SELF(130800, "본인 게시물은 신고할 수 없습니다.", 400),
+    SNS_POST_REPORT_REASON_TEXT_REQUIRED(130801, "기타 사유로 신고하려면 상세 내용을 입력해 주세요.", 400),
+    SNS_POST_ALREADY_REPORTED(130802, "이미 신고한 게시물입니다.", 409),
 }

@@ -6,7 +6,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aechak.admin.support.FakeFileStorage;
 import com.aechak.admin.support.IntegrationTestBase;
+import com.aechak.application.file.port.FileStorage;
 import com.aechak.application.report.admin.port.ReportReviewVisibilityPort;
 import com.aechak.domain.audit.auditlog.AdminAuditLog;
 import com.aechak.domain.audit.auditlog.enums.AdminAuditAction;
@@ -23,6 +25,11 @@ import com.aechak.domain.review.report.enums.ReviewReportReason;
 import com.aechak.domain.review.review.Review;
 import com.aechak.domain.review.review.enums.ReviewStatus;
 import com.aechak.domain.seller.seller.Seller;
+import com.aechak.domain.sns.post.Post;
+import com.aechak.domain.sns.post.enums.PostDeletionReason;
+import com.aechak.domain.sns.report.PostReport;
+import com.aechak.domain.sns.report.enums.PostReportReason;
+import com.aechak.domain.support.Ulid;
 import com.aechak.domain.user.report.UserReport;
 import com.aechak.domain.user.report.enums.ReportReasonCode;
 import com.aechak.domain.user.sanction.UserSanction;
@@ -63,6 +70,9 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
     @Autowired
     private ReportReviewVisibilityPort reviewVisibilityPort;
 
+    @Autowired
+    private FileStorage fileStorage;
+
     private MockMvc mockMvc;
     private long adminId;
     private String adminToken;
@@ -76,6 +86,7 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .addFilters(new com.aechak.webcommon.trace.TraceIdFilter(), securityFilterChain)
                 .build();
+        ((FakeFileStorage) fileStorage).reset();
         adminId = createMember("운영자", UserRole.ADMIN);
         adminToken = mintAccessToken(adminId);
         sellerUserId = createMember("보리펫샵사장", UserRole.GENERAL);
@@ -329,7 +340,7 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
 
     @Test
     void 알_수_없는_대상_종류_경로는_400_90001_이다() throws Exception {
-        mockMvc.perform(bearer(get(BASE + "/SNS_POST/1"), adminToken))
+        mockMvc.perform(bearer(get(BASE + "/SNS_COMMENT/1"), adminToken))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value(90001));
     }
@@ -637,6 +648,80 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
         assertThat(decisions()).isEmpty();
     }
 
+    // --- SNS 게시물 ---
+
+    @Test
+    void SNS_게시물_신고가_목록에_게시물_publicId와_캡션으로_나온다() throws Exception {
+        String postPublicId = persistSnsPost(authorId, "광고 문구가 있는 글");
+        long reportId = persistSnsPostReport(postPublicId, PostReportReason.SPAM, null);
+
+        mockMvc.perform(bearer(get(BASE).param("targetType", "SNS_POST"), adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].targetType").value("SNS_POST"))
+                .andExpect(jsonPath("$.data.items[0].reportId").value(reportId))
+                .andExpect(jsonPath("$.data.items[0].targetKey").value(postPublicId))
+                .andExpect(jsonPath("$.data.items[0].targetName").value("광고 문구가 있는 글"))
+                .andExpect(jsonPath("$.data.items[0].targetOwnerNickname").value("초코집사"))
+                .andExpect(jsonPath("$.data.items[0].reasonCode").value("SPAM"));
+    }
+
+    @Test
+    void SNS_게시물_신고의_비공개_전환은_게시물을_운영자_삭제로_지우고_커밋_뒤에_미디어_파일을_지운다() throws Exception {
+        String postPublicId = persistSnsPost(authorId, "욕설이 섞인 글");
+        long reportId = persistSnsPostReport(postPublicId, PostReportReason.ABUSE, "욕설이에요");
+
+        decide("SNS_POST", reportId, hideBody("ABUSE")).andExpect(status().isNoContent());
+
+        assertThat(postStatusOf(postPublicId)).isEqualTo("DELETED/OPERATOR");
+        assertThat(fakeFileStorage().deletedKeys()).containsExactly(mediaKeyOf(postPublicId));
+        assertThat(decisions()).hasSize(1);
+        assertThat(decisions().get(0).getTargetOwnerUserId()).isEqualTo(authorId);
+        assertThat(sanctionsOf(authorId)).isEmpty();
+    }
+
+    @Test
+    void SNS_게시물_신고의_계정_제재는_게시물을_지우고_작성자를_제재한다() throws Exception {
+        String postPublicId = persistSnsPost(authorId, "욕설이 섞인 글");
+        long reportId = persistSnsPostReport(postPublicId, PostReportReason.ABUSE, null);
+
+        decide("SNS_POST", reportId, sanctionBody("ABUSE", "RESTRICT", "OTHER", null))
+                .andExpect(status().isNoContent());
+
+        assertThat(postStatusOf(postPublicId)).isEqualTo("DELETED/OPERATOR");
+        assertThat(statusOf(authorId)).isEqualTo(UserStatus.RESTRICTED);
+    }
+
+    @Test
+    void 작성자가_이미_지운_SNS_게시물의_신고도_비공개_전환으로_종결하고_삭제_주체는_그대로다() throws Exception {
+        String postPublicId = persistSnsPost(authorId, "곧 지울 글");
+        long reportId = persistSnsPostReport(postPublicId, PostReportReason.SPAM, null);
+        tx.executeWithoutResult(txStatus -> em.createQuery("select p from Post p where p.publicId = :id", Post.class)
+                .setParameter("id", postPublicId)
+                .getSingleResult()
+                .delete(PostDeletionReason.AUTHOR));
+
+        decide("SNS_POST", reportId, hideBody("ABUSE")).andExpect(status().isNoContent());
+
+        assertThat(postStatusOf(postPublicId)).isEqualTo("DELETED/AUTHOR");
+        assertThat(decisions()).hasSize(1);
+    }
+
+    @Test
+    void 제재가_거절되면_SNS_게시물_삭제도_되돌아가고_파일도_지우지_않는다() throws Exception {
+        long adminAuthorId = createMember("부운영자", UserRole.ADMIN);
+        String postPublicId = persistSnsPost(adminAuthorId, "욕설이 섞인 글");
+        long reportId = persistSnsPostReport(postPublicId, PostReportReason.ABUSE, null);
+
+        decide("SNS_POST", reportId, sanctionBody("ABUSE", "BAN", "ABUSIVE_REVIEW", null))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(30021));
+
+        assertThat(postStatusOf(postPublicId)).isEqualTo("PUBLISHED/null");
+        assertThat(fakeFileStorage().deletedKeys()).isEmpty();
+        assertThat(decisions()).isEmpty();
+    }
+
     // --- 요청 본문 ---
 
     private ResultActions decide(String targetType, long reportId, String body) throws Exception {
@@ -792,6 +877,56 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
             em.flush();
             return report.getId();
         }));
+    }
+
+    /** 사진 한 장짜리 게시물을 심는다. 사진 키는 sns/posts/{멱등키}.jpg 다. */
+    private String persistSnsPost(long author, String caption) {
+        return Objects.requireNonNull(tx.execute(txStatus -> {
+            String idempotencyKey = Ulid.INSTANCE.generate();
+            Post post = Post.Companion.create(
+                    author,
+                    caption,
+                    List.of("sns/posts/" + idempotencyKey + ".jpg"),
+                    null,
+                    List.of(),
+                    null,
+                    idempotencyKey);
+            em.persist(post);
+            em.flush();
+            return post.getPublicId();
+        }));
+    }
+
+    private String mediaKeyOf(String postPublicId) {
+        return (String) tx.execute(txStatus -> em.createNativeQuery("select m.storage_key from sns_post_media m "
+                        + "join sns_posts p on p.id = m.post_id where p.public_id = :id")
+                .setParameter("id", postPublicId)
+                .getSingleResult());
+    }
+
+    private long persistSnsPostReport(String postPublicId, PostReportReason reasonCode, String reasonText) {
+        return Objects.requireNonNull(tx.execute(txStatus -> {
+            Post post = em.createQuery("select p from Post p where p.publicId = :id", Post.class)
+                    .setParameter("id", postPublicId)
+                    .getSingleResult();
+            PostReport report = PostReport.Companion.report(post, createUser(), reasonCode, reasonText);
+            em.persist(report);
+            em.flush();
+            return report.getId();
+        }));
+    }
+
+    /** "상태/삭제 주체" 문자열. 아직 지우지 않았으면 삭제 주체는 null 이다. */
+    private String postStatusOf(String postPublicId) {
+        Object[] row = (Object[]) Objects.requireNonNull(tx.execute(
+                txStatus -> em.createNativeQuery("select status, deletion_reason from sns_posts where public_id = :id")
+                        .setParameter("id", postPublicId)
+                        .getSingleResult()));
+        return row[0] + "/" + row[1];
+    }
+
+    private FakeFileStorage fakeFileStorage() {
+        return (FakeFileStorage) fileStorage;
     }
 
     // --- 검증 ---
