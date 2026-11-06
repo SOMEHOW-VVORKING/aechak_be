@@ -88,6 +88,21 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `토큰 없이 댓글을 고치거나 지우면 401 20004다`() {
+        val commentId = seedComment(onboardedUser(), createdPublicId(onboardedUser()))
+
+        mockMvc
+            .perform(patch("/api/v1/sns/comments/$commentId").contentType(MediaType.APPLICATION_JSON).content(commentBody()))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        mockMvc
+            .perform(delete("/api/v1/sns/comments/$commentId"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        assertEquals("ACTIVE", commentRow(commentId)["status"])
+    }
+
+    @Test
     fun `토큰 없이 댓글 목록을 부르면 200이고 isMine과 liked가 false다`() {
         val authorId = onboardedUser()
         val publicId = createdPublicId(authorId)

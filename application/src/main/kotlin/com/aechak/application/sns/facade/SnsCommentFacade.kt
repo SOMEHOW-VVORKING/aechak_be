@@ -2,18 +2,22 @@ package com.aechak.application.sns.facade
 
 import com.aechak.application.moderation.usecase.ModerationUseCase
 import com.aechak.application.moderation.usecase.result.ModerationDecision
+import com.aechak.application.sns.commentdeletion.service.CommentDeletionService
 import com.aechak.application.sns.service.CommentCommandService
 import com.aechak.application.sns.service.CommentQueryService
 import com.aechak.application.sns.service.PostAccessService
 import com.aechak.application.sns.support.CommentCursorCodec
 import com.aechak.application.sns.usecase.SnsCommentUseCase
 import com.aechak.application.sns.usecase.command.CreateCommentCommand
+import com.aechak.application.sns.usecase.command.UpdateCommentCommand
 import com.aechak.application.sns.usecase.query.SnsCommentListQuery
 import com.aechak.application.sns.usecase.result.SnsCommentItemResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.comment.Comment
+import com.aechak.domain.sns.comment.enums.CommentDeletionReason
+import com.aechak.domain.sns.comment.enums.CommentStatus
 import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.post.Post
 import org.springframework.dao.DataIntegrityViolationException
@@ -28,6 +32,7 @@ import org.springframework.transaction.support.TransactionTemplate
 class SnsCommentFacade(
     private val commentQueryService: CommentQueryService,
     private val commentCommandService: CommentCommandService,
+    private val commentDeletionService: CommentDeletionService,
     private val postAccessService: PostAccessService,
     private val moderationUseCase: ModerationUseCase,
     private val userUseCase: UserUseCase,
@@ -69,6 +74,31 @@ class SnsCommentFacade(
             // 동시 요청은 사전 조회를 둘 다 통과한다. (작성자, 게시물, 멱등키) UNIQUE가 심판이고 진 쪽은 먼저 생긴 댓글을 돌려준다.
             // try가 tx.execute를 감싸야 함. 안에서 잡으면 롤백 전용 마킹 때문에 커밋에서 다시 터짐
             findIdempotent(command) ?: throw e
+        }
+    }
+
+    override fun updateComment(command: UpdateCommentCommand): SnsCommentItemResult {
+        // 규칙은 댓글 조회보다 먼저 본다. 없는 댓글이어도 규칙을 어긴 수정은 404가 아니라 400이다
+        val content = moderate(Comment.normalizeContent(command.content))
+        return tx.execute {
+            val comment = commentCommandService.lockForAuthor(command.commentPublicId)
+            requireVisiblePost(comment.post.publicId, command.userId)
+            if (comment.authorId != command.userId) throw BusinessException(SnsErrorCode.SNS_COMMENT_NOT_AUTHOR)
+            if (comment.status == CommentStatus.DELETED) throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
+            comment.edit(content)
+            commentQueryService.itemOf(comment, command.userId)
+        }!!
+    }
+
+    // 게시물이 지워졌거나 게시물 작성자와 차단 관계여도 자기 댓글은 지운다. 무본문이라 게시물 정보가 드러나지 않는다
+    override fun deleteComment(
+        userId: Long,
+        commentPublicId: String,
+    ) {
+        tx.execute {
+            val comment = commentCommandService.lockForAuthor(commentPublicId)
+            if (comment.authorId != userId) throw BusinessException(SnsErrorCode.SNS_COMMENT_NOT_AUTHOR)
+            commentDeletionService.delete(comment, CommentDeletionReason.AUTHOR)
         }
     }
 

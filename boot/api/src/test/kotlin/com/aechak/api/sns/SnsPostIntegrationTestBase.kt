@@ -484,6 +484,27 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         return JsonPath.read(json, "$.data")
     }
 
+    protected fun updateComment(
+        commentPublicId: String,
+        userId: Long,
+        body: String = commentBody(content = "고친 댓글"),
+    ): ResultActions =
+        mockMvc.perform(
+            patch("/api/v1/sns/comments/$commentPublicId")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+
+    protected fun deleteComment(
+        commentPublicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            delete("/api/v1/sns/comments/$commentPublicId")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
     protected fun commentRow(publicId: String): Map<String, Any?> =
         jdbcTemplate.queryForMap("select * from sns_comments where public_id = ?", publicId)
 

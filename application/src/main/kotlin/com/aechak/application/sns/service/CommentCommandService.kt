@@ -33,6 +33,10 @@ class CommentCommandService(
         return root
     }
 
+    /** 수정과 삭제가 쓰는 잠금 읽기. 없으면 130700이다 */
+    fun lockForAuthor(publicId: String): Comment =
+        commentRepository.findByPublicIdForUpdate(publicId) ?: throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
+
     /** 같은 작성자가 이 게시물에 같은 키로 쓴 댓글. 게시물 상태는 보지 않는다 */
     fun findByIdempotencyKey(
         authorId: Long,
