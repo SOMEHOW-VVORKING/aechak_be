@@ -54,6 +54,26 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `토큰 없이 좋아요를 켜거나 끄면 401 20004다`() {
+        val publicId = createdPublicId(onboardedUser())
+
+        listOf(post("/api/v1/sns/posts/$publicId/like"), delete("/api/v1/sns/posts/$publicId/like")).forEach {
+            mockMvc
+                .perform(it)
+                .andExpect(status().isUnauthorized)
+                .andExpect(jsonPath("$.errorCode").value(20004))
+        }
+    }
+
+    @Test
+    fun `토큰 없이 좋아요한 사람을 부르면 401 20004다`() {
+        mockMvc
+            .perform(get("/api/v1/sns/posts/${createdPublicId(onboardedUser())}/likers"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
     fun `토큰 없이 해시태그 자동완성을 부르면 401 20004다`() {
         mockMvc
             .perform(get("/api/v1/sns/hashtags").param("query", "산책"))
@@ -70,6 +90,17 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
         assertEquals(false, detail["isMine"])
         assertEquals(false, detail["following"])
         assertEquals(false, detail["mutedByMe"])
+    }
+
+    @Test
+    fun `토큰 없이 상세를 부르면 liked는 false이고 좋아요 수는 실제 값이다`() {
+        val publicId = createdPublicId(onboardedUser())
+        like(publicId, onboardedUser()).andExpect(status().isCreated)
+
+        val detail = postDetail(publicId)
+
+        assertEquals(false, detail["liked"])
+        assertEquals(1, detail["likeCount"])
     }
 
     @Test

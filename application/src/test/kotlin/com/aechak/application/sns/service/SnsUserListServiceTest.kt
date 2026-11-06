@@ -4,6 +4,7 @@ import com.aechak.application.sns.port.SnsFollowDirection
 import com.aechak.application.sns.port.SnsRelationKind
 import com.aechak.application.sns.port.SnsUserListQueryPort
 import com.aechak.application.sns.port.view.SnsFollowUserView
+import com.aechak.application.sns.port.view.SnsLikerView
 import com.aechak.application.sns.port.view.SnsRelationUserView
 import com.aechak.application.sns.usecase.query.SnsFollowListQuery
 import java.text.Normalizer
@@ -43,6 +44,12 @@ class SnsUserListServiceTest {
                 searchedNicknames += nickname
                 return emptyList()
             }
+
+            override fun findPostLikers(
+                postId: Long,
+                hiddenUserIds: Set<Long>,
+                limit: Int,
+            ): List<SnsLikerView> = emptyList()
         }
     private val service = SnsUserListService(port)
 

@@ -11,12 +11,6 @@ import org.springframework.stereotype.Service
 class HashtagService(
     private val hashtagRepository: HashtagRepository,
 ) {
-    /** 태그 id들의 이름을 받은 순서대로 돌려준다 */
-    fun namesOf(hashtagIds: List<Long>): List<String> {
-        val names = hashtagRepository.findAllById(hashtagIds).associate { it.id to it.name }
-        return hashtagIds.mapNotNull(names::get)
-    }
-
     /**
      * 해시태그 자동완성. query는 표기를 정리한 검색어이고 비면 추천 태그, 글자 규칙을 어기면 빈 목록, 아니면 이름에 검색어가 든 태그를 준다.
      * 보는 사람의 차단과 뮤트는 반영하지 않는다.
