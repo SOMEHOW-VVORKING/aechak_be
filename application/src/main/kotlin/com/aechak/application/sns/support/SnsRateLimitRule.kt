@@ -18,6 +18,10 @@ enum class SnsRateLimitRule(
     UNMUTE(perMinute(30)),
     REPOST(perMinute(60)),
     SAVE(perMinute(60)),
+
+    // 게시물과 댓글 좋아요를 함께 센다
+    LIKE_ON(perMinute(60)),
+    LIKE_OFF(perMinute(60)),
     ;
 
     override val key: String get() = "sns:$name"
