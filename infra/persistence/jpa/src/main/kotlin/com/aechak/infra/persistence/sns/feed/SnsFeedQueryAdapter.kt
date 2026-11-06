@@ -217,6 +217,7 @@ class SnsFeedQueryAdapter(
         limit: Int,
     ): List<Long> {
         // 리포스트가 없어 통계 행이 없는 글도 댓글로 점수를 받으므로 통계 행을 LEFT JOIN한다
+        // shortcut: 기간 안의 게시물마다 댓글 행을 센다. 순위 계산이 1초를 넘거나 72시간 안의 댓글이 10만 개를 넘으면 공개 댓글 수를 통계 행에 저장한다
         val score =
             Expressions.numberTemplate(
                 Long::class.javaObjectType,
