@@ -14,4 +14,7 @@ interface PetProfileRepository {
     fun findAllActiveByUserIdRecentFirst(userId: Long): List<PetProfile>
 
     fun countActiveByUserId(userId: Long): Long
+
+    /** id 목록 중 ACTIVE 펫. breed까지 적재해 돌려줌 */
+    fun findAllActiveByIdIn(ids: Collection<Long>): List<PetProfile>
 }
