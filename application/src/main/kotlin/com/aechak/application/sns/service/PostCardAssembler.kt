@@ -8,6 +8,7 @@ import com.aechak.application.sns.usecase.result.SnsPostGridItemResult
 import com.aechak.application.sns.usecase.result.SnsPostVideoResult
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.domain.sns.follow.repository.FollowRepository
+import com.aechak.domain.sns.like.repository.PostLikeRepository
 import com.aechak.domain.sns.post.enums.PostMediaKind
 import com.aechak.domain.sns.post.enums.PostMediaType
 import com.aechak.domain.sns.repost.repository.RepostRepository
@@ -20,6 +21,7 @@ class PostCardAssembler(
     private val feedQueryPort: SnsFeedQueryPort,
     private val repostRepository: RepostRepository,
     private val saveRepository: SaveRepository,
+    private val postLikeRepository: PostLikeRepository,
     private val followRepository: FollowRepository,
     private val petProfileUseCase: PetProfileUseCase,
     private val fileUseCase: FileUseCase,
@@ -40,6 +42,8 @@ class PostCardAssembler(
         val pets = petProfileUseCase.getActivePetsByIds(cards.values.mapNotNull { it.petId }.toSet()).associateBy { it.petId }
         val reposted = viewerId?.let { repostRepository.findRepostedPostIdsAmong(it, postIds) }.orEmpty()
         val saved = viewerId?.let { saveRepository.findSavedPostIdsAmong(it, postIds) }.orEmpty()
+        val likeCounts = postLikeRepository.countByPostIds(postIds)
+        val liked = viewerId?.let { postLikeRepository.findLikedPostIdsAmong(it, postIds) }.orEmpty()
         val authorIds = cards.values.map { it.authorId }.toSet()
         val followees = viewerId?.let { followRepository.findFolloweeIdsAmong(it, authorIds) }.orEmpty()
         return postIds.mapNotNull { postId ->
@@ -67,8 +71,8 @@ class PostCardAssembler(
                             durationMs = it.durationMs!!,
                         )
                     },
-                // 좋아요와 댓글은 아직 없어 0이다
-                likeCount = 0,
+                likeCount = likeCounts.getValue(postId),
+                // 댓글은 아직 없어 0이다
                 commentCount = 0,
                 repostCount = card.repostCount.toLong(),
                 edited = card.editedAt != null,
@@ -78,6 +82,7 @@ class PostCardAssembler(
                 mutedByMe = card.authorId in mutedIds,
                 reposted = postId in reposted,
                 saved = postId in saved,
+                liked = postId in liked,
             )
         }
     }
