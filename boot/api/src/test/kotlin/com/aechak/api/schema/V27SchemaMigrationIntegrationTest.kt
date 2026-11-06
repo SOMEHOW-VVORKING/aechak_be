@@ -599,7 +599,7 @@ class V27SchemaMigrationIntegrationTest {
         /**
          * orders는 V21이, payments는 V24가, product_drafts는 V31이, sns_user_stats는 V35가, sns_blocks는 V48이, sns_mutes는 V49가,
          * sns_follows는 V50이, claim_interventions는 V54가, sns_posts는 V78이, sns_post_media는 V79가, sns_hashtags는 V80이, sns_post_hashtags는 V81이,
-         * sns_reposts는 V83이, sns_post_stats는 V84가, sns_saves는 V87이, sns_post_likes는 V97이, sns_comments는 V98이, sns_comment_likes는 V99가 이미 만든다 —
+         * sns_reposts는 V83이, sns_post_stats는 V84가, sns_saves는 V87이, sns_post_likes는 V97이, sns_comments는 V98이, sns_comment_likes는 V100이 이미 만든다 —
          * ddl-auto만으로 존재하던 테이블은 나머지 10개다.
          */
         private val DDL_AUTO_TABLES =
