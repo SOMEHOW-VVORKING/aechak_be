@@ -123,6 +123,22 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `토큰 없이 댓글 좋아요를 켜거나 끄거나 좋아요한 사람을 부르면 401 20004다`() {
+        val commentId = seedComment(onboardedUser(), createdPublicId(onboardedUser()))
+
+        listOf(
+            post("/api/v1/sns/comments/$commentId/like"),
+            delete("/api/v1/sns/comments/$commentId/like"),
+            get("/api/v1/sns/comments/$commentId/likers"),
+        ).forEach {
+            mockMvc
+                .perform(it)
+                .andExpect(status().isUnauthorized)
+                .andExpect(jsonPath("$.errorCode").value(20004))
+        }
+    }
+
+    @Test
     fun `토큰 없이 댓글 단건을 부르면 401 20004다`() {
         val commentId = seedComment(onboardedUser(), createdPublicId(onboardedUser()))
 

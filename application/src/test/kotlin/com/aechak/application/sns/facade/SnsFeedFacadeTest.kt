@@ -24,6 +24,7 @@ import com.aechak.application.sns.port.view.SnsPostMediaView
 import com.aechak.application.sns.port.view.SnsSaveView
 import com.aechak.application.sns.port.view.SnsUserRepostView
 import com.aechak.application.sns.service.CommentQueryService
+import com.aechak.application.sns.service.LikeService
 import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.SnsFeedService
 import com.aechak.application.sns.service.SnsProfileService
@@ -51,6 +52,7 @@ import com.aechak.application.user.user.usecase.result.UserSummaryResult
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.sns.follow.repository.FollowRepository
+import com.aechak.domain.sns.like.repository.CommentLikeRepository
 import com.aechak.domain.sns.like.repository.PostLikeRepository
 import com.aechak.domain.sns.post.Post
 import com.aechak.domain.sns.post.enums.PostMediaType
@@ -148,6 +150,7 @@ class SnsFeedFacadeTest {
                     SnsVisibilityService(UnusedVisibilityQueryPort()),
                     KeyUrlFileUseCase(),
                     UnusedUserUseCase(),
+                    LikeService(NoPostLikeRepository(), UnusedCommentLikeRepository()),
                 ),
                 NoPetProfileUseCase(),
                 KeyUrlFileUseCase(),
@@ -410,6 +413,25 @@ private class NoCommentQueryPort : SnsCommentQueryPort {
         scope: SnsCommentScope,
         commentPublicId: String,
     ): SnsCommentRefView? = throw UnsupportedOperationException()
+}
+
+private class UnusedCommentLikeRepository : CommentLikeRepository {
+    override fun insertIfAbsent(
+        commentId: Long,
+        userId: Long,
+    ): Unit = throw UnsupportedOperationException()
+
+    override fun delete(
+        commentId: Long,
+        userId: Long,
+    ): Int = throw UnsupportedOperationException()
+
+    override fun countByCommentIds(commentIds: Collection<Long>): Map<Long, Long> = throw UnsupportedOperationException()
+
+    override fun findLikedCommentIdsAmong(
+        userId: Long,
+        commentIds: Collection<Long>,
+    ): Set<Long> = throw UnsupportedOperationException()
 }
 
 private class NoPostLikeRepository : PostLikeRepository {
