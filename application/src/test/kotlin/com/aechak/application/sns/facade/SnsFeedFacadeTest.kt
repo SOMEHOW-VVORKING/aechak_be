@@ -197,7 +197,7 @@ private class RaceLostSnapshotStore(
 }
 
 /** 순위 쿼리는 정해 둔 순위를 돌려주고 모든 게시물을 볼 수 있다고 답한다 */
-private class FakeFeedQueryPort(
+internal class FakeFeedQueryPort(
     private val ranking: List<Long>,
 ) : SnsFeedQueryPort {
     override fun findFollowingPage(
@@ -286,7 +286,7 @@ private class FakeFeedQueryPort(
     override fun findHashtagNames(postIds: Collection<Long>): List<SnsPostHashtagView> = emptyList()
 }
 
-private class NoPetProfileUseCase : PetProfileUseCase {
+internal class NoPetProfileUseCase : PetProfileUseCase {
     override fun registerPet(command: RegisterPetProfileCommand): RegisterPetProfileResult = throw UnsupportedOperationException()
 
     override fun getPets(userId: Long): PetProfileListResult = throw UnsupportedOperationException()
@@ -310,7 +310,7 @@ private class NoPetProfileUseCase : PetProfileUseCase {
     ): SetDefaultPetResult = throw UnsupportedOperationException()
 }
 
-private class KeyUrlFileUseCase : FileUseCase {
+internal class KeyUrlFileUseCase : FileUseCase {
     override fun issuePresignedUrl(command: IssuePresignedUrlCommand): IssuePresignedUrlResult = throw UnsupportedOperationException()
 
     override fun promote(command: PromoteFileCommand): PromoteFileResult = throw UnsupportedOperationException()
@@ -325,7 +325,7 @@ private class KeyUrlFileUseCase : FileUseCase {
     override fun delete(command: DeleteFileCommand) = throw UnsupportedOperationException()
 }
 
-private class UnusedPostRepository : PostRepository {
+internal class UnusedPostRepository : PostRepository {
     override fun save(post: Post): Post = throw UnsupportedOperationException()
 
     override fun findByPublicId(publicId: String): Post? = throw UnsupportedOperationException()
@@ -338,7 +338,7 @@ private class UnusedPostRepository : PostRepository {
     ): Post? = throw UnsupportedOperationException()
 }
 
-private class UnusedVisibilityQueryPort : SnsVisibilityQueryPort {
+internal class UnusedVisibilityQueryPort : SnsVisibilityQueryPort {
     override fun findPairState(
         viewerId: Long,
         targetId: Long,
@@ -349,7 +349,7 @@ private class UnusedVisibilityQueryPort : SnsVisibilityQueryPort {
     override fun findMutedIds(viewerId: Long): Set<Long> = throw UnsupportedOperationException()
 }
 
-private class UnusedRepostRepository : RepostRepository {
+internal class UnusedRepostRepository : RepostRepository {
     override fun insertIfAbsent(
         reposterId: Long,
         postId: Long,
@@ -367,7 +367,7 @@ private class UnusedRepostRepository : RepostRepository {
     ): Set<Long> = throw UnsupportedOperationException()
 }
 
-private class UnusedSaveRepository : SaveRepository {
+internal class UnusedSaveRepository : SaveRepository {
     override fun insertIfAbsent(
         userId: Long,
         postId: Long,
@@ -384,7 +384,7 @@ private class UnusedSaveRepository : SaveRepository {
     ): Set<Long> = throw UnsupportedOperationException()
 }
 
-private class NoCommentQueryPort : SnsCommentQueryPort {
+internal class NoCommentQueryPort : SnsCommentQueryPort {
     override fun findRootPage(
         scope: SnsCommentScope,
         lastRootId: Long?,
@@ -412,7 +412,7 @@ private class NoCommentQueryPort : SnsCommentQueryPort {
     ): SnsCommentRefView? = throw UnsupportedOperationException()
 }
 
-private class NoPostLikeRepository : PostLikeRepository {
+internal class NoPostLikeRepository : PostLikeRepository {
     override fun insertIfAbsent(
         postId: Long,
         userId: Long,
@@ -431,7 +431,7 @@ private class NoPostLikeRepository : PostLikeRepository {
     ): Set<Long> = throw UnsupportedOperationException()
 }
 
-private class UnusedFollowRepository : FollowRepository {
+internal class UnusedFollowRepository : FollowRepository {
     override fun insertIfAbsent(
         followerId: Long,
         followeeId: Long,
@@ -448,7 +448,7 @@ private class UnusedFollowRepository : FollowRepository {
     ): Set<Long> = throw UnsupportedOperationException()
 }
 
-private class UnusedUserStatsRepository : SnsUserStatsRepository {
+internal class UnusedUserStatsRepository : SnsUserStatsRepository {
     override fun findByUserId(userId: Long): SnsUserStats? = throw UnsupportedOperationException()
 
     override fun lockInUserIdOrder(
@@ -469,7 +469,7 @@ private class UnusedUserStatsRepository : SnsUserStatsRepository {
     override fun decreasePostCount(userId: Long): Int = throw UnsupportedOperationException()
 }
 
-private class UnusedUserUseCase : UserUseCase {
+internal class UnusedUserUseCase : UserUseCase {
     override fun checkNickname(
         userId: Long,
         nickname: String,
@@ -492,7 +492,7 @@ private class UnusedUserUseCase : UserUseCase {
     override fun registerFromSocial(): Long = throw UnsupportedOperationException()
 }
 
-private class NoOpTransactionManager : AbstractPlatformTransactionManager() {
+internal class NoOpTransactionManager : AbstractPlatformTransactionManager() {
     override fun doGetTransaction(): Any = Any()
 
     override fun doBegin(
