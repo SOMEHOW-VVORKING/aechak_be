@@ -5,6 +5,7 @@ import com.aechak.application.email.port.EmailSender
 import com.aechak.application.report.port.ReportNotificationPolicy
 import com.aechak.domain.product.report.event.ProductReportReceivedEvent
 import com.aechak.domain.review.report.event.ReviewReportReceivedEvent
+import com.aechak.domain.sns.report.event.PostReportReceivedEvent
 import com.aechak.domain.user.report.event.UserReportReceivedEvent
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Async
@@ -13,7 +14,7 @@ import org.springframework.transaction.event.TransactionPhase
 import org.springframework.transaction.event.TransactionalEventListener
 import java.time.LocalDateTime
 
-/** 상품, 리뷰, 사용자 신고 접수 이벤트를 수신해 운영팀에 통지 메일을 발송 */
+/** 상품, 리뷰, 사용자, SNS 게시물 신고 접수 이벤트를 수신해 운영팀에 통지 메일을 발송 */
 @Component
 class ReportNotificationListener(
     private val emailSender: EmailSender,
@@ -54,6 +55,19 @@ class ReportNotificationListener(
             targetType = "USER",
             reportId = event.reportId,
             target = "사용자 id ${event.targetUserId} (리뷰 id ${event.reviewId} 작성자)",
+            reasonCode = event.reasonCode.name,
+            reasonText = event.reasonText,
+            createdAt = event.createdAt,
+        )
+    }
+
+    @Async("reportNotificationTaskExecutor")
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    fun handleSnsPostReportReceived(event: PostReportReceivedEvent) {
+        notifyOps(
+            targetType = "SNS_POST",
+            reportId = event.reportId,
+            target = "SNS 게시물 publicId ${event.postPublicId}",
             reasonCode = event.reasonCode.name,
             reasonText = event.reasonText,
             createdAt = event.createdAt,

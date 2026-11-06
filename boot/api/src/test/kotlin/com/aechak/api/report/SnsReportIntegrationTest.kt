@@ -1,0 +1,199 @@
+package com.aechak.api.report
+
+import com.aechak.api.sns.SnsPostIntegrationTestBase
+import com.aechak.common.error.CommonErrorCode
+import com.aechak.domain.sns.error.SnsErrorCode
+import com.aechak.domain.sns.report.PostReport
+import com.aechak.domain.sns.report.enums.PostReportReason
+import com.aechak.domain.sns.report.event.PostReportReceivedEvent
+import com.aechak.domain.user.user.User
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
+import org.springframework.test.context.event.ApplicationEvents
+import org.springframework.test.context.event.RecordApplicationEvents
+import org.springframework.test.web.servlet.ResultActions
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+
+/**
+ * 통합 테스트. POST /reports의 SNS 대상이 신고자가 볼 수 있는 대상만 접수하고 공통 신고 규칙(자기 신고, 중복, 기타 사유)을 지키는지 HTTP부터 고정한다.
+ * 깨지면 볼 수 없는 게시물이 신고되거나 차단 관계가 다른 코드로 드러난다.
+ */
+@RecordApplicationEvents
+class SnsReportIntegrationTest : SnsPostIntegrationTestBase() {
+    @Autowired
+    private lateinit var applicationEvents: ApplicationEvents
+
+    // ---------- 게시물 ----------
+
+    @Test
+    fun `타인 게시물을 신고하면 201을 반환하고 신고를 저장하며 접수 이벤트를 한 번 발행한다`() {
+        val authorId = onboardedUser()
+        val reporterId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+
+        postReport(reporterId, reportJson("SNS_POST", publicId, "OTHER", "  광고 계정 같아요  "))
+            .andExpect(status().isCreated)
+
+        val report = postReports().single()
+        assertEquals(postIdOf(publicId), report.postId)
+        assertEquals(reporterId, report.reporterId)
+        assertEquals(PostReportReason.OTHER, report.reasonCode)
+        assertEquals("광고 계정 같아요", report.reasonText)
+        val event = recorded<PostReportReceivedEvent>().single()
+        assertEquals(report.id, event.reportId)
+        assertEquals(publicId, event.postPublicId)
+    }
+
+    @Test
+    fun `게시물 신고가 기타 사유인데 상세 내용이 공백뿐이면 400과 130801을 반환한다`() {
+        val publicId = createdPublicId(onboardedUser())
+
+        postReport(onboardedUser(), reportJson("SNS_POST", publicId, "OTHER", " \\n "))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(SnsErrorCode.SNS_POST_REPORT_REASON_TEXT_REQUIRED.code))
+        assertNoPostReport()
+    }
+
+    @Test
+    fun `본인 게시물을 신고하면 400과 130800을 반환한다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+
+        postReport(authorId, reportJson("SNS_POST", publicId, "SPAM"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(SnsErrorCode.SNS_POST_REPORT_SELF.code))
+        assertNoPostReport()
+    }
+
+    @Test
+    fun `없거나 삭제된 게시물, 탈퇴한 작성자의 게시물을 신고하면 404와 130400을 반환한다`() {
+        val authorId = onboardedUser()
+        val reporterId = onboardedUser()
+        val deleted = createdPublicId(authorId)
+        deletePost(deleted, authorId).andExpect(status().isNoContent)
+        val withdrawnAuthorId = onboardedUser()
+        val ofWithdrawn = createdPublicId(withdrawnAuthorId)
+        tx.execute { em.find(User::class.java, withdrawnAuthorId).withdraw() }
+
+        listOf("01JUNKNOWNPOST0000000000000", deleted, ofWithdrawn).forEach { publicId ->
+            postReport(reporterId, reportJson("SNS_POST", publicId, "SPAM"))
+                .andExpect(status().isNotFound)
+                .andExpect(jsonPath("$.errorCode").value(SnsErrorCode.SNS_POST_UNAVAILABLE.code))
+        }
+        assertNoPostReport()
+    }
+
+    @Test
+    fun `나를 차단한 작성자의 게시물은 삭제된 게시물과 같은 404와 130400이다`() {
+        val authorId = onboardedUser()
+        val reporterId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        relate(authorId, reporterId, "block")
+
+        postReport(reporterId, reportJson("SNS_POST", publicId, "SPAM"))
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value(SnsErrorCode.SNS_POST_UNAVAILABLE.code))
+        assertNoPostReport()
+    }
+
+    @Test
+    fun `내가 차단한 작성자의 게시물은 상세와 같은 403과 130001이다`() {
+        val authorId = onboardedUser()
+        val reporterId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        relate(reporterId, authorId, "block")
+
+        postReport(reporterId, reportJson("SNS_POST", publicId, "SPAM"))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(SnsErrorCode.SNS_USER_BLOCKED_BY_VIEWER.code))
+        assertNoPostReport()
+    }
+
+    @Test
+    fun `뮤트한 작성자의 게시물은 신고할 수 있다`() {
+        val authorId = onboardedUser()
+        val reporterId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        relate(reporterId, authorId, "mute")
+
+        postReport(reporterId, reportJson("SNS_POST", publicId, "ABUSE")).andExpect(status().isCreated)
+        assertEquals(1, postReports().size)
+    }
+
+    @Test
+    fun `같은 게시물을 다시 신고하면 409와 130802를 반환하고 신고와 이벤트는 하나만 남는다`() {
+        val publicId = createdPublicId(onboardedUser())
+        val reporterId = onboardedUser()
+
+        postReport(reporterId, reportJson("SNS_POST", publicId, "SPAM")).andExpect(status().isCreated)
+        postReport(reporterId, reportJson("SNS_POST", publicId, "FRAUD"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(SnsErrorCode.SNS_POST_ALREADY_REPORTED.code))
+
+        assertEquals(1, postReports().size)
+        assertEquals(1, recorded<PostReportReceivedEvent>().size)
+    }
+
+    @Test
+    fun `다른 신고자가 같은 게시물을 신고하면 각각 접수한다`() {
+        val publicId = createdPublicId(onboardedUser())
+
+        postReport(onboardedUser(), reportJson("SNS_POST", publicId, "SPAM")).andExpect(status().isCreated)
+        postReport(onboardedUser(), reportJson("SNS_POST", publicId, "SPAM")).andExpect(status().isCreated)
+
+        assertEquals(2, postReports().size)
+    }
+
+    @Test
+    fun `게시물 신고에 SNS 사유가 아닌 코드를 보내면 400과 INVALID_REQUEST를 반환한다`() {
+        val publicId = createdPublicId(onboardedUser())
+
+        postReport(onboardedUser(), reportJson("SNS_POST", publicId, "FALSE_AD"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(CommonErrorCode.INVALID_REQUEST.code))
+        assertNoPostReport()
+    }
+
+    private fun postReport(
+        reporterId: Long,
+        body: String,
+    ): ResultActions =
+        mockMvc.perform(
+            post("/api/v1/reports")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(reporterId)}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+
+    private fun reportJson(
+        targetType: String,
+        targetId: String,
+        reasonCode: String,
+        reasonText: String? = null,
+    ): String =
+        listOfNotNull(
+            "\"targetType\":\"$targetType\"",
+            "\"targetId\":\"$targetId\"",
+            "\"reasonCode\":\"$reasonCode\"",
+            reasonText?.let { "\"reasonText\":\"$it\"" },
+        ).joinToString(separator = ",", prefix = "{", postfix = "}")
+
+    private fun postIdOf(publicId: String): Long =
+        jdbcTemplate.queryForObject("select id from sns_posts where public_id = ?", Long::class.java, publicId)!!
+
+    private fun postReports(): List<PostReport> =
+        tx.execute { em.createQuery("select r from PostReport r order by r.id", PostReport::class.java).resultList }!!
+
+    private inline fun <reified T : Any> recorded(): List<T> = applicationEvents.stream(T::class.java).toList()
+
+    private fun assertNoPostReport() {
+        assertTrue(postReports().isEmpty(), "게시물 신고가 저장되면 안 된다")
+        assertTrue(recorded<PostReportReceivedEvent>().isEmpty(), "게시물 신고 접수 이벤트가 발행되면 안 된다")
+    }
+}

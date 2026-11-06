@@ -38,4 +38,9 @@ enum class SnsErrorCode(
 
     // 리포스트 130600번대
     SNS_REPOST_OWN_POST(130600, "본인 게시물은 리포스트할 수 없습니다.", 400),
+
+    // 게시물 신고 130800번대
+    SNS_POST_REPORT_SELF(130800, "본인 게시물은 신고할 수 없습니다.", 400),
+    SNS_POST_REPORT_REASON_TEXT_REQUIRED(130801, "기타 사유로 신고하려면 상세 내용을 입력해 주세요.", 400),
+    SNS_POST_ALREADY_REPORTED(130802, "이미 신고한 게시물입니다.", 409),
 }
