@@ -27,7 +27,7 @@ import javax.sql.DataSource
  *  - legacy : dev 재현 — ddl-auto가 V10 전에 테이블을 만들고 FK까지 걸어 둔 DB
  *  - late   : V10 이후에 ddl-auto가 테이블을 만든 DB(그 뒤 새로 만든 환경이 이 모양이다)
  *
- * 대조 대상 목록에는 이관 대상만이 아니라 이미 Flyway가 소유한 테이블(orders, payments, product_drafts, sns_user_stats, sns_blocks, sns_mutes, sns_follows, sns_posts, sns_post_media, sns_hashtags, sns_post_hashtags, sns_reposts, sns_post_stats, sns_saves)도 둔다 —
+ * 대조 대상 목록에는 이관 대상만이 아니라 이미 Flyway가 소유한 테이블(orders, payments, product_drafts, sns_user_stats, sns_blocks, sns_mutes, sns_follows, sns_posts, sns_post_media, sns_hashtags, sns_post_hashtags, sns_reposts, sns_post_stats, sns_saves, sns_comments)도 둔다 —
  * 그 테이블에 컬럼을 더할 때 엔티티 선언과 어긋나는 것을 같은 자리에서 잡는다.
  *
  * `ddl-auto=validate` 부팅으로는 이 정합을 볼 수 없다. users, products 등 엔티티 테이블 상당수가
@@ -196,6 +196,22 @@ class V27SchemaMigrationIntegrationTest {
                     """.trimIndent(),
                 ) { it.getString(1) }
             assertThat(collation).describedAs("%s sns_hashtags.name 콜레이션", url).containsExactly("utf8mb4_bin")
+        }
+    }
+
+    @Test
+    fun `댓글 멱등키는 Flyway와 엔티티 모두 utf8mb4_bin으로 비교한다`() {
+        // 모양 비교는 COLUMN_TYPE만 봐서 콜레이션이 달라도 통과한다
+        listOf(freshUrl, entityUrl).forEach { url ->
+            val collation =
+                query(
+                    url,
+                    """
+                    SELECT COLLATION_NAME FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sns_comments' AND COLUMN_NAME = 'idempotency_key'
+                    """.trimIndent(),
+                ) { it.getString(1) }
+            assertThat(collation).describedAs("%s sns_comments.idempotency_key 콜레이션", url).containsExactly("utf8mb4_bin")
         }
     }
 
@@ -575,18 +591,19 @@ class V27SchemaMigrationIntegrationTest {
                 "sns_reposts",
                 "sns_post_stats",
                 "sns_saves",
+                "sns_comments",
             )
 
         /**
          * orders는 V21이, payments는 V24가, product_drafts는 V31이, sns_user_stats는 V35가, sns_blocks는 V48이, sns_mutes는 V49가,
          * sns_follows는 V50이, claim_interventions는 V54가, sns_posts는 V78이, sns_post_media는 V79가, sns_hashtags는 V80이, sns_post_hashtags는 V81이,
-         * sns_reposts는 V83이, sns_post_stats는 V84가, sns_saves는 V87이 이미 만든다 —
+         * sns_reposts는 V83이, sns_post_stats는 V84가, sns_saves는 V87이, sns_comments는 V98이 이미 만든다 —
          * ddl-auto만으로 존재하던 테이블은 나머지 10개다.
          */
         private val DDL_AUTO_TABLES =
             TARGET_TABLES - "orders" - "payments" - "product_drafts" - "sns_user_stats" - "sns_blocks" - "sns_mutes" -
                 "sns_follows" - "claim_interventions" - "sns_posts" - "sns_post_media" - "sns_hashtags" - "sns_post_hashtags" -
-                "sns_reposts" - "sns_post_stats" - "sns_saves"
+                "sns_reposts" - "sns_post_stats" - "sns_saves" - "sns_comments"
 
         @JvmStatic
         @DynamicPropertySource

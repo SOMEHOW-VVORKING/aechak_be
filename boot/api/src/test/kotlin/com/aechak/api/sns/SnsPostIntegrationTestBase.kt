@@ -5,6 +5,10 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.enums.UploadPurpose
+import com.aechak.domain.sns.comment.Comment
+import com.aechak.domain.sns.comment.enums.CommentDeletionReason
+import com.aechak.domain.sns.comment.repository.CommentRepository
+import com.aechak.domain.sns.post.repository.PostRepository
 import com.aechak.domain.support.Ulid
 import com.aechak.domain.user.pet.Breed
 import com.aechak.domain.user.pet.PetProfile
@@ -51,6 +55,12 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
 
     @Autowired
     protected lateinit var jdbcTemplate: JdbcTemplate
+
+    @Autowired
+    private lateinit var postRepository: PostRepository
+
+    @Autowired
+    private lateinit var commentRepository: CommentRepository
 
     protected lateinit var mockMvc: MockMvc
 
@@ -374,6 +384,27 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         jdbcTemplate
             .queryForList("select name, post_count from sns_hashtags")
             .associate { it["name"] as String to (it["post_count"] as Number).toInt() }
+
+    /**
+     * 댓글을 API 없이 바로 저장하고 publicId를 돌려준다. parentPublicId는 최상위 댓글이어야 한다.
+     * edited가 참이면 한 번 고치고 deletedBy가 있으면 그 사유로 지운다.
+     */
+    protected fun seedComment(
+        authorId: Long,
+        postPublicId: String,
+        parentPublicId: String? = null,
+        content: String = "댓글${sequence.incrementAndGet()}",
+        edited: Boolean = false,
+        deletedBy: CommentDeletionReason? = null,
+    ): String =
+        tx.execute {
+            val post = postRepository.findByPublicId(postPublicId)!!
+            val parent = parentPublicId?.let { commentRepository.findByPublicId(it)!! }
+            val comment = commentRepository.save(Comment.write(post, parent, authorId, content, Ulid.generate()))
+            if (edited) comment.edit("$content (고침)")
+            deletedBy?.let(comment::delete)
+            comment.publicId
+        }!!
 
     /** 작업마다 스레드 하나를 두고 한꺼번에 출발시켜 모두 끝날 때까지 기다린 뒤 던진 예외를 모아 돌려준다. */
     protected fun runConcurrently(tasks: List<() -> Unit>): List<Throwable> {
