@@ -1,6 +1,7 @@
 package com.aechak.infra.persistence.sns.comment
 
 import com.aechak.domain.sns.comment.Comment
+import com.aechak.domain.sns.comment.enums.CommentStatus
 import com.aechak.domain.sns.comment.repository.CommentRepository
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
@@ -31,6 +32,13 @@ interface CommentJpaRepository : JpaRepository<Comment, Long> {
     fun findForUpdateById(
         @Param("id") id: Long,
     ): Comment?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from Comment c where c.authorId = :authorId and c.status = :status")
+    fun findForUpdateByAuthorIdAndStatus(
+        @Param("authorId") authorId: Long,
+        @Param("status") status: CommentStatus,
+    ): List<Comment>
 }
 
 @Repository
@@ -50,4 +58,7 @@ class CommentRepositoryAdapter(
         postId: Long,
         idempotencyKey: String,
     ): Comment? = jpaRepository.findByIdempotencyKey(authorId, postId, idempotencyKey)
+
+    override fun findActiveByAuthorIdForUpdate(authorId: Long): List<Comment> =
+        jpaRepository.findForUpdateByAuthorIdAndStatus(authorId, CommentStatus.ACTIVE)
 }

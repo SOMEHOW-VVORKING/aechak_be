@@ -345,10 +345,14 @@ private class UnusedSnsPostDeletionUseCase : SnsPostDeletionUseCase {
     ) = error("신고 처리는 작성자 삭제를 부르지 않는다")
 
     override fun deleteByOperator(publicId: String) = error("이 테스트는 SNS 게시물 신고를 다루지 않는다")
+
+    override fun deleteByWithdrawal(authorId: Long) = error("이 테스트는 탈퇴를 다루지 않는다")
 }
 
 private class UnusedSnsCommentDeletionUseCase : SnsCommentDeletionUseCase {
     override fun deleteByOperator(publicId: String) = error("이 테스트는 SNS 댓글 신고를 다루지 않는다")
+
+    override fun deleteByWithdrawal(authorId: Long) = error("이 테스트는 탈퇴를 다루지 않는다")
 }
 
 private class RecordingAdminMemberUseCase : AdminMemberUseCase {

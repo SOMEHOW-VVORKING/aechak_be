@@ -35,6 +35,12 @@ interface SaveJpaRepository : JpaRepository<Save, Long> {
         @Param("userId") userId: Long,
         @Param("postIds") postIds: Collection<Long>,
     ): List<Long>
+
+    @Modifying
+    @Query("delete from Save s where s.userId = :userId")
+    fun deleteAllByUserId(
+        @Param("userId") userId: Long,
+    ): Int
 }
 
 @Repository
@@ -57,4 +63,8 @@ class SaveRepositoryAdapter(
         userId: Long,
         postIds: Collection<Long>,
     ): Set<Long> = jpaRepository.findPostIds(userId, postIds).toSet()
+
+    override fun deleteAllByUser(userId: Long) {
+        jpaRepository.deleteAllByUserId(userId)
+    }
 }
