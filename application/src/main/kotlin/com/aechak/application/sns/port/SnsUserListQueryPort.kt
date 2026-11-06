@@ -1,6 +1,7 @@
 package com.aechak.application.sns.port
 
 import com.aechak.application.sns.port.view.SnsFollowUserView
+import com.aechak.application.sns.port.view.SnsLikerView
 import com.aechak.application.sns.port.view.SnsRelationUserView
 
 /** SNS 관계 행을 users, user_profiles와 조인해 읽는 사용자 목록 조회. 탈퇴 사용자는 조인에서 빠진다 */
@@ -30,4 +31,11 @@ interface SnsUserListQueryPort {
         lastFollowId: Long?,
         limit: Int,
     ): List<SnsFollowUserView>
+
+    /** 게시물에 좋아요한 사람을 최근에 누른 순서로 limit명. hiddenUserIds에 든 사용자는 빼고 채운다 */
+    fun findPostLikers(
+        postId: Long,
+        hiddenUserIds: Set<Long>,
+        limit: Int,
+    ): List<SnsLikerView>
 }

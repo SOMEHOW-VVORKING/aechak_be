@@ -58,7 +58,7 @@
 - 같은 BC 다른 애그리거트: `@ManyToOne(fetch=LAZY)` 단방향. **역방향 @OneToMany 컬렉션 금지**
 - 연관 내비게이션으로 타 애그리거트 상태 변경 금지 (`order.orderGroup.markPaid()` ❌) — 수정은 자기 리포지토리로 로딩
 - fetch는 LAZY 기본
-- 명시적 예외(연관 없이 값참조): RetentionRecord.userRef, PointTransaction.sourceId, ProductStats.productId, review BC의 대외 참조 4건, PostHashtag.hashtagId, Repost.postId, SnsPostStats.postId, Save.postId, PostReport.postId — 이들에 연관 추가 요구하지 말 것
+- 명시적 예외(연관 없이 값참조): RetentionRecord.userRef, PointTransaction.sourceId, ProductStats.productId, review BC의 대외 참조 4건, PostHashtag.hashtagId, Repost.postId, SnsPostStats.postId, Save.postId, PostLike.postId, PostReport.postId — 이들에 연관 추가 요구하지 말 것
 
 ### application — `20-application.md`
 - 트랜잭션 경계를 여는 코드(`@Transactional` 또는 `TransactionTemplate`)는 **Facade에만**. Service·도메인 메서드 부착 금지 (20 §2-1)
