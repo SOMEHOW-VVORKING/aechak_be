@@ -2,11 +2,13 @@ package com.aechak.application.sns.facade
 
 import com.aechak.application.moderation.usecase.ModerationUseCase
 import com.aechak.application.moderation.usecase.result.ModerationDecision
+import com.aechak.application.ratelimit.usecase.RateLimitUseCase
 import com.aechak.application.sns.commentdeletion.service.CommentDeletionService
 import com.aechak.application.sns.service.CommentCommandService
 import com.aechak.application.sns.service.CommentQueryService
 import com.aechak.application.sns.service.PostAccessService
 import com.aechak.application.sns.support.CommentCursorCodec
+import com.aechak.application.sns.support.SnsRateLimitRule
 import com.aechak.application.sns.usecase.SnsCommentUseCase
 import com.aechak.application.sns.usecase.command.CreateCommentCommand
 import com.aechak.application.sns.usecase.command.UpdateCommentCommand
@@ -37,6 +39,7 @@ class SnsCommentFacade(
     private val postAccessService: PostAccessService,
     private val moderationUseCase: ModerationUseCase,
     private val userUseCase: UserUseCase,
+    private val rateLimitUseCase: RateLimitUseCase,
     transactionManager: PlatformTransactionManager,
 ) : SnsCommentUseCase {
     private val tx =
@@ -68,6 +71,7 @@ class SnsCommentFacade(
 
     override fun createComment(command: CreateCommentCommand): SnsCommentItemResult {
         findIdempotent(command)?.let { return it }
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.COMMENT_CREATE)
         val content = moderate(Comment.normalizeContent(command.content))
         return try {
             tx.execute {
