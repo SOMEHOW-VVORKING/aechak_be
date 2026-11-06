@@ -142,6 +142,22 @@ class SnsRateLimitIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `댓글 좋아요는 게시물 좋아요와 켜기와 끄기를 함께 세어 1분 61번째가 429다`() {
+        val me = onboardedUser()
+        val post = createdPublicId(onboardedUser())
+        val comment = seedComment(onboardedUser(), post)
+
+        repeat(30) { like(post, me).andExpect(status().isCreated) }
+        repeat(30) { likeComment(comment, me).andExpect(status().isCreated) }
+        likeComment(comment, me)
+            .andExpect(status().isTooManyRequests)
+            .andExpect(jsonPath("$.errorCode").value(90012))
+        repeat(30) { unlike(post, me).andExpect(status().isOk) }
+        repeat(30) { unlikeComment(comment, me).andExpect(status().isOk) }
+        unlikeComment(comment, me).andExpect(status().isTooManyRequests)
+    }
+
+    @Test
     fun `카운터 키는 창마다 하나이고 창 길이 안에 만료된다`() {
         val me = onboardedUser()
         createdPublicId(me)

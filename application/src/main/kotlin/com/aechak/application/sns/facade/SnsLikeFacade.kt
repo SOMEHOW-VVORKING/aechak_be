@@ -61,11 +61,13 @@ class SnsLikeFacade(
             }
         }!!
 
-    // 본인 댓글에도 누를 수 있다
-    override fun likeComment(command: LikeCommentCommand): SnsLikeResult = toggleComment(command, likeService::likeComment)
+    // 본인 댓글에도 누를 수 있다. 빈도 제한은 게시물 좋아요와 함께 센다
+    override fun likeComment(command: LikeCommentCommand): SnsLikeResult =
+        toggleComment(command, SnsRateLimitRule.LIKE_ON, likeService::likeComment)
 
     // 끄기도 켜기와 같은 판정을 거쳐 볼 수 없게 된 댓글의 수를 내주지 않는다
-    override fun unlikeComment(command: LikeCommentCommand): SnsLikeResult = toggleComment(command, likeService::unlikeComment)
+    override fun unlikeComment(command: LikeCommentCommand): SnsLikeResult =
+        toggleComment(command, SnsRateLimitRule.LIKE_OFF, likeService::unlikeComment)
 
     override fun getCommentLikers(command: LikeCommentCommand): SnsLikerListResult =
         tx.execute {
@@ -104,16 +106,19 @@ class SnsLikeFacade(
         )
     }
 
-    /** 게시물 판정과 댓글 판정 뒤 댓글 좋아요를 바꾸고 같은 트랜잭션에서 지금의 수를 센다 */
+    /** 빈도 제한과 게시물 판정, 댓글 판정 뒤 댓글 좋아요를 바꾸고 같은 트랜잭션에서 지금의 수를 센다 */
     private fun toggleComment(
         command: LikeCommentCommand,
+        rule: SnsRateLimitRule,
         change: (commentId: Long, userId: Long) -> Unit,
-    ): SnsLikeResult =
-        tx.execute {
+    ): SnsLikeResult {
+        rateLimitUseCase.check(command.userId, rule)
+        return tx.execute {
             val commentId = requireVisibleComment(command.commentPublicId, command.userId)
             change(commentId, command.userId)
             SnsLikeResult(likeService.countByCommentIds(listOf(commentId)).getValue(commentId))
         }!!
+    }
 
     /** 없는 댓글이면 130700, 게시물 판정 뒤 보는 사람에게 보이지 않거나 안내 문구만 남은 댓글이면 130700이다 */
     private fun requireVisibleComment(
