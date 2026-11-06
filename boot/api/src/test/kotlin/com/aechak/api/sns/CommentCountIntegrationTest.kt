@@ -121,6 +121,21 @@ class CommentCountIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `섀도우 처리된 최상위 댓글 아래 다른 사람의 대댓글은 제3자의 수에서 빠지고 당사자의 수에는 들어간다`() {
+        val authorId = onboardedUser()
+        val shadowedId = onboardedUser()
+        val postId = createdPublicId(authorId)
+        seedComment(onboardedUser(), postId)
+        val shadowedRoot = seedComment(shadowedId, postId)
+        seedComment(onboardedUser(), postId, parentPublicId = shadowedRoot)
+        relate(authorId, shadowedId, "mute")
+
+        assertEquals(1, postDetail(postId)["commentCount"])
+        assertEquals(1, postDetail(postId, onboardedUser())["commentCount"])
+        assertEquals(3, postDetail(postId, shadowedId)["commentCount"])
+    }
+
+    @Test
     fun `피드 카드의 댓글 수도 상세와 같다`() {
         val authorId = onboardedUser()
         val postId = createdPublicId(authorId)
