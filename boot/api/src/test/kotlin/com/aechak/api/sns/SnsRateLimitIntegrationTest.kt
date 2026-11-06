@@ -112,6 +112,23 @@ class SnsRateLimitIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `댓글은 1분 11번째가 429이고 댓글이 생긴 같은 키 재요청은 세지 않는다`() {
+        val me = onboardedUser()
+        val post = createdPublicId(onboardedUser())
+        val firstKey = Ulid.generate()
+        val first = createdComment(me, post, idempotencyKey = firstKey)["publicId"]
+        repeat(9) { createdComment(me, post) }
+
+        assertEquals(first, createdComment(me, post, idempotencyKey = firstKey)["publicId"], "같은 키 재요청은 한도와 상관없이 그 댓글을 돌려줘야 한다")
+        createComment(me, post)
+            .andExpect(status().isTooManyRequests)
+            .andExpect(jsonPath("$.errorCode").value(90012))
+
+        assertEquals(10, commentRowCount(post), "거절된 댓글은 댓글을 만들지 않아야 한다")
+        assertEquals("10", counterValue("sns:COMMENT_CREATE", me, 3_600), "1시간 수는 만든 댓글 수와 같아야 한다")
+    }
+
+    @Test
     fun `좋아요 켜기와 끄기는 따로 1분 60건이다`() {
         val me = onboardedUser()
         val post = createdPublicId(onboardedUser())

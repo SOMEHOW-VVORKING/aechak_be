@@ -19,6 +19,8 @@ enum class SnsRateLimitRule(
     REPOST(perMinute(60)),
     SAVE(perMinute(60)),
 
+    COMMENT_CREATE(perMinute(10), RateLimit(100, Duration.ofHours(1))),
+
     // 게시물과 댓글 좋아요를 함께 센다
     LIKE_ON(perMinute(60)),
     LIKE_OFF(perMinute(60)),
