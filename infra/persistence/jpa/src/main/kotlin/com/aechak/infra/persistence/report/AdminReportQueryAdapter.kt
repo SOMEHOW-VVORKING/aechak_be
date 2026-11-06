@@ -12,6 +12,8 @@ import com.aechak.domain.report.decision.enums.ReportDecisionType
 import com.aechak.domain.report.decision.enums.ReportTargetType
 import com.aechak.domain.review.report.QReviewReport
 import com.aechak.domain.review.review.QReview
+import com.aechak.domain.sns.post.QPost
+import com.aechak.domain.sns.report.QPostReport
 import com.aechak.domain.user.report.QUserReport
 import com.aechak.domain.user.user.QUser
 import com.querydsl.core.Tuple
@@ -28,15 +30,17 @@ import java.time.LocalDateTime
 private val productReport = QProductReport.productReport
 private val reviewReport = QReviewReport.reviewReport
 private val userReport = QUserReport.userReport
+private val postReport = QPostReport.postReport
 private val product = QProduct.product
 private val review = QReview.review
 private val targetUser = QUser.user
+private val post = QPost.post
 private val decision = QReportDecision.reportDecision
 
 /**
  * 어드민 신고 조회 포트의 QueryDSL 어댑터.
  *
- * 세 신고 표를 UNION 하지 않고 종류마다 따로 읽는다 — 호출부가 전역 정렬 순서로 병합한다.
+ * 신고 표들을 UNION 하지 않고 종류마다 따로 읽는다 — 호출부가 전역 정렬 순서로 병합한다.
  * 처리 상태는 report_decisions 를 left join 해 판정한다(행이 없으면 미처리).
  */
 @Repository
@@ -187,6 +191,28 @@ class AdminReportQueryAdapter(
                     .join(targetUser)
                     .on(targetUser.id.eq(userReport.targetUser.id))
             }
+
+            // 지운 게시물도 행이 남아 inner join 한다. 지운 게시물의 캡션은 null 이다
+            ReportTargetType.SNS_POST -> {
+                queryFactory
+                    .select(
+                        postReport.id,
+                        postReport.reporterId,
+                        postReport.reasonCode,
+                        postReport.reasonText,
+                        postReport.createdAt,
+                        post.id,
+                        post.publicId,
+                        post.caption,
+                        post.authorId,
+                        decision.decision,
+                        decision.reasonCode,
+                        decision.createdAt,
+                        decision.actedByAdminId,
+                    ).from(postReport)
+                    .join(post)
+                    .on(post.id.eq(postReport.postId))
+            }
         }
 
     private fun toRow(
@@ -245,6 +271,25 @@ class AdminReportQueryAdapter(
                     // 사용자의 표시 이름은 user_profiles 에 있어 호출부가 닉네임으로 채운다
                     targetName = null,
                     targetOwnerUserId = tuple.get(targetUser.id)!!,
+                    decision = tuple.get(decision.decision),
+                    decisionReasonCode = tuple.get(decision.reasonCode),
+                    decidedAt = tuple.get(decision.createdAt),
+                    decidedByAdminId = tuple.get(decision.actedByAdminId),
+                )
+            }
+
+            ReportTargetType.SNS_POST -> {
+                ReportRowView(
+                    targetType = ReportTargetType.SNS_POST,
+                    reportId = tuple.get(postReport.id)!!,
+                    reporterId = tuple.get(postReport.reporterId)!!,
+                    reasonCode = tuple.get(postReport.reasonCode)!!.name,
+                    reasonText = tuple.get(postReport.reasonText),
+                    reportedAt = tuple.get(postReport.createdAt)!!,
+                    targetId = tuple.get(post.id)!!,
+                    targetKey = tuple.get(post.publicId)!!,
+                    targetName = tuple.get(post.caption),
+                    targetOwnerUserId = tuple.get(post.authorId)!!,
                     decision = tuple.get(decision.decision),
                     decisionReasonCode = tuple.get(decision.reasonCode),
                     decidedAt = tuple.get(decision.createdAt),
@@ -333,6 +378,7 @@ class AdminReportQueryAdapter(
             ReportTargetType.PRODUCT -> productReport
             ReportTargetType.REVIEW -> reviewReport
             ReportTargetType.USER -> userReport
+            ReportTargetType.SNS_POST -> postReport
         }
 
     private fun reportIdPath(targetType: ReportTargetType): NumberPath<Long> =
@@ -340,6 +386,7 @@ class AdminReportQueryAdapter(
             ReportTargetType.PRODUCT -> productReport.id
             ReportTargetType.REVIEW -> reviewReport.id
             ReportTargetType.USER -> userReport.id
+            ReportTargetType.SNS_POST -> postReport.id
         }
 
     private fun createdAtPath(targetType: ReportTargetType): DateTimePath<LocalDateTime> =
@@ -347,6 +394,7 @@ class AdminReportQueryAdapter(
             ReportTargetType.PRODUCT -> productReport.createdAt
             ReportTargetType.REVIEW -> reviewReport.createdAt
             ReportTargetType.USER -> userReport.createdAt
+            ReportTargetType.SNS_POST -> postReport.createdAt
         }
 
     private fun targetIdPath(targetType: ReportTargetType): NumberPath<Long> =
@@ -354,5 +402,6 @@ class AdminReportQueryAdapter(
             ReportTargetType.PRODUCT -> productReport.product.id
             ReportTargetType.REVIEW -> reviewReport.review.id
             ReportTargetType.USER -> userReport.targetUser.id
+            ReportTargetType.SNS_POST -> postReport.postId
         }
 }

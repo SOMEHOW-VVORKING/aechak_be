@@ -21,6 +21,9 @@ enum class SnsRateLimitRule(
 
     COMMENT_CREATE(perMinute(10), RateLimit(100, Duration.ofHours(1))),
 
+    // SNS 게시물 신고와 SNS 프로필 사용자 신고를 함께 센다
+    REPORT(perMinute(5), RateLimit(30, Duration.ofDays(1))),
+
     // 게시물과 댓글 좋아요를 함께 센다
     LIKE_ON(perMinute(60)),
     LIKE_OFF(perMinute(60)),
