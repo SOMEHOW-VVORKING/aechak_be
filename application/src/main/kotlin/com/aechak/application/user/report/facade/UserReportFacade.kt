@@ -18,8 +18,14 @@ class UserReportFacade(
     override fun submitUserReport(command: SubmitUserReportCommand) {
         // 신고 대상은 공개 중인 리뷰의 작성자다
         val targetUserId =
-            reviewReportUseCase.getReportableAuthorId(command.reviewId)
+            reviewReportUseCase.getReportableAuthorId(checkNotNull(command.reviewId))
                 ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
         userReportService.report(command, targetUserId)
     }
+
+    @Transactional
+    override fun submitUserReport(
+        command: SubmitUserReportCommand,
+        targetUserId: Long,
+    ) = userReportService.report(command, targetUserId)
 }

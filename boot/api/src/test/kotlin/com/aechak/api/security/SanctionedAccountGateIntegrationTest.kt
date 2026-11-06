@@ -172,6 +172,38 @@ class SanctionedAccountGateIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `이용 제한 계정의 댓글 작성은 403 20013으로 막힌다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        mockMvc
+            .perform(
+                bearer(post("/api/v1/sns/posts/01J0000000000000000000POST/comments"), mintAccessToken(userId))
+                    .header("Idempotency-Key", "restricted-key")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"댓글"}"""),
+            ).andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.ACCOUNT_RESTRICTED.code))
+    }
+
+    @Test
+    fun `이용 제한 계정의 댓글 수정과 삭제는 403 20013으로 막힌다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        listOf(
+            request(
+                HttpMethod.PATCH,
+                "/api/v1/sns/comments/01J000000000000000000COMMT",
+            ).contentType(MediaType.APPLICATION_JSON).content("""{"content":"댓글"}"""),
+            delete("/api/v1/sns/comments/01J000000000000000000COMMT"),
+        ).forEach { builder ->
+            mockMvc
+                .perform(bearer(builder, mintAccessToken(userId)))
+                .andExpect(status().isForbidden)
+                .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.ACCOUNT_RESTRICTED.code))
+        }
+    }
+
+    @Test
     fun `이용 제한 계정의 상품 문의 철회도 403 20013으로 막힌다`() {
         val userId = createMember(UserStatus.RESTRICTED, null)
 
@@ -238,6 +270,16 @@ class SanctionedAccountGateIntegrationTest : IntegrationTestBase() {
             .perform(bearer(post("/api/v1/products/01J0000000000000000000PROD/like"), mintAccessToken(userId)))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value(ProductErrorCode.PRODUCT_NOT_FOUND.code))
+    }
+
+    @Test
+    fun `이용 제한 계정의 SNS 게시물 좋아요는 403 20013으로 막힌다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        mockMvc
+            .perform(bearer(post("/api/v1/sns/posts/01JF9W3Q6R8T2V4X7Z9B1C3D5J/like"), mintAccessToken(userId)))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.ACCOUNT_RESTRICTED.code))
     }
 
     /** 제한은 쓰기만 막는다 — 제한 계정도 상품 문의 목록은 읽어야 한다. */
