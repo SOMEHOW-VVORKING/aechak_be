@@ -102,10 +102,14 @@ class SnsCommentQueryAdapter(
         return c.status.eq(CommentStatus.ACTIVE).or(c.parent.isNull.and(hasVisibleReply))
     }
 
-    /** 이 사용자가 쓴 댓글이 보는 사람에게 숨겨지지 않는다. 숨길 조건이 없으면 null이다 */
-    @Suppress("UNUSED_PARAMETER")
+    /** 이 사용자가 쓴 댓글이 보는 사람에게 숨겨지지 않는다. 차단 관계와 보는 사람의 뮤트다. 숨길 조건이 없으면 null이다 */
     private fun authorVisible(
         authorId: NumberPath<Long>,
         scope: SnsCommentScope,
-    ): Predicate? = ExpressionUtils.allOf()
+    ): Predicate? =
+        ExpressionUtils.allOf(
+            // 빈 집합이면 NOT IN 조건을 빼 거르지 않는다
+            scope.hidden.takeIf { it.isNotEmpty() }?.let { authorId.notIn(it) },
+            scope.muted.takeIf { it.isNotEmpty() }?.let { authorId.notIn(it) },
+        )
 }

@@ -248,6 +248,65 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
         assertNotNull(page["nextCursor"])
     }
 
+    @Test
+    fun `어느 쪽으로든 차단 관계인 사용자의 댓글과 그 아래 다른 사람의 대댓글이 빠진다`() {
+        val viewerId = onboardedUser()
+        val blockedId = onboardedUser()
+        val blockerId = onboardedUser()
+        val postId = createdPublicId(onboardedUser())
+        val byBlocked = seedComment(blockedId, postId)
+        seedComment(onboardedUser(), postId, parentPublicId = byBlocked)
+        val byBlocker = seedComment(blockerId, postId)
+        seedComment(onboardedUser(), postId, parentPublicId = byBlocker)
+        val kept = seedComment(onboardedUser(), postId)
+        seedComment(blockedId, postId, parentPublicId = kept)
+        relate(viewerId, blockedId, "block")
+        relate(blockerId, viewerId, "block")
+
+        assertEquals(listOf(kept), visibleCommentIds(postId, viewerId))
+        assertEquals(6, visibleCommentIds(postId, onboardedUser()).size)
+    }
+
+    @Test
+    fun `내가 뮤트한 사용자의 댓글과 그 아래 대댓글, 그 사용자의 대댓글이 빠진다`() {
+        val viewerId = onboardedUser()
+        val mutedId = onboardedUser()
+        val postId = createdPublicId(onboardedUser())
+        val byMuted = seedComment(mutedId, postId)
+        seedComment(onboardedUser(), postId, parentPublicId = byMuted)
+        val kept = seedComment(onboardedUser(), postId)
+        seedComment(mutedId, postId, parentPublicId = kept)
+        relate(viewerId, mutedId, "mute")
+
+        assertEquals(listOf(kept), visibleCommentIds(postId, viewerId))
+    }
+
+    @Test
+    fun `뮤트한 작성자의 게시물을 직접 열면 그 작성자의 댓글만 빠진다`() {
+        val viewerId = onboardedUser()
+        val authorId = onboardedUser()
+        val postId = createdPublicId(authorId)
+        seedComment(authorId, postId)
+        val other = seedComment(onboardedUser(), postId)
+        relate(viewerId, authorId, "mute")
+
+        assertEquals(listOf(other), visibleCommentIds(postId, viewerId))
+    }
+
+    @Test
+    fun `지운 최상위 댓글 아래 대댓글이 모두 나와 차단 관계인 사용자의 것이면 안내 문구도 없다`() {
+        val viewerId = onboardedUser()
+        val blockedId = onboardedUser()
+        val postId = createdPublicId(onboardedUser())
+        val root = seedComment(onboardedUser(), postId)
+        seedComment(blockedId, postId, parentPublicId = root)
+        deleteCommentRow(root)
+        relate(viewerId, blockedId, "block")
+
+        assertEquals(emptyList(), visibleCommentIds(postId, viewerId))
+        assertEquals(2, visibleCommentIds(postId, onboardedUser()).size)
+    }
+
     private fun assertPlaceholder(
         item: Map<String, Any?>,
         status: String,
