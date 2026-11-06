@@ -116,8 +116,9 @@ class SnsFeedService(
      */
     fun popularRanking(): List<Long> {
         val now = LocalDateTime.now()
-        // shortcut: 분마다 그 분의 첫 요청이 72시간 원글을 좋아요 행과 묶어 정렬해 순위를 만들고 20개에 못 미치면 전체 원글을 한 번 더 정렬한다.
-        // 72시간 후보가 1만 건을 넘거나 좋아요가 5만 개를 넘는 글이 생기거나 인기 피드 P95가 500ms를 넘으면 순위 계산을 요청 밖의 주기 작업으로 옮기고 점수를 미리 저장한다
+        // shortcut: 분마다 그 분의 첫 요청이 72시간 원글을 좋아요 행과 묶고 게시물마다 댓글 행을 세어 정렬해 순위를 만들고 20개에 못 미치면 전체 원글을 한 번 더 정렬한다.
+        // 72시간 후보가 1만 건을 넘거나 좋아요가 5만 개를 넘는 글이 생기거나 72시간 안의 댓글이 10만 개를 넘거나 인기 피드 P95가 500ms를 넘으면
+        // 순위 계산을 요청 밖의 주기 작업으로 옮기고 점수를 미리 저장한다
         val recent = rank(now.minusHours(POPULAR_HOURS), now)
         val ranking = if (recent.size < MIN_FEED_POSTS) (recent + rank(null, now)).distinct().take(PopularScore.MAX_RANK) else recent
         return ranking.also { log.info("SNS 인기 순위 크기 size={}", it.size) }
@@ -131,6 +132,7 @@ class SnsFeedService(
             from,
             to,
             PopularScore.LIKE,
+            PopularScore.COMMENT,
             PopularScore.REPOST,
             PopularScore.HALF_LIFE_HOURS,
             PopularScore.MAX_RANK,

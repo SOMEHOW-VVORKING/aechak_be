@@ -172,6 +172,38 @@ class SanctionedAccountGateIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
+    fun `이용 제한 계정의 댓글 작성은 403 20013으로 막힌다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        mockMvc
+            .perform(
+                bearer(post("/api/v1/sns/posts/01J0000000000000000000POST/comments"), mintAccessToken(userId))
+                    .header("Idempotency-Key", "restricted-key")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"댓글"}"""),
+            ).andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.ACCOUNT_RESTRICTED.code))
+    }
+
+    @Test
+    fun `이용 제한 계정의 댓글 수정과 삭제는 403 20013으로 막힌다`() {
+        val userId = createMember(UserStatus.RESTRICTED, null)
+
+        listOf(
+            request(
+                HttpMethod.PATCH,
+                "/api/v1/sns/comments/01J000000000000000000COMMT",
+            ).contentType(MediaType.APPLICATION_JSON).content("""{"content":"댓글"}"""),
+            delete("/api/v1/sns/comments/01J000000000000000000COMMT"),
+        ).forEach { builder ->
+            mockMvc
+                .perform(bearer(builder, mintAccessToken(userId)))
+                .andExpect(status().isForbidden)
+                .andExpect(jsonPath("$.errorCode").value(AuthErrorCode.ACCOUNT_RESTRICTED.code))
+        }
+    }
+
+    @Test
     fun `이용 제한 계정의 상품 문의 철회도 403 20013으로 막힌다`() {
         val userId = createMember(UserStatus.RESTRICTED, null)
 
