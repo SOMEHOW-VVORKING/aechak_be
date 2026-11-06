@@ -9,21 +9,26 @@ import com.aechak.application.moderation.usecase.ModerationUseCase
 import com.aechak.application.moderation.usecase.result.ModerationDecision
 import com.aechak.application.sns.service.HashtagService
 import com.aechak.application.sns.service.PostAccessService
+import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.PostCommandService
+import com.aechak.application.sns.service.RepostService
+import com.aechak.application.sns.service.SaveService
 import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.application.sns.usecase.command.CreatePostCommand
+import com.aechak.application.sns.usecase.command.RepostPostCommand
+import com.aechak.application.sns.usecase.command.SavePostCommand
 import com.aechak.application.sns.usecase.command.UpdatePostCommand
 import com.aechak.application.sns.usecase.result.CreatePostResult
 import com.aechak.application.sns.usecase.result.SnsHashtagSearchResult
 import com.aechak.application.sns.usecase.result.SnsPostDetailResult
-import com.aechak.application.sns.usecase.result.SnsPostVideoResult
+import com.aechak.application.support.retryOnceOnDeadlock
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.hashtag.Hashtag
 import com.aechak.domain.sns.post.Post
-import com.aechak.domain.sns.post.enums.PostMediaKind
+import com.aechak.domain.sns.post.repository.PostRepository
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -31,6 +36,7 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
+import java.time.LocalDateTime
 
 /**
  * SNS 게시물 진입점. 금지어 판정은 게시물만 쓰므로 관계 쪽 SnsFacade와 나눠 둔다.
@@ -41,6 +47,10 @@ class SnsPostFacade(
     private val postCommandService: PostCommandService,
     private val postAccessService: PostAccessService,
     private val hashtagService: HashtagService,
+    private val repostService: RepostService,
+    private val saveService: SaveService,
+    private val postCardAssembler: PostCardAssembler,
+    private val postRepository: PostRepository,
     private val moderationUseCase: ModerationUseCase,
     private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
@@ -131,36 +141,10 @@ class SnsPostFacade(
         viewerId: Long?,
     ): SnsPostDetailResult {
         val post = postAccessService.requirePublished(publicId)
-        val author = postAccessService.requireActiveAuthor(userUseCase.findPublicProfileById(post.authorId))
+        postAccessService.requireActiveAuthor(userUseCase.findPublicProfileById(post.authorId))
         val pair = postAccessService.requireNotBlocked(post.authorId, viewerId)
-        val pet = post.petId?.let { petId -> petProfileUseCase.getPets(post.authorId).pets.firstOrNull { it.petId == petId } }
-        val (photos, videos) = post.media.partition { it.mediaKind == PostMediaKind.IMAGE }
-        return SnsPostDetailResult(
-            publicId = post.publicId,
-            author = author,
-            pet = pet,
-            caption = post.caption,
-            hashtags = hashtagService.namesOf(post.hashtags.map { it.hashtagId }),
-            photoUrls = photos.mapNotNull { fileUseCase.resolveMediaUrl(it.storageKey) },
-            // 영상 행은 게시할 때 썸네일과 길이를 함께 저장한다
-            video =
-                videos.firstOrNull()?.let {
-                    SnsPostVideoResult(
-                        url = fileUseCase.resolveMediaUrl(it.storageKey)!!,
-                        thumbnailUrl = fileUseCase.resolveMediaUrl(it.thumbnailKey)!!,
-                        durationMs = it.durationMs!!,
-                    )
-                },
-            // 좋아요, 댓글, 리포스트는 아직 없어 0이다
-            likeCount = 0,
-            commentCount = 0,
-            repostCount = 0,
-            edited = post.editedAt != null,
-            createdAt = post.createdAt,
-            isMine = post.authorId == viewerId,
-            following = pair.following,
-            mutedByMe = pair.mutedByMe,
-        )
+        val mutedIds = if (pair.mutedByMe) setOf(post.authorId) else emptySet()
+        return postCardAssembler.assemble(listOf(post.id), viewerId, mutedIds).single()
     }
 
     @Transactional(readOnly = true)
@@ -170,6 +154,43 @@ class SnsPostFacade(
     ): SnsHashtagSearchResult {
         val cleaned = Hashtag.clean(query.orEmpty())
         return hashtagService.search(cleaned, moderationUseCase.containsBannedWord(cleaned), size)
+    }
+
+    override fun repost(command: RepostPostCommand) {
+        tx.execute {
+            val post = postAccessService.requirePublished(command.publicId)
+            if (post.authorId == command.userId) throw BusinessException(SnsErrorCode.SNS_REPOST_OWN_POST)
+            postAccessService.requireActiveAuthor(userUseCase.findPublicProfileById(post.authorId))
+            repostService.repost(command.userId, post.id, post.authorId, LocalDateTime.now())
+        }
+    }
+
+    // 끄기는 상태, 작성자, 관계를 보지 않아 볼 수 없게 된 원글의 리포스트도 지운다
+    override fun unrepost(command: RepostPostCommand) {
+        tx.execute {
+            val post = postRepository.findByPublicId(command.publicId) ?: throw BusinessException(SnsErrorCode.SNS_POST_UNAVAILABLE)
+            repostService.unrepost(command.userId, post.id)
+        }
+    }
+
+    // 본인 글과 뮤트한 작성자의 글도 저장한다. 끄기 하나와 켜기 둘이 겹쳐 교착으로 되돌아가면 한 번 다시 한다
+    override fun save(command: SavePostCommand) {
+        retryOnceOnDeadlock {
+            tx.execute {
+                val post = postAccessService.requirePublished(command.publicId)
+                postAccessService.requireActiveAuthor(userUseCase.findPublicProfileById(post.authorId))
+                postAccessService.requireNotBlocked(post.authorId, command.userId)
+                saveService.save(command.userId, post.id)
+            }
+        }
+    }
+
+    // 끄기는 상태, 작성자, 관계를 보지 않아 볼 수 없게 된 게시물의 저장도 지운다
+    override fun unsave(command: SavePostCommand) {
+        tx.execute {
+            val post = postRepository.findByPublicId(command.publicId) ?: throw BusinessException(SnsErrorCode.SNS_POST_UNAVAILABLE)
+            saveService.unsave(command.userId, post.id)
+        }
     }
 
     private fun findIdempotent(command: CreatePostCommand): CreatePostResult? =

@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.time.LocalDateTime
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -172,6 +173,60 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
         )
 
+    protected fun repost(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            post("/api/v1/sns/posts/$publicId/repost")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
+    protected fun unrepost(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            delete("/api/v1/sns/posts/$publicId/repost")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
+    protected fun save(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            post("/api/v1/sns/posts/$publicId/save")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
+    protected fun unsave(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            delete("/api/v1/sns/posts/$publicId/save")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
+    protected fun like(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            post("/api/v1/sns/posts/$publicId/like")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
+    protected fun unlike(
+        publicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            delete("/api/v1/sns/posts/$publicId/like")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
     protected fun updateBody(
         caption: String? = "공원 다녀왔어요",
         hashtags: List<String> = emptyList(),
@@ -219,6 +274,77 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
             ).andExpect(status().is2xxSuccessful)
     }
 
+    /** actor가 target에게 건 차단, 뮤트, 팔로우(block, mute, follow) 중 하나를 푼다. */
+    protected fun unrelate(
+        actorId: Long,
+        targetId: Long,
+        action: String,
+    ) {
+        mockMvc
+            .perform(
+                delete("/api/v1/sns/users/${publicIdOf(targetId)}/$action")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(actorId)}"),
+            ).andExpect(status().is2xxSuccessful)
+    }
+
+    /** 피드의 기간 경계와 순서는 이 시각으로 만든다. */
+    protected fun backdatePost(
+        publicId: String,
+        createdAt: LocalDateTime,
+    ) {
+        jdbcTemplate.update("update sns_posts set created_at = ? where public_id = ?", createdAt, publicId)
+    }
+
+    protected fun backdateRepost(
+        reposterId: Long,
+        publicId: String,
+        createdAt: LocalDateTime,
+    ) {
+        jdbcTemplate.update(
+            "update sns_reposts r join sns_posts p on p.id = r.post_id set r.created_at = ? where r.reposter_id = ? and p.public_id = ?",
+            createdAt,
+            reposterId,
+            publicId,
+        )
+    }
+
+    protected fun postCreatedAt(publicId: String): LocalDateTime =
+        jdbcTemplate.queryForObject("select created_at from sns_posts where public_id = ?", LocalDateTime::class.java, publicId)!!
+
+    /** 피드(following, explore, popular)를 부른다. */
+    protected fun getFeed(
+        kind: String,
+        viewerId: Long? = null,
+        cursor: String? = null,
+        size: Int? = null,
+    ): ResultActions {
+        val request = get("/api/v1/sns/feeds/$kind")
+        cursor?.let { request.param("cursor", it) }
+        size?.let { request.param("size", it.toString()) }
+        if (viewerId != null) request.header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}")
+        return mockMvc.perform(request)
+    }
+
+    protected fun feedPage(
+        kind: String,
+        viewerId: Long? = null,
+        cursor: String? = null,
+        size: Int? = null,
+    ): Map<String, Any?> {
+        val json =
+            getFeed(kind, viewerId, cursor, size)
+                .andExpect(status().isOk)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        return JsonPath.read(json, "$.data")
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    protected fun Map<String, Any?>.feedItems(): List<Map<String, Any?>> = this["items"] as List<Map<String, Any?>>
+
+    protected fun Map<String, Any?>.postIds(): List<String> = feedItems().map { (it["post"] as Map<*, *>)["publicId"] as String }
+
     protected fun postRow(publicId: String): Map<String, Any?> =
         jdbcTemplate.queryForMap("select * from sns_posts where public_id = ?", publicId)
 
@@ -240,6 +366,26 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         jdbcTemplate
             .queryForList("select post_count from sns_user_stats where user_id = ?", Int::class.java, userId)
             .firstOrNull()
+
+    /** 통계 행이 없으면 null이다. */
+    protected fun repostCountOf(publicId: String): Int? =
+        jdbcTemplate
+            .queryForList(
+                "select s.repost_count from sns_post_stats s join sns_posts p on p.id = s.post_id where p.public_id = ?",
+                Int::class.java,
+                publicId,
+            ).firstOrNull()
+
+    protected fun repostRowCount(
+        reposterId: Long,
+        publicId: String,
+    ): Int =
+        jdbcTemplate.queryForObject(
+            "select count(*) from sns_reposts r join sns_posts p on p.id = r.post_id where r.reposter_id = ? and p.public_id = ?",
+            Int::class.java,
+            reposterId,
+            publicId,
+        )!!
 
     /** 해시태그 행마다 이름과 post_count. */
     protected fun hashtagCounts(): Map<String, Int> =

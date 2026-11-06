@@ -29,6 +29,9 @@ data class PostDetailResponse(
     val isMine: Boolean,
     val following: Boolean,
     val mutedByMe: Boolean,
+    val reposted: Boolean,
+    val saved: Boolean,
+    val liked: Boolean,
 ) {
     data class PostAuthorResponse(
         val publicId: String,
@@ -60,6 +63,9 @@ data class PostDetailResponse(
                 isMine = result.isMine,
                 following = result.following,
                 mutedByMe = result.mutedByMe,
+                reposted = result.reposted,
+                saved = result.saved,
+                liked = result.liked,
             )
     }
 }
