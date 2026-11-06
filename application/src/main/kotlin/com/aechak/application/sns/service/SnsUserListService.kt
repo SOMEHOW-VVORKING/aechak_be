@@ -2,6 +2,7 @@ package com.aechak.application.sns.service
 
 import com.aechak.application.sns.port.SnsUserListQueryPort
 import com.aechak.application.sns.port.view.SnsFollowUserView
+import com.aechak.application.sns.port.view.SnsLikerView
 import com.aechak.application.sns.port.view.SnsRelationUserView
 import com.aechak.application.sns.support.FollowCursorCodec
 import com.aechak.application.sns.support.RelationCursorCodec
@@ -52,4 +53,10 @@ class SnsUserListService(
             FollowCursorCodec.encode(query.direction, ownerPublicId, query.nickname, last.followId)
         }
     }
+
+    fun getPostLikers(
+        postId: Long,
+        hiddenUserIds: Set<Long>,
+        limit: Int,
+    ): List<SnsLikerView> = userListQueryPort.findPostLikers(postId, hiddenUserIds, limit)
 }
