@@ -73,6 +73,18 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `토큰 없이 댓글 목록을 부르면 200이고 isMine과 liked가 false다`() {
+        val authorId = onboardedUser()
+        val publicId = createdPublicId(authorId)
+        seedComment(authorId, publicId)
+
+        val item = commentPage(publicId).feedItems().single()
+
+        assertEquals(false, item["isMine"])
+        assertEquals(false, item["liked"])
+    }
+
+    @Test
     fun `온보딩 전 사용자가 토큰을 붙여 상세를 부르면 403 20006이다`() {
         val publicId = createdPublicId(onboardedUser())
         val pendingId = tx.execute { User.preRegister().also { em.persist(it) }.id }!!

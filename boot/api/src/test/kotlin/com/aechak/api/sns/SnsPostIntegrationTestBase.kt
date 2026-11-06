@@ -406,6 +406,50 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
             comment.publicId
         }!!
 
+    /** 댓글을 API 없이 그 사유로 지운다 */
+    protected fun deleteCommentRow(
+        publicId: String,
+        reason: CommentDeletionReason = CommentDeletionReason.AUTHOR,
+    ) {
+        tx.execute { commentRepository.findByPublicId(publicId)!!.delete(reason) }
+    }
+
+    /** 댓글 목록을 부른다. */
+    protected fun getComments(
+        postPublicId: String,
+        viewerId: Long? = null,
+        cursor: String? = null,
+        size: Int? = null,
+    ): ResultActions {
+        val request = get("/api/v1/sns/posts/$postPublicId/comments")
+        cursor?.let { request.param("cursor", it) }
+        size?.let { request.param("size", it.toString()) }
+        if (viewerId != null) request.header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}")
+        return mockMvc.perform(request)
+    }
+
+    /** 댓글 목록을 200으로 받고 data 객체를 돌려준다. */
+    protected fun commentPage(
+        postPublicId: String,
+        viewerId: Long? = null,
+        cursor: String? = null,
+        size: Int? = null,
+    ): Map<String, Any?> {
+        val json =
+            getComments(postPublicId, viewerId, cursor, size)
+                .andExpect(status().isOk)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        return JsonPath.read(json, "$.data")
+    }
+
+    /** 보는 사람에게 보이는 댓글 publicId를 목록 순서대로. 한 페이지에 다 들어오는 수만 쓴다 */
+    protected fun visibleCommentIds(
+        postPublicId: String,
+        viewerId: Long? = null,
+    ): List<String> = commentPage(postPublicId, viewerId, size = 100).feedItems().map { it["publicId"] as String }
+
     /** 작업마다 스레드 하나를 두고 한꺼번에 출발시켜 모두 끝날 때까지 기다린 뒤 던진 예외를 모아 돌려준다. */
     protected fun runConcurrently(tasks: List<() -> Unit>): List<Throwable> {
         val ready = CountDownLatch(tasks.size)

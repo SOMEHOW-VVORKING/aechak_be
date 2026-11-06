@@ -1,0 +1,271 @@
+package com.aechak.api.sns
+
+import com.aechak.domain.sns.comment.enums.CommentDeletionReason
+import com.aechak.domain.user.user.User
+import org.junit.jupiter.api.Test
+import org.springframework.test.web.servlet.ResultActions
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.time.LocalDateTime
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+
+/**
+ * 통합 — 댓글 목록이 최상위 댓글 단위로 페이지를 나누고 대댓글을 부모 아래 붙이며 지운 댓글을 안내 문구 규칙대로 보여주는지.
+ */
+class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
+    @Test
+    fun `최상위 댓글은 오래된순이고 대댓글은 부모 바로 아래 작성 순서로 붙는다`() {
+        val postId = createdPublicId(onboardedUser())
+        val root1 = seedComment(onboardedUser(), postId)
+        val root2 = seedComment(onboardedUser(), postId)
+        val reply1 = seedComment(onboardedUser(), postId, parentPublicId = root1)
+        val reply2 = seedComment(onboardedUser(), postId, parentPublicId = root1)
+
+        val items = commentPage(postId).feedItems()
+
+        assertEquals(listOf(root1, reply1, reply2, root2), items.map { it["publicId"] })
+        assertEquals(listOf(null, root1, root1, null), items.map { it["parentPublicId"] })
+    }
+
+    @Test
+    fun `size는 최상위 댓글 수이고 대댓글은 부모와 같은 페이지에 오며 커서로 끝까지 이어 부른다`() {
+        val postId = createdPublicId(onboardedUser())
+        val root1 = seedComment(onboardedUser(), postId)
+        val root2 = seedComment(onboardedUser(), postId)
+        val root3 = seedComment(onboardedUser(), postId)
+        val reply = seedComment(onboardedUser(), postId, parentPublicId = root2)
+
+        val first = commentPage(postId, size = 2)
+        val second = commentPage(postId, cursor = first["nextCursor"] as String, size = 2)
+
+        assertEquals(listOf(root1, root2, reply), first.feedItems().map { it["publicId"] })
+        assertEquals(true, first["hasNext"])
+        assertEquals(listOf(root3), second.feedItems().map { it["publicId"] })
+        assertEquals(false, second["hasNext"])
+        assertNull(second["nextCursor"])
+    }
+
+    @Test
+    fun `다른 게시물의 커서는 400 90002다`() {
+        val postId = createdPublicId(onboardedUser())
+        repeat(2) { seedComment(onboardedUser(), postId) }
+        val cursor = commentPage(postId, size = 1)["nextCursor"] as String
+
+        getComments(createdPublicId(onboardedUser()), cursor = cursor)
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90002))
+    }
+
+    @Test
+    fun `size가 0이거나 101이면 400 90001이다`() {
+        val postId = createdPublicId(onboardedUser())
+
+        listOf(0, 101).forEach { size ->
+            getComments(postId, size = size)
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.errorCode").value(90001))
+        }
+    }
+
+    @Test
+    fun `댓글이 없으면 빈 목록이고 다음 페이지가 없다`() {
+        val page = commentPage(createdPublicId(onboardedUser()))
+
+        assertEquals(emptyList<Any>(), page.feedItems())
+        assertEquals(false, page["hasNext"])
+        assertNull(page["nextCursor"])
+    }
+
+    @Test
+    fun `보이는 댓글은 작성자와 내용을 싣고 고친 댓글은 edited가 true다`() {
+        val authorId = onboardedUser()
+        val postId = createdPublicId(onboardedUser())
+        val plain = seedComment(authorId, postId, content = "산책 코스 어디예요?")
+        val edited = seedComment(authorId, postId, content = "처음 쓴 글", edited = true)
+
+        val items = commentPage(postId, authorId).feedItems().associateBy { it["publicId"] }
+
+        val item = items.getValue(plain)
+        assertEquals("ACTIVE", item["status"])
+        assertEquals("산책 코스 어디예요?", item["content"])
+        assertEquals(publicIdOf(authorId), (item["author"] as Map<*, *>)["publicId"])
+        assertEquals(false, item["edited"])
+        assertEquals(true, item["replyable"])
+        assertEquals(true, item["isMine"])
+        assertEquals(0, item["likeCount"])
+        assertEquals(false, item["liked"])
+        assertEquals("처음 쓴 글 (고침)", items.getValue(edited)["content"])
+        assertEquals(true, items.getValue(edited)["edited"])
+        assertEquals(false, commentPage(postId, onboardedUser()).feedItems().first()["isMine"])
+    }
+
+    @Test
+    fun `대댓글이 있는 지운 최상위 댓글은 안내 문구로 남고 대댓글은 그대로이며 답글을 달 수 없다`() {
+        val postId = createdPublicId(onboardedUser())
+        val root = seedComment(onboardedUser(), postId)
+        val reply = seedComment(onboardedUser(), postId, parentPublicId = root)
+        deleteCommentRow(root)
+
+        val items = commentPage(postId).feedItems()
+
+        assertEquals(listOf(root, reply), items.map { it["publicId"] })
+        assertPlaceholder(items[0], "DELETED")
+        assertEquals("ACTIVE", items[1]["status"])
+        assertEquals(false, items[1]["replyable"])
+    }
+
+    @Test
+    fun `대댓글이 없는 지운 댓글과 지운 대댓글은 빠진다`() {
+        val postId = createdPublicId(onboardedUser())
+        val root = seedComment(onboardedUser(), postId, deletedBy = CommentDeletionReason.AUTHOR)
+        val kept = seedComment(onboardedUser(), postId)
+        seedComment(onboardedUser(), postId, parentPublicId = kept, deletedBy = CommentDeletionReason.AUTHOR)
+
+        assertEquals(listOf(kept), visibleCommentIds(postId))
+        assertFalse(root in visibleCommentIds(postId))
+    }
+
+    @Test
+    fun `안내 문구 아래 마지막 대댓글을 지우면 안내 문구도 빠진다`() {
+        val postId = createdPublicId(onboardedUser())
+        val root = seedComment(onboardedUser(), postId)
+        val reply = seedComment(onboardedUser(), postId, parentPublicId = root)
+        deleteCommentRow(root)
+        deleteCommentRow(reply)
+
+        assertEquals(emptyList(), visibleCommentIds(postId))
+    }
+
+    @Test
+    fun `운영자가 지운 댓글은 작성자에게도 DELETED이고 탈퇴로 지운 댓글은 WITHDRAWN이다`() {
+        val authorId = onboardedUser()
+        val postId = createdPublicId(onboardedUser())
+        val byOperator = seedComment(authorId, postId)
+        seedComment(onboardedUser(), postId, parentPublicId = byOperator)
+        val byWithdrawal = seedComment(onboardedUser(), postId)
+        seedComment(onboardedUser(), postId, parentPublicId = byWithdrawal)
+        deleteCommentRow(byOperator, CommentDeletionReason.OPERATOR)
+        deleteCommentRow(byWithdrawal, CommentDeletionReason.WITHDRAWAL)
+
+        val items = commentPage(postId, authorId).feedItems().associateBy { it["publicId"] }
+
+        assertPlaceholder(items.getValue(byOperator), "DELETED")
+        assertPlaceholder(items.getValue(byWithdrawal), "WITHDRAWN")
+    }
+
+    @Test
+    fun `프로필 행이 없는 작성자의 댓글과 대댓글은 WITHDRAWN이고 그 아래 대댓글도 답글을 달 수 없다`() {
+        val withdrawnId = onboardedUser()
+        val postId = createdPublicId(onboardedUser())
+        val root = seedComment(withdrawnId, postId)
+        val reply = seedComment(onboardedUser(), postId, parentPublicId = root)
+        val other = seedComment(onboardedUser(), postId)
+        val withdrawnReply = seedComment(withdrawnId, postId, parentPublicId = other)
+        tx.execute { em.find(User::class.java, withdrawnId).withdraw() }
+
+        val items = commentPage(postId).feedItems().associateBy { it["publicId"] }
+
+        assertPlaceholder(items.getValue(root), "WITHDRAWN")
+        assertEquals("ACTIVE", items.getValue(reply)["status"])
+        assertEquals(false, items.getValue(reply)["replyable"])
+        assertEquals(true, items.getValue(other)["replyable"])
+        assertPlaceholder(items.getValue(withdrawnReply), "WITHDRAWN")
+    }
+
+    @Test
+    fun `이용 제한 사용자와 만료 전 임시 정지 사용자의 댓글도 보인다`() {
+        val restrictedId = onboardedUser()
+        val suspendedId = onboardedUser()
+        val postId = createdPublicId(onboardedUser())
+        val restricted = seedComment(restrictedId, postId)
+        val suspended = seedComment(suspendedId, postId)
+        tx.execute {
+            em.find(User::class.java, restrictedId).restrict()
+            em.find(User::class.java, suspendedId).suspendUntil(LocalDateTime.now().plusDays(7))
+        }
+
+        assertEquals(listOf(restricted, suspended), visibleCommentIds(postId, onboardedUser()))
+    }
+
+    @Test
+    fun `지운 게시물, 탈퇴한 작성자의 게시물, 나를 차단한 작성자의 게시물은 404 130400이다`() {
+        val viewerId = onboardedUser()
+        val deleted = createdPublicId(onboardedUser()).also { postId -> deletePost(postId, authorOf(postId)) }
+        val withdrawnAuthor = onboardedUser()
+        val withdrawn = createdPublicId(withdrawnAuthor)
+        tx.execute { em.find(User::class.java, withdrawnAuthor).withdraw() }
+        val blockingAuthor = onboardedUser()
+        val blocking = createdPublicId(blockingAuthor)
+        relate(blockingAuthor, viewerId, "block")
+
+        listOf(deleted, withdrawn, blocking).forEach { postId ->
+            expectStatus(getComments(postId, viewerId), 404, 130400)
+        }
+    }
+
+    @Test
+    fun `내가 차단한 작성자의 게시물은 403 130001이다`() {
+        val viewerId = onboardedUser()
+        val authorId = onboardedUser()
+        val postId = createdPublicId(authorId)
+        relate(viewerId, authorId, "block")
+
+        expectStatus(getComments(postId, viewerId), 403, 130001)
+    }
+
+    @Test
+    fun `페이지와 항목의 필드가 계약과 같고 내부 id와 totalCount가 없다`() {
+        val postId = createdPublicId(onboardedUser())
+        val root = seedComment(onboardedUser(), postId)
+        seedComment(onboardedUser(), postId, parentPublicId = root)
+        seedComment(onboardedUser(), postId)
+
+        val page = commentPage(postId, size = 1)
+
+        assertEquals(setOf("items", "nextCursor", "hasNext"), page.keys)
+        page.feedItems().forEach { item ->
+            assertEquals(
+                setOf(
+                    "publicId",
+                    "parentPublicId",
+                    "status",
+                    "author",
+                    "content",
+                    "likeCount",
+                    "liked",
+                    "edited",
+                    "replyable",
+                    "isMine",
+                    "createdAt",
+                ),
+                item.keys,
+            )
+            assertEquals(setOf("publicId", "nickname", "profileImageUrl"), (item["author"] as Map<*, *>).keys)
+        }
+        assertNotNull(page["nextCursor"])
+    }
+
+    private fun assertPlaceholder(
+        item: Map<String, Any?>,
+        status: String,
+    ) {
+        assertEquals(status, item["status"])
+        assertNull(item["author"])
+        assertNull(item["content"])
+        assertEquals(0, item["likeCount"])
+        listOf("liked", "edited", "replyable", "isMine").forEach { assertEquals(false, item[it], it) }
+    }
+
+    private fun authorOf(postPublicId: String): Long = postRow(postPublicId)["author_id"] as Long
+
+    private fun expectStatus(
+        result: ResultActions,
+        httpStatus: Int,
+        errorCode: Int,
+    ) {
+        result.andExpect(status().`is`(httpStatus)).andExpect(jsonPath("$.errorCode").value(errorCode))
+    }
+}
