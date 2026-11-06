@@ -13,6 +13,7 @@ import com.aechak.application.report.admin.usecase.result.ReportHistoryResult
 import com.aechak.application.report.admin.usecase.result.ReportSummaryResult
 import com.aechak.application.review.admin.usecase.AdminReviewUseCase
 import com.aechak.application.review.admin.usecase.command.BlindReviewCommand
+import com.aechak.application.sns.postdeletion.usecase.SnsPostDeletionUseCase
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.user.sanction.usecase.AdminMemberUseCase
 import com.aechak.application.user.sanction.usecase.command.SanctionMemberCommand
@@ -28,13 +29,14 @@ import com.aechak.domain.report.error.ReportErrorCode
 import com.aechak.domain.review.review.enums.ReviewBlindReason
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 
 /**
  * AdminReportUseCase 의 유일한 구현체. 트랜잭션 경계는 여기 고정.
  *
  * 비노출·제재는 기존 경로에 위임한다 — 리뷰는 AdminReviewUseCase.blind,
- * 계정은 AdminMemberUseCase.sanction.
+ * SNS 게시물은 SnsPostDeletionUseCase.deleteByOperator, 계정은 AdminMemberUseCase.sanction.
  * 결정 기록을 먼저 저장(flush)한 뒤 위임한다.
  * 비노출 위임 여부는 조치 직전의 잠금 조회(ReportReviewVisibilityPort)로 정한다.
  * 안내 문구는 보관만 한다 — 어드민 보트에 발송 어댑터가 조립되어 있지 않다.
@@ -46,6 +48,7 @@ class AdminReportFacade(
     private val reportReviewVisibilityPort: ReportReviewVisibilityPort,
     private val adminReviewUseCase: AdminReviewUseCase,
     private val adminMemberUseCase: AdminMemberUseCase,
+    private val snsPostDeletionUseCase: SnsPostDeletionUseCase,
     private val userUseCase: UserUseCase,
 ) : AdminReportUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -55,7 +58,7 @@ class AdminReportFacade(
         val fetched = adminReportService.findPage(query)
         val nicknames = nicknamesOf(fetched)
         val counts = adminReportService.countByTargets(fetched)
-        // 첫 페이지에만 전체 건수를 센다 — 세 표에 COUNT 를 매번 다시 돌리지 않는다
+        // 첫 페이지에만 전체 건수를 센다 — 신고 표마다 COUNT 를 매번 다시 돌리지 않는다
         val totalCount = if (query.cursor == null) adminReportService.countAll(query) else null
 
         return CursorPageResult.of(
@@ -102,7 +105,8 @@ class AdminReportFacade(
         )
     }
 
-    @Transactional
+    // SNS 게시물 운영자 삭제가 잠근 게시물의 태그 연결을 시작 시점 스냅숏이 아니라 지금 값으로 읽도록 READ_COMMITTED
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun decide(command: DecideReportCommand) {
         val view = adminReportService.findOne(command.targetType, command.reportId)
         validateSanctionDetail(command)
@@ -153,6 +157,11 @@ class AdminReportFacade(
         when (command.targetType) {
             ReportTargetType.REVIEW -> {
                 blindReview(command, view.targetId)
+            }
+
+            // 이미 지운 게시물은 상태를 그대로 두고 결정만 남는다
+            ReportTargetType.SNS_POST -> {
+                snsPostDeletionUseCase.deleteByOperator(view.targetKey)
             }
 
             // 비노출 수단이 없는 종류다 — ReportDecision.decide 가 이미 막아 도달하지 않는다

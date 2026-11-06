@@ -8,6 +8,7 @@ import com.aechak.application.sns.port.view.SnsLikerView
 import com.aechak.application.sns.port.view.SnsRelationUserView
 import com.aechak.domain.sns.block.QBlock
 import com.aechak.domain.sns.follow.QFollow
+import com.aechak.domain.sns.like.QCommentLike
 import com.aechak.domain.sns.like.QPostLike
 import com.aechak.domain.sns.mute.QMute
 import com.aechak.domain.user.user.QUser
@@ -25,6 +26,7 @@ private val block = QBlock.block
 private val follow = QFollow.follow
 private val mute = QMute.mute
 private val postLike = QPostLike.postLike
+private val commentLike = QCommentLike.commentLike
 private val user = QUser.user
 private val profile = QUserProfile.userProfile
 
@@ -141,6 +143,32 @@ class SnsUserListQueryAdapter(
                 postLike.postId.eq(postId),
                 hiddenUserIds.takeIf { it.isNotEmpty() }?.let { postLike.userId.notIn(it) },
             ).orderBy(postLike.id.desc())
+            .limit(limit.toLong())
+            .fetch()
+
+    override fun findCommentLikers(
+        commentId: Long,
+        hiddenUserIds: Set<Long>,
+        limit: Int,
+    ): List<SnsLikerView> =
+        queryFactory
+            .select(
+                Projections.constructor(
+                    SnsLikerView::class.java,
+                    user.id,
+                    user.publicId,
+                    profile.nickname,
+                    profile.profileImageKey,
+                ),
+            ).from(commentLike)
+            .join(user)
+            .on(user.id.eq(commentLike.userId))
+            .join(profile)
+            .on(profile.userId.eq(user.id))
+            .where(
+                commentLike.commentId.eq(commentId),
+                hiddenUserIds.takeIf { it.isNotEmpty() }?.let { commentLike.userId.notIn(it) },
+            ).orderBy(commentLike.id.desc())
             .limit(limit.toLong())
             .fetch()
 
