@@ -47,7 +47,7 @@ class SnsSearchService(
 
     /** 인기순 순위. 맞는 원글 전체를 기간과 감쇠 없이 점수순으로 최대 1,000개 고르고 보는 사람의 숨김은 넣지 않는다 */
     fun popularRanking(match: SnsPostMatch): List<Long> =
-        searchQueryPort.findPopularRanking(match, PopularScore.REPOST, PopularScore.MAX_RANK)
+        searchQueryPort.findPopularRanking(match, PopularScore.LIKE, PopularScore.REPOST, PopularScore.MAX_RANK)
 
     fun count(match: SnsPostMatch): Long = searchQueryPort.count(match)
 

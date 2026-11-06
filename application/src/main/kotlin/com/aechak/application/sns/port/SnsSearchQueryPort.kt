@@ -19,6 +19,7 @@ interface SnsSearchQueryPort {
     /** 맞는 원글의 id를 점수, created_at, id 내림차순으로 limit개. 점수가 0인 글도 넣고 보는 사람의 숨김은 넣지 않는다 */
     fun findPopularRanking(
         match: SnsPostMatch,
+        likeWeight: Int,
         repostWeight: Int,
         limit: Int,
     ): List<Long>

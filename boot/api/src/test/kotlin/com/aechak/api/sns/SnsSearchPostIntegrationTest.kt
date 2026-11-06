@@ -160,6 +160,21 @@ class SnsSearchPostIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `인기순 점수는 좋아요 수와 리포스트 수의 3배를 더하고 작성자 본인의 좋아요도 넣는다`() {
+        val authorId = onboardedUser()
+        val oneRepost = scoredPost(1, "공원 산책")
+        val twoLikes = createdPublicId(authorId, postBody(caption = "공원 산책"))
+        repeat(2) { like(twoLikes, onboardedUser()).andExpect(status().isCreated) }
+        val fourLikes = createdPublicId(authorId, postBody(caption = "공원 산책"))
+        repeat(4) { like(fourLikes, onboardedUser()).andExpect(status().isCreated) }
+        val selfLiked = createdPublicId(authorId, postBody(caption = "공원 산책"))
+        like(selfLiked, authorId).andExpect(status().isCreated)
+        val zero = createdPublicId(authorId, postBody(caption = "공원 산책"))
+
+        assertEquals(listOf(fourLikes, oneRepost, twoLikes, selfLiked, zero), searchPage("공원").postIds())
+    }
+
+    @Test
     fun `인기순 다음 페이지는 첫 페이지의 순위를 따르고 최신순은 이어서 준다`() {
         val posts = List(5) { scoredPost(it, "코코 사진") }
 

@@ -90,15 +90,18 @@ class SnsSearchQueryAdapter(
 
     override fun findPopularRanking(
         match: SnsPostMatch,
+        likeWeight: Int,
         repostWeight: Int,
         limit: Int,
     ): List<Long> {
         val sql = match.toSql()
         return nativeQuery(
             "SELECT p.id FROM sns_posts p LEFT JOIN sns_post_stats s ON s.post_id = p.id WHERE ${baseWhere(sql)}" +
-                " ORDER BY COALESCE(s.repost_count, 0) * :repostWeight DESC, p.created_at DESC, p.id DESC LIMIT :limit",
+                " ORDER BY (SELECT COUNT(*) FROM sns_post_likes pl WHERE pl.post_id = p.id) * :likeWeight" +
+                " + COALESCE(s.repost_count, 0) * :repostWeight DESC, p.created_at DESC, p.id DESC LIMIT :limit",
             sql,
-        ).setParameter("repostWeight", repostWeight)
+        ).setParameter("likeWeight", likeWeight)
+            .setParameter("repostWeight", repostWeight)
             .setParameter("limit", limit)
             .resultList
             .map { (it as Number).toLong() }
