@@ -5,6 +5,10 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.FileStorage
 import com.aechak.application.file.port.enums.UploadPurpose
+import com.aechak.domain.sns.comment.Comment
+import com.aechak.domain.sns.comment.enums.CommentDeletionReason
+import com.aechak.domain.sns.comment.repository.CommentRepository
+import com.aechak.domain.sns.post.repository.PostRepository
 import com.aechak.domain.support.Ulid
 import com.aechak.domain.user.pet.Breed
 import com.aechak.domain.user.pet.PetProfile
@@ -51,6 +55,12 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
 
     @Autowired
     protected lateinit var jdbcTemplate: JdbcTemplate
+
+    @Autowired
+    private lateinit var postRepository: PostRepository
+
+    @Autowired
+    private lateinit var commentRepository: CommentRepository
 
     protected lateinit var mockMvc: MockMvc
 
@@ -227,6 +237,33 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
                 .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
         )
 
+    protected fun likeComment(
+        commentPublicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            post("/api/v1/sns/comments/$commentPublicId/like")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
+    protected fun unlikeComment(
+        commentPublicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            delete("/api/v1/sns/comments/$commentPublicId/like")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
+    protected fun commentLikers(
+        commentPublicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            get("/api/v1/sns/comments/$commentPublicId/likers")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
     protected fun updateBody(
         caption: String? = "공원 다녀왔어요",
         hashtags: List<String> = emptyList(),
@@ -392,6 +429,151 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         jdbcTemplate
             .queryForList("select name, post_count from sns_hashtags")
             .associate { it["name"] as String to (it["post_count"] as Number).toInt() }
+
+    /**
+     * 댓글을 API 없이 바로 저장하고 publicId를 돌려준다. parentPublicId는 최상위 댓글이어야 한다.
+     * edited가 참이면 한 번 고치고 deletedBy가 있으면 그 사유로 지운다.
+     */
+    protected fun seedComment(
+        authorId: Long,
+        postPublicId: String,
+        parentPublicId: String? = null,
+        content: String = "댓글${sequence.incrementAndGet()}",
+        edited: Boolean = false,
+        deletedBy: CommentDeletionReason? = null,
+    ): String =
+        tx.execute {
+            val post = postRepository.findByPublicId(postPublicId)!!
+            val parent = parentPublicId?.let { commentRepository.findByPublicId(it)!! }
+            val comment = commentRepository.save(Comment.write(post, parent, authorId, content, Ulid.generate()))
+            if (edited) comment.edit("$content (고침)")
+            deletedBy?.let(comment::delete)
+            comment.publicId
+        }!!
+
+    /** 댓글을 API 없이 그 사유로 지운다 */
+    protected fun deleteCommentRow(
+        publicId: String,
+        reason: CommentDeletionReason = CommentDeletionReason.AUTHOR,
+    ) {
+        tx.execute { commentRepository.findByPublicId(publicId)!!.delete(reason) }
+    }
+
+    /** 댓글 목록을 부른다. */
+    protected fun getComments(
+        postPublicId: String,
+        viewerId: Long? = null,
+        cursor: String? = null,
+        size: Int? = null,
+    ): ResultActions {
+        val request = get("/api/v1/sns/posts/$postPublicId/comments")
+        cursor?.let { request.param("cursor", it) }
+        size?.let { request.param("size", it.toString()) }
+        if (viewerId != null) request.header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}")
+        return mockMvc.perform(request)
+    }
+
+    /** 댓글 목록을 200으로 받고 data 객체를 돌려준다. */
+    protected fun commentPage(
+        postPublicId: String,
+        viewerId: Long? = null,
+        cursor: String? = null,
+        size: Int? = null,
+    ): Map<String, Any?> {
+        val json =
+            getComments(postPublicId, viewerId, cursor, size)
+                .andExpect(status().isOk)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        return JsonPath.read(json, "$.data")
+    }
+
+    protected fun commentBody(
+        content: String? = "산책 코스 어디예요?",
+        parentPublicId: String? = null,
+    ): String {
+        val contentJson = content?.let { "\"$it\"" } ?: "null"
+        val parentJson = parentPublicId?.let { "\"$it\"" } ?: "null"
+        return """{"content":$contentJson,"parentPublicId":$parentJson}"""
+    }
+
+    protected fun createComment(
+        userId: Long,
+        postPublicId: String,
+        body: String = commentBody(),
+        idempotencyKey: String? = Ulid.generate(),
+    ): ResultActions {
+        val request =
+            post("/api/v1/sns/posts/$postPublicId/comments")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        if (idempotencyKey != null) request.header(CustomHttpHeaders.IDEMPOTENCY_KEY, idempotencyKey)
+        return mockMvc.perform(request)
+    }
+
+    /** 댓글을 201로 쓰고 응답 data 객체를 돌려준다. */
+    protected fun createdComment(
+        userId: Long,
+        postPublicId: String,
+        body: String = commentBody(),
+        idempotencyKey: String = Ulid.generate(),
+    ): Map<String, Any?> {
+        val json =
+            createComment(userId, postPublicId, body, idempotencyKey)
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        return JsonPath.read(json, "$.data")
+    }
+
+    protected fun getComment(
+        commentPublicId: String,
+        viewerId: Long?,
+    ): ResultActions {
+        val request = get("/api/v1/sns/comments/$commentPublicId")
+        if (viewerId != null) request.header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(viewerId)}")
+        return mockMvc.perform(request)
+    }
+
+    protected fun updateComment(
+        commentPublicId: String,
+        userId: Long,
+        body: String = commentBody(content = "고친 댓글"),
+    ): ResultActions =
+        mockMvc.perform(
+            patch("/api/v1/sns/comments/$commentPublicId")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+
+    protected fun deleteComment(
+        commentPublicId: String,
+        userId: Long,
+    ): ResultActions =
+        mockMvc.perform(
+            delete("/api/v1/sns/comments/$commentPublicId")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}"),
+        )
+
+    protected fun commentRow(publicId: String): Map<String, Any?> =
+        jdbcTemplate.queryForMap("select * from sns_comments where public_id = ?", publicId)
+
+    protected fun commentRowCount(postPublicId: String): Int =
+        jdbcTemplate.queryForObject(
+            "select count(*) from sns_comments c join sns_posts p on p.id = c.post_id where p.public_id = ?",
+            Int::class.java,
+            postPublicId,
+        )!!
+
+    /** 보는 사람에게 보이는 댓글 publicId를 목록 순서대로. 한 페이지에 다 들어오는 수만 쓴다 */
+    protected fun visibleCommentIds(
+        postPublicId: String,
+        viewerId: Long? = null,
+    ): List<String> = commentPage(postPublicId, viewerId, size = 100).feedItems().map { it["publicId"] as String }
 
     /** 작업마다 스레드 하나를 두고 한꺼번에 출발시켜 모두 끝날 때까지 기다린 뒤 던진 예외를 모아 돌려준다. */
     protected fun runConcurrently(tasks: List<() -> Unit>): List<Throwable> {

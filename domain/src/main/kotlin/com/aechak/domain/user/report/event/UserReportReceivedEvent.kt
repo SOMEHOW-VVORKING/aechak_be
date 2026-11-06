@@ -11,7 +11,7 @@ import java.time.LocalDateTime
 data class UserReportReceivedEvent(
     val reportId: Long,
     val targetUserId: Long,
-    val reviewId: Long,
+    val reviewId: Long?,
     val reasonCode: ReportReasonCode,
     val reasonText: String?,
     val createdAt: LocalDateTime,
