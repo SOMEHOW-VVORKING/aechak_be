@@ -1,6 +1,7 @@
 package com.aechak.application.sns.facade
 
 import com.aechak.application.file.usecase.FileUseCase
+import com.aechak.application.ratelimit.usecase.RateLimitUseCase
 import com.aechak.application.sns.port.view.SnsLikerView
 import com.aechak.application.sns.service.CommentCommandService
 import com.aechak.application.sns.service.CommentQueryService
@@ -9,6 +10,7 @@ import com.aechak.application.sns.service.LikeService
 import com.aechak.application.sns.service.PostAccessService
 import com.aechak.application.sns.service.SnsUserListService
 import com.aechak.application.sns.service.SnsVisibilityService
+import com.aechak.application.sns.support.SnsRateLimitRule
 import com.aechak.application.sns.usecase.SnsLikeUseCase
 import com.aechak.application.sns.usecase.command.LikeCommentCommand
 import com.aechak.application.sns.usecase.command.LikePostCommand
@@ -36,6 +38,7 @@ class SnsLikeFacade(
     private val fileUseCase: FileUseCase,
     private val commentCommandService: CommentCommandService,
     private val commentQueryService: CommentQueryService,
+    private val rateLimitUseCase: RateLimitUseCase,
     transactionManager: PlatformTransactionManager,
 ) : SnsLikeUseCase {
     private val tx =
@@ -44,10 +47,10 @@ class SnsLikeFacade(
         }
 
     // 본인 글과 뮤트한 작성자의 글에도 누를 수 있다
-    override fun likePost(command: LikePostCommand): SnsLikeResult = toggle(command, likeService::likePost)
+    override fun likePost(command: LikePostCommand): SnsLikeResult = toggle(command, SnsRateLimitRule.LIKE_ON, likeService::likePost)
 
     // 끄기도 켜기와 같은 판정을 거쳐 볼 수 없게 된 게시물의 수를 내주지 않는다
-    override fun unlikePost(command: LikePostCommand): SnsLikeResult = toggle(command, likeService::unlikePost)
+    override fun unlikePost(command: LikePostCommand): SnsLikeResult = toggle(command, SnsRateLimitRule.LIKE_OFF, likeService::unlikePost)
 
     // 차단 관계인 사용자를 뺀 뒤 100명을 채우고 한 명 더 읽어 남은 사람이 있는지 본다. 뮤트한 사용자는 그대로 나온다
     override fun getPostLikers(command: LikePostCommand): SnsLikerListResult =
@@ -122,16 +125,19 @@ class SnsLikeFacade(
         return commentQueryService.requireLikeTarget(commentQueryService.scopeOf(post, userId), commentPublicId)
     }
 
-    /** 상세와 같은 판정 뒤 좋아요를 바꾸고 같은 트랜잭션에서 지금의 수를 센다 */
+    /** 빈도 제한과 상세와 같은 판정 뒤 좋아요를 바꾸고 같은 트랜잭션에서 지금의 수를 센다 */
     private fun toggle(
         command: LikePostCommand,
+        rule: SnsRateLimitRule,
         change: (postId: Long, userId: Long) -> Unit,
-    ): SnsLikeResult =
-        tx.execute {
+    ): SnsLikeResult {
+        rateLimitUseCase.check(command.userId, rule)
+        return tx.execute {
             val post = requireVisible(command.publicId, command.userId)
             change(post.id, command.userId)
             SnsLikeResult(likeService.countByPostIds(listOf(post.id)).getValue(post.id))
         }!!
+    }
 
     private fun requireVisible(
         publicId: String,
