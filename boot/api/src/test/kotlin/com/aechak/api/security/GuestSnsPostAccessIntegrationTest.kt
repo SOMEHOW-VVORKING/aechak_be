@@ -66,6 +66,14 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `토큰 없이 좋아요한 사람을 부르면 401 20004다`() {
+        mockMvc
+            .perform(get("/api/v1/sns/posts/${createdPublicId(onboardedUser())}/likers"))
+            .andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+    }
+
+    @Test
     fun `토큰 없이 해시태그 자동완성을 부르면 401 20004다`() {
         mockMvc
             .perform(get("/api/v1/sns/hashtags").param("query", "산책"))

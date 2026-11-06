@@ -288,12 +288,14 @@ data class ProductCatalogView(
 ### 4-2. 조회 포트 구현의 user 테이블 읽기 조인
 
 > 다른 BC는 사용자 표시 정보(닉네임, 프로필 이미지)를 user BC의 `UserUseCase.getAuthors`로 따로 받아 Facade에서 붙인다(리뷰 목록, 셀러 주문 목록).
-> SNS 관계 목록과 SNS 피드만 예외로 조회 포트 구현이 user 테이블을 직접 조인한다.
+> SNS 관계 목록, 좋아요한 사람 목록, SNS 피드만 예외로 조회 포트 구현이 user 테이블을 직접 조인한다.
 
 - `SnsUserListQueryPort` 구현이 `sns_follows`, `sns_blocks`, `sns_mutes`를 `users`, `user_profiles`와 id 값 동등 조건으로
   조인해 publicId, 닉네임, 프로필 이미지 key를 읽는다.
 - 두 단계 조회(`UserUseCase`로 표시 정보를 따로 붙이기)로는 닉네임 검색 결과를 페이지 크기만큼 채울 수 없어서
   keyset 페이지, 탈퇴 사용자 제외(프로필 행이 없으면 INNER JOIN에서 빠진다), 검색을 한 쿼리로 끝낸다.
+- 같은 구현이 게시물 좋아요한 사람 목록도 `sns_post_likes`를 같은 조건으로 조인해 읽는다. 차단 관계인 사용자와 탈퇴 사용자를
+  LIMIT 전에 빼야 최근 100명이 덜 차지 않는다.
 - `SnsFeedQueryPort` 구현도 카드의 작성자 publicId, 닉네임, 프로필 이미지 key를 같은 방식으로 읽고 프로필 행이 없는
   작성자의 글을 목록 쿼리에서 뺀다. 탈퇴 작성자를 앱에서 거르면 keyset 페이지가 크기만큼 차지 않는다.
 - 읽기 전용 조회 포트 구현에서만 쓴다. 도메인 리포지토리와 쓰기 경로는 user 테이블을 읽지 않는다.

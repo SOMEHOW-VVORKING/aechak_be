@@ -1,6 +1,7 @@
 package com.aechak.api.sns.controller
 
 import com.aechak.api.sns.response.SnsLikeResponse
+import com.aechak.api.sns.response.SnsLikerListResponse
 import com.aechak.application.sns.usecase.SnsLikeUseCase
 import com.aechak.application.sns.usecase.command.LikePostCommand
 import com.aechak.webcommon.response.ApiResponse
@@ -9,6 +10,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -36,4 +38,13 @@ class LikeController(
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<SnsLikeResponse>> =
         ResponseEntity.ok(ApiResponse.of(SnsLikeResponse.from(snsLikeUseCase.unlikePost(LikePostCommand(principal.userId, publicId)))))
+
+    @GetMapping("/{publicId}/likers")
+    fun getPostLikers(
+        @PathVariable publicId: String,
+        @AuthenticationPrincipal principal: AuthPrincipal,
+    ): ResponseEntity<ApiResponse<SnsLikerListResponse>> =
+        ResponseEntity.ok(
+            ApiResponse.of(SnsLikerListResponse.from(snsLikeUseCase.getPostLikers(LikePostCommand(principal.userId, publicId)))),
+        )
 }
