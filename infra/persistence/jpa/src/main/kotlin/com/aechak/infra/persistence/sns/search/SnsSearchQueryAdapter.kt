@@ -51,6 +51,16 @@ private fun SnsPostMatch.toSql(): MatchSql =
 /** PUBLISHED 원글 중 작성자가 볼 수 있고 검색 조건에 맞는 글 */
 private fun baseWhere(match: MatchSql): String = "p.status = :published AND ${visibleUserSql("p.author_id")} AND ${match.where}"
 
+/**
+ * 게시물 p의 공개 댓글 수. 인기 피드 점수의 publicCommentCount와 같은 규칙으로 ACTIVE 댓글과 대댓글을 세고
+ * 게시물 작성자가 뮤트한 사용자의 댓글과 그 사용자의 최상위 댓글 아래 대댓글(섀도우)만 뺀다. 작성자 본인 댓글도 센다.
+ */
+private const val PUBLIC_COMMENT_COUNT =
+    "SELECT COUNT(*) FROM sns_comments c LEFT JOIN sns_comments r ON r.id = c.parent_id" +
+        " WHERE c.post_id = p.id AND c.status = 'ACTIVE'" +
+        " AND NOT EXISTS (SELECT 1 FROM sns_mutes cm WHERE cm.muter_id = p.author_id AND cm.muted_id = c.author_id)" +
+        " AND (c.parent_id IS NULL OR NOT EXISTS (SELECT 1 FROM sns_mutes rm WHERE rm.muter_id = p.author_id AND rm.muted_id = r.author_id))"
+
 // shortcut: 캡션과 태그 이름을 앞에 와일드카드가 붙은 LIKE로 찾아 맞는 글을 고를 때 sns_posts를 끝까지 읽는다.
 // PUBLISHED 원글이 10만 건을 넘거나 검색 P95가 500ms를 넘으면 ngram FULLTEXT 색인이나 검색 엔진으로 옮긴다
 @Repository
@@ -91,6 +101,7 @@ class SnsSearchQueryAdapter(
     override fun findPopularRanking(
         match: SnsPostMatch,
         likeWeight: Int,
+        commentWeight: Int,
         repostWeight: Int,
         limit: Int,
     ): List<Long> {
@@ -98,9 +109,11 @@ class SnsSearchQueryAdapter(
         return nativeQuery(
             "SELECT p.id FROM sns_posts p LEFT JOIN sns_post_stats s ON s.post_id = p.id WHERE ${baseWhere(sql)}" +
                 " ORDER BY (SELECT COUNT(*) FROM sns_post_likes pl WHERE pl.post_id = p.id) * :likeWeight" +
+                " + ($PUBLIC_COMMENT_COUNT) * :commentWeight" +
                 " + COALESCE(s.repost_count, 0) * :repostWeight DESC, p.created_at DESC, p.id DESC LIMIT :limit",
             sql,
         ).setParameter("likeWeight", likeWeight)
+            .setParameter("commentWeight", commentWeight)
             .setParameter("repostWeight", repostWeight)
             .setParameter("limit", limit)
             .resultList

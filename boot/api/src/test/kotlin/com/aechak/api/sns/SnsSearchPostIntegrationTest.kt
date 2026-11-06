@@ -175,6 +175,24 @@ class SnsSearchPostIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `인기순 점수는 공개 댓글 수의 2배를 더하고 작성자 본인 댓글은 넣고 섀도우 처리된 댓글과 지운 댓글은 넣지 않는다`() {
+        val authorId = onboardedUser()
+        val shadowedId = onboardedUser()
+        relate(authorId, shadowedId, "mute")
+        val oneRepost = scoredPost(1, "한강 산책")
+        val twoComments = createdPublicId(authorId, postBody(caption = "한강 산책"))
+        repeat(2) { seedComment(onboardedUser(), twoComments) }
+        val selfComment = createdPublicId(authorId, postBody(caption = "한강 산책"))
+        seedComment(authorId, selfComment)
+        val hidden = createdPublicId(authorId, postBody(caption = "한강 산책"))
+        val shadowedRoot = seedComment(shadowedId, hidden)
+        seedComment(onboardedUser(), hidden, parentPublicId = shadowedRoot)
+        deleteCommentRow(seedComment(onboardedUser(), hidden))
+
+        assertEquals(listOf(twoComments, oneRepost, selfComment, hidden), searchPage("한강").postIds())
+    }
+
+    @Test
     fun `인기순 다음 페이지는 첫 페이지의 순위를 따르고 최신순은 이어서 준다`() {
         val posts = List(5) { scoredPost(it, "코코 사진") }
 

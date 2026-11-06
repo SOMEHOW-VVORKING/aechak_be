@@ -163,6 +163,7 @@ private class FakeSearchQueryPort(
     override fun findPopularRanking(
         match: SnsPostMatch,
         likeWeight: Int,
+        commentWeight: Int,
         repostWeight: Int,
         limit: Int,
     ): List<Long> = ranking
