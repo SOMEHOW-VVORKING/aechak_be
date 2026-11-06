@@ -149,6 +149,7 @@ AFTER_COMMIT 리스너가 발화하지 않고, 이벤트/outbox 흐름이 조용
   컨텍스트가 시작된 뒤(ddl-auto가 테이블을 만든 다음) information_schema를 보고 products에 인덱스가 없을 때만 ALTER한다. 공용 설정이라 `IntegrationTestBase`와 `KafkaIntegrationTestBase` 컨텍스트에서 모두 돌고 TRUNCATE 뒤에도 인덱스는 남는다.
   Hibernate load script로 넣지 않는다. 생성 DDL 스크립트에 섞여 마이그레이션 테스트가 받는 엔티티 DDL이 오염된다.
   이 인덱스를 쓰는 `aechak.search.fulltext-enabled`는 api 테스트 프로퍼티에서만 켠다. seller와 batch 테스트는 기본값(false)이라 LIKE만 쓴다(batch는 이 설정을 import하지 않아 인덱스도 없다).
+  api 테스트는 `aechak.search.fulltext-max-match-ratio`도 2.0으로 둬 표본 일치 비율과 관계없이 MATCH를 쓸 수 있는 검색어는 FULLTEXT 경로로 읽는다. 픽스처가 작아 기본값(0.05)이면 거의 모든 검색어가 MATCH 없는 경로로 가기 때문이다. 인덱스 순서 경로와 스캔 경로는 `ProductKeywordSearchAccessPathIntegrationTest`가 기준 비율만 다른 어댑터를 만들어 세 경로의 결과가 같은지 본다.
 - 알려진 예외: `boot/batch`는 아웃박스 스위퍼가 실 outbox 테이블을 읽어야 해서 런타임 DB가 MySQL이다(H2 제거 완료, SCRUM-143).
   batch 통합 테스트는 `boot/batch/src/test/.../support/BatchIntegrationTestBase`를 상속한다 — 컨테이너는 `:api` test-fixtures의
   `IntegrationTestConfig.registerContainers`로 api와 같은 것을 공유하고(모듈마다 띄우지 않는다), Fake 빈은 끌어오지 않는다(배치는 웹 포트가 없다).

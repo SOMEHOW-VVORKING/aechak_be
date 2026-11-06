@@ -16,6 +16,7 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.OneToMany
 import jakarta.persistence.OrderBy
@@ -31,6 +32,14 @@ import java.time.LocalDateTime
     uniqueConstraints = [
         UniqueConstraint(name = "uk_sns_posts_public_id", columnNames = ["public_id"]),
         UniqueConstraint(name = Post.UK_AUTHOR_IDEMPOTENCY, columnNames = ["author_id", "idempotency_key"]),
+    ],
+    indexes = [
+        // 탐색과 인기 피드의 기간 조건과 최신순
+        Index(name = "ix_sns_posts_created", columnList = "status, created_at"),
+        // 팔로잉 피드 원천의 글과 프로필 그리드
+        Index(name = "ix_sns_posts_author", columnList = "author_id, status, created_at"),
+        // 프로필 영상 탭
+        Index(name = "ix_sns_posts_author_media", columnList = "author_id, media_type, status, created_at"),
     ],
 )
 class Post protected constructor(

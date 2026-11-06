@@ -54,6 +54,14 @@ interface ProductStatsJpaRepository : JpaRepository<ProductStats, Long> {
         @Param("ratingSum") ratingSum: Long,
         @Param("averageRating") averageRating: BigDecimal?,
     ): Int
+
+    // 네이티브라 Product의 @Version을 올리지 않음
+    @Modifying
+    @Query(value = "UPDATE products SET review_count = :reviewCount WHERE id = :productId", nativeQuery = true)
+    fun updateProductReviewCount(
+        @Param("productId") productId: Long,
+        @Param("reviewCount") reviewCount: Int,
+    ): Int
 }
 
 @Repository
@@ -76,5 +84,12 @@ class ProductStatsRepositoryAdapter(
         averageRating: BigDecimal?,
     ) {
         jpaRepository.upsertReviewStats(productId, reviewCount, ratingSum, averageRating)
+    }
+
+    override fun updateProductReviewCount(
+        productId: Long,
+        reviewCount: Int,
+    ) {
+        jpaRepository.updateProductReviewCount(productId, reviewCount)
     }
 }

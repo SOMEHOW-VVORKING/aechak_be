@@ -28,6 +28,11 @@ class ProductStatsServiceTest {
             ratingSum: Long,
             averageRating: BigDecimal?,
         ) = error("이 테스트에서 호출하지 않는다")
+
+        override fun updateProductReviewCount(
+            productId: Long,
+            reviewCount: Int,
+        ) = error("이 테스트에서 호출하지 않는다")
     }
 
     @Test

@@ -41,6 +41,14 @@ class PetProfileFacade(
         if (userIds.isEmpty()) emptyList() else petSummaryQueryPort.findDefaultPetSummaries(userIds).map(DefaultPetSummaryResult::from)
 
     @Transactional(readOnly = true)
+    override fun getActivePetsByIds(petIds: Collection<Long>): List<PetProfileResult> =
+        if (petIds.isEmpty()) {
+            emptyList()
+        } else {
+            petProfileService.getActivePetsByIds(petIds).map { PetProfileResult.from(it, fileUseCase.resolveMediaUrl(it.profileImageKey)) }
+        }
+
+    @Transactional(readOnly = true)
     override fun findRepresentativePet(userId: Long): RepresentativePetResult? =
         petProfileService.getActivePets(userId).firstOrNull()?.let(RepresentativePetResult::from)
 
