@@ -73,6 +73,21 @@ class GuestSnsPostAccessIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
+    fun `토큰 없이 댓글을 쓰면 401 20004다`() {
+        val publicId = createdPublicId(onboardedUser())
+
+        mockMvc
+            .perform(
+                post("/api/v1/sns/posts/$publicId/comments")
+                    .header(CustomHttpHeaders.IDEMPOTENCY_KEY, "guest-key")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(commentBody()),
+            ).andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.errorCode").value(20004))
+        assertEquals(0, commentRowCount(publicId))
+    }
+
+    @Test
     fun `토큰 없이 댓글 목록을 부르면 200이고 isMine과 liked가 false다`() {
         val authorId = onboardedUser()
         val publicId = createdPublicId(authorId)

@@ -10,10 +10,13 @@ import com.aechak.application.sns.usecase.result.SnsCommentItemStatus
 import com.aechak.application.sns.usecase.result.SnsPostAuthorResult
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.support.CursorPageSize
+import com.aechak.application.user.user.usecase.UserUseCase
+import com.aechak.domain.sns.comment.Comment
 import com.aechak.domain.sns.comment.enums.CommentDeletionReason
 import com.aechak.domain.sns.comment.enums.CommentStatus
 import com.aechak.domain.sns.post.Post
 import org.springframework.stereotype.Service
+import java.time.LocalDateTime
 
 /** 댓글 읽기. 보는 사람 기준 거르기는 포트의 조건식이 하고 이 서비스는 항목을 조립한다 */
 @Service
@@ -21,6 +24,7 @@ class CommentQueryService(
     private val commentQueryPort: SnsCommentQueryPort,
     private val snsVisibilityService: SnsVisibilityService,
     private val fileUseCase: FileUseCase,
+    private val userUseCase: UserUseCase,
 ) {
     fun scopeOf(
         post: Post,
@@ -61,48 +65,98 @@ class CommentQueryService(
         rootStatus: SnsCommentItemStatus?,
         viewerId: Long?,
     ): SnsCommentItemResult {
-        val status =
-            when {
-                view.status == CommentStatus.DELETED && view.deletionReason == CommentDeletionReason.WITHDRAWAL -> {
-                    SnsCommentItemStatus.WITHDRAWN
-                }
-
-                view.status == CommentStatus.DELETED -> {
-                    SnsCommentItemStatus.DELETED
-                }
-
-                // shortcut: SNS-T18 전에 탈퇴한 작성자의 댓글은 프로필 행이 없어 안내 문구로 바꿔 보여주고 수에는 남긴다.
-                // SNS-T18이 탈퇴 때 댓글을 사유 WITHDRAWAL로 지우게 되면 이 분기를 지운다
-                view.authorNickname == null -> {
-                    SnsCommentItemStatus.WITHDRAWN
-                }
-
-                else -> {
-                    SnsCommentItemStatus.ACTIVE
-                }
+        val author =
+            view.authorNickname?.let {
+                SnsPostAuthorResult(
+                    view.authorPublicId!!,
+                    it,
+                    fileUseCase.resolveMediaUrl(view.authorProfileImageKey),
+                )
             }
-        val active = status == SnsCommentItemStatus.ACTIVE
-        return SnsCommentItemResult(
+        return item(
             publicId = view.publicId,
             parentPublicId = parentPublicId,
+            status = statusOf(view.status, view.deletionReason, author != null),
+            rootStatus = rootStatus,
+            author = author,
+            content = view.content,
+            edited = view.editedAt != null,
+            isMine = view.authorId == viewerId,
+            createdAt = view.createdAt,
+        )
+    }
+
+    /**
+     * 쓰기 경로의 항목. 사용자 표를 조인하지 않고 UserUseCase로 작성자 표시 정보를 읽는다.
+     * 최상위 댓글을 LAZY로 읽으므로 트랜잭션 안에서 부른다.
+     */
+    fun itemOf(
+        comment: Comment,
+        viewerId: Long,
+    ): SnsCommentItemResult {
+        val root = comment.parent
+        val author = authorOf(comment.authorId)
+        return item(
+            publicId = comment.publicId,
+            parentPublicId = root?.publicId,
+            status = statusOf(comment.status, comment.deletionReason, author != null),
+            rootStatus = root?.let { statusOf(it.status, it.deletionReason, authorOf(it.authorId) != null) },
+            author = author,
+            content = comment.content,
+            edited = comment.editedAt != null,
+            isMine = comment.authorId == viewerId,
+            createdAt = comment.createdAt,
+        )
+    }
+
+    private fun authorOf(userId: Long): SnsPostAuthorResult? =
+        userUseCase.findPublicProfileById(userId)?.let { profile ->
+            profile.nickname?.let { SnsPostAuthorResult(profile.publicId, it, profile.profileImageUrl) }
+        }
+
+    /** hasProfile이 false면 프로필 행이 없는 작성자(탈퇴)다 */
+    private fun statusOf(
+        status: CommentStatus,
+        reason: CommentDeletionReason?,
+        hasProfile: Boolean,
+    ): SnsCommentItemStatus =
+        when {
+            status == CommentStatus.DELETED && reason == CommentDeletionReason.WITHDRAWAL -> SnsCommentItemStatus.WITHDRAWN
+
+            status == CommentStatus.DELETED -> SnsCommentItemStatus.DELETED
+
+            // shortcut: SNS-T18 전에 탈퇴한 작성자의 댓글은 프로필 행이 없어 안내 문구로 바꿔 보여주고 수에는 남긴다.
+            // SNS-T18이 탈퇴 때 댓글을 사유 WITHDRAWAL로 지우게 되면 이 분기를 지운다
+            !hasProfile -> SnsCommentItemStatus.WITHDRAWN
+
+            else -> SnsCommentItemStatus.ACTIVE
+        }
+
+    /** 안내 문구 항목은 작성자와 내용이 null이고 수는 0, 불리언은 false다 */
+    private fun item(
+        publicId: String,
+        parentPublicId: String?,
+        status: SnsCommentItemStatus,
+        rootStatus: SnsCommentItemStatus?,
+        author: SnsPostAuthorResult?,
+        content: String?,
+        edited: Boolean,
+        isMine: Boolean,
+        createdAt: LocalDateTime,
+    ): SnsCommentItemResult {
+        val active = status == SnsCommentItemStatus.ACTIVE
+        return SnsCommentItemResult(
+            publicId = publicId,
+            parentPublicId = parentPublicId,
             status = status,
-            author =
-                if (active) {
-                    SnsPostAuthorResult(
-                        view.authorPublicId!!,
-                        view.authorNickname!!,
-                        fileUseCase.resolveMediaUrl(view.authorProfileImageKey),
-                    )
-                } else {
-                    null
-                },
-            content = view.content.takeIf { active },
+            author = author.takeIf { active },
+            content = content.takeIf { active },
             likeCount = 0,
             liked = false,
-            edited = active && view.editedAt != null,
+            edited = active && edited,
             replyable = active && (rootStatus ?: status) == SnsCommentItemStatus.ACTIVE,
-            isMine = active && view.authorId == viewerId,
-            createdAt = view.createdAt,
+            isMine = active && isMine,
+            createdAt = createdAt,
         )
     }
 }

@@ -444,6 +444,56 @@ abstract class SnsPostIntegrationTestBase : IntegrationTestBase() {
         return JsonPath.read(json, "$.data")
     }
 
+    protected fun commentBody(
+        content: String? = "산책 코스 어디예요?",
+        parentPublicId: String? = null,
+    ): String {
+        val contentJson = content?.let { "\"$it\"" } ?: "null"
+        val parentJson = parentPublicId?.let { "\"$it\"" } ?: "null"
+        return """{"content":$contentJson,"parentPublicId":$parentJson}"""
+    }
+
+    protected fun createComment(
+        userId: Long,
+        postPublicId: String,
+        body: String = commentBody(),
+        idempotencyKey: String? = Ulid.generate(),
+    ): ResultActions {
+        val request =
+            post("/api/v1/sns/posts/$postPublicId/comments")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer ${mintAccessToken(userId)}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body)
+        if (idempotencyKey != null) request.header(CustomHttpHeaders.IDEMPOTENCY_KEY, idempotencyKey)
+        return mockMvc.perform(request)
+    }
+
+    /** 댓글을 201로 쓰고 응답 data 객체를 돌려준다. */
+    protected fun createdComment(
+        userId: Long,
+        postPublicId: String,
+        body: String = commentBody(),
+        idempotencyKey: String = Ulid.generate(),
+    ): Map<String, Any?> {
+        val json =
+            createComment(userId, postPublicId, body, idempotencyKey)
+                .andExpect(status().isCreated)
+                .andReturn()
+                .response
+                .getContentAsString(Charsets.UTF_8)
+        return JsonPath.read(json, "$.data")
+    }
+
+    protected fun commentRow(publicId: String): Map<String, Any?> =
+        jdbcTemplate.queryForMap("select * from sns_comments where public_id = ?", publicId)
+
+    protected fun commentRowCount(postPublicId: String): Int =
+        jdbcTemplate.queryForObject(
+            "select count(*) from sns_comments c join sns_posts p on p.id = c.post_id where p.public_id = ?",
+            Int::class.java,
+            postPublicId,
+        )!!
+
     /** 보는 사람에게 보이는 댓글 publicId를 목록 순서대로. 한 페이지에 다 들어오는 수만 쓴다 */
     protected fun visibleCommentIds(
         postPublicId: String,
