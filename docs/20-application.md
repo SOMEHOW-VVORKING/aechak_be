@@ -54,8 +54,8 @@ application/src/main/kotlin/com/aechak/application/
 - 다른 BC는 이 패키지의 UseCase만 주입받는다. 판정 결과를 어떤 응답으로 바꿀지는 호출한 BC가 정한다.
 - `application/ratelimit`(사용자별 요청 빈도 제한)은 예외로 응답을 직접 정한다. 넘으면 `RateLimitUseCase.check`가 429 `CommonErrorCode.TOO_MANY_REQUESTS`(90012)를 던진다. 쓰는 BC가 늘어도 코드는 하나여야 해서 공통 코드를 쓴다.
   - 규칙은 쓰는 BC가 `RateLimitRule`을 구현한 enum으로 둔다(선례 `application/sns/support/SnsRateLimitRule`). `key`가 같은 규칙은 함께 센다. 켜기와 끄기를 합쳐 세는 행동은 규칙 하나를 두 요청이 함께 쓴다.
-  - 창이 여럿인 규칙은 모든 창이 한도 아래일 때만 받고 모든 창을 함께 올린다. 거절된 요청은 어느 창도 올리지 않는다.
-  - Redis가 실패하면 통과시킨다. 대기는 api의 `spring.data.redis.timeout`(1초)까지다.
+  - 창이 여럿인 규칙은 모든 창이 한도 아래일 때만 받고 모든 창을 함께 올린다. 거절된 요청은 어느 창도 올리지 않는다. 한 규칙에 같은 길이의 창을 둘 두지 않는다(`check`가 거부한다).
+  - Redis가 실패하면(`DataAccessException`) 통과시키고 다른 예외는 그대로 던진다. 대기는 api의 `spring.data.redis.timeout`(1초)까지다.
 
 ## 2. UseCase / Facade / Service 역할 계약
 

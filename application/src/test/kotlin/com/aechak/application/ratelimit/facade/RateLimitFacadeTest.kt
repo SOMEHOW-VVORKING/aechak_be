@@ -5,6 +5,7 @@ import com.aechak.application.ratelimit.usecase.RateLimit
 import com.aechak.application.ratelimit.usecase.RateLimitRule
 import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
+import org.springframework.dao.QueryTimeoutException
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
@@ -13,8 +14,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
- * 계약: 창마다 창 번호(epochSeconds / windowSeconds)를 담은 키로 세고 찬 창이 있으면 90012, 저장소가 실패하면 통과시키는지.
- * 깨지면 만료를 걸지 못한 키가 사용자를 계속 막거나 Redis 장애가 SNS 쓰기를 모두 막는다.
+ * 계약: 창마다 창 번호(epochSeconds / windowSeconds)를 담은 키로 세고 찬 창이 있으면 90012, 저장소가 실패하면 통과시키고 다른 예외와 같은 길이의 창 중복은 드러내는지.
+ * 깨지면 만료를 걸지 못한 키가 사용자를 계속 막거나 Redis 장애가 SNS 쓰기를 모두 막거나 코드 결함과 설정 실수가 통과로 묻힌다.
  */
 class RateLimitFacadeTest {
     private object Rule : RateLimitRule {
@@ -50,7 +51,25 @@ class RateLimitFacadeTest {
 
     @Test
     fun `저장소가 실패하면 통과시킨다`() {
-        RateLimitFacade(counter { throw IllegalStateException("redis down") }).check(7, Rule)
+        RateLimitFacade(counter { throw QueryTimeoutException("redis timeout") }).check(7, Rule)
+    }
+
+    @Test
+    fun `저장소 실패가 아닌 예외는 그대로 던진다`() {
+        assertFailsWith<IllegalStateException> {
+            RateLimitFacade(counter { throw IllegalStateException("bug") }).check(7, Rule)
+        }
+    }
+
+    @Test
+    fun `한 규칙에 같은 길이의 창이 둘이면 거부한다`() {
+        val duplicated =
+            object : RateLimitRule {
+                override val key = "test:DUP"
+                override val limits = listOf(RateLimit(5, Duration.ofMinutes(1)), RateLimit(10, Duration.ofSeconds(60)))
+            }
+
+        assertFailsWith<IllegalArgumentException> { RateLimitFacade(counter { true }).check(7, duplicated) }
     }
 
     private fun counter(result: () -> Boolean) =
