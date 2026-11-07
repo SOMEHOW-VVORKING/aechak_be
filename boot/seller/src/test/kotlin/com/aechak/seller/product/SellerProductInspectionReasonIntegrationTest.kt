@@ -1,18 +1,29 @@
 package com.aechak.seller.product
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.application.inspection.service.InspectionQueryService
 import com.aechak.domain.inspection.ContentInspection
+import com.aechak.domain.inspection.InspectionFinding
 import com.aechak.domain.inspection.ProductReviewQueueItem
 import com.aechak.domain.inspection.enums.InspectionJudgment
+import com.aechak.domain.inspection.enums.InspectionPerspectiveKind
 import com.aechak.domain.inspection.enums.InspectionTargetType
+import com.aechak.domain.inspection.enums.PerspectiveOutcome
 import com.aechak.domain.inspection.repository.ContentInspectionRepository
 import com.aechak.domain.inspection.repository.ProductReviewQueueRepository
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.seller.seller.Seller
+import org.hamcrest.Matchers.nullValue
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
 import org.springframework.security.web.FilterChainProxy
@@ -270,6 +281,136 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
             .perform(inspectionRequest(otherPublicId))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value(40000))
+    }
+
+    @Test
+    fun `위반 목록을 분류와 구절과 제안으로 돌려준다`() {
+        givenFlagged()
+        seedFinding(
+            InspectionPerspectiveKind.DISPLAY_ADS,
+            """[{"category":"MEDICAL_CLAIM","perspective":"DISPLAY_ADS","spanStart":0,"spanEnd":6,"quote":"슬개골 완치","suggestion":"건강 관리에 도움을 줄 수 있는","confidence":null}]""",
+        )
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.violations.length()").value(1))
+            .andExpect(jsonPath("$.data.violations[0].category").value("MEDICAL_CLAIM"))
+            .andExpect(jsonPath("$.data.violations[0].quote").value("슬개골 완치"))
+            .andExpect(jsonPath("$.data.violations[0].suggestion").value("건강 관리에 도움을 줄 수 있는"))
+    }
+
+    @Test
+    fun `위반 항목에 내부 값을 싣지 않는다`() {
+        givenFlagged()
+        seedFinding(
+            InspectionPerspectiveKind.DISPLAY_ADS,
+            """[{"category":"MEDICAL_CLAIM","perspective":"DISPLAY_ADS","spanStart":0,"spanEnd":6,"quote":"슬개골 완치","suggestion":null,"confidence":0.9}]""",
+        )
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.violations[0].perspective").doesNotHaveJsonPath())
+            .andExpect(jsonPath("$.data.violations[0].spanStart").doesNotHaveJsonPath())
+            .andExpect(jsonPath("$.data.violations[0].spanEnd").doesNotHaveJsonPath())
+            .andExpect(jsonPath("$.data.violations[0].confidence").doesNotHaveJsonPath())
+    }
+
+    @Test
+    fun `제안이 없는 위반은 suggestion을 null로 돌려준다`() {
+        givenFlagged()
+        seedFinding(InspectionPerspectiveKind.RULE, """[{"category":"BANNED_INGREDIENT","quote":"자일리톨","suggestion":null}]""")
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.violations[0].suggestion").hasJsonPath())
+            .andExpect(jsonPath("$.data.violations[0].suggestion").value(nullValue()))
+    }
+
+    @Test
+    fun `검수를 한 번도 타지 않은 상품은 위반 목록이 빈 배열이다`() {
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.violations").isArray)
+            .andExpect(jsonPath("$.data.violations").isEmpty)
+    }
+
+    @Test
+    fun `저장값 모양이 맞지 않는 행이 있어도 사유와 나머지 위반을 돌려준다`() {
+        givenFlagged()
+        seedFinding(InspectionPerspectiveKind.DISPLAY_ADS, """{"foo":1}""")
+        seedFinding(InspectionPerspectiveKind.CONDUCT_TRADE, """[{"category":"SPAM","quote":"도배","suggestion":null}]""")
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.reasonSummary").value("슬개골 완치"))
+            .andExpect(jsonPath("$.data.violations.length()").value(1))
+            .andExpect(jsonPath("$.data.violations[0].quote").value("도배"))
+    }
+
+    @Test
+    fun `모르는 분류 값도 문자열 그대로 돌려준다`() {
+        givenFlagged()
+        seedFinding(InspectionPerspectiveKind.DISPLAY_ADS, """[{"category":"NEW_KIND","quote":"새 분류","suggestion":null}]""")
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.violations[0].category").value("NEW_KIND"))
+    }
+
+    @Test
+    fun `저장값을 읽지 못하면 경고 로그에 검수 id만 남긴다`() {
+        givenFlagged()
+        val inspectionId = seedFinding(InspectionPerspectiveKind.DISPLAY_ADS, """{"quote":"010-1234-5678"}""")
+
+        val warnings =
+            captureInspectionWarnings {
+                mockMvc.perform(inspectionRequest(publicId)).andExpect(status().isOk)
+            }
+
+        assertTrue(warnings.any { it.formattedMessage.contains(inspectionId.toString()) }, "어느 검수를 못 읽었는지 남아야 한다")
+        assertTrue(warnings.none { it.formattedMessage.contains("010-1234-5678") }, "걸린 구절에 연락처가 있을 수 있어 저장값을 남기면 안 된다")
+        assertTrue(warnings.all { it.throwableProxy == null }, "예외 메시지가 저장값 조각을 물고 올 수 있어 예외를 남기면 안 된다")
+    }
+
+    private fun givenFlagged() {
+        settledInspection(
+            hash = "a".repeat(64),
+            judgment = InspectionJudgment.FLAG,
+            reasonCode = "MEDICAL_CLAIM",
+            reasonSummary = "슬개골 완치",
+            sellerNotice = "치료 효능 표현을 고쳐 주세요.",
+        )
+    }
+
+    /** 가장 최근 검수에 관점별 행을 심고 그 검수 id를 돌려준다 */
+    private fun seedFinding(
+        perspective: InspectionPerspectiveKind,
+        stored: String,
+    ): Long =
+        tx.execute {
+            val inspectionId = inspections.findLatestByTarget(InspectionTargetType.PRODUCT, productId)!!.id
+            em.persist(InspectionFinding.of(inspectionId, perspective, PerspectiveOutcome.VIOLATION, violations = stored))
+            inspectionId
+        }!!
+
+    private fun captureInspectionWarnings(block: () -> Unit): List<ILoggingEvent> {
+        val logger = LoggerFactory.getLogger(InspectionQueryService::class.java.packageName) as Logger
+        val appender = ListAppender<ILoggingEvent>()
+        appender.start()
+        logger.addAppender(appender)
+        try {
+            block()
+        } finally {
+            logger.detachAppender(appender)
+            appender.stop()
+        }
+        return appender.list.filter { it.level == Level.WARN }
     }
 
     private fun inspectionRequest(target: String) =

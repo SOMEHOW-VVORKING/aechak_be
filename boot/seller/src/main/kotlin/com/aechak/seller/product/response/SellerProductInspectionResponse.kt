@@ -34,6 +34,7 @@ data class SellerProductInspectionResponse(
     val reasonCode: String?,
     val reasonSummary: String?,
     val sellerNotice: String?,
+    val violations: List<Violation>,
     val rejectReason: String?,
     val appealedAt: LocalDateTime?,
     val appealReason: String?,
@@ -41,6 +42,12 @@ data class SellerProductInspectionResponse(
     val requestedAt: LocalDateTime?,
     val settledAt: LocalDateTime?,
 ) {
+    data class Violation(
+        val category: String,
+        val quote: String?,
+        val suggestion: String?,
+    )
+
     companion object {
         fun from(result: SellerProductInspectionResult): SellerProductInspectionResponse =
             SellerProductInspectionResponse(
@@ -52,6 +59,7 @@ data class SellerProductInspectionResponse(
                 reasonCode = result.reasonCode,
                 reasonSummary = result.reasonSummary,
                 sellerNotice = result.sellerNotice,
+                violations = result.violations.map { Violation(it.category, it.quote, it.suggestion) },
                 rejectReason = result.rejectReason,
                 appealedAt = result.appealedAt,
                 appealReason = result.appealReason,
