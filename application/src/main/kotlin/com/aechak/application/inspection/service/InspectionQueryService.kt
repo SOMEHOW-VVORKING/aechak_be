@@ -1,9 +1,14 @@
 package com.aechak.application.inspection.service
 
+import com.aechak.application.inspection.port.ViolationDeserializer
+import com.aechak.application.inspection.port.view.ViolationView
+import com.aechak.domain.inspection.InspectionFinding
 import com.aechak.domain.inspection.enums.InspectionTargetType
 import com.aechak.domain.inspection.enums.ReviewQueueStatus
 import com.aechak.domain.inspection.repository.ContentInspectionRepository
+import com.aechak.domain.inspection.repository.InspectionFindingRepository
 import com.aechak.domain.inspection.repository.ProductReviewQueueRepository
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
@@ -18,7 +23,11 @@ import java.time.LocalDateTime
 class InspectionQueryService(
     private val inspections: ContentInspectionRepository,
     private val reviewQueue: ProductReviewQueueRepository,
+    private val findings: InspectionFindingRepository,
+    private val violationDeserializer: ViolationDeserializer,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     /** 상품의 가장 최근 검수. 한 번도 검수를 타지 않았으면 null */
     fun findLatestProductInspection(productId: Long): InspectionSnapshot? =
         inspections
@@ -68,6 +77,35 @@ class InspectionQueryService(
         inspections
             .findLatestByTargetAndSettledAt(InspectionTargetType.PRODUCT, productId, blindedAt)
             ?.let(InspectionSnapshot::from)
+
+    /** 검수 한 건의 관점별 위반을 합쳐 글 안의 위치 순서로 돌려줌. 읽지 못한 행은 건너뜀 */
+    fun findViolations(inspectionId: Long): List<ViolationView> =
+        findings
+            .findByInspectionId(inspectionId)
+            .sortedBy { it.id }
+            .flatMap(::readViolations)
+            .groupBy { it.category to it.quote }
+            .values
+            .map { sameViolations ->
+                sameViolations.first().copy(
+                    spanStart = sameViolations.mapNotNull { it.spanStart }.minOrNull(),
+                    suggestion = sameViolations.firstNotNullOfOrNull { it.suggestion?.takeIf(String::isNotBlank) },
+                )
+            }.sortedWith(
+                compareBy<ViolationView, Int?>(nullsLast()) { it.spanStart }
+                    .thenBy { it.category }
+                    .thenBy(nullsLast()) { it.quote },
+            )
+
+    private fun readViolations(finding: InspectionFinding): List<ViolationView> {
+        val stored = finding.violations ?: return emptyList()
+        val violations = violationDeserializer.fromJson(stored)
+        if (violations == null) {
+            log.warn("저장된 위반을 읽지 못해 그 행을 건너뛴다. inspectionId={}", finding.inspectionId)
+            return emptyList()
+        }
+        return violations
+    }
 
     /** 가장 최근 관리자 결정이 반려일 때만 그 사유 */
     fun findAdminRejectReason(productId: Long): String? =
