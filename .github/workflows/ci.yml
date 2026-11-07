@@ -45,10 +45,31 @@ jobs:
           terraform init -backend=false -input=false -no-color
           terraform validate -no-color
 
+  # Flyway 번호 사고는 이 아래 test 잡을 전부 통과하고 배포에서만 터진다 — 테스트는 빈 DB에
+  # 전체를 순서대로 적용하므로 역전·중복·체크섬 중 어느 것도 재현되지 않는다. base와 대조해
+  # PR 단계에서 막는다. AWS 자격이 필요 없다.
+  flyway-order:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # merge-base 계산에 이력이 필요 — 기본 depth 1로는 못 구한다
+
+      # PR 이벤트의 체크아웃은 base를 머지한 커밋이라 base 파일이 다 들어 있다. 그래도
+      # origin/<base>를 원격 추적 ref로 따로 받아야 스크립트가 base tip을 가리킬 수 있다.
+      - name: base 가져오기
+        env:
+          BASE: ${{ github.base_ref }} # run 안에 식을 직접 쓰지 않는다(actionlint 주입 경고)
+        run: git fetch --no-tags --depth=0 origin "+refs/heads/$BASE:refs/remotes/origin/$BASE"
+
+      - name: 번호 역전·중복·적용분 수정 검사
+        run: python3 .github/scripts/flyway_order_check.py
+
   test:
     # 러너 이미지를 고정한다. ubuntu-latest는 2026-10-19부터 Ubuntu 26으로 이행 중이라
     # 그 사이 run이 24/26에 갈려 앉는다 — 플레이크를 쫓는 동안 환경이 움직이면 비교가 불가능하다.
-    # 대가: ubuntu-24.04 은퇴 전에 손으로 올려야 한다. 그 신호는 위 두 잡(ubuntu-latest)이
+    # 대가: ubuntu-24.04 은퇴 전에 손으로 올려야 한다. 그 신호는 위 세 잡(ubuntu-latest)이
     # 먼저 Ubuntu 26에서 깨지는 것으로 받는다.
     runs-on: ubuntu-24.04
     # 행 걸린 테스트가 러너를 무한 점유하는 것 방지.
