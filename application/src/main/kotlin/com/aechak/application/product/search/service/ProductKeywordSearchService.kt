@@ -33,7 +33,7 @@ class ProductKeywordSearchService(
         categoryIds: Set<Long> = searchableCategoryIds(query.categoryId),
     ): CursorPageResult<ProductCatalogView> {
         val filter = toFilter(query)
-        val anchor = query.cursor?.let { resolveCursor(it, query.sort, filter, now) }
+        val anchor = query.cursor?.let { timeoutAsSearchDelay { resolveCursor(it, query.sort, filter, now) } }
         val queryNow = anchor?.anchorNow ?: now
         val condition =
             ProductKeywordSearchCondition(
@@ -48,14 +48,12 @@ class ProductKeywordSearchService(
             )
         // 첫 페이지에서만 총개수 계산
         val (fetched, totalCount) =
-            try {
+            timeoutAsSearchDelay {
                 if (query.cursor == null) {
                     productKeywordSearchPort.searchFirstPage(condition).let { it.fetched to it.totalCount }
                 } else {
                     productKeywordSearchPort.search(condition) to null
                 }
-            } catch (e: QueryTimeoutException) {
-                throw BusinessException(ProductErrorCode.PRODUCT_SEARCH_TIMEOUT, e)
             }
         return CursorPageResult.of(
             fetched = fetched,
@@ -63,6 +61,14 @@ class ProductKeywordSearchService(
             totalCount = totalCount,
         ) { last -> encodeCursor(query.sort, filter, last, queryNow) }
     }
+
+    /** 검색 포트의 응답 대기 상한 초과를 검색 지연 오류(503)로 바꿈 */
+    private inline fun <T> timeoutAsSearchDelay(block: () -> T): T =
+        try {
+            block()
+        } catch (e: QueryTimeoutException) {
+            throw BusinessException(ProductErrorCode.PRODUCT_SEARCH_TIMEOUT, e)
+        }
 
     private fun toFilter(query: ProductKeywordSearchQuery): ProductKeywordFilter =
         ProductKeywordFilter(
