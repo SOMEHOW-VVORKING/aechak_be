@@ -75,6 +75,7 @@ class AiDraftClientAdapter(
             requestId = request.requestId,
             productName = request.productName,
             categoryId = request.categoryId,
+            mode = request.mode.name,
             lockedFields =
                 request.lockedFields?.let { locked ->
                     AiLockedFields(

@@ -9,6 +9,7 @@ dependencies {
     implementation(libs.spring.boot.starter.oauth2.resource.server) // JwtEncoder/Decoder·Nimbus·JwtAuthenticationToken
     implementation(libs.spring.boot)          // @ConfigurationProperties 바인딩 (토큰 TTL·JWT 키)
     implementation(libs.jackson.databind)     // 필터가 에러 응답을 직접 JSON으로 써야 해서 (Boot 4 = Jackson 3)
+    implementation(libs.spring.security.crypto) // BCrypt 비밀번호 해싱(PasswordHasher 어댑터)
     implementation(libs.slf4j.api)            // 임시 키 생성 경고 로그
     compileOnly(libs.jakarta.servlet.api)     // 런타임은 실행 모듈의 내장 톰캣이 제공
 }
