@@ -42,6 +42,8 @@ class ProductKeywordSearchQueryAdapter(
     // 최근 상품 표본에서 검색 조건 전체를 통과하는 비율이 이 값 이상이어야 정렬 인덱스 순서로 읽음
     @Value("\${aechak.search.index-walk-min-match-ratio:0.01}") private val indexWalkMinMatchRatio: Double,
 ) : ProductKeywordSearchPort {
+    override val readsDatabase = true
+
     override fun search(condition: ProductKeywordSearchCondition): List<ProductCatalogView> =
         plan(condition)?.let { page(it) } ?: emptyList()
 

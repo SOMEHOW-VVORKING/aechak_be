@@ -97,6 +97,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         url = urlparse(self.path)
+        # search.js의 대조 요청(상품 상세)
+        if url.path.startswith('/api/v1/products/'):
+            return self.send_json(200, {'data': {'productId': url.path.rsplit('/', 1)[1]}})
         if url.path != '/api/v1/search/products':
             return self.send_json(404, {'errorCode': 90006, 'message': 'not found'})
         with Handler.lock:

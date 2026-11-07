@@ -8,9 +8,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.aechak.admin.support.IntegrationTestBase;
 import com.aechak.domain.inspection.ContentInspection;
+import com.aechak.domain.inspection.InspectionFinding;
 import com.aechak.domain.inspection.ProductReviewQueueItem;
 import com.aechak.domain.inspection.enums.InspectionJudgment;
+import com.aechak.domain.inspection.enums.InspectionPerspectiveKind;
 import com.aechak.domain.inspection.enums.InspectionTargetType;
+import com.aechak.domain.inspection.enums.PerspectiveOutcome;
 import com.aechak.domain.inspection.enums.ReviewQueueStatus;
 import com.aechak.domain.product.category.Category;
 import com.aechak.domain.product.product.Product;
@@ -51,6 +54,7 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
     private long productId;
     private String publicId;
     private LocalDateTime flagSettledAt;
+    private long flagInspectionId;
 
     @BeforeEach
     void setUp() {
@@ -96,6 +100,7 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
                     LocalDateTime.now());
             em.persist(inspection);
             flagSettledAt = inspection.getSettledAt();
+            flagInspectionId = inspection.getId();
         });
     }
 
@@ -280,6 +285,68 @@ class AdminProductInspectionIntegrationTest extends IntegrationTestBase {
     }
 
     /** 기준 상품에 이의가 걸린 행을 열고 관리자 반려로 닫는다. 결정이 끝난 이의 이력이 된다 */
+    @Test
+    void 상세는_위반_목록을_분류와_구절과_제안으로_돌려준다() throws Exception {
+        openReview();
+        seedFinding(
+                """
+                [{"category":"MEDICAL_CLAIM","perspective":"DISPLAY_ADS","spanStart":0,"spanEnd":6,\
+                "quote":"관절염 치료에 효과","suggestion":"관절 건강 유지에 도움을 줄 수 있습니다","confidence":null}]""");
+
+        mockMvc.perform(bearer(get(BASE + "/" + publicId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.violations.length()").value(1))
+                .andExpect(jsonPath("$.data.violations[0].category").value("MEDICAL_CLAIM"))
+                .andExpect(jsonPath("$.data.violations[0].quote").value("관절염 치료에 효과"))
+                .andExpect(jsonPath("$.data.violations[0].suggestion").value("관절 건강 유지에 도움을 줄 수 있습니다"));
+    }
+
+    @Test
+    void 상세는_위반_항목에_내부_값을_싣지_않는다() throws Exception {
+        openReview();
+        seedFinding(
+                """
+                [{"category":"MEDICAL_CLAIM","perspective":"DISPLAY_ADS","spanStart":0,"spanEnd":6,\
+                "quote":"관절염 치료에 효과","suggestion":null,"confidence":0.9}]""");
+
+        mockMvc.perform(bearer(get(BASE + "/" + publicId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.violations[0].perspective").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data.violations[0].spanStart").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data.violations[0].spanEnd").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data.violations[0].confidence").doesNotHaveJsonPath());
+    }
+
+    /** 목록도 사유와 같은 판정에서 읽는다. 가장 최근 검수에서 읽으면 판정 실패 뒤 근거가 사라진다 */
+    @Test
+    void 상세는_모델이_답을_못_준_뒤에도_막고_있는_위반의_목록을_돌려준다() throws Exception {
+        openReviewBlockedByFlag();
+        seedFinding("""
+                [{"category":"MEDICAL_CLAIM","quote":"관절염 치료에 효과","suggestion":null}]""");
+        settleFailedInspection();
+
+        mockMvc.perform(bearer(get(BASE + "/" + publicId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.judgment").value("FAILED"))
+                .andExpect(jsonPath("$.data.violations.length()").value(1))
+                .andExpect(jsonPath("$.data.violations[0].quote").value("관절염 치료에 효과"));
+    }
+
+    @Test
+    void 상세는_검수를_타지_않은_상품이면_위반_목록이_빈_배열이다() throws Exception {
+        String uninspected = publicIdOf(anotherProductWithAppeal(LocalDateTime.now(), LocalDateTime.now()));
+
+        mockMvc.perform(bearer(get(BASE + "/" + uninspected)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.violations").isArray())
+                .andExpect(jsonPath("$.data.violations").isEmpty());
+    }
+
+    private void seedFinding(String stored) {
+        tx.executeWithoutResult(txStatus -> em.persist(InspectionFinding.Companion.of(
+                flagInspectionId, InspectionPerspectiveKind.DISPLAY_ADS, PerspectiveOutcome.VIOLATION, null, stored)));
+    }
+
     private void closeAppealedRow() {
         tx.executeWithoutResult(txStatus -> {
             ProductReviewQueueItem item = ProductReviewQueueItem.Companion.openForProduct(
