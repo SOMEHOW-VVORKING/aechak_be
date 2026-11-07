@@ -1,6 +1,6 @@
 -- 검색 부하테스트용 대량 데이터. 셀러, 상품, 상품 통계를 비우고 같은 값으로 다시 만든다.
 -- 전제: api가 Flyway와 ddl-auto=update로 한 번 부팅해 스키마와 카테고리 시드가 만들어진 상태.
--- 사용: 앞에서 SET @n_products := 100000; (또는 1000000) 을 한 뒤 이 파일을 넣는다. @n_sellers 기본값은 1000.
+-- 사용: 앞에서 SET @n_products := 100000; (또는 1000000, 10000000) 을 한 뒤 이 파일을 넣는다. @n_sellers 기본값은 1000.
 -- 결정적이다. NOW()와 RAND()를 쓰지 않고 시각은 모두 절대값이라 다시 넣어도 manifest의 crc가 같다.
 --
 -- 상품명은 [한정판] 브랜드 대상 품목 [맛] 용량으로 조합해 검색어별 일치 비율이 고정된다(전체 상품 기준).
@@ -35,6 +35,19 @@ INSERT INTO perf_seq (n)
 SELECT a.d + 10 * b.d + 100 * c.d + 1000 * d.d + 10000 * e.d + 100000 * f.d AS n
 FROM perf_digits a, perf_digits b, perf_digits c, perf_digits d, perf_digits e, perf_digits f
 HAVING n < GREATEST(@n_products, @n_sellers);
+
+-- 100만 개를 넘는 크기는 위 번호에 백만 단위 블록을 더해 채운다(1,000만 건이면 블록 1에서 9)
+DROP TABLE IF EXISTS perf_block;
+CREATE TABLE perf_block (k INT PRIMARY KEY);
+INSERT INTO perf_block (k)
+SELECT x.d + 10 * y.d + 100 * z.d AS k
+FROM perf_digits x, perf_digits y, perf_digits z
+HAVING k BETWEEN 1 AND (@n_products - 1) DIV 1000000;
+INSERT INTO perf_seq (n)
+SELECT blk.k * 1000000 + s.n
+FROM perf_block blk, perf_seq s
+WHERE blk.k * 1000000 + s.n < @n_products;
+DROP TABLE perf_block;
 
 DROP TABLE IF EXISTS perf_leaf;
 CREATE TABLE perf_leaf (rn INT PRIMARY KEY, id BIGINT NOT NULL);
