@@ -34,6 +34,7 @@ public record AdminProductInspectionDetailResult(
         String reasonCode,
         String reasonSummary,
         String sellerNotice,
+        List<InspectionViolationResult> violations,
         LocalDateTime requestedAt,
         LocalDateTime settledAt,
         List<ProductRejectionResult> rejections) {
@@ -43,9 +44,9 @@ public record AdminProductInspectionDetailResult(
             String representativeImageUrl,
             InspectionSnapshot snapshot,
             OpenProductReviewSnapshot openReview,
-            InspectionSnapshot blocking,
-            List<ProductRejectionResult> rejections) {
-        InspectionSnapshot blame = blocking != null ? blocking : snapshot;
+            InspectionSnapshot blame,
+            List<ProductRejectionResult> rejections,
+            List<InspectionViolationResult> violations) {
         return new AdminProductInspectionDetailResult(
                 product.getProductPublicId(),
                 product.getProductName(),
@@ -63,6 +64,7 @@ public record AdminProductInspectionDetailResult(
                 blame == null ? null : blame.getReasonCode(),
                 blame == null ? null : blame.getReasonSummary(),
                 blame == null ? null : blame.getSellerNotice(),
+                violations,
                 snapshot == null ? null : snapshot.getRequestedAt(),
                 snapshot == null ? null : snapshot.getSettledAt(),
                 rejections);
