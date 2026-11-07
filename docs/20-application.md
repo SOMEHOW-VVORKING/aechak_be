@@ -303,14 +303,16 @@ data class ProductCatalogView(
 - `SnsUserListQueryPort` 구현이 `sns_follows`, `sns_blocks`, `sns_mutes`를 `users`, `user_profiles`와 id 값 동등 조건으로
   조인해 publicId, 닉네임, 프로필 이미지 key를 읽는다.
 - 두 단계 조회(`UserUseCase`로 표시 정보를 따로 붙이기)로는 닉네임 검색 결과를 페이지 크기만큼 채울 수 없어서
-  keyset 페이지, 탈퇴 사용자 제외(프로필 행이 없으면 INNER JOIN에서 빠진다), 검색을 한 쿼리로 끝낸다.
+  keyset 페이지, 탈퇴 사용자 제외(프로필 행이 없으면 INNER JOIN에서 빠진다), 영구 정지 사용자 제외(`users.status`), 검색을 한 쿼리로 끝낸다.
 - 같은 구현이 게시물과 댓글 좋아요한 사람 목록도 `sns_post_likes`, `sns_comment_likes`를 같은 조건으로 조인해 읽는다. 차단 관계인 사용자와 탈퇴 사용자를
   LIMIT 전에 빼야 최근 100명이 덜 차지 않는다.
 - `SnsCommentQueryPort` 구현은 댓글 목록과 단건의 작성자 publicId, 닉네임, 프로필 이미지 key를 같은 방식으로 읽되 LEFT JOIN이다.
-  프로필 행이 없는 작성자의 댓글도 그 자리에 안내 문구로 남아야 한다. 답글과 좋아요 대상 판정과 댓글 수는 user 테이블을 읽지 않는다.
+  프로필 행이 없는 작성자의 댓글도 그 자리에 안내 문구로 남아야 한다. 영구 정지 작성자의 댓글은 지운 댓글처럼 다루므로
+  목록, 단건, 댓글 수의 조건이 `users.status`를 읽는다. 답글, 좋아요, 신고 대상 판정은 쓰기 경로라 user 테이블을 읽지 않고
+  영구 정지 작성자를 `UserUseCase`로 거른다.
 - `SnsFeedQueryPort` 구현도 카드의 작성자 publicId, 닉네임, 프로필 이미지 key를 같은 방식으로 읽고 프로필 행이 없는
-  작성자의 글을 목록 쿼리에서 뺀다. 탈퇴 작성자를 앱에서 거르면 keyset 페이지가 크기만큼 차지 않는다.
-- `SnsSearchQueryPort` 구현도 계정 검색에서 `user_profiles`의 닉네임으로 찾고 정렬하며 게시물 검색에서 프로필 행이 없는 작성자의 글을 뺀다.
+  작성자와 영구 정지 작성자의 글을 목록 쿼리에서 뺀다. 탈퇴 작성자를 앱에서 거르면 keyset 페이지가 크기만큼 차지 않는다.
+- `SnsSearchQueryPort` 구현도 계정 검색에서 `user_profiles`의 닉네임으로 찾고 정렬하며 계정 검색과 게시물 검색에서 프로필 행이 없는 사용자와 영구 정지 사용자를 뺀다.
 - 읽기 전용 조회 포트 구현에서만 쓴다. 도메인 리포지토리와 쓰기 경로는 user 테이블을 읽지 않는다.
 - JPA 연관과 FK는 두지 않고 user 테이블에 쓰지 않는다.
 - 서비스를 나눌 때는 SNS 쪽 닉네임 사본으로 바꾼다.
