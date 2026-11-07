@@ -215,11 +215,12 @@
 
 ```bash
 cd loadtest/terraform && terraform apply -var es_enabled=true && cd ../..
-R13=75517d5f9ba7   # T13 jar 커밋
-# T16 jar 커밋. R13 위에 이 브랜치의 코드 변경만 얹는다. 측정에 쓴 4d530ad7b75e와 트리는 같고 해시는 다르다
-git switch --detach $R13
+# T13 jar 커밋. 측정에 쓴 75517d5f9ba7과 트리(3226b8d5)는 같고 해시는 다르다
+git switch --detach 533fc2978da2 && git cherry-pick 4c8406e6
+R13=$(git rev-parse --short=12 HEAD)
+# T16 jar 커밋. R13 위에 이 브랜치의 코드 변경만 얹는다. 측정에 쓴 4d530ad7b75e와 트리(ff2cf083)는 같고 해시는 다르다
 git diff 4f4ed143 94048c16 -- infra application | git apply --index
-git commit -qm "SEARCH-T16 측정"
+git commit -q --no-verify -m "SEARCH-T16 측정"   # 커밋 훅이 포맷을 바꾸면 트리가 달라진다
 R16=$(git rev-parse --short=12 HEAD)
 git switch -
 cd loadtest/search && make outputs && make up DATASET=10m
