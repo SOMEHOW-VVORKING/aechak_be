@@ -2,6 +2,7 @@
   "settings": {
     "number_of_shards": 1,
     "number_of_replicas": 0,
+    "index": { "sort.field": "id", "sort.order": "desc" },
     "analysis": {
       "tokenizer": {
         "name_bigram": { "type": "ngram", "min_gram": 2, "max_gram": 2, "token_chars": [] },
