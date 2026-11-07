@@ -170,6 +170,8 @@ override fun confirmPayment(command: ConfirmPaymentCommand): PaymentResult {
   배송완료 전이(OrderDeliveryFacade)와 추적 갱신(ShipmentTrackingFacade)이 그렇게 갈려 있다.
 - 포트가 없을 때의 동작은 **유스케이스 결과로 드러낸다** — 조용히 성공으로 접지 않는다(추적 갱신은 어댑터 부재를
   결과 enum으로 돌려주고, 호출한 배치가 경고를 남기고 회차를 끊는다).
+- 닉네임과 소개글의 금지어 판정(ModerationUseCase)도 판정기가 api에만 있어 UserFacade가 nullable로 받는다. UserFacade는
+  admin, seller, batch에도 올라가지만 그 모듈에는 닉네임과 프로필을 쓰는 경로가 없고 판정기가 없는데 불리면 예외로 끊는다.
 
 ## 3. 이벤트 리스너 — 수신자 위치
 
