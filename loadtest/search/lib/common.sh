@@ -143,7 +143,7 @@ kit_hash() {
 # ssm_run <instance-id> <command> [timeout-seconds] [진행 로그 s3 경로]: 원격 명령을 보내고 끝날 때까지 기다려 stdout을 찍는다. 반환값은 원격 종료 코드
 # 진행 로그 경로를 주면 30초마다 새 줄을 찍는다
 ssm_run() {
-  local id=$1 cmd=$2 to=${3:-3600} prog=${4:-} cid st rc params t0=$SECONDS last=$SECONDS shown=0 lines n
+  local id=$1 cmd=$2 to=${3:-3600} prog=${4:-} cid st rc params t0=$SECONDS last=$SECONDS shown=0 lines n seen=$SECONDS warned=0
   if is_dry; then printf 'DRY: ssm %s (timeout %s): %s\n' "$id" "$to" "$cmd" >&2; return 0; fi
   params=$(jq -nc --arg c "$cmd" --arg t "$to" '{commands:[$c], executionTimeout:[$t]}')
   cid=$(aws ssm send-command --instance-ids "$id" --document-name AWS-RunShellScript --parameters "$params" \
@@ -152,7 +152,16 @@ ssm_run() {
   log "ssm $id command $cid"
   while :; do
     sleep 5
-    st=$(aws ssm get-command-invocation --command-id "$cid" --instance-id "$id" --query Status --output text 2>/dev/null || echo Pending)
+    if st=$(aws ssm get-command-invocation --command-id "$cid" --instance-id "$id" --query Status --output text 2>&1); then
+      seen=$SECONDS
+    else
+      # 상태를 못 읽어도(등록 직후, SSO 세션 만료) 계속 기다린다. 5분 넘게 못 읽으면 5분마다 오류를 남긴다
+      if [ $((SECONDS - seen)) -ge 300 ] && [ $((SECONDS - warned)) -ge 300 ]; then
+        warned=$SECONDS
+        warn "ssm $cid 상태 조회 실패 $((SECONDS - seen))s: $(printf '%s\n' "$st" | head -n 1)"
+      fi
+      st=Pending
+    fi
     case $st in Pending|InProgress|Delayed) ;; *) break ;; esac
     if [ -n "$prog" ]; then
       if [ $((SECONDS - last)) -ge 30 ]; then
