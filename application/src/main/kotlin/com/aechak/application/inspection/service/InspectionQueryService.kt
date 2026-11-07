@@ -2,6 +2,7 @@ package com.aechak.application.inspection.service
 
 import com.aechak.application.inspection.port.ViolationDeserializer
 import com.aechak.application.inspection.port.view.ViolationView
+import com.aechak.application.inspection.usecase.result.InspectionStageResult
 import com.aechak.domain.inspection.InspectionFinding
 import com.aechak.domain.inspection.enums.InspectionTargetType
 import com.aechak.domain.inspection.enums.ReviewQueueStatus
@@ -78,10 +79,33 @@ class InspectionQueryService(
             .findLatestByTargetAndSettledAt(InspectionTargetType.PRODUCT, productId, blindedAt)
             ?.let(InspectionSnapshot::from)
 
-    /** 검수 한 건의 관점별 위반을 합쳐 글 안의 위치 순서로 돌려줌. 읽지 못한 행은 건너뜀 */
-    fun findViolations(inspectionId: Long): List<ViolationView> =
-        findings
-            .findByInspectionId(inspectionId)
+    /**
+     * 검수 한 건의 관점 행을 **한 번 읽어** 위반 목록과 단계 셋을 함께 돌려준다.
+     *
+     * 두 투영을 따로 열지 않는 이유가 질의 수다. 셀러 검수 상세는 둘을 늘 같이 쓰므로, 메서드를
+     * 나눠 두면 같은 SELECT 가 요청마다 두 번 돈다.
+     *
+     * 투영 자체는 섞지 않는다 -- 위반 쪽은 관점 차원을 버려 목록을 합치는 것이 답이고 단계 쪽은
+     * "어느 단계까지 봤는가"가 답이라, 같이 뭉개면 미검사가 통과로 보인다.
+     */
+    fun findDetail(snapshot: InspectionSnapshot): InspectionDetailView {
+        val rows = findings.findByInspectionId(snapshot.inspectionId)
+        return InspectionDetailView(
+            violations = foldViolations(rows),
+            stages = InspectionStageResult.fold(rows, snapshot.processingState),
+        )
+    }
+
+    /**
+     * 검수 한 건의 위반 목록만. 단계를 쓰지 않는 어드민 상세가 이것을 부른다.
+     *
+     * 셀러 상세는 [findDetail]을 쓴다 -- 둘을 다 쓰는 자리에서 이것을 부르면 질의가 두 번 돈다.
+     */
+    fun findViolations(inspectionId: Long): List<ViolationView> = foldViolations(findings.findByInspectionId(inspectionId))
+
+    /** 관점별 위반을 합쳐 글 안의 위치 순서로 돌려줌. 읽지 못한 행은 건너뜀 */
+    private fun foldViolations(rows: List<InspectionFinding>): List<ViolationView> =
+        rows
             .sortedBy { it.id }
             .flatMap(::readViolations)
             .groupBy { it.category to it.quote }

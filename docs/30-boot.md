@@ -289,7 +289,7 @@ boot/admin/src/main/java/com/aechak/admin/
 ├── audit/           # 감사 로그 조회 컨트롤러 + 기록 인터셉터·@AdminAudited/@AdminAuditExempt
 ├── claim/           # 클레임 조회·개입 컨트롤러 + request/response
 ├── config/          # JpaConfig · OpenApiConfig · WebConfig · AdminBootstrap{Properties,Runner,Config} · InspectionScanConfig · ClaimAmountScanConfig · AdminReviewScanConfig
-├── inspection/      # AI 검수 지표 컨트롤러 + response
+├── inspection/      # AI 검수 지표·진행 현황 컨트롤러 + response
 ├── order/           # 주문 배송 모니터링 컨트롤러 + request/response
 ├── product/         # 상품 검수 큐·카탈로그 관리 컨트롤러 + request/response
 ├── review/          # 리뷰 관리·블라인드 컨트롤러 + request/response
@@ -329,6 +329,13 @@ boot/admin/src/main/java/com/aechak/admin/
   - 별도의 가림 수단은 두지 않는다 — SUSPENDED는 노출 화이트리스트(`SaleStatus.EXPOSABLE`)에서 빠지고 `canPurchase`·`canOrder` 양쪽에서도 막혀, 목록·검색·찜·상세·옵션·주문이 상태 하나로 함께 끊긴다.
   - 재개는 막기 직전 상태로 되돌린 뒤 재고 동기화를 이어 부른다. 일괄로 판매중으로 올리면 스스로 판매중지해 둔 셀러의 의사까지 뒤집히고, 품절은 셀러가 지정하는 값이 아니라 재고에서 파생하는 값이다. 이미 막힌 상품의 중지는 409(40012), 막혀 있지 않은 상품의 재개는 409(40009), 동시 조치 충돌은 409(40011)다 — `Product`에 `@Version`이 있어 파사드가 `TransactionTemplate` 밖에서 받아 번역한다(셀러 계정 제재와 같은 방식).
   - 목록의 신고 누적 수는 페이지가 정해진 뒤 그 상품 id 목록으로 한 번 더 묻는다. 상관 서브쿼리는 행마다 1회 실행이고, 본 질의에 `group by`로 섞으면 신고가 0건인 상품이 집계에서 빠진다. 셀러 상호명은 left join이다 — `products.seller_id`는 FK 없는 값 참조라 셀러 행이 없는 상품이 목록에서 사라지면 운영자가 손을 댈 수 없다.
+- **검수 진행 현황 경로는 `/admin/inspections`다** — 목록(처리 상태·대상 종류·판정 필터, 요청 시각 내림차순, 오프셋 페이징)과 상세(관점별 결과·사유·셀러 안내·프롬프트 버전·내용 해시·임차). 식별자는 `content_inspections.id`다 — 검수 행에는 공개 식별자가 없다. 조회만 하므로 감사 기록을 붙이지 않는다.
+  - **같은 BC의 기존 두 경로로는 답할 수 없는 질문을 받는다.** 운영 지표(`/admin/inspection-metrics`)는 창이 `settled_at` 기준인 집계라 끝난 건만 세고, 검토 큐(`/admin/product-inspections`)는 사람 확인이 남은 행만 들어 위반 판정 건만 올라온다. "방금 등록한 상품의 검수가 지금 어디까지 왔는가"는 둘 중 어느 것도 보여 주지 않아 경로를 새로 뒀다 — 집계가 아니라 검수 건 하나하나이고, 큐와 달리 판정 전·통과까지 전부 본다.
+  - **통과와 미검사를 섞지 않는 것이 이 화면의 존재 조건이다.** 관점 결과는 `VIOLATION`·`CLEAR`·`UNCHECKED` 셋을 그대로 내려보내고 미검사에는 그 사유를 함께 싣는다. 판정의 `UNJUDGED`(기한 초과)·`FAILED`(처리 실패)도 `PASS`와 한 칸에 묶지 않는다. 관점 칸이 아예 없는 것(파이프라인이 거기까지 가지 못했다)과 `UNCHECKED`(갔지만 보지 못했다)도 다르다 — 어느 쪽도 통과로 채우지 않는다.
+  - **판정을 아직 받지 못한 건은 판정 축으로 고를 수 없다.** 그 상태는 판정 칼럼이 빈 것이고 `InspectionJudgment`에 그 값이 없다 — `processingState=QUEUED`·`IN_FLIGHT`가 그 축이다. 판정에 "없음"을 끼워 두 칼럼을 한 축으로 합치면 기한 초과와 아직 안 끝난 건이 같은 칸에 섞인다(두 칼럼이 갈라져 있는 이유가 그것이다).
+  - 상품명은 목록 질의가 상품을 left join으로 붙여 함께 가져온다. 행마다 따로 물으면 조회가 행 수만큼 늘고, inner join으로 두면 상품이 지워진 검수와 리뷰 검수가 목록에서 사라져 운영자가 "안 보인다"의 원인을 이 화면에서 찾을 수 없다. 조인 조건에 대상 종류를 함께 넣는다 — 빼면 리뷰 검수의 `target_ref`가 어느 상품 id와 같을 때 그 상품 이름이 리뷰 행에 붙는다.
+  - 임차(`lease_owner`·`lease_expires_at`)는 상세에만 싣는다. 멈춘 건을 진단하는 유일한 단서이고 담기는 값이 워커 인스턴스 표식이라 운영자에게 보여 줄 수 있지만, 한 번에 100행까지 내보내는 목록에 두면 내부 표식의 노출면이 행 수만큼 커진다(셀러 목록에서 대표자명을 가린 것과 같은 결).
+  - **요청 시각에 인덱스를 두지 않았다.** `content_inspections`의 보조 인덱스는 `settled_at` 하나뿐이고 지표가 그 축을 쓴다 — 이 목록은 상태 등호 + `requested_at` 정렬이라 정렬이 파일소트다. 조회만 하는 변경에 스키마를 건드리지 않으려 미뤘고, 눈에 보이게 느려지면 `(processing_state, requested_at)`을 더한다. 더할 때는 마이그레이션과 엔티티 선언을 함께 바꿔야 ddl-auto 환경과 Flyway 환경의 조회 계획이 갈리지 않는다.
 - **일반 회원 조회·제재 경로는 `/admin/members`다** — 목록(상태 필터·닉네임/회원ID 검색·가입일 범위·커서 페이징), 상세(현재 프로필 이미지와 소개글, 제재 이력 포함), 제재(`POST .../sanctions`), 해제(`POST .../sanctions/release`), 프로필 초기화(`POST .../profile/reset`).
   - 목록·상세는 `users.role = GENERAL`만 본다. 관리자 계정은 명부 경로가 따로 있어 여기서는 조회도 404(30000), 제재도 409(30021)로 막는다 — 운영 권한을 가진 계정이 차단 상태로 남지 않게 강등을 먼저 하게 한다. 자기 자신 제재는 403(30020).
   - 제재는 `users.status` 단일 축으로 표현한다(RESTRICTED·SUSPENDED·BANNED). 접근 판정의 단일 지점이 매 요청 한 컬럼만 읽고 끝나야 하고, 제재 상태끼리는 배타적이라 축을 둘로 나누면 모순 조합이 생긴다.
