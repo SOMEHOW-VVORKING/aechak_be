@@ -4,16 +4,19 @@ import com.aechak.application.audit.support.AdminAuditContextHolder;
 import com.aechak.application.file.usecase.FileUseCase;
 import com.aechak.application.inspection.port.view.ReviewTargetProductView;
 import com.aechak.application.inspection.service.InspectionQueryService;
+import com.aechak.application.inspection.service.InspectionSnapshot;
 import com.aechak.application.inspection.service.OpenProductReviewSnapshot;
 import com.aechak.application.inspection.service.ProductReviewQueueService;
 import com.aechak.application.inspection.usecase.AdminProductInspectionUseCase;
 import com.aechak.application.inspection.usecase.result.AdminProductInspectionDetailResult;
 import com.aechak.application.inspection.usecase.result.AdminProductInspectionSummaryResult;
+import com.aechak.application.inspection.usecase.result.InspectionViolationResult;
 import com.aechak.application.inspection.usecase.result.ProductRejectionResult;
 import com.aechak.application.support.PageQuery;
 import com.aechak.application.support.PageResult;
 import com.aechak.domain.inspection.enums.ReviewQueueStatus;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -54,17 +57,30 @@ public class AdminProductInspectionFacade implements AdminProductInspectionUseCa
         ReviewTargetProductView product = reviewQueueService.getReviewTarget(productPublicId);
         long productId = product.getProductId();
         OpenProductReviewSnapshot openReview = inspectionQueryService.findOpenProductReview(productId);
+        InspectionSnapshot snapshot = inspectionQueryService.findLatestProductInspection(productId);
+        InspectionSnapshot blocking = openReview == null
+                ? null
+                : inspectionQueryService.findBlockingProductInspection(productId, openReview.getBlindedAt());
+        InspectionSnapshot blame = blocking != null ? blocking : snapshot;
         return AdminProductInspectionDetailResult.of(
                 product,
                 fileUseCase.resolveMediaUrl(product.getRepresentativeImageKey()),
-                inspectionQueryService.findLatestProductInspection(productId),
+                snapshot,
                 openReview,
-                openReview == null
-                        ? null
-                        : inspectionQueryService.findBlockingProductInspection(productId, openReview.getBlindedAt()),
+                blame,
                 reviewQueueService.findRejected(productId).stream()
                         .map(ProductRejectionResult::from)
-                        .toList());
+                        .toList(),
+                violationsOf(blame));
+    }
+
+    private List<InspectionViolationResult> violationsOf(InspectionSnapshot blame) {
+        if (blame == null) {
+            return List.of();
+        }
+        return inspectionQueryService.findViolations(blame.getInspectionId()).stream()
+                .map(InspectionViolationResult.Companion::from)
+                .toList();
     }
 
     /**

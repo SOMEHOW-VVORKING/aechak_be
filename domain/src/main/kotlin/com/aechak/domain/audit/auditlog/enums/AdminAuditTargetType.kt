@@ -32,6 +32,11 @@ enum class AdminAuditTargetType(
     val label: String,
 ) {
     SELLER_APPLICATION(AdminAuditTargetIdKind.INTERNAL_ID, "입점 신청"),
+
+    // 승인돼 개점한 셀러. 어드민 경로가 sellers.user_id로 가리킨다(별도 셀러 식별자가 없다).
+    // SELLER_APPLICATION과 합치지 않는다 — 신청서 id와 셀러 id는 다른 시퀀스이고,
+    // 운영 화면이 심사와 계정 제재를 다른 경로로 다룬다(ADMIN_USER와 MEMBER를 가른 것과 같은 결).
+    SELLER(AdminAuditTargetIdKind.INTERNAL_ID, "셀러"),
     ADMIN_USER(AdminAuditTargetIdKind.INTERNAL_ID, "관리자"),
     MEMBER(AdminAuditTargetIdKind.INTERNAL_ID, "회원"),
     PRODUCT(AdminAuditTargetIdKind.PUBLIC_ULID, "상품"),
