@@ -2,12 +2,15 @@ package com.aechak.domain.seller.seller
 
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.seller.error.SellerErrorCode
+import com.aechak.domain.seller.sanction.SellerSanction
+import com.aechak.domain.seller.sanction.enums.SellerSanctionReasonCode
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import java.time.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * 계약 — 허용 전이표를 엔티티가 막는다.
@@ -71,6 +74,36 @@ class SellerSuspensionTest {
 
         seller.updateAdminMemo("   ")
         assertNull(seller.adminMemo)
+    }
+
+    @Test
+    fun `입구가 받아 주는 가장 긴 상세 사유로 조립해도 사유 칸을 넘지 않는다`() {
+        // 호출부는 어휘 라벨에 상세 사유를 이어 붙인 문구를 넘긴다. 상세가 입구 상한을 채우면
+        // 라벨과 구분자만큼 컬럼을 넘어, 자르지 않으면 MySQL 이 Data too long 으로 정지 자체를
+        // 되돌린다. 라벨이 길어지거나 구분자가 바뀌어도 걸리도록 실제 조합으로 만든다.
+        val detail = "가".repeat(SellerSanction.REASON_DETAIL_MAX_LENGTH)
+        SellerSanctionReasonCode.entries.forEach { code ->
+            val composed = code.describe(detail)
+            val seller = seller()
+
+            seller.suspend(composed, null)
+
+            assertTrue(
+                seller.suspensionReason!!.length <= Seller.SUSPENSION_REASON_MAX_LENGTH,
+                "$code 사유가 ${seller.suspensionReason!!.length}자로 컬럼 상한을 넘었다",
+            )
+            assertTrue(seller.suspensionReason!!.startsWith(code.label), "$code 라벨이 앞에 남아야 한다")
+        }
+    }
+
+    @Test
+    fun `상한 안에 드는 사유는 그대로 저장한다`() {
+        val seller = seller()
+        val composed = SellerSanctionReasonCode.REPEATED_REPORT.describe("신고 5건 누적")
+
+        seller.suspend(composed, null)
+
+        assertEquals(composed, seller.suspensionReason)
     }
 
     @Test
