@@ -2,6 +2,8 @@ package com.aechak.application.inquiry.product.port
 
 import com.aechak.application.inquiry.product.port.view.ProductInquiryView
 import com.aechak.application.inquiry.product.port.view.SellerProductInquiryMetricsView
+import com.aechak.application.inquiry.product.port.view.SellerUnansweredInquiryCountView
+import com.aechak.application.inquiry.product.usecase.query.SellerUnansweredInquiryQuery
 import java.time.LocalDateTime
 
 /** 상품 문의 목록·집계 조회 포트. */
@@ -23,4 +25,7 @@ interface ProductInquiryQueryPort {
         sellerId: Long,
         now: LocalDateTime,
     ): SellerProductInquiryMetricsView
+
+    /** 셀러 대시보드의 미응답 문의(RECEIVED). 현재·직전 구간을 쿼리 한 번으로 센다. */
+    fun countSellerUnanswered(query: SellerUnansweredInquiryQuery): SellerUnansweredInquiryCountView
 }

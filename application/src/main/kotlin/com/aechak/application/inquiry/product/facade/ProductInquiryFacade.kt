@@ -1,6 +1,7 @@
 package com.aechak.application.inquiry.product.facade
 
 import com.aechak.application.inquiry.product.port.view.ProductInquiryView
+import com.aechak.application.inquiry.product.port.view.SellerUnansweredInquiryCountView
 import com.aechak.application.inquiry.product.service.ProductInquiryService
 import com.aechak.application.inquiry.product.support.AuthorNameMask
 import com.aechak.application.inquiry.product.usecase.ProductInquiryUseCase
@@ -11,6 +12,7 @@ import com.aechak.application.inquiry.product.usecase.command.WithdrawProductInq
 import com.aechak.application.inquiry.product.usecase.query.MyProductInquiryListQuery
 import com.aechak.application.inquiry.product.usecase.query.ProductInquiryListQuery
 import com.aechak.application.inquiry.product.usecase.query.SellerProductInquirySearchQuery
+import com.aechak.application.inquiry.product.usecase.query.SellerUnansweredInquiryQuery
 import com.aechak.application.inquiry.product.usecase.result.AnswerProductInquiryResult
 import com.aechak.application.inquiry.product.usecase.result.AskProductInquiryResult
 import com.aechak.application.inquiry.product.usecase.result.MyProductInquiryItemResult
@@ -93,6 +95,10 @@ class ProductInquiryFacade(
             metrics = SellerProductInquiryMetricsResult.from(productInquiryService.getSellerMetrics(query.sellerId, now)),
         )
     }
+
+    @Transactional(readOnly = true)
+    override fun countUnansweredInquiries(query: SellerUnansweredInquiryQuery): SellerUnansweredInquiryCountView =
+        productInquiryService.countSellerUnanswered(query)
 
     @Transactional
     override fun answerProductInquiry(command: AnswerProductInquiryCommand): AnswerProductInquiryResult {

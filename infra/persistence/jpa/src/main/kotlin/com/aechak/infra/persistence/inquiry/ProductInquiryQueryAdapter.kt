@@ -6,6 +6,8 @@ import com.aechak.application.inquiry.product.port.ProductInquiryQueryPort
 import com.aechak.application.inquiry.product.port.SellerProductInquiryCondition
 import com.aechak.application.inquiry.product.port.view.ProductInquiryView
 import com.aechak.application.inquiry.product.port.view.SellerProductInquiryMetricsView
+import com.aechak.application.inquiry.product.port.view.SellerUnansweredInquiryCountView
+import com.aechak.application.inquiry.product.usecase.query.SellerUnansweredInquiryQuery
 import com.aechak.domain.inquiry.product.QProductInquiry
 import com.aechak.domain.inquiry.product.QProductInquiryAnswer
 import com.aechak.domain.inquiry.product.enums.ProductInquiryCategory
@@ -72,6 +74,33 @@ class ProductInquiryQueryAdapter(
             ).from(inquiry)
             .where(inquiry.sellerId.eq(sellerId))
             .fetchOne()!!
+    }
+
+    /**
+     * 직전 구간이 없으면 건수 한 번, 있으면 두 구간을 조건부 합계로 한 번에 센다. WHERE는 두 구간의 합집합
+     * [previousAskedFrom, askedToExclusive)로 먼저 좁혀 답변 대기 전체를 훑지 않는다.
+     */
+    override fun countSellerUnanswered(query: SellerUnansweredInquiryQuery): SellerUnansweredInquiryCountView {
+        val unanswered = inquiry.sellerId.eq(query.sellerId).and(inquiry.status.eq(ProductInquiryStatus.RECEIVED))
+        val toExclusive = query.askedToExclusive?.let { inquiry.createdAt.lt(it) }
+        val previousFrom = query.previousAskedFrom
+        val currentFrom = query.askedFrom
+        if (previousFrom == null || currentFrom == null) {
+            val current = count(unanswered, currentFrom?.let { inquiry.createdAt.goe(it) }, toExclusive)
+            return SellerUnansweredInquiryCountView(current = current, previous = null)
+        }
+        val inCurrent = inquiry.createdAt.goe(currentFrom)
+        val inPrevious = inquiry.createdAt.goe(previousFrom).and(inquiry.createdAt.lt(currentFrom))
+        val counts =
+            queryFactory
+                .select(countWhere(inCurrent), countWhere(inPrevious))
+                .from(inquiry)
+                .where(unanswered, inquiry.createdAt.goe(previousFrom), toExclusive)
+                .fetchOne()!!
+        return SellerUnansweredInquiryCountView(
+            current = counts.get(0, Long::class.javaObjectType) ?: 0L,
+            previous = counts.get(1, Long::class.javaObjectType) ?: 0L,
+        )
     }
 
     private fun pageQuery(

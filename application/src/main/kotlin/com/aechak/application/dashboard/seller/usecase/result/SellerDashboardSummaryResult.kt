@@ -1,5 +1,6 @@
 package com.aechak.application.dashboard.seller.usecase.result
 
+import com.aechak.application.inquiry.product.port.view.SellerUnansweredInquiryCountView
 import com.aechak.application.order.claim.usecase.result.SellerClaimMetricsResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderMetricsResult
 import com.aechak.application.product.product.usecase.result.SellerProductStatusCountsResult
@@ -50,6 +51,7 @@ data class SellerDashboardSummaryResult(
             previousOrders: SellerOrderMetricsResult?,
             claims: SellerClaimMetricsResult,
             previousClaims: SellerClaimMetricsResult?,
+            unansweredInquiries: SellerUnansweredInquiryCountView,
             settlement: SellerSettlementSummaryResult,
             productStatuses: SellerProductStatusCountsResult,
         ): SellerDashboardSummaryResult =
@@ -67,7 +69,7 @@ data class SellerDashboardSummaryResult(
                         collectionCompletionPending =
                             Metric(claims.collectionCompletionPending, previousClaims?.collectionCompletionPending),
                         reshipPending = Metric(claims.reshipPending, previousClaims?.reshipPending),
-                        unansweredInquiries = Metric.UNSUPPORTED,
+                        unansweredInquiries = Metric(unansweredInquiries.current, unansweredInquiries.previous),
                     ),
                 settlement = settlement,
                 productStatuses = productStatuses,
