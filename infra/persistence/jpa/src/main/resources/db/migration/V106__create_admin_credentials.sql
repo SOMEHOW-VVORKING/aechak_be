@@ -19,8 +19,13 @@ CREATE TABLE admin_credentials
     PRIMARY KEY (id),
     CONSTRAINT uk_admin_credentials_login_id UNIQUE (login_id),
     -- 한 계정에 자격 하나. 같은 사람이 아이디를 여러 개 갖는 것을 막아 감사 로그의 actor가 갈리지 않게 한다.
-    CONSTRAINT uk_admin_credentials_user_id UNIQUE (user_id),
-    CONSTRAINT fk_admin_credentials_user FOREIGN KEY (user_id) REFERENCES users (id)
+    CONSTRAINT uk_admin_credentials_user_id UNIQUE (user_id)
+    -- users FK를 두지 않는다. 레포 규약이 "FK 없음. BC 밖 참조도 같은 BC 참조도 인덱스만 둔다"이고
+    -- (V104 머리 주석), 여기서는 그것이 규약을 넘어 동작 문제다 — users는 Flyway가 만드는 테이블이
+    -- 아니라 ddl-auto 소유다. Flyway는 Hibernate보다 먼저 돌므로 빈 DB에서 이 파일이 실행될 때
+    -- users가 아직 없고, FK가 있으면 MySQL 1824 "Failed to open the referenced table 'users'"로
+    -- 마이그레이션 전체가 멈춘다(실측: CI test 잡이 그 오류로 실패했다).
+    -- user_id는 값 참조이고 위 UNIQUE가 인덱스를 겸한다.
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_0900_ai_ci;
