@@ -24,13 +24,15 @@ class ProductKeywordSearchService(
     private val productKeywordSearchPort: ProductKeywordSearchPort,
     private val categoryRepository: CategoryRepository,
 ) {
+    /** 검색 포트가 DB를 읽는지 */
+    val searchesDatabase: Boolean get() = productKeywordSearchPort.readsDatabase
+
     fun searchPage(
         query: ProductKeywordSearchQuery,
         now: LocalDateTime,
+        categoryIds: Set<Long> = searchableCategoryIds(query.categoryId),
     ): CursorPageResult<ProductCatalogView> {
         val filter = toFilter(query)
-        validateCategoryFilter(filter.categoryId)
-        val categoryIds = searchableCategoryIds(filter.categoryId)
         val anchor = query.cursor?.let { resolveCursor(it, query.sort, filter, now) }
         val queryNow = anchor?.anchorNow ?: now
         val condition =
@@ -87,8 +89,9 @@ class ProductKeywordSearchService(
         }
     }
 
-    /** 자신, 부모, 조부모가 모두 활성인 카테고리 id. 중분류 필터가 있으면 그 중분류와 활성 자식만 남김 */
-    private fun searchableCategoryIds(categoryId: Long?): Set<Long> {
+    /** 자신, 부모, 조부모가 모두 활성인 카테고리 id. 중분류 필터가 있으면 검증한 뒤 그 중분류와 활성 자식만 남김 */
+    fun searchableCategoryIds(categoryId: Long?): Set<Long> {
+        validateCategoryFilter(categoryId)
         val actives = categoryRepository.findAllActiveOrderedBySortOrder()
         val activeById = actives.associateBy { it.id }
 

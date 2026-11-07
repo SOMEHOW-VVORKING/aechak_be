@@ -70,6 +70,13 @@ class ProductKeywordSearchElasticsearchIntegrationTest : IntegrationTestBase() {
         }
         val multiPage = traverse(jpa, ProductKeywordSearchQuery(keyword = "강아지", size = 3))
         assertTrue(multiPage.size > 3, "커서로 여러 페이지를 넘겨야 한다")
+
+        // 할인 시작과 종료(45번, 50번)가 검색 시각과 같은 한 시간 안에 있을 때도 낮은 가격순과 가격 필터가 같아야 한다
+        val midHour = NOW.plusMinutes(30)
+        for (filter in listOf(filters[0], filters[1])) {
+            val query = filter(ProductKeywordSearchQuery(keyword = "강아지", sort = ProductKeywordSearchSort.PRICE_ASC, size = 3))
+            assertEquals(traverse(jpa, query, midHour), traverse(es, query, midHour), "한 시간 안의 할인 경계")
+        }
     }
 
     @Test
@@ -88,11 +95,12 @@ class ProductKeywordSearchElasticsearchIntegrationTest : IntegrationTestBase() {
     private fun traverse(
         service: ProductKeywordSearchService,
         query: ProductKeywordSearchQuery,
+        now: LocalDateTime = NOW,
     ): List<Page> {
         val pages = mutableListOf<Page>()
         var cursor: String? = null
         do {
-            val result = tx.execute { service.searchPage(query.copy(cursor = cursor), NOW) }!!
+            val result = tx.execute { service.searchPage(query.copy(cursor = cursor), now) }!!
             pages += Page(result.items, result.totalCount, result.hasNext)
             cursor = result.nextCursor
         } while (cursor != null && pages.size < MAX_PAGES)
@@ -107,7 +115,7 @@ class ProductKeywordSearchElasticsearchIntegrationTest : IntegrationTestBase() {
 
     /**
      * 셀러 넷(유료 배송, 무료 배송, 정지, 행 없음), 활성 중분류 둘과 비활성 중분류 하나에 상품 60개
-     * 이름에 특수문자, 대문자 라틴 글자, 긴 문구를 섞고 가격, 리뷰 수, 할인 기간(진행, 종료, 시작 전, 종료일 없음, 할인 없음, 경계 시각),
+     * 이름에 특수문자, 대문자 라틴 글자, 긴 문구를 섞고 가격, 리뷰 수, 할인 기간(진행, 종료, 시작 전, 종료일 없음, 할인 없음, 경계 시각, 한 시간 안의 시작과 종료),
      * 판매 상태, 검수 상태, 통계 유무를 섞고 같은 정렬 키를 일부러 만든다
      */
     private fun persistFixture(): Pair<Category, Int> =
@@ -147,6 +155,8 @@ class ProductKeywordSearchElasticsearchIntegrationTest : IntegrationTestBase() {
                             i == 26 -> NOW.minusDays(1) to NOW
                             i == 32 -> NOW.plusNanos(1_000) to null
                             i == 38 -> NOW.minusDays(1) to NOW.minusNanos(1_000)
+                            i == 45 -> NOW.plusMinutes(10) to null
+                            i == 50 -> NOW.minusDays(1) to NOW.plusMinutes(20)
                             i % 6 == 0 -> NOW.minusDays(1) to NOW.plusDays(1)
                             i % 6 == 1 -> NOW.minusDays(9) to NOW.minusDays(1)
                             i % 6 == 2 -> NOW.plusDays(1) to NOW.plusDays(9)
