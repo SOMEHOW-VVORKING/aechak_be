@@ -2,9 +2,13 @@ package com.aechak.application.product.search.port
 
 import java.time.LocalDateTime
 
-/** 정규화된 필터와 정렬, 정렬별 keyset 앵커 조건. now는 유효가격 판정 기준 시각 */
+/**
+ * 정규화된 필터와 정렬, 정렬별 keyset 앵커 조건. now는 유효가격 판정 기준 시각
+ * categoryIds는 검색 대상 카테고리 id(자신, 부모, 조부모 모두 활성. 중분류 필터가 있으면 그 중분류와 활성 자식)
+ */
 data class ProductKeywordSearchCondition(
     val filter: ProductKeywordFilter,
+    val categoryIds: Set<Long>,
     val sort: ProductKeywordSearchSort,
     val lastId: Long?,
     val lastReviewCount: Int?,

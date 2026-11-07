@@ -57,8 +57,8 @@ class UserReport protected constructor(
     var status: ReportStatus = ReportStatus.RECEIVED
         protected set
 
-    /** 접수 사실 이벤트 등록. 저장해 id가 생긴 뒤 호출한다. reviewId는 신고 대상을 고른 리뷰의 id */
-    fun registerReceived(reviewId: Long) =
+    /** 접수 사실 이벤트 등록. 저장해 id가 생긴 뒤 호출한다. reviewId는 신고 대상을 고른 리뷰의 id이고 SNS 프로필에서 고른 신고는 null */
+    fun registerReceived(reviewId: Long?) =
         registerEvent(
             UserReportReceivedEvent(
                 reportId = id,

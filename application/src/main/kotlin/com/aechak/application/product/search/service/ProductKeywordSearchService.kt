@@ -14,6 +14,7 @@ import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.repository.CategoryRepository
 import com.aechak.domain.product.error.ProductErrorCode
+import org.springframework.dao.QueryTimeoutException
 import org.springframework.stereotype.Service
 import java.text.Normalizer
 import java.time.LocalDateTime
@@ -29,25 +30,35 @@ class ProductKeywordSearchService(
     ): CursorPageResult<ProductCatalogView> {
         val filter = toFilter(query)
         validateCategoryFilter(filter.categoryId)
+        val categoryIds = searchableCategoryIds(filter.categoryId)
         val anchor = query.cursor?.let { resolveCursor(it, query.sort, filter, now) }
         val queryNow = anchor?.anchorNow ?: now
-        val fetched =
-            productKeywordSearchPort.search(
-                ProductKeywordSearchCondition(
-                    filter = filter,
-                    sort = query.sort,
-                    lastId = anchor?.lastId,
-                    lastReviewCount = anchor?.lastReviewCount,
-                    lastPrice = anchor?.lastPrice,
-                    limit = CursorPageSize.fetchLimit(query.size),
-                    now = queryNow,
-                ),
+        val condition =
+            ProductKeywordSearchCondition(
+                filter = filter,
+                categoryIds = categoryIds,
+                sort = query.sort,
+                lastId = anchor?.lastId,
+                lastReviewCount = anchor?.lastReviewCount,
+                lastPrice = anchor?.lastPrice,
+                limit = CursorPageSize.fetchLimit(query.size),
+                now = queryNow,
             )
+        // 첫 페이지에서만 총개수 계산
+        val (fetched, totalCount) =
+            try {
+                if (query.cursor == null) {
+                    productKeywordSearchPort.searchFirstPage(condition).let { it.fetched to it.totalCount }
+                } else {
+                    productKeywordSearchPort.search(condition) to null
+                }
+            } catch (e: QueryTimeoutException) {
+                throw BusinessException(ProductErrorCode.PRODUCT_SEARCH_TIMEOUT, e)
+            }
         return CursorPageResult.of(
             fetched = fetched,
             size = query.size,
-            // 첫 페이지에서만 총개수 계산
-            totalCount = if (query.cursor == null) productKeywordSearchPort.countMatching(filter, queryNow) else null,
+            totalCount = totalCount,
         ) { last -> encodeCursor(query.sort, filter, last, queryNow) }
     }
 
@@ -74,6 +85,22 @@ class ProductKeywordSearchService(
         if (category.depth != Category.MID_DEPTH) {
             throw BusinessException(ProductErrorCode.INVALID_CATEGORY_FILTER)
         }
+    }
+
+    /** 자신, 부모, 조부모가 모두 활성인 카테고리 id. 중분류 필터가 있으면 그 중분류와 활성 자식만 남김 */
+    private fun searchableCategoryIds(categoryId: Long?): Set<Long> {
+        val actives = categoryRepository.findAllActiveOrderedBySortOrder()
+        val activeById = actives.associateBy { it.id }
+
+        fun chainActive(category: Category): Boolean {
+            val parentId = category.parent?.id ?: return true
+            val parent = activeById[parentId] ?: return false
+            return chainActive(parent)
+        }
+
+        return actives
+            .filter { chainActive(it) && (categoryId == null || it.id == categoryId || it.parent?.id == categoryId) }
+            .mapTo(mutableSetOf()) { it.id }
     }
 
     private fun encodeCursor(

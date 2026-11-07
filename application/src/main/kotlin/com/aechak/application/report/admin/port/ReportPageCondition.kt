@@ -8,7 +8,7 @@ import java.time.LocalDateTime
  * 전역 정렬은 `reportedAt DESC, targetType ASC, reportId DESC` 이고 앵커 세 축이 그 순서의 한 점을 가리킨다.
  */
 data class ReportPageCondition(
-    /** 읽을 종류. 필터가 없으면 세 종류 전부가 들어온다 — 비어 있는 채로 오지 않는다 */
+    /** 읽을 종류. 필터가 없으면 모든 종류가 들어온다 — 비어 있는 채로 오지 않는다 */
     val targetTypes: Set<ReportTargetType>,
     val statuses: ReportStatusCondition,
     val reportedFrom: LocalDateTime?,

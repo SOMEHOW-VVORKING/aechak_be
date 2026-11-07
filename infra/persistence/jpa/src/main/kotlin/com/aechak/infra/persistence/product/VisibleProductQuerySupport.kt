@@ -26,7 +26,7 @@ internal val category = QCategory.category
 internal val parent = QCategory("parent") // 중분류 서브트리 필터, 부모 카테고리 status 검증용 별칭
 internal val grandParent = QCategory("grandParent") // 조부모(대분류) status 검증용 별칭
 internal val seller = QSeller.seller
-internal val productStats = QProductStats.productStats // 인기순 정렬과 별점 필터, 표시용 별점/리뷰 수
+internal val productStats = QProductStats.productStats // 별점 필터, 표시용 별점/리뷰 수
 
 internal fun <T> visibleProductQuery(
     queryFactory: JPAQueryFactory,
@@ -49,7 +49,7 @@ private fun visible(): Predicate =
 
 /**
  * 카테고리 체인(자신·부모·조부모)이 모두 활성인지.
- * 카탈로그·검색은 이 조건을 where 필터로 써서 비활성 상품을 숨기고,
+ * 카탈로그는 이 조건을 where 필터로 써서 비활성 상품을 숨기고,
  * 찜 목록은 같은 조건을 진입 가능 여부 컬럼(CASE)으로 재사용한다. 규칙을 한곳에 둬 두 경로가 어긋나지 않게 한다.
  */
 internal fun categoryChainActive(): BooleanExpression =
@@ -84,11 +84,11 @@ internal fun catalogViewProjection(effectivePrice: NumberExpression<Long>): Expr
         product.saleStatus,
         productStats.averageRating,
         reviewCountScore(),
-        // 카탈로그·검색은 categoryChainActive() 필터로 활성 상품만 통과하므로 진입 가능은 항상 참
+        // 카탈로그는 categoryChainActive() 필터로 활성 상품만 통과하므로 진입 가능은 항상 참
         Expressions.asBoolean(true),
     )
 
-/** 인기순 정렬과 커서용 리뷰 수. 조인이 없거나 행이 없으면 coalesce 0 */
+/** 표시용 리뷰 수. 조인이 없거나 행이 없으면 coalesce 0 */
 internal fun reviewCountScore(): NumberExpression<Int> =
     CaseBuilder()
         .`when`(productStats.reviewCount.isNull)

@@ -1,12 +1,14 @@
 package com.aechak.application.sns.facade
 
 import com.aechak.application.file.usecase.FileUseCase
+import com.aechak.application.ratelimit.usecase.RateLimitUseCase
 import com.aechak.application.sns.service.BlockService
 import com.aechak.application.sns.service.FollowService
 import com.aechak.application.sns.service.MuteService
 import com.aechak.application.sns.service.SnsProfileService
 import com.aechak.application.sns.service.SnsUserListService
 import com.aechak.application.sns.service.SnsVisibilityService
+import com.aechak.application.sns.support.SnsRateLimitRule
 import com.aechak.application.sns.usecase.SnsUseCase
 import com.aechak.application.sns.usecase.command.BlockUserCommand
 import com.aechak.application.sns.usecase.command.FollowUserCommand
@@ -17,12 +19,15 @@ import com.aechak.application.sns.usecase.result.SnsProfileResult
 import com.aechak.application.sns.usecase.result.SnsRelationItemResult
 import com.aechak.application.sns.usecase.result.SnsUserItemResult
 import com.aechak.application.support.CursorPageResult
+import com.aechak.application.support.retryOnceOnDeadlock
 import com.aechak.application.user.pet.usecase.PetProfileUseCase
 import com.aechak.application.user.user.usecase.UserUseCase
 import com.aechak.application.user.user.usecase.result.UserPublicProfileResult
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Isolation
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 
 @Service
 class SnsFacade(
@@ -35,7 +40,14 @@ class SnsFacade(
     private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
     private val fileUseCase: FileUseCase,
+    private val rateLimitUseCase: RateLimitUseCase,
+    transactionManager: PlatformTransactionManager,
 ) : SnsUseCase {
+    private val readCommittedTx =
+        TransactionTemplate(transactionManager).apply {
+            isolationLevel = TransactionDefinition.ISOLATION_READ_COMMITTED
+        }
+
     @Transactional(readOnly = true)
     override fun getProfile(
         publicId: String,
@@ -47,17 +59,21 @@ class SnsFacade(
 
     // 맞는 행이 없는 FOR SHARE가 sns_blocks 갭 잠금으로 다른 쌍의 차단을 막지 않도록 READ_COMMITTED.
     // INSERT IGNORE의 중복 키 검사는 READ_COMMITTED에서도 갭 잠금을 잡는다
-    @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun follow(command: FollowUserCommand) {
-        val target = snsProfileService.requireVisible(userUseCase.findPublicProfile(command.targetPublicId))
-        followService.follow(command.userId, target.userId)
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.FOLLOW)
+        readCommittedTx.executeWithoutResult {
+            val target = snsProfileService.requireVisible(userUseCase.findPublicProfile(command.targetPublicId))
+            followService.follow(command.userId, target.userId)
+        }
     }
 
     // 지울 행이 없는 DELETE가 갭 잠금으로 다른 쌍의 팔로우를 막지 않도록 READ_COMMITTED
-    @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun unfollow(command: FollowUserCommand) {
-        val target = snsProfileService.requireExists(userUseCase.findPublicProfile(command.targetPublicId))
-        followService.unfollow(command.userId, target.userId)
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.UNFOLLOW)
+        readCommittedTx.executeWithoutResult {
+            val target = snsProfileService.requireExists(userUseCase.findPublicProfile(command.targetPublicId))
+            followService.unfollow(command.userId, target.userId)
+        }
     }
 
     @Transactional(readOnly = true)
@@ -84,30 +100,41 @@ class SnsFacade(
     }
 
     // 지울 팔로우 행이 없는 DELETE가 갭 잠금으로 다른 쌍의 팔로우를 막지 않도록 READ_COMMITTED
-    @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun block(command: BlockUserCommand) {
-        val target = snsProfileService.requireVisible(userUseCase.findPublicProfile(command.targetPublicId))
-        blockService.block(command.userId, target.userId)
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.BLOCK)
+        readCommittedTx.executeWithoutResult {
+            val target = snsProfileService.requireVisible(userUseCase.findPublicProfile(command.targetPublicId))
+            blockService.block(command.userId, target.userId)
+        }
     }
 
     // 없는 쌍의 DELETE가 갭 잠금으로 다른 쌍의 차단을 막지 않도록 READ_COMMITTED
-    @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun unblock(command: BlockUserCommand) {
-        val target = snsProfileService.requireExists(userUseCase.findPublicProfile(command.targetPublicId))
-        blockService.unblock(command.userId, target.userId)
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.UNBLOCK)
+        readCommittedTx.executeWithoutResult {
+            val target = snsProfileService.requireExists(userUseCase.findPublicProfile(command.targetPublicId))
+            blockService.unblock(command.userId, target.userId)
+        }
     }
 
-    // 뮤트는 통계 행을 잠그지 않는다. 갭 잠금을 줄이려고 차단과 같이 READ_COMMITTED
-    @Transactional(isolation = Isolation.READ_COMMITTED)
+    // 뮤트는 통계 행을 잠그지 않는다. 갭 잠금을 줄이려고 차단과 같이 READ_COMMITTED이고
+    // 끄기 하나와 켜기 둘이 겹쳐 교착으로 되돌아가면 한 번 다시 한다
     override fun mute(command: MuteUserCommand) {
-        val target = snsProfileService.requireVisible(userUseCase.findPublicProfile(command.targetPublicId))
-        muteService.mute(command.userId, target.userId)
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.MUTE)
+        retryOnceOnDeadlock {
+            readCommittedTx.executeWithoutResult {
+                val target = snsProfileService.requireVisible(userUseCase.findPublicProfile(command.targetPublicId))
+                muteService.mute(command.userId, target.userId)
+            }
+        }
     }
 
-    @Transactional(isolation = Isolation.READ_COMMITTED)
     override fun unmute(command: MuteUserCommand) {
-        val target = snsProfileService.requireExists(userUseCase.findPublicProfile(command.targetPublicId))
-        muteService.unmute(command.userId, target.userId)
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.UNMUTE)
+        readCommittedTx.executeWithoutResult {
+            val target = snsProfileService.requireExists(userUseCase.findPublicProfile(command.targetPublicId))
+            muteService.unmute(command.userId, target.userId)
+        }
     }
 
     @Transactional(readOnly = true)

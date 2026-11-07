@@ -1,0 +1,558 @@
+package com.aechak.application.sns.facade
+
+import com.aechak.application.file.port.enums.UploadPurpose
+import com.aechak.application.file.usecase.FileUseCase
+import com.aechak.application.file.usecase.command.DeleteFileCommand
+import com.aechak.application.file.usecase.command.IssuePresignedUrlCommand
+import com.aechak.application.file.usecase.command.PromoteFileCommand
+import com.aechak.application.file.usecase.result.IssuePresignedUrlResult
+import com.aechak.application.file.usecase.result.PromoteFileResult
+import com.aechak.application.sns.port.SnsCommentQueryPort
+import com.aechak.application.sns.port.SnsCommentScope
+import com.aechak.application.sns.port.SnsFeedQueryPort
+import com.aechak.application.sns.port.SnsPopularSnapshotStore
+import com.aechak.application.sns.port.SnsPostTab
+import com.aechak.application.sns.port.SnsVisibilityQueryPort
+import com.aechak.application.sns.port.view.SnsCommentRefView
+import com.aechak.application.sns.port.view.SnsCommentView
+import com.aechak.application.sns.port.view.SnsFeedEntryView
+import com.aechak.application.sns.port.view.SnsFeedRepostView
+import com.aechak.application.sns.port.view.SnsPairStateView
+import com.aechak.application.sns.port.view.SnsPostCardView
+import com.aechak.application.sns.port.view.SnsPostHashtagView
+import com.aechak.application.sns.port.view.SnsPostMediaView
+import com.aechak.application.sns.port.view.SnsSaveView
+import com.aechak.application.sns.port.view.SnsUserRepostView
+import com.aechak.application.sns.service.CommentQueryService
+import com.aechak.application.sns.service.LikeService
+import com.aechak.application.sns.service.PostCardAssembler
+import com.aechak.application.sns.service.SnsFeedService
+import com.aechak.application.sns.service.SnsProfileService
+import com.aechak.application.sns.service.SnsVisibilityService
+import com.aechak.application.sns.support.SnsFeedCursorCodec
+import com.aechak.application.sns.usecase.query.SnsFeedQuery
+import com.aechak.application.user.pet.usecase.PetProfileUseCase
+import com.aechak.application.user.pet.usecase.command.RegisterPetProfileCommand
+import com.aechak.application.user.pet.usecase.command.UpdatePetProfileCommand
+import com.aechak.application.user.pet.usecase.result.DefaultPetSummaryResult
+import com.aechak.application.user.pet.usecase.result.DeletePetProfileResult
+import com.aechak.application.user.pet.usecase.result.PetProfileListResult
+import com.aechak.application.user.pet.usecase.result.PetProfileResult
+import com.aechak.application.user.pet.usecase.result.RegisterPetProfileResult
+import com.aechak.application.user.pet.usecase.result.RepresentativePetResult
+import com.aechak.application.user.pet.usecase.result.SetDefaultPetResult
+import com.aechak.application.user.user.usecase.UserUseCase
+import com.aechak.application.user.user.usecase.command.SetNicknameCommand
+import com.aechak.application.user.user.usecase.command.UpdateProfileCommand
+import com.aechak.application.user.user.usecase.query.UserSearchQuery
+import com.aechak.application.user.user.usecase.result.UserAuthorResult
+import com.aechak.application.user.user.usecase.result.UserMeResult
+import com.aechak.application.user.user.usecase.result.UserPublicProfileResult
+import com.aechak.application.user.user.usecase.result.UserSummaryResult
+import com.aechak.common.error.BusinessException
+import com.aechak.common.error.CommonErrorCode
+import com.aechak.domain.sns.follow.repository.FollowRepository
+import com.aechak.domain.sns.like.repository.CommentLikeRepository
+import com.aechak.domain.sns.like.repository.PostLikeRepository
+import com.aechak.domain.sns.post.Post
+import com.aechak.domain.sns.post.enums.PostMediaType
+import com.aechak.domain.sns.post.repository.PostRepository
+import com.aechak.domain.sns.repost.repository.RepostRepository
+import com.aechak.domain.sns.save.repository.SaveRepository
+import com.aechak.domain.sns.stats.SnsUserStats
+import com.aechak.domain.sns.stats.repository.SnsUserStatsRepository
+import org.springframework.dao.DataAccessResourceFailureException
+import org.springframework.dao.QueryTimeoutException
+import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.support.AbstractPlatformTransactionManager
+import org.springframework.transaction.support.DefaultTransactionStatus
+import java.time.LocalDateTime
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+
+/**
+ * 계약: 인기 순위 저장소(Redis)가 실패해도 첫 페이지는 DB에서 계산한 순위로 한 페이지를 다음 커서 없이 주고 다음 페이지는 90002인지,
+ * 같은 분에 다른 요청이 먼저 남긴 순위가 있으면 계산한 순위 대신 그 순위를 따르는지.
+ * 통합 테스트의 Redis 컨테이너로는 연결 실패, 시간 초과, 남긴 직후 키가 없어지는 경우, 읽은 뒤 남기기 전에 다른 요청이 먼저 남기는 순서를 만들 수 없어 예외를 던지거나 남긴 키를 돌려주지 않는 저장소로 본다.
+ * 깨지면 Redis 장애가 인기 피드를 500으로 만들거나 남기지 못한 순위의 커서를 내줘 다음 페이지가 다른 순위를 읽는다.
+ */
+class SnsFeedFacadeTest {
+    private val port = FakeFeedQueryPort(ranking = listOf(3L, 2L, 1L))
+
+    @Test
+    fun `순위를 읽지 못하면 첫 페이지는 계산한 순위로 크기만큼 주고 다음 커서가 없다`() {
+        val page = facade(FailingSnapshotStore(failOnFind = true)).popular(SnsFeedQuery(viewerId = null, cursor = null, size = 2))
+
+        assertEquals(listOf("post-3", "post-2"), page.items.map { it.post.publicId }, "계산한 순위의 앞에서 크기만큼 줘야 한다")
+        assertNull(page.nextCursor, "남기지 못한 순위의 커서를 주면 안 된다")
+        assertFalse(page.hasNext, "다음 페이지가 없어야 한다")
+    }
+
+    @Test
+    fun `순위를 남기지 못하면 첫 페이지는 계산한 순위로 크기만큼 주고 다음 커서가 없다`() {
+        val page = facade(FailingSnapshotStore(failOnFind = false)).popular(SnsFeedQuery(viewerId = null, cursor = null, size = 2))
+
+        assertEquals(listOf("post-3", "post-2"), page.items.map { it.post.publicId }, "계산한 순위의 앞에서 크기만큼 줘야 한다")
+        assertNull(page.nextCursor, "남기지 못한 순위의 커서를 주면 안 된다")
+        assertFalse(page.hasNext, "다음 페이지가 없어야 한다")
+    }
+
+    @Test
+    fun `남긴 순위를 다시 읽을 때 키가 없으면 첫 페이지는 계산한 순위로 크기만큼 주고 다음 커서가 없다`() {
+        val page = facade(LosingSnapshotStore()).popular(SnsFeedQuery(viewerId = null, cursor = null, size = 2))
+
+        assertEquals(listOf("post-3", "post-2"), page.items.map { it.post.publicId }, "계산한 순위의 앞에서 크기만큼 줘야 한다")
+        assertNull(page.nextCursor, "다음 페이지에 쓸 순위가 없으니 커서를 주면 안 된다")
+        assertFalse(page.hasNext, "다음 페이지가 없어야 한다")
+    }
+
+    @Test
+    fun `같은 분에 다른 요청이 먼저 순위를 남겼으면 계산한 순위 대신 먼저 남긴 순위를 따른다`() {
+        val store = RaceLostSnapshotStore(winner = listOf(1L, 2L, 3L))
+
+        val page = facade(store).popular(SnsFeedQuery(viewerId = null, cursor = null, size = 2))
+
+        assertEquals(listOf("post-1", "post-2"), page.items.map { it.post.publicId }, "먼저 남긴 순위의 앞에서 크기만큼 줘야 한다")
+        val cursor = SnsFeedCursorCodec.decodePopular(assertNotNull(page.nextCursor, "남은 순위가 있으면 다음 커서가 있어야 한다"))
+        assertEquals(store.savedMinute, cursor.epochMinute, "커서는 순위를 남긴 분을 가리켜야 한다")
+        assertEquals(2, cursor.offset, "커서는 읽은 자리 다음을 가리켜야 한다")
+    }
+
+    @Test
+    fun `순위를 읽지 못하면 다음 페이지는 90002다`() {
+        val cursor = SnsFeedCursorCodec.encodePopular(29_897_280L, 1)
+
+        val error =
+            assertFailsWith<BusinessException> {
+                facade(FailingSnapshotStore(failOnFind = true)).popular(SnsFeedQuery(viewerId = null, cursor = cursor, size = 2))
+            }
+
+        assertEquals(CommonErrorCode.INVALID_CURSOR, error.errorCode, "다음 페이지는 첫 페이지부터 다시 부르게 90002여야 한다")
+    }
+
+    private fun facade(store: SnsPopularSnapshotStore) =
+        SnsFeedFacade(
+            SnsFeedService(port, UnusedPostRepository()),
+            SnsVisibilityService(UnusedVisibilityQueryPort()),
+            SnsProfileService(UnusedUserStatsRepository()),
+            PostCardAssembler(
+                port,
+                UnusedRepostRepository(),
+                UnusedSaveRepository(),
+                NoPostLikeRepository(),
+                UnusedFollowRepository(),
+                CommentQueryService(
+                    NoCommentQueryPort(),
+                    SnsVisibilityService(UnusedVisibilityQueryPort()),
+                    KeyUrlFileUseCase(),
+                    UnusedUserUseCase(),
+                    LikeService(NoPostLikeRepository(), UnusedCommentLikeRepository()),
+                ),
+                NoPetProfileUseCase(),
+                KeyUrlFileUseCase(),
+            ),
+            store,
+            UnusedUserUseCase(),
+            NoOpTransactionManager(),
+        )
+}
+
+/** find나 saveIfAbsent에서 Redis 연결 실패나 시간 초과를 던진다. failOnFind가 false면 키가 없다고 답한 뒤 저장에서 실패한다 */
+private class FailingSnapshotStore(
+    private val failOnFind: Boolean,
+) : SnsPopularSnapshotStore {
+    override fun find(epochMinute: Long): List<Long>? = if (failOnFind) throw QueryTimeoutException("Redis command timed out") else null
+
+    override fun saveIfAbsent(
+        epochMinute: Long,
+        postIds: List<Long>,
+    ): Unit = throw DataAccessResourceFailureException("Unable to connect to Redis")
+}
+
+/** 저장은 성공하지만 다시 읽으면 키가 없다. 메모리가 모자라 Redis가 키를 지웠거나 재시작한 경우다 */
+private class LosingSnapshotStore : SnsPopularSnapshotStore {
+    override fun find(epochMinute: Long): List<Long>? = null
+
+    override fun saveIfAbsent(
+        epochMinute: Long,
+        postIds: List<Long>,
+    ) = Unit
+}
+
+/** 처음 읽을 때는 키가 없고 저장은 다른 요청이 먼저 남긴 순위 때문에 무시되며 다시 읽으면 그 순위를 준다. SET NX 경쟁에서 진 경우다 */
+private class RaceLostSnapshotStore(
+    private val winner: List<Long>,
+) : SnsPopularSnapshotStore {
+    var savedMinute: Long? = null
+
+    override fun find(epochMinute: Long): List<Long>? = if (savedMinute == epochMinute) winner else null
+
+    override fun saveIfAbsent(
+        epochMinute: Long,
+        postIds: List<Long>,
+    ) {
+        savedMinute = epochMinute
+    }
+}
+
+/** 순위 쿼리는 정해 둔 순위를 돌려주고 모든 게시물을 볼 수 있다고 답한다 */
+internal class FakeFeedQueryPort(
+    private val ranking: List<Long>,
+) : SnsFeedQueryPort {
+    override fun findFollowingPage(
+        viewerId: Long,
+        hiddenUserIds: Set<Long>,
+        anchor: LocalDateTime,
+        lastTime: LocalDateTime?,
+        lastPostId: Long?,
+        limit: Int,
+    ): List<SnsFeedEntryView> = throw UnsupportedOperationException()
+
+    override fun findLatestReposts(
+        viewerId: Long,
+        hiddenUserIds: Set<Long>,
+        anchor: LocalDateTime,
+        postIds: Collection<Long>,
+    ): List<SnsFeedRepostView> = throw UnsupportedOperationException()
+
+    override fun findExplorePage(
+        viewerId: Long?,
+        hiddenUserIds: Set<Long>,
+        from: LocalDateTime?,
+        anchor: LocalDateTime,
+        lastCreatedAt: LocalDateTime?,
+        lastPostId: Long?,
+        limit: Int,
+    ): List<SnsFeedEntryView> = throw UnsupportedOperationException()
+
+    override fun findPopularRanking(
+        from: LocalDateTime?,
+        to: LocalDateTime,
+        likeWeight: Int,
+        commentWeight: Int,
+        repostWeight: Int,
+        halfLifeHours: Int,
+        limit: Int,
+    ): List<Long> = ranking
+
+    override fun findUserPostPage(
+        authorId: Long,
+        tab: SnsPostTab,
+        lastCreatedAt: LocalDateTime?,
+        lastPostId: Long?,
+        limit: Int,
+    ): List<SnsFeedEntryView> = throw UnsupportedOperationException()
+
+    override fun findUserRepostPage(
+        reposterId: Long,
+        hiddenUserIds: Set<Long>,
+        lastRepostId: Long?,
+        limit: Int,
+    ): List<SnsUserRepostView> = throw UnsupportedOperationException()
+
+    override fun findSavePage(
+        userId: Long,
+        hiddenUserIds: Set<Long>,
+        lastSaveId: Long?,
+        limit: Int,
+    ): List<SnsSaveView> = throw UnsupportedOperationException()
+
+    override fun findVisiblePostIds(
+        postIds: Collection<Long>,
+        hiddenUserIds: Set<Long>,
+    ): Set<Long> = postIds.toSet()
+
+    override fun findCards(postIds: Collection<Long>): List<SnsPostCardView> =
+        postIds.map {
+            SnsPostCardView(
+                postId = it,
+                publicId = "post-$it",
+                authorId = 100 + it,
+                authorPublicId = "author-$it",
+                authorNickname = "집사$it",
+                authorProfileImageKey = null,
+                petId = null,
+                mediaType = PostMediaType.TEXT,
+                caption = "캡션",
+                editedAt = null,
+                createdAt = LocalDateTime.of(2026, 11, 5, 9, 0),
+                repostCount = it.toInt(),
+            )
+        }
+
+    override fun findMedia(postIds: Collection<Long>): List<SnsPostMediaView> = emptyList()
+
+    override fun findHashtagNames(postIds: Collection<Long>): List<SnsPostHashtagView> = emptyList()
+}
+
+internal class NoPetProfileUseCase : PetProfileUseCase {
+    override fun registerPet(command: RegisterPetProfileCommand): RegisterPetProfileResult = throw UnsupportedOperationException()
+
+    override fun getPets(userId: Long): PetProfileListResult = throw UnsupportedOperationException()
+
+    override fun getDefaultPetSummaries(userIds: Collection<Long>): List<DefaultPetSummaryResult> = throw UnsupportedOperationException()
+
+    override fun getActivePetsByIds(petIds: Collection<Long>): List<PetProfileResult> = emptyList()
+
+    override fun findRepresentativePet(userId: Long): RepresentativePetResult? = throw UnsupportedOperationException()
+
+    override fun updatePet(command: UpdatePetProfileCommand): PetProfileResult = throw UnsupportedOperationException()
+
+    override fun deletePet(
+        userId: Long,
+        petId: Long,
+    ): DeletePetProfileResult = throw UnsupportedOperationException()
+
+    override fun setDefaultPet(
+        userId: Long,
+        petId: Long,
+    ): SetDefaultPetResult = throw UnsupportedOperationException()
+}
+
+internal class KeyUrlFileUseCase : FileUseCase {
+    override fun issuePresignedUrl(command: IssuePresignedUrlCommand): IssuePresignedUrlResult = throw UnsupportedOperationException()
+
+    override fun promote(command: PromoteFileCommand): PromoteFileResult = throw UnsupportedOperationException()
+
+    override fun resolveMediaUrl(key: String?): String? = key
+
+    override fun issueDownloadUrl(
+        key: String,
+        purpose: UploadPurpose,
+    ): String = throw UnsupportedOperationException()
+
+    override fun delete(command: DeleteFileCommand) = throw UnsupportedOperationException()
+}
+
+internal class UnusedPostRepository : PostRepository {
+    override fun save(post: Post): Post = throw UnsupportedOperationException()
+
+    override fun findByPublicId(publicId: String): Post? = throw UnsupportedOperationException()
+
+    override fun findByPublicIdForUpdate(publicId: String): Post? = throw UnsupportedOperationException()
+
+    override fun findByAuthorIdAndIdempotencyKey(
+        authorId: Long,
+        idempotencyKey: String,
+    ): Post? = throw UnsupportedOperationException()
+
+    override fun findPublishedByAuthorIdForUpdate(authorId: Long): List<Post> = throw UnsupportedOperationException()
+}
+
+internal class UnusedVisibilityQueryPort : SnsVisibilityQueryPort {
+    override fun findPairState(
+        viewerId: Long,
+        targetId: Long,
+    ): SnsPairStateView = throw UnsupportedOperationException()
+
+    override fun findViewerFilter(viewerId: Long): Set<Long> = throw UnsupportedOperationException()
+
+    override fun findMutedIds(viewerId: Long): Set<Long> = throw UnsupportedOperationException()
+}
+
+internal class UnusedRepostRepository : RepostRepository {
+    override fun insertIfAbsent(
+        reposterId: Long,
+        postId: Long,
+        at: LocalDateTime,
+    ): Boolean = throw UnsupportedOperationException()
+
+    override fun delete(
+        reposterId: Long,
+        postId: Long,
+    ): Int = throw UnsupportedOperationException()
+
+    override fun findRepostedPostIdsAmong(
+        reposterId: Long,
+        postIds: Collection<Long>,
+    ): Set<Long> = throw UnsupportedOperationException()
+
+    override fun findPostIdsByReposterForUpdate(reposterId: Long): List<Long> = throw UnsupportedOperationException()
+
+    override fun deleteAllByReposter(reposterId: Long) = throw UnsupportedOperationException()
+}
+
+internal class UnusedSaveRepository : SaveRepository {
+    override fun insertIfAbsent(
+        userId: Long,
+        postId: Long,
+    ): Unit = throw UnsupportedOperationException()
+
+    override fun delete(
+        userId: Long,
+        postId: Long,
+    ): Int = throw UnsupportedOperationException()
+
+    override fun findSavedPostIdsAmong(
+        userId: Long,
+        postIds: Collection<Long>,
+    ): Set<Long> = throw UnsupportedOperationException()
+
+    override fun deleteAllByUser(userId: Long) = throw UnsupportedOperationException()
+}
+
+internal class NoCommentQueryPort : SnsCommentQueryPort {
+    override fun findRootPage(
+        scope: SnsCommentScope,
+        lastRootId: Long?,
+        limit: Int,
+    ): List<SnsCommentView> = throw UnsupportedOperationException()
+
+    override fun findReplies(
+        scope: SnsCommentScope,
+        rootIds: List<Long>,
+    ): List<SnsCommentView> = throw UnsupportedOperationException()
+
+    override fun countVisible(
+        postIds: Collection<Long>,
+        viewerId: Long?,
+    ): Map<Long, Long> = postIds.associateWith { 0L }
+
+    override fun findVisible(
+        scope: SnsCommentScope,
+        commentId: Long,
+    ): SnsCommentView? = throw UnsupportedOperationException()
+
+    override fun findVisibleRef(
+        scope: SnsCommentScope,
+        commentPublicId: String,
+    ): SnsCommentRefView? = throw UnsupportedOperationException()
+}
+
+internal class UnusedCommentLikeRepository : CommentLikeRepository {
+    override fun insertIfAbsent(
+        commentId: Long,
+        userId: Long,
+    ): Unit = throw UnsupportedOperationException()
+
+    override fun delete(
+        commentId: Long,
+        userId: Long,
+    ): Int = throw UnsupportedOperationException()
+
+    override fun countByCommentIds(commentIds: Collection<Long>): Map<Long, Long> = throw UnsupportedOperationException()
+
+    override fun findLikedCommentIdsAmong(
+        userId: Long,
+        commentIds: Collection<Long>,
+    ): Set<Long> = throw UnsupportedOperationException()
+
+    override fun deleteAllByUser(userId: Long) = throw UnsupportedOperationException()
+}
+
+internal class NoPostLikeRepository : PostLikeRepository {
+    override fun insertIfAbsent(
+        postId: Long,
+        userId: Long,
+    ): Unit = throw UnsupportedOperationException()
+
+    override fun delete(
+        postId: Long,
+        userId: Long,
+    ): Int = throw UnsupportedOperationException()
+
+    override fun countByPostIds(postIds: Collection<Long>): Map<Long, Long> = postIds.associateWith { 0L }
+
+    override fun findLikedPostIdsAmong(
+        userId: Long,
+        postIds: Collection<Long>,
+    ): Set<Long> = throw UnsupportedOperationException()
+
+    override fun deleteAllByUser(userId: Long) = throw UnsupportedOperationException()
+}
+
+internal class UnusedFollowRepository : FollowRepository {
+    override fun insertIfAbsent(
+        followerId: Long,
+        followeeId: Long,
+    ): Boolean = throw UnsupportedOperationException()
+
+    override fun delete(
+        followerId: Long,
+        followeeId: Long,
+    ): Int = throw UnsupportedOperationException()
+
+    override fun findFolloweeIdsAmong(
+        followerId: Long,
+        followeeIds: Collection<Long>,
+    ): Set<Long> = throw UnsupportedOperationException()
+
+    override fun findFolloweeIds(followerId: Long): List<Long> = throw UnsupportedOperationException()
+
+    override fun findFollowerIds(followeeId: Long): List<Long> = throw UnsupportedOperationException()
+
+    override fun findFolloweeIdsForUpdate(followerId: Long): List<Long> = throw UnsupportedOperationException()
+
+    override fun findFollowerIdsForUpdate(followeeId: Long): List<Long> = throw UnsupportedOperationException()
+
+    override fun deleteAllOf(userId: Long) = throw UnsupportedOperationException()
+}
+
+internal class UnusedUserStatsRepository : SnsUserStatsRepository {
+    override fun findByUserId(userId: Long): SnsUserStats? = throw UnsupportedOperationException()
+
+    override fun lockInUserIdOrder(
+        userId: Long,
+        otherUserId: Long,
+    ) = throw UnsupportedOperationException()
+
+    override fun increaseFollowerCount(userId: Long): Int = throw UnsupportedOperationException()
+
+    override fun decreaseFollowerCount(userId: Long): Int = throw UnsupportedOperationException()
+
+    override fun increaseFollowingCount(userId: Long): Int = throw UnsupportedOperationException()
+
+    override fun decreaseFollowingCount(userId: Long): Int = throw UnsupportedOperationException()
+
+    override fun increasePostCount(userId: Long): Int = throw UnsupportedOperationException()
+
+    override fun decreasePostCount(userId: Long): Int = throw UnsupportedOperationException()
+
+    override fun lockAllInUserIdOrder(userIds: Collection<Long>) = throw UnsupportedOperationException()
+
+    override fun decreaseFollowerCounts(userIds: Collection<Long>) = throw UnsupportedOperationException()
+
+    override fun decreaseFollowingCounts(userIds: Collection<Long>) = throw UnsupportedOperationException()
+
+    override fun deleteByUserId(userId: Long) = throw UnsupportedOperationException()
+}
+
+internal class UnusedUserUseCase : UserUseCase {
+    override fun checkNickname(
+        userId: Long,
+        nickname: String,
+    ): Boolean = throw UnsupportedOperationException()
+
+    override fun setNickname(command: SetNicknameCommand): UserMeResult = throw UnsupportedOperationException()
+
+    override fun getMe(userId: Long): UserMeResult = throw UnsupportedOperationException()
+
+    override fun updateProfile(command: UpdateProfileCommand): UserMeResult = throw UnsupportedOperationException()
+
+    override fun searchUsers(query: UserSearchQuery): List<UserSummaryResult> = throw UnsupportedOperationException()
+
+    override fun getAuthors(userIds: Collection<Long>): Map<Long, UserAuthorResult> = throw UnsupportedOperationException()
+
+    override fun findPublicProfile(publicId: String): UserPublicProfileResult? = throw UnsupportedOperationException()
+
+    override fun findPublicProfileById(userId: Long): UserPublicProfileResult? = throw UnsupportedOperationException()
+
+    override fun registerFromSocial(): Long = throw UnsupportedOperationException()
+}
+
+internal class NoOpTransactionManager : AbstractPlatformTransactionManager() {
+    override fun doGetTransaction(): Any = Any()
+
+    override fun doBegin(
+        transaction: Any,
+        definition: TransactionDefinition,
+    ) = Unit
+
+    override fun doCommit(status: DefaultTransactionStatus) = Unit
+
+    override fun doRollback(status: DefaultTransactionStatus) = Unit
+}

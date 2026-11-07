@@ -2,9 +2,12 @@ package com.aechak.api.support
 
 import com.aechak.application.auth.port.SocialTokenVerifier
 import com.aechak.application.file.port.FileStorage
+import com.aechak.application.ratelimit.port.RateLimitCounter
 import com.aechak.application.user.verification.support.VerificationCodeGenerator
 import com.aechak.domain.user.social.enums.SocialProvider
 import com.aechak.domain.user.social.vo.ProviderUser
+import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
@@ -47,6 +50,27 @@ class IntegrationTestConfig {
     @Bean
     fun databaseCleaner(jdbcTemplate: JdbcTemplate) = DatabaseCleaner(jdbcTemplate)
 
+    /** ddl-auto가 만들지 못하는 상품명 FULLTEXT 인덱스를 컨텍스트 시작 뒤 products에 없을 때만 추가한다 */
+    @Bean
+    fun productNameFulltextIndex(jdbcTemplate: JdbcTemplate) =
+        ApplicationRunner {
+            val missing =
+                jdbcTemplate.queryForObject(
+                    """
+                    SELECT EXISTS(
+                        SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products'
+                    ) AND NOT EXISTS(
+                        SELECT 1 FROM information_schema.STATISTICS
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND INDEX_NAME = 'ft_products_name'
+                    )
+                    """.trimIndent(),
+                    Boolean::class.java,
+                )
+            if (missing == true) {
+                jdbcTemplate.execute("ALTER TABLE products ADD FULLTEXT INDEX ft_products_name (name) WITH PARSER ngram")
+            }
+        }
+
     /** 실 어댑터면 펫 사진 승격이 자격증명 없이 AWS로 나감 */
     @Bean
     @Primary
@@ -55,6 +79,13 @@ class IntegrationTestConfig {
     /** 커밋 뒤 응답 유실을 흉내 낼 때만 켠다. 켜지 않으면 아무것도 하지 않는다 */
     @Bean
     fun commitFailureInjector(): CommitFailureInjector = CommitFailureInjector()
+
+    /** 켜지 않으면 빈도 제한 없이 통과시킨다 */
+    @Bean
+    @Primary
+    fun switchableRateLimitCounter(
+        @Qualifier("redisRateLimitCounterAdapter") redis: RateLimitCounter,
+    ): SwitchableRateLimitCounter = SwitchableRateLimitCounter(redis)
 
     /** 실 어댑터면 통합 테스트가 시크릿 없이 실 포트원으로 나가 게이트웨이 오류를 던짐 */
     @Bean

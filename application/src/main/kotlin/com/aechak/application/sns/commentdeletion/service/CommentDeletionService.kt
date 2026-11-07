@@ -1,0 +1,30 @@
+package com.aechak.application.sns.commentdeletion.service
+
+import com.aechak.common.error.BusinessException
+import com.aechak.domain.sns.comment.Comment
+import com.aechak.domain.sns.comment.enums.CommentDeletionReason
+import com.aechak.domain.sns.comment.repository.CommentRepository
+import com.aechak.domain.sns.error.SnsErrorCode
+import org.springframework.stereotype.Service
+
+/**
+ * 댓글 삭제의 상태 전이. 작성자 삭제, 운영자 삭제, 탈퇴 정리가 사유만 바꿔 같은 전이를 쓴다.
+ * 안내 문구 여부는 저장하지 않고 목록이 읽을 때 정한다. 호출자가 댓글 행을 잠근 트랜잭션 안에서 부른다.
+ */
+@Service
+class CommentDeletionService(
+    private val commentRepository: CommentRepository,
+) {
+    /** 댓글 행을 잠가 읽는다. 없으면 130700이다 */
+    fun lock(publicId: String): Comment =
+        commentRepository.findByPublicIdForUpdate(publicId) ?: throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
+
+    /** 이미 지운 댓글이면 아무것도 바꾸지 않고 false를 돌려준다 */
+    fun delete(
+        comment: Comment,
+        reason: CommentDeletionReason,
+    ): Boolean = comment.delete(reason)
+
+    /** 작성자의 지우지 않은 댓글을 모두 잠가 읽는다 */
+    fun lockActiveOf(authorId: Long): List<Comment> = commentRepository.findActiveByAuthorIdForUpdate(authorId)
+}

@@ -5,6 +5,8 @@ import com.aechak.application.auth.error.AuthErrorCode
 import com.aechak.application.product.search.port.ProductKeywordFilter
 import com.aechak.application.product.search.port.ProductKeywordSearchSort
 import com.aechak.application.product.search.support.ProductKeywordSearchCursorCodec
+import com.aechak.application.product.stats.usecase.ProductStatsUseCase
+import com.aechak.application.product.stats.usecase.command.ApplyReviewStatsCommand
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.like.ProductLike
 import com.aechak.domain.product.product.Product
@@ -43,6 +45,9 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var securityFilterChain: FilterChainProxy
+
+    @Autowired
+    private lateinit var productStatsUseCase: ProductStatsUseCase
 
     private lateinit var mockMvc: MockMvc
     private val defaultSellerId = 77L
@@ -427,6 +432,58 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
         assertFalse(JsonPath.read<Boolean>(page2, "$.data.hasNext"))
     }
 
+    @Test
+    fun `product_stats 리뷰 수로 만든 이전 인기순 커서로도 이어서 순회한다`() {
+        val (reviewed, noStats) =
+            tx.execute {
+                val mid = persistMidCategory()
+                val reviewed =
+                    (1..3).map {
+                        val p = persistProduct(mid, "호환 사료 $it")
+                        em.flush()
+                        persistStats(p.id, reviewCount = it * 10, averageRating = BigDecimal("3.00"))
+                        p
+                    }
+                val noStats = (1..2).map { persistProduct(mid, "호환 사료 통계없음 $it") }
+                reviewed to noStats
+            }!!
+
+        // 이전 정렬 키는 product_stats.review_count, 통계 행이 없으면 0
+        assertEquals(
+            listOf("호환 사료 1", "호환 사료 통계없음 2", "호환 사료 통계없음 1"),
+            productNames(search("사료", sort = "popular", cursor = legacyPopularCursor(reviewed[1]))),
+        )
+        assertEquals(
+            listOf("호환 사료 통계없음 1"),
+            productNames(search("사료", sort = "popular", cursor = legacyPopularCursor(noStats[1]))),
+        )
+    }
+
+    @Test
+    fun `페이지 사이에 리뷰 수가 바뀌어도 인기순은 커서에 담긴 리뷰 수에서 이어진다`() {
+        val products =
+            tx.execute {
+                val mid = persistMidCategory()
+                (1..4).map {
+                    val p = persistProduct(mid, "변동 사료 $it")
+                    em.flush()
+                    persistStats(p.id, reviewCount = it * 10, averageRating = BigDecimal("3.00"))
+                    p
+                }
+            }!!
+
+        val page1 = search("사료", sort = "popular", size = 2)
+        assertEquals(listOf("변동 사료 4", "변동 사료 3"), productNames(page1))
+
+        // 커서 앵커(변동 사료 3)는 앞으로, 변동 사료 1은 앵커 아래에서 변동 사료 2 위로
+        applyReviewCount(products[2].id, 100)
+        applyReviewCount(products[0].id, 25)
+
+        val page2 = search("사료", sort = "popular", size = 2, cursor = JsonPath.read(page1, "$.data.nextCursor"))
+        assertEquals(listOf("변동 사료 1", "변동 사료 2"), productNames(page2), "앵커의 현재 리뷰 수가 아니라 커서 값 30 아래를 새 값 순서로")
+        assertFalse(JsonPath.read<Boolean>(page2, "$.data.hasNext"))
+    }
+
     // ---------- SCRUM-158 필터 ----------
 
     @Test
@@ -757,6 +814,33 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
 
     private fun productNames(body: String): List<String> = JsonPath.read(body, "$.data.products[*].name")
 
+    /** product_stats 리뷰 수(없으면 0)를 정렬 키로 쓰던 때와 같은 값을 담은 인기순 커서 */
+    private fun legacyPopularCursor(anchor: Product): String {
+        val legacyReviewCount =
+            tx.execute {
+                em
+                    .createNativeQuery(
+                        "SELECT COALESCE(s.review_count, 0) FROM products p LEFT JOIN product_stats s ON s.product_id = p.id WHERE p.id = :id",
+                    ).setParameter("id", anchor.id)
+                    .singleResult as Number
+            }!!
+        return ProductKeywordSearchCursorCodec.encode(
+            sort = ProductKeywordSearchSort.POPULAR,
+            filterHash = ProductKeywordSearchCursorCodec.filterHash(filterOf("사료")),
+            publicId = anchor.publicId,
+            lastReviewCount = legacyReviewCount.toInt(),
+            lastPrice = null,
+            now = LocalDateTime.now(),
+        )
+    }
+
+    private fun applyReviewCount(
+        productId: Long,
+        reviewCount: Int,
+    ) = productStatsUseCase.applyReviewStats(
+        ApplyReviewStatsCommand(productId, reviewCount, ratingSum = reviewCount * 3L, averageRating = BigDecimal("3.00")),
+    )
+
     private fun recentKeywords(userId: Long): List<String> =
         tx.execute {
             em
@@ -863,6 +947,12 @@ class ProductKeywordSearchIntegrationTest : IntegrationTestBase() {
                 "update ProductStats s set s.reviewCount = :reviewCount, s.averageRating = :averageRating where s.productId = :id",
             ).setParameter("reviewCount", reviewCount)
             .setParameter("averageRating", averageRating)
+            .setParameter("id", productId)
+            .executeUpdate()
+        // 인기순이 읽는 비정규화 값도 통계 반영과 같이 맞춘다
+        em
+            .createNativeQuery("update products set review_count = :reviewCount where id = :id")
+            .setParameter("reviewCount", reviewCount)
             .setParameter("id", productId)
             .executeUpdate()
     }

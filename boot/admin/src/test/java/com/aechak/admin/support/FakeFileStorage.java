@@ -6,6 +6,8 @@ import com.aechak.application.file.port.IssueFileUrl;
 import com.aechak.application.file.port.enums.FileType;
 import com.aechak.application.file.port.enums.UploadPurpose;
 import com.aechak.domain.support.Ulid;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /** 실 S3 대신 키 규칙만 흉내냄 — 어드민 테스트는 다운로드 URL 발급이 주 관심사. */
 public class FakeFileStorage implements FileStorage {
@@ -32,7 +34,19 @@ public class FakeFileStorage implements FileStorage {
         return "https://fake-download.local/" + key;
     }
 
-    /** 어드민은 서류를 지우지 않는다 — 포트 충족용 no-op. */
+    private final List<String> deletedKeys = new CopyOnWriteArrayList<>();
+
+    /** 어드민은 서류를 지우지 않는다. 운영자가 지운 SNS 게시물의 미디어 키만 기록한다. */
     @Override
-    public void delete(String key, UploadPurpose purpose) {}
+    public void delete(String key, UploadPurpose purpose) {
+        deletedKeys.add(key);
+    }
+
+    public List<String> deletedKeys() {
+        return List.copyOf(deletedKeys);
+    }
+
+    public void reset() {
+        deletedKeys.clear();
+    }
 }

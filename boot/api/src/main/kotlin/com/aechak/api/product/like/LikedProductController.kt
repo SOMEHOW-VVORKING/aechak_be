@@ -6,6 +6,7 @@ import com.aechak.application.product.like.usecase.ProductLikeUseCase
 import com.aechak.webcommon.response.ApiResponse
 import com.aechak.websecurity.authentication.AuthPrincipal
 import jakarta.validation.Valid
+import org.springdoc.core.annotations.ParameterObject
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
@@ -20,7 +21,7 @@ class LikedProductController(
 ) {
     @GetMapping
     fun getLikedProducts(
-        @Valid @ModelAttribute request: LikedProductListRequest,
+        @Valid @ModelAttribute @ParameterObject request: LikedProductListRequest,
         @AuthenticationPrincipal principal: AuthPrincipal,
     ): ResponseEntity<ApiResponse<ProductListResponse>> =
         ResponseEntity.ok(
