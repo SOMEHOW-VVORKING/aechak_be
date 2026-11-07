@@ -5,6 +5,10 @@ name: ci
 
 on:
   pull_request: # 경로 필터 없음(의도) — required check로 걸었을 때 "skipped라 머지 불가" 함정 방지
+  # 머지 큐가 만드는 merge group에도 같은 검사를 돌린다. 이 트리거가 없으면 큐에 들어간 PR의
+  # 필수 검사가 아예 실행되지 않고, 큐는 타임아웃 뒤 "검사 실패"로 간주해 PR을 빼낸다 —
+  # develop 머지가 전면 정지한다. 큐를 켜기 전에 이 줄이 develop에 들어가 있어야 한다.
+  merge_group:
 
 permissions:
   contents: read # 코드 읽기만 필요 — 토큰 권한 최소화
@@ -59,13 +63,24 @@ jobs:
       # fetch-depth: 0 이면 checkout 이 이미 모든 브랜치의 원격 추적 ref를 만든다(실행 로그로
       # 확인했다). 이 단계는 그 동작에 기대지 않으려는 보조 장치이고, 이미 있으면 무동작이다.
       # `--depth=0` 을 붙이면 안 된다 — git 이 "depth 0 is not a positive number" 로 죽는다.
+      # merge_group 이벤트에는 github.base_ref 가 비어 있다 — 그쪽은
+      # github.event.merge_group.base_ref 에 `refs/heads/develop` 꼴로 들어온다.
+      # 둘을 합쳐 받고 접두를 떼어 브랜치 이름만 남긴다. 비면 그 자리에서 터뜨린다 —
+      # 조용히 origin/ 로 fetch 하면 스크립트가 base 를 못 찾아 엉뚱한 실패가 된다.
       - name: base 가져오기
         env:
-          BASE: ${{ github.base_ref }} # run 안에 식을 직접 쓰지 않는다(actionlint 주입 경고)
-        run: git fetch --no-tags origin "+refs/heads/$BASE:refs/remotes/origin/$BASE"
+          PR_BASE: ${{ github.base_ref }} # run 안에 식을 직접 쓰지 않는다(actionlint 주입 경고)
+          QUEUE_BASE: ${{ github.event.merge_group.base_ref }}
+        run: |
+          BASE="${PR_BASE:-${QUEUE_BASE#refs/heads/}}"
+          [ -n "$BASE" ] || { echo "base 브랜치를 알 수 없다 (event=${GITHUB_EVENT_NAME})" >&2; exit 1; }
+          echo "FLYWAY_BASE_REF=origin/$BASE" >> "$GITHUB_ENV"
+          git fetch --no-tags origin "+refs/heads/$BASE:refs/remotes/origin/$BASE"
 
       - name: 번호 역전·중복·적용분 수정 검사
-        run: python3 .github/scripts/flyway_order_check.py
+        env:
+          BASE_REF: ${{ env.FLYWAY_BASE_REF }}
+        run: python3 .github/scripts/flyway_order_check.py "$BASE_REF"
 
   test:
     # 러너 이미지를 고정한다. ubuntu-latest는 2026-10-19부터 Ubuntu 26으로 이행 중이라
