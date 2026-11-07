@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration
 class ElasticsearchConnectionPoolConfig {
     @Bean
     fun searchConnectionPoolCustomizer(
-        @Value("\${aechak.search.max-concurrent-requests:10}") maxConcurrentRequests: Int,
+        @Value("\${aechak.search.max-concurrent-requests:40}") maxConcurrentRequests: Int,
     ): Rest5ClientBuilderCustomizer =
         object : Rest5ClientBuilderCustomizer {
             override fun customize(builder: Rest5ClientBuilder) = Unit

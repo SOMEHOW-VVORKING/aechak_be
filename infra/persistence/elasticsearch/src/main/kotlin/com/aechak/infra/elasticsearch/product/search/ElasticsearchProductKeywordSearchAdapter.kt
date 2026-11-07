@@ -35,7 +35,7 @@ import java.util.concurrent.TimeoutException
 class ElasticsearchProductKeywordSearchAdapter(
     client: ElasticsearchClient,
     @Value("\${aechak.search.query-timeout-ms:3000}") private val queryTimeoutMs: Long,
-    @Value("\${aechak.search.max-concurrent-requests:10}") maxConcurrentRequests: Int,
+    @Value("\${aechak.search.max-concurrent-requests:40}") maxConcurrentRequests: Int,
 ) : ProductKeywordSearchPort {
     // 응답 대기 상한을 검색 요청에만 걸려고 비동기 클라이언트로 보내고 결과를 기다림
     private val client = ElasticsearchAsyncClient(client._transport())
