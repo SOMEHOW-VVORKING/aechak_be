@@ -79,7 +79,7 @@ class ConditionalMigrationCoverageTest {
     fun `백로그는 늘어나서는 안 된다`() {
         assertThat(KNOWN_UNCOVERED)
             .describedAs(
-                "백로그가 2026-11-07 기준 10건에서 늘었다. 새 조건부 마이그레이션은 테스트를 함께 써야 한다 — " +
+                "백로그가 2026-11-07 기준 8건에서 늘었다. 새 조건부 마이그레이션은 테스트를 함께 써야 한다 — " +
                     "백로그에 더하는 것으로 가드를 피하면 가드가 장식이 된다.",
             ).hasSizeLessThanOrEqualTo(BACKLOG_CEILING)
     }
@@ -149,14 +149,14 @@ class ConditionalMigrationCoverageTest {
         /**
          * 전용 테스트가 아직 없는 조건부 마이그레이션. 2026-11-07에 전수로 센 빚이다.
          *
-         * 조건이 반드시 거짓이 되는 마이그레이션은 열일곱이고 그중 일곱(V34·V58·V72·V88·V91·V103·V105)은
-         * 이미 테스트가 있다. 남은 열이 여기 있다. 하나씩 덮으며 이 목록을 줄인다.
+         * 조건이 반드시 거짓이 되는 마이그레이션은 열일곱이고 그중 아홉은 이미 테스트가 있다
+         * (V20·V22·V34·V58·V72·V88·V91·V103·V105). 남은 여덟이 여기 있다. 하나씩 덮으며 이 목록을 줄인다.
          *
          * **새 버전을 더하지 마라.** 아래 `백로그는 늘어나서는 안 된다`가 그것을 막는다.
          */
-        private val KNOWN_UNCOVERED = setOf(7, 10, 11, 12, 13, 16, 17, 18, 20, 22)
+        private val KNOWN_UNCOVERED = setOf(7, 10, 11, 12, 13, 16, 17, 18)
 
-        private const val BACKLOG_CEILING = 10
+        private const val BACKLOG_CEILING = 8
 
         /** 2026-11-07 기준 75개. 리소스 경로가 바뀌어 스캔이 비는 것을 잡는 하한이다. */
         private const val MIN_MIGRATIONS = 60
