@@ -5,51 +5,48 @@ import org.junit.jupiter.api.Test
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 
 /**
- * ddl-auto 소유 테이블을 조건으로 다는 마이그레이션에 전용 테스트가 있는지 본다.
+ * 조건이 그 시점에 반드시 거짓이 되는 마이그레이션에 전용 테스트가 있는지 본다.
  *
  * ## 왜 이 가드가 필요한가
  *
- * `products`·`users` 같은 엔티티 테이블은 Flyway 가 만들지 않는다. ddl-auto 소유다. 그런데
- * Spring Boot 는 Flyway 를 Hibernate 보다 **먼저** 돌린다(`flywayInitializer` 가
- * `entityManagerFactory` 의 의존성). 그래서 빈 DB 에서 Flyway 가 돌 때 그 테이블들이 없다.
+ * 마이그레이션이 테이블 존재를 조건으로 달 때, **그 조건이 CI에서 반드시 거짓이 되는** 경우가 있다.
+ * 두 갈래다.
  *
- * 그 테이블을 건드리는 마이그레이션은 두 갈래로 갈린다.
+ *  - **ddl-auto가 소유하는 테이블**(`users`·`products`·`cart_items` 등) — Spring Boot는 Flyway를
+ *    Hibernate보다 먼저 돌린다(`flywayInitializer`가 `entityManagerFactory`의 의존성). 그래서 빈
+ *    DB에서 Flyway가 돌 때 엔티티 테이블은 아직 없다.
+ *  - **나중 번호가 만드는 테이블** — V20이 `order_items`를 조건으로 다는데 그 테이블은 V21이 만든다.
+ *    V20이 도는 시점에는 없다.
  *
- *  - **조건부 `IF`/`PREPARE` 로 감싼 것** — 조건이 거짓이 되어 `SELECT 1` 로 떨어진다.
- *    **CI 를 통과하고 그 SQL 은 한 번도 실행되지 않는다.** dev 에서 처음 돌고 거기서 틀리면
- *    배포가 멈춘다.
- *  - **맨 DDL** — 그 자리에서 터져 CI 가 잡는다.
+ * 어느 쪽이든 조건이 거짓이 되어 `SELECT 1`로 떨어진다. **CI를 통과하고 그 SQL은 한 번도
+ * 실행되지 않는다.** dev에서 처음 돌고 거기서 틀리면 배포가 멈춘다.
  *
- * 2026-11-07 에 둘 다 났다. `V105` 가 `ALGORITHM=INSTANT` 를 들고 조용히 건너뛰어
- * **dev 배포를 막았고**(SCRUM-375), `V106` 이 `users` FK 로 CI 에서 터졌다(SCRUM-373).
- * 전자는 사람이 ECS 로그를 읽어야 알았다.
+ * 2026-11-07에 V105가 `ALGORITHM=INSTANT`를 들고 그렇게 건너뛰어 dev 배포를 막았다(SCRUM-375).
+ * 사람이 ECS 로그를 읽어야 알았다.
  *
  * ## 이 테스트가 하는 일
  *
- * 마이그레이션을 전수로 읽어 **Flyway 가 만들지 않는 테이블을 조건으로 다는 파일**을 찾고,
- * 그 버전마다 `V<번호>...MigrationIntegrationTest` 가 있는지 본다. 없으면 아래 백로그에
- * 적혀 있어야 한다.
+ * 마이그레이션을 번호 순으로 읽어 각 버전마다 "그때까지 Flyway가 만든 테이블"을 누적하고, 그 집합에
+ * 없는 테이블을 조건으로 다는 파일을 찾는다. 그 버전마다 `V<번호>...MigrationIntegrationTest`가
+ * 있는지 보고, 없으면 아래 백로그에 적혀 있어야 한다.
  *
- * **백로그는 늘어나서는 안 된다.** 새로 추가하는 조건부 마이그레이션은 테스트를 함께 써야
- * 한다. 백로그에 한 줄 더하는 것으로 이 가드를 피하지 마라 — 그러면 가드가 장식이 된다.
+ * **백로그는 늘어나서는 안 된다.** 새로 추가하는 조건부 마이그레이션은 테스트를 함께 써야 한다.
+ * 백로그에 한 줄 더하는 것으로 이 가드를 피하지 마라 — 그러면 가드가 장식이 된다.
  */
 class ConditionalMigrationCoverageTest {
     @Test
-    fun `조건부 마이그레이션은 전용 테스트가 있거나 백로그에 있어야 한다`() {
-        val conditional = conditionalOnDdlAutoOwnedTables()
-        val covered = coveredVersions()
-        val gap = conditional.keys - covered - KNOWN_UNCOVERED
+    fun `그 시점에 없는 테이블을 조건으로 다는 마이그레이션은 전용 테스트가 있거나 백로그에 있어야 한다`() {
+        val blind = conditionalOnAbsentTables()
+        val gap = blind.keys - coveredVersions() - KNOWN_UNCOVERED
 
         assertThat(gap)
             .describedAs(
-                "ddl-auto 소유 테이블을 조건으로 다는데 전용 테스트가 없다. 그 SQL 은 CI 에서 한 번도 " +
-                    "실행되지 않고 dev 에서 처음 돈다.\n" +
-                    gap.sorted().joinToString("\n") { v ->
-                        "  V$v — 조건 대상: ${conditional[v]?.sorted()?.joinToString(", ")}"
-                    } +
-                    "\n\nV105ProductAdminSaleBlockMigrationIntegrationTest 를 본떠 " +
-                    "V<번호>...MigrationIntegrationTest 를 쓰라. 그 테스트는 빈 DB 에 앞 번호까지 올리고, " +
-                    "조건 대상 테이블을 dev 형태로 만든 뒤, 그 마이그레이션 하나를 적용한다.",
+                "조건이 CI에서 반드시 거짓이 되는데 전용 테스트가 없다. 그 SQL은 한 번도 실행되지 않고 " +
+                    "dev에서 처음 돈다.\n" +
+                    gap.sorted().joinToString("\n") { "  V$it — 조건 대상: ${blind[it]?.sorted()?.joinToString(", ")}" } +
+                    "\n\nV105ProductAdminSaleBlockMigrationIntegrationTest를 본떠 " +
+                    "V<번호>...MigrationIntegrationTest를 쓰라. MigrationIntegrationTestBase를 상속하면 " +
+                    "빈 DB를 만들고 앞 번호까지 올리는 절차가 준비돼 있다.",
             ).isEmpty()
     }
 
@@ -59,7 +56,7 @@ class ConditionalMigrationCoverageTest {
 
         assertThat(ghosts)
             .describedAs(
-                "V<번호>...MigrationIntegrationTest 가 없는 번호를 가리킨다: " +
+                "V<번호>...MigrationIntegrationTest가 없는 번호를 가리킨다: " +
                     ghosts.sorted().joinToString(", ") { "V$it" } +
                     "\n번호 충돌로 마이그레이션을 다시 번호 딴 뒤 테스트 이름을 옮기지 않으면 이렇게 된다. " +
                     "그러면 이 가드가 실제 번호를 '테스트 없음'으로, 낡은 번호를 '있는 테스트'로 세어 " +
@@ -82,7 +79,7 @@ class ConditionalMigrationCoverageTest {
     fun `백로그는 늘어나서는 안 된다`() {
         assertThat(KNOWN_UNCOVERED)
             .describedAs(
-                "백로그가 2026-11-07 기준 8건에서 늘었다. 새 조건부 마이그레이션은 테스트를 함께 써야 한다 — " +
+                "백로그가 2026-11-07 기준 10건에서 늘었다. 새 조건부 마이그레이션은 테스트를 함께 써야 한다 — " +
                     "백로그에 더하는 것으로 가드를 피하면 가드가 장식이 된다.",
             ).hasSizeLessThanOrEqualTo(BACKLOG_CEILING)
     }
@@ -94,21 +91,28 @@ class ConditionalMigrationCoverageTest {
             .describedAs("마이그레이션을 %d개만 찾았다. 리소스 경로가 바뀌면 이 가드가 무력해진다", allMigrations().size)
             .hasSizeGreaterThanOrEqualTo(MIN_MIGRATIONS)
 
-        assertThat(conditionalOnDdlAutoOwnedTables())
+        assertThat(conditionalOnAbsentTables())
             .describedAs("조건부 마이그레이션을 하나도 못 찾았다. 조건 문법이 바뀌었는지 확인하라")
             .isNotEmpty()
     }
 
-    /** 버전 → 그 파일이 조건으로 다는 ddl-auto 소유 테이블 이름들. */
-    private fun conditionalOnDdlAutoOwnedTables(): Map<Int, Set<String>> {
-        val migrations = allMigrations()
-        val createdByFlyway =
-            migrations
-                .flatMap { (_, body) -> CREATE_TABLE.findAll(body).map { it.groupValues[1] } }
-                .toSet()
+    /**
+     * 버전 → 그 버전이 조건으로 다는데 그 시점에 아직 없는 테이블 이름들.
+     *
+     * "그 시점에 있다"는 **자기 번호까지**가 만든 것을 뜻한다. 같은 파일 안에서 테이블을 만들고
+     * 그 뒤에 조건을 다는 경우(V27·V29·V68)는 조건이 참이 되므로 사각이 아니다.
+     */
+    private fun conditionalOnAbsentTables(): Map<Int, Set<String>> {
+        val migrations = allMigrations().toSortedMap()
+        val createdThrough = mutableMapOf<Int, Set<String>>()
+        val seen = mutableSetOf<String>()
+        migrations.forEach { (version, body) ->
+            seen += CREATE_TABLE.findAll(body).map { it.groupValues[1] }
+            createdThrough[version] = seen.toSet()
+        }
         return migrations
-            .mapValues { (_, body) ->
-                GUARD_TABLE.findAll(body).map { it.groupValues[1] }.toSet() - createdByFlyway
+            .mapValues { (version, body) ->
+                GUARD_TABLE.findAll(body).map { it.groupValues[1] }.toSet() - createdThrough.getValue(version)
             }.filterValues { it.isNotEmpty() }
     }
 
@@ -117,44 +121,42 @@ class ConditionalMigrationCoverageTest {
         PathMatchingResourcePatternResolver()
             .getResources("classpath*:db/migration/V*.sql")
             .mapNotNull { resource ->
-                val version =
-                    VERSION
-                        .find(resource.filename.orEmpty())
-                        ?.groupValues
-                        ?.get(1)
-                        ?.toIntOrNull()
-                version?.let { it to resource.inputStream.use { stream -> stream.readBytes().decodeToString() } }
+                versionOf(resource.filename)?.let { version ->
+                    version to resource.inputStream.use { stream -> stream.readBytes().decodeToString() }
+                }
             }.toMap()
 
     /** `V<번호>...MigrationIntegrationTest` 클래스가 있는 버전들. */
     private fun coveredVersions(): Set<Int> =
         PathMatchingResourcePatternResolver()
             .getResources("classpath*:com/aechak/**/V*MigrationIntegrationTest.class")
-            .mapNotNull {
-                VERSION
-                    .find(it.filename.orEmpty())
-                    ?.groupValues
-                    ?.get(1)
-                    ?.toIntOrNull()
-            }.toSet()
+            .mapNotNull { versionOf(it.filename) }
+            .toSet()
+
+    private fun versionOf(filename: String?): Int? =
+        VERSION
+            .find(filename.orEmpty())
+            ?.groupValues
+            ?.get(1)
+            ?.toIntOrNull()
 
     companion object {
         private val VERSION = Regex("""^V(\d+)""")
-        private val CREATE_TABLE = Regex("""CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+`?([a-z_]+)`?""", RegexOption.IGNORE_CASE)
+        private val CREATE_TABLE =
+            Regex("""CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+`?([a-z_]+)`?""", RegexOption.IGNORE_CASE)
         private val GUARD_TABLE = Regex("""TABLE_NAME\s*=\s*'([a-z_]+)'""")
 
         /**
-         * 전용 테스트가 아직 없는 조건부 마이그레이션. 2026-11-07 에 전수로 센 빚이다.
+         * 전용 테스트가 아직 없는 조건부 마이그레이션. 2026-11-07에 전수로 센 빚이다.
          *
-         * 조건부 마이그레이션은 열다섯이고 그중 일곱(V34·V58·V72·V88·V91·V103·V105)은 이미 테스트가 있다.
-         * 남은 여덟이 여기 있다. 하나씩 덮으며 이 목록을 줄인다.
+         * 조건이 반드시 거짓이 되는 마이그레이션은 열일곱이고 그중 일곱(V34·V58·V72·V88·V91·V103·V105)은
+         * 이미 테스트가 있다. 남은 열이 여기 있다. 하나씩 덮으며 이 목록을 줄인다.
          *
-         * **새 버전을 더하지 마라.** 아래 `백로그는 늘어나서는 안 된다` 가 그것을 막는다.
+         * **새 버전을 더하지 마라.** 아래 `백로그는 늘어나서는 안 된다`가 그것을 막는다.
          */
-        private val KNOWN_UNCOVERED =
-            setOf(7, 11, 12, 16, 17, 18, 20, 22)
+        private val KNOWN_UNCOVERED = setOf(7, 10, 11, 12, 13, 16, 17, 18, 20, 22)
 
-        private const val BACKLOG_CEILING = 8
+        private const val BACKLOG_CEILING = 10
 
         /** 2026-11-07 기준 75개. 리소스 경로가 바뀌어 스캔이 비는 것을 잡는 하한이다. */
         private const val MIN_MIGRATIONS = 60
