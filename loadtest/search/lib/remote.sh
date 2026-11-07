@@ -23,6 +23,7 @@ do_seed() {
   case $DS in
     100k) n=100000 ;;
     1m) n=1000000 ;;
+    10m) n=10000000 ;;
     local) n=${LOCAL_N_PRODUCTS:-100000} ;;
     *) die 1 "${DS}는 시드하지 않는다(스냅샷 복원)" ;;
   esac
@@ -69,6 +70,7 @@ do_equiv() {  # STEP ENGINE REV [LABEL]
 }
 
 # 엔진을 es로 둔 api를 재색인 속성과 함께 다시 띄우고 색인 문서 수가 상품 수와 같아질 때까지 기다린다
+# 재색인은 시작 직후 실행돼 끝나야 api가 준비 상태가 되므로 준비 대기를 2시간까지 늘린다
 do_reindex() {  # REV
   # 색인 이름은 앱의 상품 검색 색인과 같다
   local rev=${1:?rev} index=products want got='' t0 i size
@@ -77,7 +79,7 @@ do_reindex() {  # REV
   # 이전 색인이 남아 있으면 문서 수가 처음부터 같아 보여서 먼저 지운다
   curl -sS -o /dev/null -X DELETE "$ES_URL/$index" || true
   t0=$(now_ms)
-  restart_api --rev "$rev" --dataset "$DS" --env AECHAK_SEARCH_ENGINE=es --env AECHAK_SEARCH_ES_REINDEX_ON_STARTUP=true \
+  restart_api --rev "$rev" --dataset "$DS" --ready-timeout 7200 --env AECHAK_SEARCH_ENGINE=es --env AECHAK_SEARCH_ES_REINDEX_ON_STARTUP=true \
     || die "$E_API" "api가 준비되지 않았다"
   for i in $(seq 1 720); do
     got=$(curl -fsS --max-time 5 "$ES_URL/$index/_count" 2>/dev/null | jq -r '.count // empty' || true)
