@@ -8,8 +8,8 @@
 |---|---|---|
 | runner | EC2 `c7g.large` arm64, gp3 30GB | k6 v2.2.0, 모니터링 compose |
 | api | EC2 `m7i.large` x86_64, gp3 20GB | api 컨테이너, redis, kafka, exporter |
-| es | EC2 `m7g.large` arm64, gp3 40GB | `es_enabled = true`일 때만 |
-| db | RDS MySQL 8.4.11 `db.m7g.large`, gp3 20GB | 데이터 크기마다 하나. `aechak-perf-100k`, `aechak-perf-1m` |
+| es | EC2 `m7g.large` arm64(1억 건은 `r7g.xlarge`), gp3 80GB | `es_enabled = true`일 때만 |
+| db | RDS MySQL 8.4.11 `db.m7g.large`, gp3 20GB(10m은 40GB, 100m은 150GB, `db_storage_gb`) | 데이터 크기마다 하나. `aechak-perf-100k`, `aechak-perf-1m`, `aechak-perf-10m`, `aechak-perf-100m` |
 | mirror | RDS `db.t4g.micro` | `mirror_snapshot_id`를 줄 때만. 스냅샷에서 복원 |
 
 - EC2는 전부 `aechak-public-a`에 퍼블릭 IP로 두고 SSM으로만 접속한다. 22번 포트는 없다. IMDSv2 필수, hop 2라서 컨테이너도 인스턴스 역할을 쓴다.
@@ -43,7 +43,7 @@ terraform apply perf.tfplan
 cd ../search && make outputs   # terraform output -json을 S3 state/outputs.json에 올린다
 ```
 
-- ES 호스트는 `-var es_enabled=true`, 저사양 ES 셀은 `-var es_instance_type=t4g.small`을 더한다.
+- ES 호스트는 `-var es_enabled=true`, 저사양 ES 셀은 `-var es_instance_type=t4g.small`, 1억 건은 `-var es_instance_type=r7g.xlarge`(메모리 32GB, ES 컨테이너는 CPU 2개)를 더한다. 이미 있는 ES 호스트의 디스크를 키우면 파일시스템은 그대로라 호스트에서 `sudo growpart /dev/nvme0n1 1 && sudo xfs_growfs -d /`를 한 번 돌린다.
 - 운영 거울층은 `-var mirror_snapshot_id=aechak-perf-100k-baseline`처럼 스냅샷을 준다. 다 쓰면 변수를 빼고 다시 apply해 지운다.
 - 전체 삭제는 `terraform destroy`다. 수동 스냅샷은 terraform이 만든 것이 아니라서 남는다.
 
@@ -53,7 +53,7 @@ cd ../search && make outputs   # terraform output -json을 S3 state/outputs.json
 
 terraform은 리소스를 만들고 지우기만 한다. 세션 단위로 켜고 끄는 일은 `loadtest/search`의 Makefile이 한다.
 
-- `make up DATASET=100k|1m|mirror`. runner, api와 그 데이터셋의 RDS를 시작하고 다른 perf RDS는 멈춘다. 준비되면 두 호스트에서 kit-pull을 돌리고 runner에서 모니터링 compose를 띄운다.
+- `make up DATASET=100k|1m|10m|100m|mirror`. runner, api와 그 데이터셋의 RDS를 시작하고 다른 perf RDS는 멈춘다. 준비되면 두 호스트에서 kit-pull을 돌리고 runner에서 모니터링 compose를 띄운다.
 - `make down`. perf EC2와 perf RDS를 전부 멈춘다.
 
 멈춘 동안에도 EBS와 RDS 스토리지 요금은 붙는다. 퍼블릭 IP는 멈추면 반납되어 요금이 없다. RDS는 멈춘 지 7일 뒤 자동으로 다시 켜진다. 아래 자동 정지가 다음 05:00에 다시 멈추지만 그 사이 요금이 붙으므로 길게 쉴 때는 스냅샷을 뜨고 인스턴스를 지운다.
@@ -62,7 +62,7 @@ terraform은 리소스를 만들고 지우기만 한다. 세션 단위로 켜고
 
 `make down`을 잊어도 밤새 켜져 있지 않도록 EventBridge Scheduler가 매일 05:00(Asia/Seoul)에 perf 스택을 멈춘다.
 
-- 측정층 RDS마다 스케줄 하나(`aechak-perf-100k-stop`, `aechak-perf-1m-stop`, 거울층이 있으면 `aechak-perf-mirror-stop`)가 `aws-sdk:rds:stopDBInstance`를 부른다.
+- 측정층 RDS마다 스케줄 하나(`aechak-perf-100k-stop`, `aechak-perf-1m-stop`, `aechak-perf-10m-stop`, `aechak-perf-100m-stop`, 거울층이 있으면 `aechak-perf-mirror-stop`)가 `aws-sdk:rds:stopDBInstance`를 부른다.
 - 스케줄 `aechak-perf-ec2-stop`이 `aws-sdk:ec2:stopInstances`로 perf EC2를 한 번에 멈춘다.
 - 전용 IAM 역할 `aechak-perf-auto-stop`은 이 RDS와 EC2의 ARN에만 정지 권한이 있다. 재시도는 0회이고 유연한 시간 창은 끈다.
 - 이미 멈춘 RDS에 보낸 호출은 실패하고 끝난다. 재시도가 없어서 다른 영향은 없다.
@@ -98,8 +98,8 @@ terraform은 리소스를 만들고 지우기만 한다. 세션 단위로 켜고
 | 측정층 시간당(RDS, api, runner, IPv4 둘) | 0.45 |
 | ES 포함 시간당(IPv4 하나 추가) | 0.56 |
 | 운영 거울층 시간당(mirror, api, runner, IPv4 둘. 크레딧 초과분 별도) | 0.24 |
-| 보관 월(RDS gp3 20GB 둘 5.24, EBS 50GB 4.56) | 9.80 |
-| ES 볼륨이 있을 때 보관 월(EBS 90GB 8.21) | 13.45 |
+| 보관 월(RDS gp3 20GB 둘과 40GB 하나 10.48, EBS 50GB 4.56) | 15.04 |
+| ES 볼륨이 있을 때 보관 월(EBS 90GB 8.21) | 18.69 |
 | 세션 50시간(ES 없이 30시간 13.50, ES 포함 20시간 11.10) | 24.60 |
 
-시리즈 두 달이면 세션 약 25달러, 운영 거울층 약 1달러, 보관 약 25달러, 로그와 S3와 스냅샷 몇 달러로 약 55달러다. CloudWatch Logs 적재는 계정 전체에 월 5GB 무료가 있고 RDS 스냅샷은 리전의 프로비저닝 스토리지 크기만큼 무료라서 실제 청구는 더 작을 수 있다.
+시리즈 두 달이면 세션 약 25달러, 운영 거울층 약 1달러, 보관 약 25달러, 로그와 S3와 스냅샷 몇 달러로 약 55달러다. CloudWatch Logs 적재는 계정 전체에 월 5GB 무료가 있고 RDS 스냅샷은 리전의 프로비저닝 스토리지 크기만큼 무료라서 실제 청구는 더 작을 수 있다. 이 추정은 1,000만 건 RDS를 더하기 전 것이고 그 RDS가 보관 월을 5.24달러 늘렸다. 1억 건 RDS(150GB)는 같은 단가로 보관 월을 약 19.65달러 더 늘린다.

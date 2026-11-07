@@ -3,11 +3,11 @@ package com.aechak.infra.elasticsearch.product.search
 import co.elastic.clients.elasticsearch.ElasticsearchAsyncClient
 import co.elastic.clients.elasticsearch.ElasticsearchClient
 import co.elastic.clients.elasticsearch._types.FieldValue
-import co.elastic.clients.elasticsearch._types.ScriptSortType
 import co.elastic.clients.elasticsearch._types.SortOptions
 import co.elastic.clients.elasticsearch._types.SortOrder
 import co.elastic.clients.elasticsearch._types.query_dsl.Query
 import co.elastic.clients.elasticsearch.core.SearchResponse
+import co.elastic.clients.elasticsearch.core.search.Hit
 import co.elastic.clients.json.JsonData
 import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.application.product.search.port.ProductKeywordSearchCondition
@@ -39,13 +39,13 @@ class ElasticsearchProductKeywordSearchAdapter(
     private val client = ElasticsearchAsyncClient(client._transport())
 
     override fun search(condition: ProductKeywordSearchCondition): List<ProductCatalogView> =
-        execute(condition, trackTotalHits = false)?.hits()?.hits()?.map { toView(it.source()!!, condition) } ?: emptyList()
+        execute(condition, trackTotalHits = false)?.hits?.map { toView(it.source()!!, condition) } ?: emptyList()
 
     override fun searchFirstPage(condition: ProductKeywordSearchCondition): ProductKeywordSearchFirstPage {
-        val response = execute(condition, trackTotalHits = true) ?: return ProductKeywordSearchFirstPage(emptyList(), 0L)
+        val result = execute(condition, trackTotalHits = true) ?: return ProductKeywordSearchFirstPage(emptyList(), 0L)
         return ProductKeywordSearchFirstPage(
-            fetched = response.hits().hits().map { toView(it.source()!!, condition) },
-            totalCount = response.hits().total()!!.value(),
+            fetched = result.hits.map { toView(it.source()!!, condition) },
+            totalCount = result.total!!,
         )
     }
 
@@ -67,32 +67,114 @@ class ElasticsearchProductKeywordSearchAdapter(
     private fun execute(
         condition: ProductKeywordSearchCondition,
         trackTotalHits: Boolean,
-    ): SearchResponse<Map<*, *>>? {
+    ): Hits? {
         if (condition.categoryIds.isEmpty()) return null
         val now = ProductSearchIndex.epochMicros(condition.now)
-        return withTimeout {
-            client.search(
-                { s ->
-                    s
-                        .index(ProductSearchIndex.NAME)
-                        .size(condition.limit)
-                        .trackTotalHits { it.enabled(trackTotalHits) }
-                        .query { q -> q.bool { it.filter(filters(condition, now)) } }
-                        .sort(sorts(condition.sort, now))
-                    searchAfter(condition)?.let { s.searchAfter(it) }
-                    s
-                },
-                Map::class.java,
-            )
+        val pages = pageRequests(condition, now)
+        val counts = if (trackTotalHits) countRequests(condition, now) else emptyList()
+        val responses = awaitAll(pages + counts)
+        val pageResponses = responses.take(pages.size)
+        val hits =
+            if (pageResponses.size == 1) {
+                pageResponses.single().hits().hits()
+            } else {
+                // 낮은 가격순 두 결과를 (가격, id 내림차순)으로 합침
+                pageResponses.flatMap { it.hits().hits() }.sortedWith(BY_PRICE_THEN_ID_DESC).take(condition.limit)
+            }
+        val countTotals = responses.drop(pages.size).map { it.totalHits() }
+        return Hits(hits, if (countTotals.isEmpty()) null else countTotals.sum())
+    }
+
+    /**
+     * 정렬마다 상위 limit개 요청. 개수는 세지 않음
+     * 낮은 가격순은 요청 시각에 할인 중인 상품은 할인가, 아닌 상품은 정가 필드로 따로 정렬해 받아 색인된 필드 정렬을 그대로 씀
+     */
+    private fun pageRequests(
+        condition: ProductKeywordSearchCondition,
+        now: Long,
+    ): List<CompletableFuture<SearchResponse<Map<*, *>>>> {
+        val idDesc = fieldSort("id", SortOrder.Desc)
+        return when (condition.sort) {
+            ProductKeywordSearchSort.POPULAR -> {
+                listOf(search(condition, filters(condition, now), listOf(fieldSort("review_count", SortOrder.Desc), idDesc)))
+            }
+
+            ProductKeywordSearchSort.PRICE_ASC -> {
+                val common = filters(condition, now, withPrice = false)
+                val onDiscountFilters = common + discountedAt(now) + priceRange(condition, "discount_price")
+                val regularFilters = common + notDiscountedAt(now) + priceRange(condition, "regular_price")
+                listOf(
+                    search(condition, onDiscountFilters, listOf(fieldSort("discount_price", SortOrder.Asc), idDesc)),
+                    search(condition, regularFilters, listOf(fieldSort("regular_price", SortOrder.Asc), idDesc)),
+                )
+            }
+
+            ProductKeywordSearchSort.LATEST -> {
+                listOf(search(condition, filters(condition, now), listOf(idDesc)))
+            }
         }
     }
+
+    /**
+     * 첫 페이지 총개수를 세는 크기 0 요청들
+     * 가격 필터가 없으면 요청 시각과 무관한 요청 하나라 색인이 바뀔 때까지 ES 요청 캐시가 같은 개수를 재사용함
+     * 가격 필터가 있으면 할인 중인 상품(할인가가 범위 안)과 아닌 상품(정가가 범위 안)을 따로 세어 더함
+     */
+    private fun countRequests(
+        condition: ProductKeywordSearchCondition,
+        now: Long,
+    ): List<CompletableFuture<SearchResponse<Map<*, *>>>> {
+        if (condition.filter.minPrice == null && condition.filter.maxPrice == null) {
+            return listOf(countRequest(filters(condition, now)))
+        }
+        val common = filters(condition, now, withPrice = false)
+        return listOf(
+            countRequest(common + discountedAt(now) + priceRange(condition, "discount_price")),
+            countRequest(common + notDiscountedAt(now) + priceRange(condition, "regular_price")),
+        )
+    }
+
+    private fun search(
+        condition: ProductKeywordSearchCondition,
+        filters: List<Query>,
+        sorts: List<SortOptions>,
+    ): CompletableFuture<SearchResponse<Map<*, *>>> =
+        client.search(
+            { s ->
+                s
+                    .index(ProductSearchIndex.NAME)
+                    .size(condition.limit)
+                    .trackTotalHits { it.enabled(false) }
+                    .query { q -> q.bool { it.filter(filters) } }
+                    .sort(sorts)
+                searchAfter(condition)?.let { s.searchAfter(it) }
+                s
+            },
+            Map::class.java,
+        )
+
+    /** 일치 문서 수만 세는 크기 0 요청. 색인이 바뀌지 않는 동안 같은 요청은 ES 요청 캐시에서 답함 */
+    private fun countRequest(filters: List<Query>): CompletableFuture<SearchResponse<Map<*, *>>> =
+        client.search(
+            { s ->
+                s
+                    .index(ProductSearchIndex.NAME)
+                    .size(0)
+                    .trackTotalHits { it.enabled(true) }
+                    .requestCache(true)
+                    .query { q -> q.bool { it.filter(filters) } }
+            },
+            Map::class.java,
+        )
 
     private fun filters(
         condition: ProductKeywordSearchCondition,
         now: Long,
+        withPrice: Boolean = true,
     ): List<Query> {
         val filter = condition.filter
         val saleStatuses = if (filter.excludeSoldOut) setOf(SaleStatus.ON_SALE) else SaleStatus.EXPOSABLE
+        val hasPrice = filter.minPrice != null || filter.maxPrice != null
         return listOfNotNull(
             nameContains(filter.keyword),
             term("inspection_status", FieldValue.of(InspectionStatus.APPROVED.name)),
@@ -101,9 +183,24 @@ class ElasticsearchProductKeywordSearchAdapter(
             term("seller_status", FieldValue.of(SellerStatus.ACTIVE.name)),
             if (filter.freeShipping) term("seller_base_shipping_fee", FieldValue.of(0L)) else null,
             filter.minRating?.let { range("average_rating", gte = JsonData.of(it)) },
-            if (filter.minPrice != null || filter.maxPrice != null) effectivePriceBetween(filter.minPrice, filter.maxPrice, now) else null,
+            if (withPrice && hasPrice) effectivePriceBetween(filter.minPrice, filter.maxPrice, now) else null,
         )
     }
+
+    /** 가격 필터가 있으면 그 범위를 field에 거는 조건 하나, 없으면 빈 목록 */
+    private fun priceRange(
+        condition: ProductKeywordSearchCondition,
+        field: String,
+    ): List<Query> {
+        val (min, max) = condition.filter.minPrice to condition.filter.maxPrice
+        if (min == null && max == null) return emptyList()
+        return listOf(range(field, gte = min?.let(JsonData::of), lte = max?.let(JsonData::of)))
+    }
+
+    private fun fieldSort(
+        field: String,
+        order: SortOrder,
+    ): SortOptions = SortOptions.of { s -> s.field { it.field(field).order(order) } }
 
     private fun nameContains(keyword: String): Query =
         if (keyword.codePointCount(0, keyword.length) >= 2) {
@@ -118,12 +215,11 @@ class ElasticsearchProductKeywordSearchAdapter(
         max: Long?,
         now: Long,
     ): Query {
-        val discounted = discountedAt(now)
         val inRange = { field: String -> range(field, gte = min?.let(JsonData::of), lte = max?.let(JsonData::of)) }
         return bool {
             it
-                .should(bool { b -> b.filter(discounted, inRange("discount_price")) })
-                .should(bool { b -> b.filter(inRange("regular_price")).mustNot(discounted) })
+                .should(bool { b -> b.filter(discountedAt(now), inRange("discount_price")) })
+                .should(bool { b -> b.filter(notDiscountedAt(now), inRange("regular_price")) })
                 .minimumShouldMatch("1")
         }
     }
@@ -137,44 +233,21 @@ class ElasticsearchProductKeywordSearchAdapter(
             )
         }
 
+    /** 요청 시각에 할인 중이 아닌 상품. 할인가가 없거나, 시작이 요청 시각 뒤거나, 끝이 요청 시각 앞인 상품 */
+    private fun notDiscountedAt(now: Long): Query =
+        bool {
+            it
+                .should(
+                    bool { b -> b.mustNot(exists("discount_price")) },
+                    range("discount_start_at", gte = JsonData.of(now + 1)),
+                    range("discount_end_at", lte = JsonData.of(now - 1)),
+                ).minimumShouldMatch("1")
+        }
+
     private fun missingOr(
         field: String,
         query: Query,
     ): Query = bool { it.should(bool { b -> b.mustNot(exists(field)) }, query).minimumShouldMatch("1") }
-
-    private fun sorts(
-        sort: ProductKeywordSearchSort,
-        now: Long,
-    ): List<SortOptions> {
-        val idDesc = SortOptions.of { s -> s.field { it.field("id").order(SortOrder.Desc) } }
-        return when (sort) {
-            ProductKeywordSearchSort.POPULAR -> {
-                listOf(SortOptions.of { s -> s.field { it.field("review_count").order(SortOrder.Desc) } }, idDesc)
-            }
-
-            ProductKeywordSearchSort.PRICE_ASC -> {
-                val effectivePrice =
-                    SortOptions.of { s ->
-                        s.script {
-                            it
-                                .type(ScriptSortType.Number)
-                                .order(SortOrder.Asc)
-                                .script { script ->
-                                    script
-                                        .source { src ->
-                                            src.scriptString(EFFECTIVE_PRICE_SCRIPT)
-                                        }.params("now", JsonData.of(now))
-                                }
-                        }
-                    }
-                listOf(effectivePrice, idDesc)
-            }
-
-            ProductKeywordSearchSort.LATEST -> {
-                listOf(idDesc)
-            }
-        }
-    }
 
     /** 커서 앵커를 정렬 키 순서의 search_after 값으로 바꿈. 첫 페이지면 null */
     private fun searchAfter(condition: ProductKeywordSearchCondition): List<FieldValue>? {
@@ -226,20 +299,29 @@ class ElasticsearchProductKeywordSearchAdapter(
         )
     }
 
-    /** queryTimeoutMs 안에 응답이 없으면 요청을 취소하고 QueryTimeoutException을 던짐 */
-    private fun <T> withTimeout(request: () -> CompletableFuture<T>): T {
-        val future = request()
-        return try {
-            future.get(queryTimeoutMs, TimeUnit.MILLISECONDS)
+    private fun <T> withTimeout(request: () -> CompletableFuture<T>): T = awaitAll(listOf(request())).single()
+
+    /** queryTimeoutMs 안에 모든 응답이 오지 않으면 요청을 모두 취소하고 QueryTimeoutException을 던짐 */
+    private fun <T> awaitAll(futures: List<CompletableFuture<T>>): List<T> {
+        try {
+            CompletableFuture.allOf(*futures.toTypedArray()).get(queryTimeoutMs, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
-            future.cancel(true)
+            futures.forEach { it.cancel(true) }
             throw QueryTimeoutException("검색 엔진 응답 시간 초과", e)
         } catch (e: ExecutionException) {
             throw e.cause ?: e
         }
+        return futures.map { it.join() }
     }
 
+    private class Hits(
+        val hits: List<Hit<Map<*, *>>>,
+        val total: Long?,
+    )
+
     private fun Map<*, *>.long(key: String): Long? = (this[key] as Number?)?.toLong()
+
+    private fun SearchResponse<*>.totalHits(): Long = hits().total()!!.value()
 
     private fun bool(build: (co.elastic.clients.elasticsearch._types.query_dsl.BoolQuery.Builder) -> Any): Query =
         Query.of { q ->
@@ -268,14 +350,7 @@ class ElasticsearchProductKeywordSearchAdapter(
     ): Query = Query.of { q -> q.range { r -> r.untyped { it.field(field).gte(gte).lte(lte) } } }
 
     companion object {
-        private val EFFECTIVE_PRICE_SCRIPT =
-            """
-            if (doc['discount_price'].size() != 0
-                && (doc['discount_start_at'].size() == 0 || doc['discount_start_at'].value <= params.now)
-                && (doc['discount_end_at'].size() == 0 || doc['discount_end_at'].value >= params.now)) {
-              return doc['discount_price'].value;
-            }
-            return doc['regular_price'].value;
-            """.trimIndent()
+        private val BY_PRICE_THEN_ID_DESC =
+            compareBy<Hit<Map<*, *>>> { it.sort()[0].longValue() }.thenByDescending { it.sort()[1].longValue() }
     }
 }

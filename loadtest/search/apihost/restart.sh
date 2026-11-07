@@ -6,19 +6,22 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 --rev REV --dataset 100k|1m|mirror|local [--first-boot] [--env KEY=VALUE]..." >&2
+  echo "usage: $0 --rev REV --dataset 100k|1m|10m|100m|mirror|local [--first-boot] [--ready-timeout SEC] [--env KEY=VALUE]..." >&2
   exit 2
 }
 
 REV=""
 DATASET=""
 FIRST_BOOT=0
+# 시작 직후 재색인처럼 준비 상태가 늦게 오는 실행은 --ready-timeout으로 늘린다
+READY_TIMEOUT=240
 EXTRA_ENV=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --rev) [ $# -ge 2 ] || usage; REV=$2; shift 2 ;;
     --dataset) [ $# -ge 2 ] || usage; DATASET=$2; shift 2 ;;
     --first-boot) FIRST_BOOT=1; shift ;;
+    --ready-timeout) [ $# -ge 2 ] || usage; READY_TIMEOUT=$2; shift 2 ;;
     --env)
       [ $# -ge 2 ] || usage
       case "$2" in [A-Za-z_]*=*) EXTRA_ENV+=("$2") ;; *) usage ;; esac
@@ -66,7 +69,7 @@ if [ "$MODE" = aws ]; then
   done
   case "$DATASET" in
     mirror) DB_HOST=$(jq -er '.mirror.value.address' "$OUTPUTS"); DB_PORT=$(jq -er '.mirror.value.port' "$OUTPUTS") ;;
-    100k | 1m)
+    100k | 1m | 10m | 100m)
       DB_HOST=$(jq -er --arg d "$DATASET" '.rds.value[$d].address' "$OUTPUTS")
       DB_PORT=$(jq -er --arg d "$DATASET" '.rds.value[$d].port' "$OUTPUTS") ;;
     *) usage ;;
@@ -153,7 +156,7 @@ fail() {
 STARTED_MS=$(now_ms)
 "${COMPOSE[@]}" up -d --force-recreate --no-deps api
 CID=$("${COMPOSE[@]}" ps -q api)
-DEADLINE=$(($(date +%s) + 240))
+DEADLINE=$(($(date +%s) + READY_TIMEOUT))
 until curl -fsS --max-time 3 "$HEALTH_URL" 2>/dev/null | grep -q '"status":"UP"'; do
   [ "$(docker inspect -f '{{.State.Running}}' "$CID" 2>/dev/null)" = true ] || fail exited
   [ "$(date +%s)" -lt "$DEADLINE" ] || fail timeout

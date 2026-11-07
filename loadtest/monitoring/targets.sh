@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 모니터링 compose가 읽을 수집 대상, mysqld_exporter 접속 정보, Grafana 관리자 비밀번호를 상태 디렉터리에 쓴다.
-#   targets.sh --aws /opt/perf/state/outputs.json --dataset 100k|1m|mirror   (러너, 상태 디렉터리 /opt/perf/state)
+#   targets.sh --aws /opt/perf/state/outputs.json --dataset 100k|1m|10m|100m|mirror   (러너, 상태 디렉터리 /opt/perf/state)
 #   targets.sh --local                                                     (노트북, 상태 디렉터리 loadtest/monitoring/.local)
 # compose를 띄우기 전에 실행한다. 대상 파일은 Prometheus가 스스로 다시 읽으므로 데이터셋만 바꿀 때는
 # 이 스크립트 뒤에 mysqld-exporter만 다시 만들면 된다(docker compose ... up -d --force-recreate mysqld-exporter).
@@ -12,7 +12,7 @@ OUTPUTS=""
 DATASET=""
 
 usage() {
-  echo "usage: $0 --aws <outputs.json> --dataset 100k|1m|mirror | --local" >&2
+  echo "usage: $0 --aws <outputs.json> --dataset 100k|1m|10m|100m|mirror | --local" >&2
   exit 2
 }
 
@@ -75,7 +75,7 @@ write_renderer_token() {
 
 if [ "$MODE" = aws ]; then
   [ -f "$OUTPUTS" ] || { echo "ERROR: outputs file not found: $OUTPUTS" >&2; exit 1; }
-  case "$DATASET" in 100k|1m|mirror) ;; *) usage ;; esac
+  case "$DATASET" in 100k|1m|10m|100m|mirror) ;; *) usage ;; esac
   STATE=${PERF_STATE_DIR:-/opt/perf/state}
 
   REGION=$(jq -r '.region.value' "$OUTPUTS")

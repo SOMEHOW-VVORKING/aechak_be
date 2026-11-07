@@ -7,7 +7,7 @@ set -euo pipefail
 . "$(cd "$(dirname "$0")" && pwd)/lib/common.sh"
 
 usage() {
-  echo 'usage: run.sh --step SEARCH-Txx --dataset 100k|1m|mirror|local --variant NAME --rev REV [--ddl "ids"] [--env "K=V ..."] [--cells "..."] [--base-rate R [--base-source before|manual]] [--force] [--local] [--quick]' >&2
+  echo 'usage: run.sh --step SEARCH-Txx --dataset 100k|1m|10m|100m|mirror|local --variant NAME --rev REV [--ddl "ids"] [--env "K=V ..."] [--cells "..."] [--base-rate R [--base-source before|manual]] [--force] [--local] [--quick]' >&2
   exit 1
 }
 
@@ -34,7 +34,7 @@ if [ "$LOCAL" = 1 ] && [ -z "$DATASET" ]; then DATASET=local; fi
 case $STEP in SEARCH-T[0-9][0-9]) ;; *) usage ;; esac
 case $VARIANT in ''|*[!a-z0-9-]*) usage ;; esac
 case $REV in ''|*[!0-9a-z-]*) usage ;; esac
-case "$LOCAL/$DATASET" in 1/local|0/100k|0/1m|0/mirror) ;; *) usage ;; esac
+case "$LOCAL/$DATASET" in 1/local|0/100k|0/1m|0/10m|0/100m|0/mirror) ;; *) usage ;; esac
 if [ "$QUICK" = 1 ] && [ "$LOCAL" != 1 ]; then die 1 "--quick은 --local에서만 쓴다"; fi
 for c in $CELLS; do case " $ALL_CELLS " in *" $c "*) ;; *) die 1 "알 수 없는 셀: $c" ;; esac; done
 for d in $DDL; do case $d in *[!A-Za-z0-9_-]*) die 1 "DDL id 형식 오류: $d" ;; esac; done
@@ -47,10 +47,10 @@ if [ "$QUICK" = 1 ]; then
 else
   RAMP_RATES=${RAMP_RATES:-2 4 8 16 32 64 128 256} RAMP_DUR=45s STEADY_DUR=180s SPIKE_S=30 PROBE_S=90 WARM_DUR=60s SMOKE_DUR=
   IDLE_HOLD=10 IDLE_SETTLE=20 RAMP_FLOOR_RATES=${RAMP_FLOOR_RATES:-1 0.5 0.25}
-  case $DATASET in 1m|mirror) SEQ_REPS=3 SEQ_KW=class ;; *) SEQ_REPS=20 SEQ_KW=all ;; esac
+  case $DATASET in 1m|10m|100m|mirror) SEQ_REPS=3 SEQ_KW=class ;; *) SEQ_REPS=20 SEQ_KW=all ;; esac
 fi
 # 100만 건은 기준선 첫 페이지 하나가 유휴 상태에서도 10초에 가까워 30초를 쓴다(2026-10-15 기준과 같음)
-case $DATASET in 1m) REQ_TIMEOUT_S=30 ;; *) REQ_TIMEOUT_S=10 ;; esac
+case $DATASET in 1m|10m|100m) REQ_TIMEOUT_S=30 ;; *) REQ_TIMEOUT_S=10 ;; esac
 WARMUP_RATE=${WARMUP_RATE:-2}
 IDLE_RDS_CPU_MAX=${IDLE_RDS_CPU_MAX:-5}
 MAX_STABLE='' CAPACITY=''
@@ -145,7 +145,8 @@ if is_dry; then
 else
   [ -s "$MF" ] || die "$E_MANIFEST" "manifest 없음: $MF (make init 또는 make manifest 먼저)"
   want=$(jq -r '(.rows | to_entries[] | "rows.\(.key)\t\(.value)"), (.crc | to_entries[] | "crc.\(.key)\t\(.value)")' "$MF" | LC_ALL=C sort)
-  have=$(sql < "$KIT/sql/manifest.sql" | grep -E '^(rows|crc)\.' | LC_ALL=C sort || true)
+  # 비교하는 행 수와 체크섬은 첫 문장에 있어서 검색어별 개수를 세는 뒤 문장은 돌리지 않는다
+  have=$(sed '/^WITH v AS/,$d' "$KIT/sql/manifest.sql" | sql | grep -E '^(rows|crc)\.' | LC_ALL=C sort || true)
   if [ "$want" != "$have" ]; then
     diff <(printf '%s\n' "$want") <(printf '%s\n' "$have") >&2 || true
     die "$E_MANIFEST" "행 수나 체크섬이 manifest와 다르다. make reseed DATASET=$DATASET"
