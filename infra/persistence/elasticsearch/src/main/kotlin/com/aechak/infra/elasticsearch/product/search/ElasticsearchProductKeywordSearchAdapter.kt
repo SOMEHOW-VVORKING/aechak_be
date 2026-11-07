@@ -38,6 +38,8 @@ class ElasticsearchProductKeywordSearchAdapter(
     // 응답 대기 상한을 검색 요청에만 걸려고 비동기 클라이언트로 보내고 결과를 기다림
     private val client = ElasticsearchAsyncClient(client._transport())
 
+    override val readsDatabase = false
+
     override fun search(condition: ProductKeywordSearchCondition): List<ProductCatalogView> =
         execute(condition, trackTotalHits = false)?.hits?.map { toView(it.source()!!, condition) } ?: emptyList()
 

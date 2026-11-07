@@ -5,6 +5,8 @@
 set -euo pipefail
 # shellcheck source=lib/common.sh
 . "$(cd "$(dirname "$0")" && pwd)/lib/common.sh"
+# shellcheck source=lib/perturb.sh
+. "$KIT/lib/perturb.sh"
 
 usage() {
   echo 'usage: run.sh --step SEARCH-Txx --dataset 100k|1m|10m|100m|mirror|local --variant NAME --rev REV [--ddl "ids"] [--env "K=V ..."] [--cells "..."] [--base-rate R [--base-source before|manual]] [--force] [--local] [--quick]' >&2
@@ -40,6 +42,10 @@ for c in $CELLS; do case " $ALL_CELLS " in *" $c "*) ;; *) die 1 "알 수 없는
 for d in $DDL; do case $d in *[!A-Za-z0-9_-]*) die 1 "DDL id 형식 오류: $d" ;; esac; done
 case $BASE_ARG in '') ;; *[!0-9.]*|.|*.*.*) usage ;; esac
 case $BASE_SRC in before|manual) ;; *) usage ;; esac
+# 대조 요청(CONTROL_RATE)과 검색어 구성(KEYWORD_SET)은 search.js 선택지다. 비어 있으면 기존 셀과 같다
+CONTROL_RATE=${CONTROL_RATE:-} KEYWORD_SET=${KEYWORD_SET:-}
+case $CONTROL_RATE in ''|0) CONTROL_RATE='' ;; .|*[!0-9.]*|*.*.*) die 1 "CONTROL_RATE는 양수" ;; esac
+case $KEYWORD_SET in ''|fixed|diverse) ;; *) die 1 "KEYWORD_SET은 fixed 또는 diverse" ;; esac
 
 if [ "$QUICK" = 1 ]; then
   RAMP_RATES="2 4 8" RAMP_DUR=10s STEADY_DUR=30s SPIKE_S=10 PROBE_S=20 WARM_DUR=10s SMOKE_DUR=10s
@@ -79,6 +85,8 @@ ENV_search_env=$(echo $ENVS | tr ' ' ',')
 ENV_applied_ddl=$(echo $DDL | tr ' ' ',')
 if [ -z "$ENV_applied_ddl" ]; then ENV_applied_ddl=none; fi
 if [ -n "$BASE_ARG" ]; then ENV_base_rate=$BASE_ARG ENV_base_rate_source=$BASE_SRC; fi
+ENV_keyword_set=${KEYWORD_SET:-fixed}
+perturb_init
 # 러너에 GNU time이 있으면 k6 최대 RSS를 잰다
 TIME_RSS=0
 if [ "$LOCAL" = 0 ] && /usr/bin/time -f %M -o /dev/null true 2>/dev/null; then TIME_RSS=1; fi
@@ -274,6 +282,8 @@ new_run() {  # $1 cell $2 rep: run id를 정하고 run마다 달라지는 ENV_ �
   ENV_run_id=$RID ENV_cell=$1 ENV_rep=$2 ENV_req_rate='' ENV_scenario='' ENV_max_vus='' ENV_dropped_iterations=''
   ENV_k6_exit='' ENV_k6_max_rss_kb='' ENV_skip_reason='' ENV_start_ms='' ENV_end_ms=''
   ENV_bp_reads_delta='' ENV_bp_read_requests_delta='' ENV_bp_disk_read_flag='' ENV_probe_rate='' ENV_trace_offset=''
+  ENV_control_rate='' ENV_perturb='' ENV_perturb_params='' ENV_perturb_start_ms='' ENV_perturb_end_ms='' ENV_perturb_result=''
+  ENV_es_rc_hits='' ENV_es_rc_misses='' ENV_es_rc_evictions='' ENV_es_rc_mem_bytes='' ENV_es_refreshes='' ENV_es_ext_refreshes=''
 }
 
 begin_run() {  # $1 cell $2 rep
@@ -284,12 +294,15 @@ begin_run() {  # $1 cell $2 rep
   BP0=$(bp_counters)
   SLOW0=0
   if [ "$LOCAL" = 1 ]; then SLOW0=$(local_slow_size); fi
+  ES0=''
+  if [ -n "$ES_URL" ] && ! is_dry; then ES0=$(es_stats || true); fi
   ENV_start_ms=$(now_ms)
 }
 
 # end_run <full|small|none>: CloudWatch와 slow log는 임시로 받고 캡처는 변형 끝에서 한꺼번에 찍는다
 end_run() {
   ENV_end_ms=$(now_ms)
+  if [ -n "$ES0" ]; then es_record "$ES0" "$RAW/$RID.es.json"; fi
   local bp1; bp1=$(bp_counters)
   set -- "$1" $BP0 $bp1
   if [ $# = 5 ]; then
@@ -332,6 +345,9 @@ k6_run() {
      "$K6_BIN" run --quiet --tag "testid=$RID" -o "$K6_PROM_OUT"
      -e "BASE_URL=$BASE_URL" -e "RUN_ID=$RID" -e "SUMMARY_FILE=$pre.json" -e "TEXT_SUMMARY_FILE=$pre.k6.txt"
      -e "REQUEST_TIMEOUT=${REQ_TIMEOUT_S}s")
+  if [ -n "$KEYWORD_SET" ]; then c+=(-e "KEYWORD_SET=$KEYWORD_SET"); fi
+  # 대조 요청은 steady와 spike에만 더한다
+  case ${CONTROL_RATE:+on}/$ENV_cell in on/steady|on/spike) c+=(-e "CONTROL_RATE=$CONTROL_RATE"); ENV_control_rate=$CONTROL_RATE ;; esac
   if [ "$TIME_RSS" = 1 ]; then c=(/usr/bin/time -f %M -o "$pre.rss" "${c[@]}"); fi
   for a in "$@"; do
     case $a in
@@ -352,11 +368,12 @@ summary_dropped() {
 
 # measure <cell> <rep> <full|small|none 캡처> [k6 인자...]: 측정 run 하나
 measure() {
-  local cell=$1 rep=$2 cap=$3 a
+  local cell=$1 rep=$2 cap=$3 a dur=''
   shift 3
   begin_run "$cell" "$rep"
   for a in "$@"; do
     case $a in
+      DURATION=*) dur=${a#*=} ;;
       SCENARIO=*) ENV_scenario=${a#*=} ;;
       REQ_RATE=*) ENV_req_rate=${a#*=} ;;
       MAX_VUS=*) ENV_max_vus=${a#*=} ;;
@@ -364,7 +381,9 @@ measure() {
       TRACE_OFFSET=*) ENV_trace_offset=${a#*=} ;;
     esac
   done
+  perturb_start "$cell" "$dur"
   k6_run "$RAW/$RID" "$@"
+  perturb_stop
   ENV_k6_exit=$K6_EXIT ENV_k6_max_rss_kb=$K6_RSS
   ENV_dropped_iterations=$(summary_dropped "$RAW/$RID.json")
   end_run "$cap"
@@ -508,6 +527,7 @@ on_exit() {
   local rc=$? frc
   trap - EXIT
   set +e
+  if [ "$rc" != 0 ]; then perturb_clear; fi
   if [ -n "$RUN_IDS" ]; then
     (set -e; finish_variant)
     frc=$?
@@ -541,7 +561,11 @@ for c in $ALL_CELLS; do
       r=$(mul "$BASE" 0.7)
       # 반복마다 다른 고정 순서를 써서 세 run의 폭에 요청 구성의 차이도 들게 한다. before와 after는 같은 반복끼리 순서가 같다
       for rep in 1 2 3; do
-        measure steady "$rep" full SCENARIO=rate "REQ_RATE=$r" "DURATION=$STEADY_DUR" "MAX_VUS=$(max_vus "$r")" "TRACE_OFFSET=$(( (rep - 1) * 100000 ))"
+        # 교란을 건 run은 교란 구간 안팎을 나눠 보도록 요청마다 남긴다
+        pts=()
+        if [ -n "$PERTURB" ]; then pts=("--out=csv=$RAW/$(rid_of steady "$rep").points.csv.gz"); fi
+        measure steady "$rep" full SCENARIO=rate "REQ_RATE=$r" "DURATION=$STEADY_DUR" "MAX_VUS=$(max_vus "$r")" "TRACE_OFFSET=$(( (rep - 1) * 100000 ))" \
+          ${pts[@]+"${pts[@]}"}
       done ;;
     spike)
       if ! base_rate; then skip_cell spike "$SKIP_WHY"; continue; fi

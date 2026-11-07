@@ -324,7 +324,8 @@ cmd_variant() {
   mkdir -p "$PERF_DIR/logs"
   log_file=$PERF_DIR/logs/$STEP-$DATASET-$VARIANT-$(date +%Y%m%d-%H%M%S).log
   # SSM은 노트북 환경변수를 넘기지 않아 조절값을 명령줄에 붙인다
-  for k in MAX_VUS_CAP IDLE_RDS_CPU_MAX RAMP_FLOOR_RATES RAMP_RATES WARMUP_RATE; do
+  for k in MAX_VUS_CAP IDLE_RDS_CPU_MAX RAMP_FLOOR_RATES RAMP_RATES WARMUP_RATE \
+    PERTURB PERTURB_RATE PERTURB_DELAY_MS PERTURB_AT_S PERTURB_FOR_S CONTROL_RATE KEYWORD_SET; do
     if [ -n "${!k:-}" ]; then pre="$pre$k=$(q "${!k}") "; fi
   done
   prog=s3://$BUCKET/progress/$(TZ=Asia/Seoul date +%F)-$STEP-$DATASET-$VARIANT.log
