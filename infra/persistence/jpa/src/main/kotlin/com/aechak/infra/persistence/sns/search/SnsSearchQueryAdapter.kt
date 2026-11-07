@@ -6,6 +6,7 @@ import com.aechak.application.sns.port.view.SnsFeedEntryView
 import com.aechak.application.sns.port.view.SnsSearchHashtagView
 import com.aechak.application.sns.port.view.SnsSearchUserView
 import com.aechak.domain.sns.post.enums.PostStatus
+import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.infra.persistence.sns.feed.time
 import com.aechak.infra.persistence.sns.feed.visibleUserSql
 import com.aechak.infra.persistence.sns.list.nicknameContainsPattern
@@ -153,7 +154,7 @@ class SnsSearchQueryAdapter(
                 FROM user_profiles up
                 JOIN users u ON u.id = up.user_id
                 LEFT JOIN sns_user_stats st ON st.user_id = u.id
-                WHERE up.nickname LIKE :contains ESCAPE '\\'
+                WHERE up.nickname LIKE :contains ESCAPE '\\' AND u.status <> '${UserStatus.BANNED.name}'
             ) x
             WHERE 1 = 1
             """ +
