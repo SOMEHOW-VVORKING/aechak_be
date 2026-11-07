@@ -6,8 +6,8 @@ import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.inspection.service.InspectionAppealService
 import com.aechak.application.inspection.service.InspectionQueryService
 import com.aechak.application.inspection.service.InspectionRequestService
-import com.aechak.application.inspection.service.InspectionSnapshot
 import com.aechak.application.inspection.usecase.command.RequestProductInspectionCommand
+import com.aechak.application.inspection.usecase.result.InspectionStageResult
 import com.aechak.application.inspection.usecase.result.InspectionViolationResult
 import com.aechak.application.product.like.service.ProductLikeStatusService
 import com.aechak.application.product.product.port.view.ProductCatalogView
@@ -285,21 +285,19 @@ class ProductFacade(
                 inspectionQueryService.findBlockingProductInspection(product.id, it.blindedAt)
             }
         val blame = blocking ?: snapshot
+        // 위반과 단계를 한 번의 읽기에서 같이 받는다 -- 둘을 나눠 부르면 같은 SELECT 가 두 번 돈다
+        val detail = blame?.let(inspectionQueryService::findDetail)
         return SellerProductInspectionResult.of(
             product = product,
             snapshot = snapshot,
             openReview = openReview,
             blame = blame,
             adminRejectReason = inspectionQueryService.findAdminRejectReason(product.id),
-            violations = violationsOf(blame),
+            violations = detail?.violations?.map(InspectionViolationResult::from).orEmpty(),
+            // 검수를 한 번도 타지 않은 상품도 세 줄을 받는다 -- 길이가 갈리면 화면이 단계 수를 세야 한다
+            stages = detail?.stages ?: InspectionStageResult.fold(emptyList(), processingState = null),
         )
     }
-
-    private fun violationsOf(blame: InspectionSnapshot?): List<InspectionViolationResult> =
-        blame
-            ?.let { inspectionQueryService.findViolations(it.inspectionId) }
-            ?.map(InspectionViolationResult::from)
-            .orEmpty()
 
     /** 셀러가 아니면 seller BC가 10004로 거른다 — 여기 코드는 등록된 셀러의 상태 정책만 가린다 */
     private fun requireActiveSeller(sellerId: Long) {

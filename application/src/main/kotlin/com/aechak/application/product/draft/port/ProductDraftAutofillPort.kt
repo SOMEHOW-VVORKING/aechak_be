@@ -1,5 +1,7 @@
 package com.aechak.application.product.draft.port
 
+import com.aechak.application.product.draft.usecase.command.ProductDraftAutofillMode
+
 /**
  * 셀러 폼 초안 생성 포트. 구현은 infra/client/ai-client 다.
  *
@@ -11,16 +13,19 @@ interface ProductDraftAutofillPort {
 }
 
 /**
- * 셀러센터 -> AI. 이미지와 셀러 식별자는 싣지 않는다 — AI 가 둘 다 읽지 않는다.
- * requestId 는 우리가 만들어 로그 상관 키로 쓴다.
+ * 셀러센터 -> AI. 이미지와 셀러 식별자는 싣지 않는다 — 초안이 채우는 값이 아니고 보내면
+ * 주입 표면만 넓어진다. requestId 는 우리가 만들어 로그 상관 키로 쓴다.
+ *
+ * [mode] 는 AI 가 읽는다. FILL 은 빈 칸만, REFINE 은 [lockedFields] 원문까지 다시 쓴다.
  */
 data class ProductDraftAutofillRequest(
     val requestId: String,
     val productName: String,
     val categoryId: Long?,
     val lockedFields: LockedFields?,
+    val mode: ProductDraftAutofillMode,
 ) {
-    /** 재생성에서 셀러가 고쳐 지켜야 하는 값. 필드 이름은 AI 것을 그대로 쓴다. */
+    /** 셀러가 고쳐 둔 값. FILL 에서는 지켜야 하는 값이고 REFINE 에서는 다시 쓸 입력이다. */
     data class LockedFields(
         val description: String?,
         val optionGroups: List<OptionGroup>?,

@@ -49,13 +49,20 @@ class ProductDraftAutofillFacade(
         }
 
         val requestId = UUID.randomUUID().toString()
-        log.info("AI 초안 요청. requestId={}, sellerId={}, categoryId={}", requestId, command.sellerId, command.categoryId)
+        log.info(
+            "AI 초안 요청. requestId={}, sellerId={}, categoryId={}, mode={}",
+            requestId,
+            command.sellerId,
+            command.categoryId,
+            command.mode,
+        )
         return port.generate(
             ProductDraftAutofillRequest(
                 requestId = requestId,
                 productName = command.productName,
                 categoryId = command.categoryId,
                 lockedFields = toLockedFields(command),
+                mode = command.mode,
             ),
         )
     }
