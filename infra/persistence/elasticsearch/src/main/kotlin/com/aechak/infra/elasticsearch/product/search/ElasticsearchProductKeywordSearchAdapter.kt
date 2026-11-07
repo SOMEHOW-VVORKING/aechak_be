@@ -316,7 +316,7 @@ class ElasticsearchProductKeywordSearchAdapter(
 
     /**
      * 요청 수만큼 동시 요청 자리를 한 번에 잡고 보냄. 자리가 모자라면 ES 연결을 기다리지 않고 QueryTimeoutException을 던짐
-     * 자리는 응답이 오거나 요청이 취소되면 돌려줌
+     * 자리는 요청이 끝나면(응답, 실패, 소켓 제한 시간) 돌려줌
      */
     private fun <T> send(requests: List<() -> CompletableFuture<T>>): List<CompletableFuture<T>> {
         if (!permits.tryAcquire(requests.size)) throw QueryTimeoutException("검색 엔진 동시 요청 상한 초과")
@@ -324,20 +324,21 @@ class ElasticsearchProductKeywordSearchAdapter(
         try {
             requests.forEach { request -> sent += request().also { it.whenComplete { _, _ -> permits.release() } } }
         } catch (e: Exception) {
-            // 보내지 못한 요청의 자리는 여기서 돌려주고 이미 보낸 요청은 취소해 돌려받음
+            // 보내지 못한 요청의 자리만 돌려줌. 이미 보낸 요청은 끝날 때 돌려줌
             permits.release(requests.size - sent.size)
-            sent.forEach { it.cancel(true) }
             throw e
         }
         return sent
     }
 
-    /** queryTimeoutMs 안에 모든 응답이 오지 않으면 요청을 모두 취소하고 QueryTimeoutException을 던짐 */
+    /**
+     * queryTimeoutMs 안에 모든 응답이 오지 않으면 QueryTimeoutException을 던짐
+     * 요청은 취소하지 않음. 취소하면 요청 스레드와 클라이언트 I/O 스레드가 요청 본문 자원을 함께 해제하다 I/O 스레드가 멈춤
+     */
     private fun <T> awaitAll(futures: List<CompletableFuture<T>>): List<T> {
         try {
             CompletableFuture.allOf(*futures.toTypedArray()).get(queryTimeoutMs, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
-            futures.forEach { it.cancel(true) }
             throw QueryTimeoutException("검색 엔진 응답 시간 초과", e)
         } catch (e: ExecutionException) {
             throw e.cause ?: e
