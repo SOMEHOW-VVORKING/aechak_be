@@ -269,6 +269,18 @@ class AdminMemberIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void 상세는_현재_프로필_이미지와_소개글을_준다() throws Exception {
+        long targetId = createMember("프로필회원", UserRole.GENERAL);
+        setProfile(targetId, "괴롭힘 문구", "users/1/profile.png");
+
+        mockMvc.perform(bearer(get(BASE + "/" + targetId), actorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.bio").value("괴롭힘 문구"))
+                .andExpect(jsonPath("$.data.profileImageUrl")
+                        .value(org.hamcrest.Matchers.endsWith("users/1/profile.png")));
+    }
+
+    @Test
     void 없는_회원_상세는_404_30000_를_반환한다() throws Exception {
         mockMvc.perform(bearer(get(BASE + "/999999"), actorToken))
                 .andExpect(status().isNotFound())
@@ -561,7 +573,95 @@ class AdminMemberIntegrationTest extends IntegrationTestBase {
         assertThat(sanctionsOf(withdrawn)).hasSize(1);
     }
 
+    // --- 프로필 초기화 ---
+
+    @Test
+    void 프로필_초기화는_204이고_이미지와_소개글만_비우고_닉네임과_상태는_그대로다() throws Exception {
+        long targetId = createMember("초기화대상", UserRole.GENERAL);
+        setProfile(targetId, "괴롭힘 문구", "users/1/profile.png");
+        setStatus(targetId, UserStatus.SUSPENDED, LocalDateTime.now().plusDays(3));
+
+        resetProfile(targetId).andExpect(status().isNoContent());
+
+        assertThat(profileOf(targetId)).containsExactly(null, null);
+        assertThat(nicknameOf(targetId)).isEqualTo("초기화대상");
+        assertThat(statusOf(targetId)).isEqualTo(UserStatus.SUSPENDED);
+        assertThat(sanctionsOf(targetId)).isEmpty();
+        mockMvc.perform(bearer(get(BASE + "/" + targetId), actorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.bio").doesNotExist())
+                .andExpect(jsonPath("$.data.profileImageUrl").doesNotExist());
+    }
+
+    @Test
+    void 이미_비어_있는_프로필도_초기화는_204다() throws Exception {
+        long targetId = createMember("빈프로필", UserRole.GENERAL);
+
+        resetProfile(targetId).andExpect(status().isNoContent());
+        resetProfile(targetId).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void 탈퇴한_회원의_프로필_초기화는_409_30024다() throws Exception {
+        long targetId = createMember("탈퇴대상", UserRole.GENERAL);
+        sanction(targetId, "FORCE_WITHDRAW", "ABUSIVE_REVIEW", null, null, null).andExpect(status().isNoContent());
+
+        resetProfile(targetId)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(30024));
+    }
+
+    @Test
+    void 관리자_계정과_없는_회원의_프로필_초기화는_404_30000_이다() throws Exception {
+        long otherAdmin = createMember("다른운영자", UserRole.ADMIN);
+        setProfile(otherAdmin, "운영자 소개", null);
+
+        resetProfile(otherAdmin)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value(30000));
+        resetProfile(999999L)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value(30000));
+        assertThat(profileOf(otherAdmin)).containsExactly("운영자 소개", null);
+    }
+
+    @Test
+    void 일반_GENERAL_토큰은_프로필_초기화가_403_20011_로_막힌다() throws Exception {
+        long targetId = createMember("남의프로필", UserRole.GENERAL);
+        setProfile(targetId, "소개", null);
+
+        mockMvc.perform(bearer(
+                        post(BASE + "/" + targetId + "/profile/reset"), mintAccessToken(targetId, UserRole.GENERAL)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value(20011));
+        assertThat(profileOf(targetId)).containsExactly("소개", null);
+    }
+
     // --- 보조 ---
+
+    private org.springframework.test.web.servlet.ResultActions resetProfile(long targetUserId) throws Exception {
+        return mockMvc.perform(bearer(post(BASE + "/" + targetUserId + "/profile/reset"), actorToken));
+    }
+
+    private void setProfile(long userId, String bio, String profileImageKey) {
+        tx.executeWithoutResult(txStatus -> em.createQuery(
+                        "update UserProfile p set p.bio = :bio, p.profileImageKey = :key where p.userId = :id")
+                .setParameter("bio", bio)
+                .setParameter("key", profileImageKey)
+                .setParameter("id", userId)
+                .executeUpdate());
+    }
+
+    /** [소개글, 이미지 key] */
+    private List<String> profileOf(long userId) {
+        return tx.execute(txStatus -> {
+            Object[] row = em.createQuery(
+                            "select p.bio, p.profileImageKey from UserProfile p where p.userId = :id", Object[].class)
+                    .setParameter("id", userId)
+                    .getSingleResult();
+            return java.util.Arrays.asList((String) row[0], (String) row[1]);
+        });
+    }
 
     private org.springframework.test.web.servlet.ResultActions sanction(
             long targetUserId, String action, String reasonCode, Integer durationDays, String reasonDetail, String memo)

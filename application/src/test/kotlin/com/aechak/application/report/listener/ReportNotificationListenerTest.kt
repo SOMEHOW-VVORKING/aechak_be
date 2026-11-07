@@ -8,6 +8,7 @@ import com.aechak.domain.product.report.event.ProductReportReceivedEvent
 import com.aechak.domain.review.report.enums.ReviewReportReason
 import com.aechak.domain.review.report.event.ReviewReportReceivedEvent
 import com.aechak.domain.sns.report.enums.PostReportReason
+import com.aechak.domain.sns.report.event.CommentReportReceivedEvent
 import com.aechak.domain.sns.report.event.PostReportReceivedEvent
 import com.aechak.domain.user.report.enums.ReportReasonCode
 import com.aechak.domain.user.report.event.UserReportReceivedEvent
@@ -122,6 +123,27 @@ class ReportNotificationListenerTest {
         val mail = sent.single()
         assertEquals("[신고/SNS_POST] #13", mail.subject, "제목에 대상 종류와 신고 id가 담겨야 한다")
         assertTrue(mail.body.contains("- 대상: SNS 게시물 publicId 01J000000000000000000POST"), "본문에 게시물 publicId가 담겨야 한다")
+    }
+
+    @Test
+    fun `SNS 댓글 신고는 제목에 SNS_COMMENT를 담고 본문에 댓글과 게시물 publicId를 적는다`() {
+        listener().handleSnsCommentReportReceived(
+            CommentReportReceivedEvent(
+                reportId = 14L,
+                commentPublicId = "01J0000000000000000COMMENT",
+                postPublicId = "01J000000000000000000POST",
+                reasonCode = PostReportReason.ABUSE,
+                reasonText = null,
+                createdAt = receivedAt,
+            ),
+        )
+
+        val mail = sent.single()
+        assertEquals("[신고/SNS_COMMENT] #14", mail.subject, "제목에 대상 종류와 신고 id가 담겨야 한다")
+        assertTrue(
+            mail.body.contains("- 대상: SNS 댓글 publicId 01J0000000000000000COMMENT (게시물 publicId 01J000000000000000000POST)"),
+            "본문에 댓글과 게시물 publicId가 담겨야 한다",
+        )
     }
 
     @Test

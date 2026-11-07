@@ -29,6 +29,9 @@ class PostDeletionService(
         return post
     }
 
+    /** 작성자의 게시된 게시물을 모두 잠가 읽는다 */
+    fun lockPublishedOf(authorId: Long): List<Post> = postRepository.findPublishedByAuthorIdForUpdate(authorId)
+
     /**
      * 잠근 게시물을 지우고 태그 게시글 수와 작성자 게시물 수를 내린 뒤 지울 미디어 파일 키를 돌려준다.
      * 이미 지운 게시물이면 상태와 수를 그대로 두고 파일 키만 다시 돌려준다.

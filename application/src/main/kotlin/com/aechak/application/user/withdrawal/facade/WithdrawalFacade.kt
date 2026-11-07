@@ -8,6 +8,7 @@ import com.aechak.application.order.usecase.OrderUseCase
 import com.aechak.application.seller.usecase.SellerApplicationUseCase
 import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.application.seller.usecase.command.CancelApplicationCommand
+import com.aechak.application.sns.withdrawal.usecase.SnsWithdrawalUseCase
 import com.aechak.application.user.withdrawal.service.WithdrawalService
 import com.aechak.application.user.withdrawal.usecase.WithdrawalUseCase
 import com.aechak.application.user.withdrawal.usecase.result.WithdrawalBlockReason
@@ -31,6 +32,7 @@ class WithdrawalFacade(
     private val sellerUseCase: SellerUseCase,
     private val sellerApplicationUseCase: SellerApplicationUseCase,
     private val orderUseCase: OrderUseCase,
+    private val snsWithdrawalUseCase: SnsWithdrawalUseCase,
     transactionManager: PlatformTransactionManager,
 ) : WithdrawalUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -47,14 +49,16 @@ class WithdrawalFacade(
         deleteStoredProfileImage(userId, profileImageKey)
     }
 
-    /** 차단 사유가 없으면 승인 전 입점 신청을 취소하고 탈퇴 처리 */
+    /** 차단 사유가 없으면 승인 전 입점 신청을 취소하고 탈퇴 처리한 뒤 SNS 데이터를 정리 */
     private fun withdrawInTransaction(userId: Long): String? =
         try {
             tx.execute {
                 // 셀러 판정보다 먼저 신청서를 읽어 둔다. 승인과 겹치면 커밋 때 낙관적 락 충돌이 난다
                 sellerApplicationUseCase.cancel(CancelApplicationCommand(userId))
                 if (blockersOf(userId).isNotEmpty()) throw BusinessException(UserErrorCode.WITHDRAWAL_BLOCKED)
-                withdrawalService.withdraw(userId)
+                val profileImageKey = withdrawalService.withdraw(userId)
+                snsWithdrawalUseCase.cleanUp(userId)
+                profileImageKey
             }
         } catch (e: OptimisticLockingFailureException) {
             // 충돌 뒤 다시 판정해서 사유가 생겼으면 탈퇴 차단, 다른 요청이 먼저 탈퇴를 커밋했으면 이미 탈퇴로 응답

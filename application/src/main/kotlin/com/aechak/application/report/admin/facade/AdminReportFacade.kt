@@ -13,6 +13,7 @@ import com.aechak.application.report.admin.usecase.result.ReportHistoryResult
 import com.aechak.application.report.admin.usecase.result.ReportSummaryResult
 import com.aechak.application.review.admin.usecase.AdminReviewUseCase
 import com.aechak.application.review.admin.usecase.command.BlindReviewCommand
+import com.aechak.application.sns.commentdeletion.usecase.SnsCommentDeletionUseCase
 import com.aechak.application.sns.postdeletion.usecase.SnsPostDeletionUseCase
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.user.sanction.usecase.AdminMemberUseCase
@@ -36,7 +37,7 @@ import org.springframework.transaction.annotation.Transactional
  * AdminReportUseCase 의 유일한 구현체. 트랜잭션 경계는 여기 고정.
  *
  * 비노출·제재는 기존 경로에 위임한다 — 리뷰는 AdminReviewUseCase.blind,
- * SNS 게시물은 SnsPostDeletionUseCase.deleteByOperator, 계정은 AdminMemberUseCase.sanction.
+ * SNS 게시물은 SnsPostDeletionUseCase.deleteByOperator, SNS 댓글은 SnsCommentDeletionUseCase.deleteByOperator, 계정은 AdminMemberUseCase.sanction.
  * 결정 기록을 먼저 저장(flush)한 뒤 위임한다.
  * 비노출 위임 여부는 조치 직전의 잠금 조회(ReportReviewVisibilityPort)로 정한다.
  * 안내 문구는 보관만 한다 — 어드민 보트에 발송 어댑터가 조립되어 있지 않다.
@@ -49,6 +50,7 @@ class AdminReportFacade(
     private val adminReviewUseCase: AdminReviewUseCase,
     private val adminMemberUseCase: AdminMemberUseCase,
     private val snsPostDeletionUseCase: SnsPostDeletionUseCase,
+    private val snsCommentDeletionUseCase: SnsCommentDeletionUseCase,
     private val userUseCase: UserUseCase,
 ) : AdminReportUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -162,6 +164,11 @@ class AdminReportFacade(
             // 이미 지운 게시물은 상태를 그대로 두고 결정만 남는다
             ReportTargetType.SNS_POST -> {
                 snsPostDeletionUseCase.deleteByOperator(view.targetKey)
+            }
+
+            // 이미 지운 댓글도 상태와 삭제 주체를 그대로 두고 결정만 남는다
+            ReportTargetType.SNS_COMMENT -> {
+                snsCommentDeletionUseCase.deleteByOperator(view.targetKey)
             }
 
             // 비노출 수단이 없는 종류다 — ReportDecision.decide 가 이미 막아 도달하지 않는다
