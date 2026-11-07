@@ -266,7 +266,7 @@ cmd_init() {
   out=$(ssm_run "$API_ID" "/opt/perf/bin/kit-pull && bash $RUNNER_SCRIPTS/apihost/restart.sh $(q --rev "$rev" --dataset "$ds" --first-boot)" 900) \
     || die "$E_API" "첫 부팅 실패"
   printf '%s\n' "$out"
-  on_runner "bash $RUNNER_SCRIPTS/lib/remote.sh init $(q "$ds")" 7200
+  on_runner "bash $RUNNER_SCRIPTS/lib/remote.sh init $(q "$ds")" 21600
   mkdir -p "$KIT/results/manifest"
   x aws s3 cp --only-show-errors "s3://$BUCKET/state/manifest-$ds.json" "$KIT/results/manifest/$ds.json"
   cmd_sync
@@ -284,7 +284,7 @@ cmd_seed() {
   if [ "$LOCAL" = 1 ]; then x bash "$KIT/lib/remote.sh" seed local; return 0; fi
   need_outputs
   cmd_sync
-  on_runner "bash $RUNNER_SCRIPTS/lib/remote.sh seed $(q "$ds")" 7200
+  on_runner "bash $RUNNER_SCRIPTS/lib/remote.sh seed $(q "$ds")" 21600
 }
 
 cmd_manifest() {
@@ -292,7 +292,7 @@ cmd_manifest() {
   if [ "$LOCAL" = 1 ]; then x bash "$KIT/lib/remote.sh" manifest local; return 0; fi
   need_outputs
   cmd_sync
-  on_runner "bash $RUNNER_SCRIPTS/lib/remote.sh manifest $(q "$ds")" 3600
+  on_runner "bash $RUNNER_SCRIPTS/lib/remote.sh manifest $(q "$ds")" 10800
   mkdir -p "$KIT/results/manifest"
   x aws s3 cp --only-show-errors "s3://$BUCKET/state/manifest-$ds.json" "$KIT/results/manifest/$ds.json"
 }
@@ -324,7 +324,8 @@ cmd_variant() {
   mkdir -p "$PERF_DIR/logs"
   log_file=$PERF_DIR/logs/$STEP-$DATASET-$VARIANT-$(date +%Y%m%d-%H%M%S).log
   # SSM은 노트북 환경변수를 넘기지 않아 조절값을 명령줄에 붙인다
-  for k in MAX_VUS_CAP IDLE_RDS_CPU_MAX RAMP_FLOOR_RATES RAMP_RATES WARMUP_RATE; do
+  for k in MAX_VUS_CAP IDLE_RDS_CPU_MAX RAMP_FLOOR_RATES RAMP_RATES WARMUP_RATE \
+    PERTURB PERTURB_RATE PERTURB_DELAY_MS PERTURB_AT_S PERTURB_FOR_S CONTROL_RATE KEYWORD_SET; do
     if [ -n "${!k:-}" ]; then pre="$pre$k=$(q "${!k}") "; fi
   done
   prog=s3://$BUCKET/progress/$(TZ=Asia/Seoul date +%F)-$STEP-$DATASET-$VARIANT.log
@@ -400,7 +401,7 @@ cmd_reindex() {
   need_outputs
   [ -n "$ES_ID" ] || die 1 "ES 호스트가 없다. terraform을 es_enabled=true로 apply하고 make outputs"
   cmd_sync
-  on_runner "bash $RUNNER_SCRIPTS/lib/remote.sh reindex $(q "$DATASET" "$rev")" 4200
+  on_runner "bash $RUNNER_SCRIPTS/lib/remote.sh reindex $(q "$DATASET" "$rev")" 16200
 }
 
 cmd_fetch() {

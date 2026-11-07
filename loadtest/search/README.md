@@ -8,7 +8,7 @@
 
 | 층 | 구성 | 쓰는 단계 |
 |---|---|---|
-| 측정층 | RDS `db.m7g.large`(데이터 크기마다 하나, `aechak-perf-100k`와 `aechak-perf-1m`), api 호스트 EC2 `m7i.large`(api 컨테이너는 dev 태스크와 같은 1 vCPU, 2GB), 러너 EC2 `c7g.large`(k6와 모니터링), T07부터 ES 호스트 `m7g.large` | 모든 단계의 수치 |
+| 측정층 | RDS `db.m7g.large`(데이터 크기마다 하나, `aechak-perf-100k`, `aechak-perf-1m`, `aechak-perf-10m`, `aechak-perf-100m`), api 호스트 EC2 `m7i.large`(api 컨테이너는 dev 태스크와 같은 1 vCPU, 2GB), 러너 EC2 `c7g.large`(k6와 모니터링), T07부터 ES 호스트 `m7g.large`(1억 건은 `r7g.xlarge`에 ES CPU 2개) | 모든 단계의 수치 |
 | 운영 거울층 | 10만 건 기준 스냅샷을 dev와 prod가 쓰는 `db.t4g.micro`로 복원한 `aechak-perf-mirror`. 나머지는 측정층과 같고 manifest는 10만 건 것과 비교한다 | T01과 T10만 |
 
 측정층은 버스트 크레딧이 없는 고정 성능 인스턴스라서 앞 측정이 쓴 크레딧이 뒤 측정에 섞이지 않는다. 운영 거울층은 실제 서비스 크기에서 같은 셀을 돌려 측정층 숫자가 현실과 얼마나 다른지 보여 준다. 거울층에서는 `CPUCreditBalance`와 `CPUSurplusCreditBalance`를 함께 기록한다. 거울층 RDS는 unlimited 모드라 크레딧이 바닥나도 CPU가 기준 성능으로 깎이지 않고 초과분 요금만 붙으므로 그 셀도 유효하다. 대신 크레딧이 바닥난 시각과 초과 크레딧 최대값, `CPUSurplusCreditsCharged`를 결과에 적어 다음 거울층 측정(T10)이 같은 상태에서 돌았는지 비교한다.
@@ -60,7 +60,7 @@ make down
 | `make manifest DATASET=..` | manifest를 다시 만든다 |
 | `make prom` | 러너 Prometheus 9090을 localhost:19090으로 |
 | `make shell-runner`, `make shell-api` | SSM 세션 |
-| `make reindex DATASET= REV=` | 엔진을 es로 둔 api를 재색인 속성(`AECHAK_SEARCH_ES_REINDEX_ON_STARTUP=true`)과 함께 다시 띄우고 ES 색인 문서 수가 상품 수와 같아질 때까지 기다린다. 걸린 시간과 색인 크기를 `REINDEX_DONE` 줄로 남긴다 |
+| `make reindex DATASET= REV=` | 엔진을 es로 둔 api를 재색인 속성(`AECHAK_SEARCH_ES_REINDEX_ON_STARTUP=true`)과 함께 다시 띄우고 ES 색인 문서 수가 상품 수와 같아질 때까지 기다린다. 재색인이 끝나야 api가 준비 상태가 되므로 준비 대기를 4시간까지 늘린다(1억 건). 걸린 시간과 색인 크기를 `REINDEX_DONE` 줄로 남긴다 |
 
 `make jar`는 `loadtest/` 밖에 커밋하지 않은 변경이 있으면 멈춘다. `ALLOW_DIRTY=1`이면 rev 뒤에 `-dirty-<diff 해시>`를 붙여 빌드한다. HEAD가 아닌 커밋은 `.perf/build/` 아래 임시 워크트리에서 빌드한다. `SKIP_TESTS=1`이면 검색 테스트를 건너뛰고 `search_test_exit=skipped`로 적는다.
 
@@ -75,6 +75,12 @@ make down
 | `RAMP_FLOOR_RATES` | `1 0.5 0.25`, QUICK은 `1 0.5` | ramp 첫 단계가 SLO를 못 지키면 내려가며 시도할 요청률 |
 | `RAMP_RATES` | `2 4 8 16 32 64 128 256` | ramp가 올라갈 요청률(QUICK에는 쓰지 않는다). 처리 한계가 256 req/s보다 높으면 더 높은 단계를 준다 |
 | `WARMUP_RATE` | 2 | 워밍업 요청률 |
+| `PERTURB` | 없음 | steady run마다 ES 교란을 건다. `write`, `delay`, `pause` 중 하나([교란과 대조 요청](#교란-대조-요청-다양한-검색어)) |
+| `PERTURB_RATE` | 10 | write의 초당 다시 색인 문서 수 |
+| `PERTURB_DELAY_MS` | 1000 | delay의 ES 응답 지연(ms) |
+| `PERTURB_AT_S`, `PERTURB_FOR_S` | write 0과 run 전체, delay 60과 60, pause 60과 30 | 교란 구간. k6 시작부터 몇 초 뒤에 몇 초 동안 거는지 |
+| `CONTROL_RATE` | 없음 | steady와 spike에 DB만 쓰는 대조 요청을 초당 이만큼 더한다 |
+| `KEYWORD_SET` | `fixed` | `diverse`면 고정 검색어 9개 대신 `keywords-diverse.js`의 300개로 고른다 |
 
 ## 셀과 시간
 
@@ -120,6 +126,35 @@ run이 끝날 때 받는 `.cw.csv`와 `.slow.log`는 임시본이다. CloudWatch
 
 Grafana 캡처도 이 뒤에 한꺼번에 찍는다. ramp, steady, spike는 전체 패널과 `00-dashboard.png`를 찍는다. smoke와 sequential은 k6 지연, k6 처리량, k6 오류, RDS CPU, api CPU 다섯 패널만 찍고 warmup과 explain은 찍지 않는다. `capture.sh`는 패널을 3개씩 동시에 렌더한다(`CAPTURE_PARALLEL`). 노트북에서 전체 패널 run 하나를 차례로 렌더하면 약 120초가 걸렸고 3개씩 렌더하면 약 52초가 걸렸다.
 
+## 교란, 대조 요청, 다양한 검색어
+
+셋 다 기본값에서는 꺼져 있고 기존 셀의 k6 명령과 시나리오는 그대로다. 같은 값을 `make step`의 before와 after에 함께 쓴다. 변형 이름(`VARIANT`)에 조건을 넣어 run id를 나눈다.
+
+```bash
+# SEARCH-T13: ES 응답 1초 지연(60초부터 60초), ES 정지(60초부터 30초), 둘 다 대조 요청 초당 1건
+make step STEP=SEARCH-T13 DATASET=100m BEFORE_REV=<t10> AFTER_REV=<t13> CELLS=steady BASE_RATE=<r> PERTURB=delay CONTROL_RATE=1
+make step STEP=SEARCH-T13 DATASET=100m BEFORE_REV=<t10> AFTER_REV=<t13> CELLS=steady BASE_RATE=<r> PERTURB=pause CONTROL_RATE=1
+# SEARCH-T14: 초당 10건 다시 색인, 다양한 검색어
+make variant STEP=SEARCH-T14 DATASET=100m VARIANT=t10-w10 REV=<t10> CELLS=steady BASE_RATE=<r> PERTURB=write PERTURB_RATE=10
+make variant STEP=SEARCH-T14 DATASET=100m VARIANT=t10-diverse REV=<t10> CELLS="ramp steady" KEYWORD_SET=diverse
+```
+
+교란은 steady run에만 걸린다. `run.sh`는 변형 시작에 ES 호스트로 SSM을 보내 kit를 받고 `es/perturb.sh prepare`로 남은 교란을 지운다(delay면 `tc`가 없을 때 `iproute-tc`를 설치한다). steady run마다 k6를 띄우기 직전에 교란 시작과 끝 시각(epoch ms)을 정해 `es/perturb.sh run`을 SSM으로 띄우고 k6가 끝나면 그 명령이 끝나기를 기다린다. ES 호스트 스크립트는 끝 시각에 스스로 교란을 풀고, 중간에 끝나도 EXIT trap이 푼다. `run.sh`가 0이 아닌 코드로 끝나거나 교란 끝 줄이 없으면 `es/perturb.sh clear`를 한 번 더 보낸다. ES 호스트가 없거나 local 모드면 종료 코드 1로 멈춘다.
+
+| 교란 | ES 호스트에서 하는 일 |
+|---|---|
+| write | `es/rewrite.py`가 products 문서 1,000개를 읽어 두고 같은 `_id`와 같은 `_source`를 초당 `PERTURB_RATE`건 `_bulk` index로 다시 넣는다. 호출이 간격보다 길어지면 밀린 문서를 한 요청에 묶어 평균 속도를 지킨다. 검색 결과는 그대로이고 버전 증가, 새 세그먼트, 1초 refresh, 요청 캐시 무효화, 색인 CPU는 실제 쓰기처럼 생긴다. 같은 값의 부분 `_update`는 noop이라 아무것도 쓰지 않아 쓰지 않는다 |
+| delay | 기본 경로 장치의 루트에 4 band prio qdisc를 두고 출발 포트 9200인 패킷만 netem band로 보내 `PERTURB_DELAY_MS`만큼 늦춘다. 이미 열린 연결의 응답은 약 D ms, 새 연결은 SYN-ACK도 늦어져 약 2D ms 늦다. ES 호스트 안의 수집기(es-exporter)는 docker 네트워크로 붙어 늦어지지 않는다 |
+| pause | `docker pause perf-es`. 그동안 ES는 응답하지 않고 끝에 `docker unpause` |
+
+env.txt에는 `perturb`, `perturb_params`(값과 구간), ES 호스트 시계로 잰 실제 `perturb_start_ms`와 `perturb_end_ms`, write의 `perturb_result`(보낸 수, 호출 수, 오류, 실제 속도, 결과별 수)가 들어간다. ES 호스트 명령의 출력은 `<run-id>.perturb.txt`다.
+
+ES가 있으면 run마다 시작 직전과 끝 직후에 `products/_stats/request_cache,refresh`를 읽어 `<run-id>.es.json`(before, after)에 남기고 차이를 env.txt의 `es_rc_hits`, `es_rc_misses`, `es_rc_evictions`, `es_refreshes`, `es_ext_refreshes`에, 끝의 캐시 메모리를 `es_rc_mem_bytes`에 적는다. 교란이 없어도 남긴다. 결과 표 끝의 ES 요청 캐시 표가 적중률과 교란 조건을 함께 보여 준다.
+
+대조 요청(`CONTROL_RATE`)은 `control.js`의 별도 시나리오로 steady와 spike에만 더하고 `kind:control` 태그를 단다. 비로그인 상품 상세 `GET /products/01PERF00000000000000000004`를 부른다. 이 경로는 읽기 트랜잭션 하나에서 상품(공개 id 유니크 인덱스, 셀러와 카테고리 조인), 이미지, 통계를 키로 읽고 ES, Redis, 캐시를 쓰지 않는다. 검색과 같은 Hikari 풀을 쓰므로 ES를 기다리는 검색이 커넥션을 붙잡고 있으면 이 요청도 커넥션을 기다린다. 상품은 시드의 n = 3(판매중, 검수 승인, 활성 셀러)이라 local을 포함한 모든 데이터셋에 있다. 카테고리 목록은 로그인이 필요하고 상품 목록은 노출 상품을 정렬해 읽어 데이터 크기에 따라 비용이 달라서 고르지 않았다. 대조 요청은 검색 지표(상태 코드, 오류 코드, 첫 페이지)에 들지 않지만 k6 전체 `http_reqs`, `http_req_failed`, 결과 표의 실제 req/s와 전체 열에는 섞인다. 결과 표 끝의 대조 요청 표가 지연과 실패율을 따로 적는다.
+
+다양한 검색어(`KEYWORD_SET=diverse`)는 `tools/gen_keywords.py`가 `seed.sql`의 상품명 공식(3,000건 주기)에서 만든 `keywords-diverse.js`를 쓴다. 어휘 단어의 2글자 이상 한글 부분 문자열마다 전체 상품 중 일치 비율을 세어 비율 순으로 고르게 285개를 고르고, 뒤집은 부분 문자열 중 어느 이름에도 없는 15개를 none으로 더한다. 등급은 고정 검색어와 같은 경계(high 30% 이상, mid 5% 이상, low 1% 이상, rare 0 초과, none 0)로 정하고 지금 파일은 high 7, mid 24, low 252, rare 2, none 15다. 가중치는 모두 1이라 초당 50건이면 검색어마다 초당 약 0.17건이다. 생성기는 고정 검색어 9개의 비율이 위 표와 같은지 확인하고 다르면 멈춘다. `seed.sql`의 상품명을 바꾸면 `python3 -I tools/gen_keywords.py`로 다시 만든다. sequential은 늘 고정 9개를 쓴다.
+
 ## 독립성 규칙
 
 부하 테스트 하나가 다음 테스트에 남기는 것은 데이터 행, 인덱스, 버퍼 풀과 JVM warm 상태, 통계, 로그, 크레딧이다. 각각 이렇게 끊는다.
@@ -136,8 +171,8 @@ Grafana 캡처도 이 뒤에 한꺼번에 찍는다. ramp, steady, spike는 전�
   | none | 없는상품 | 0% |
 
 - 경계 집합은 `n % 1000`이 503, 504, 505인 상품(0.3%)이다. `description`이 `perf-boundary:expired`, `perf-boundary:upcoming`, `perf-boundary:open`으로 시작하고 각각 이미 끝난 할인, 시작 전 할인, 기간 제한 없는 할인이다. 이름은 바꾸지 않아 검색어 비율이 그대로다. 할인 만료 같은 시간 경계를 보는 셀만 이 행을 쓴다.
-- manifest(`results/manifest/<size>.json`)는 테이블별 행 수, 시드 컬럼의 CRC, 활성 할인 수, 노출 상품 수, 검색어별 일치 수, 인덱스 목록, 테이블 크기를 담는다. `run.sh`는 변형마다 행 수와 CRC를 manifest와 비교하고 다르면 종료 코드 3으로 멈춘다. 이때는 `make reseed`로 되돌린다.
-- 부하 시나리오는 모두 비로그인 검색이라 DB에 쓰지 않는다. 쓰기가 있는 셀은 세션 맨 끝에 돌리고 끝나면 `make reseed`로 manifest 상태로 되돌린다. 스냅샷 복원은 새 인스턴스를 만들므로 거울층과 사고 복구에만 쓴다.
+- manifest(`results/manifest/<size>.json`)는 테이블별 행 수, 시드 컬럼의 CRC, 활성 할인 수, 노출 상품 수, 검색어별 일치 수, 인덱스 목록, 테이블 크기를 담는다. 1억 건은 노출 상품 수와 검색어별 일치 수를 세지 않는다. `run.sh`는 변형마다 행 수와 CRC를 manifest와 비교하고 다르면 종료 코드 3으로 멈춘다. 이때는 `make reseed`로 되돌린다.
+- 부하 시나리오는 모두 비로그인 검색이라 DB에 쓰지 않는다. `PERTURB=write`는 ES 문서만 같은 내용으로 다시 넣고 DB와 검색 결과는 바꾸지 않는다. 쓰기가 있는 셀은 세션 맨 끝에 돌리고 끝나면 `make reseed`로 manifest 상태로 되돌린다. 스냅샷 복원은 새 인스턴스를 만들므로 거울층과 사고 복구에만 쓴다.
 - 첫 부팅 뒤 api는 항상 `SPRING_FLYWAY_ENABLED=false`와 `SPRING_JPA_HIBERNATE_DDL_AUTO=none`으로 뜬다. 새 jar가 부팅하면서 인덱스나 컬럼을 만들면 before 셀이 두 변수를 함께 바꾼 셀이 되기 때문이다. 스키마 변경은 `ddl/<id>.sql`로만 하고(`ddl/README.md`), `run.sh --ddl "id ..."`가 러너에서 적용해 `perf_applied_ddl`에 id와 파일 sha256을 적는다. 적용된 id가 `--ddl`과 다르거나 파일이 바뀌었으면 종료 코드 4로 멈춘다.
 - before 상태로 돌아갈 때는 `make shell-runner`로 러너에 들어가 `results/rollback/<id>.sql`을 손으로 적용한다. 이 파일의 마지막 문장은 `perf_applied_ddl`에서 그 id 행을 지운다.
 - 변형마다 api 컨테이너를 다시 만들고 워밍업을 버려 두 jar가 같은 cold start에서 시작한다. 변형마다 `sql/warm.sql`(측정 대상 테이블과 모든 인덱스를 읽는 고정 집합)을 돌린다.
@@ -164,18 +199,20 @@ Grafana 캡처도 이 뒤에 한꺼번에 찍는다. ramp, steady, spike는 전�
 | `lib/common.sh`, `lib/remote.sh` | 공용 함수, 러너의 시드와 manifest와 equiv |
 | `explain.sh`, `capture.sh` | EXPLAIN ANALYZE 집합, Grafana 패널 PNG |
 | `search.js`, `equiv.js` | k6 부하 시나리오, 결과 동치 확인 |
-| `tools/summarize.py`, `tools/graphs.py`, `tools/equiv_diff.py` | 결과 표, SVG 그래프, equiv 비교 |
+| `control.js`, `keywords-diverse.js` | DB만 쓰는 대조 요청, 다양한 검색어 목록(생성 파일) |
+| `lib/perturb.sh`, `es/perturb.sh`, `es/rewrite.py` | steady 교란의 러너 쪽, ES 호스트 쪽, 다시 색인 |
+| `tools/summarize.py`, `tools/graphs.py`, `tools/equiv_diff.py`, `tools/gen_keywords.py` | 결과 표, SVG 그래프, equiv 비교, 다양한 검색어 생성 |
 | `apihost/` | api 호스트 compose와 `restart.sh` |
 | `seed.sql`, `sql/` | 시드, manifest, exporter 계정, warm set |
 | `ddl/` | 측정용 스키마 변경 |
 | `compose.yml` | 노트북 kit 개발 스택 |
-| `es/` | ES 호스트 스택(`compose.yml`, Elasticsearch 9.2.6 단일 노드와 수집기, `make up`이 띄운다)과 T08 nori 시연 이미지 |
+| `es/` | ES 호스트 스택(`compose.yml`, Elasticsearch 9.2.6 단일 노드와 수집기, `make up`이 띄운다)과 T09 nori 시연 이미지 |
 
 run id는 `<YYYY-MM-DD>-<STEP>-<DATASET>-<CELL>-<VARIANT>-r<N>`이고 날짜는 서울 시각이다(예: `2026-11-05-SEARCH-T01-100k-steady-base-r2`). steady만 r1에서 r3까지 있고 ramp는 run id 하나에 단계별 파일을 둔다. AWS에서 같은 run id가 이미 있으면 종료 코드 1로 멈춘다. `FORCE=1`이면 그 run id의 러너 raw 파일, 캡처, S3 객체와 노트북에 받아 둔 파일을 지우고 지운 목록을 로그에 남긴 뒤 다시 잰다. `make step`도 `FORCE`를 따른다. local 모드는 늘 지우고 다시 쓴다.
 
 | 결과 경로 | git | 내용 |
 |---|---|---|
-| `results/raw/<run-id>.*` | 제외 | `.json`(k6 요약), `.k6.txt`, `.cw.csv`(RDS 지표 1분 단위), `.digest.txt`(다이제스트 상위 10), `.slow.log`, `.env.txt`, ramp의 `.ramp.tsv`(단계마다 `start_ms`, `end_ms`, `k6_exit`)와 `.s<RATE>.json`, spike의 `.points.csv.gz`, explain의 `.explain.txt`, `.prom.json`(run 구간의 Prometheus 값. Hikari 대기와 활성, `Threads_running`은 5초 수집값의 최대다. Hikari 타임아웃과 api CPU 스로틀링 초는 increase 추정이라 소수가 나온다. api CPU 평균과 최대는 30초 rate를 5초마다 본 값이고 단위는 코어다. 서버 p95 최대는 30초 창 히스토그램 추정의 최대이고 30은 가장 큰 버킷이다. 러너 CPU 최대는 코어 평균 사용률이고 러너 가용 메모리 최소는 MiB다. 30초 창은 run 시작 전 30초까지 걸칠 수 있다) |
+| `results/raw/<run-id>.*` | 제외 | `.json`(k6 요약), `.k6.txt`, `.cw.csv`(RDS 지표 1분 단위), `.digest.txt`(다이제스트 상위 10), `.slow.log`, `.env.txt`, ramp의 `.ramp.tsv`(단계마다 `start_ms`, `end_ms`, `k6_exit`)와 `.s<RATE>.json`, spike의 `.points.csv.gz`, explain의 `.explain.txt`, ES가 있을 때 `.es.json`(run 시작과 끝의 요청 캐시와 refresh 누계), 교란 run의 `.perturb.txt`, `.prom.json`(run 구간의 Prometheus 값. Hikari 대기와 활성, `Threads_running`은 5초 수집값의 최대다. Hikari 타임아웃과 api CPU 스로틀링 초는 increase 추정이라 소수가 나온다. api CPU 평균과 최대는 30초 rate를 5초마다 본 값이고 단위는 코어다. 서버 p95 최대는 30초 창 히스토그램 추정의 최대이고 30은 가장 큰 버킷이다. 러너 CPU 최대는 코어 평균 사용률이고 러너 가용 메모리 최소는 MiB다. 30초 창은 run 시작 전 30초까지 걸칠 수 있다) |
 | `results/captures/<run-id>/` | 골라서 커밋 | 패널 PNG `NN-slug.png`와 `00-dashboard.png` |
 | `results/<STEP>.md` | 커밋 | summarize.py가 붙인 표 |
 | `results/manifest/<size>.json` | 커밋 | 데이터셋 기준 상태 |
@@ -184,7 +221,7 @@ run id는 `<YYYY-MM-DD>-<STEP>-<DATASET>-<CELL>-<VARIANT>-r<N>`이고 날짜는 
 | `results/graphs/` | 커밋 | `make graphs` 결과 |
 | `jars/`, `.perf/` | 제외 | jar와 메타, outputs.json, 로그, 노트북 결과 |
 
-env.txt에는 run마다 rev, 트리 해시, merge-base, dirty 여부, jar sha256, hibernate-core와 elasticsearch-java 버전, 검색 테스트 종료 코드, RDS id와 클래스와 엔진 버전, 버퍼 풀 크기, 다이제스트 길이와 `long_query_time` 파라미터, api와 러너 인스턴스 타입, api 상한, Hikari 최대값, 적용 DDL, 스키마와 인덱스 해시, manifest 일치, 변형 환경변수, 요청률, 시나리오, `max_vus`, k6 버전, 버퍼 풀 디스크 읽기 차이, dropped_iterations, 최대 안정 요청률이 들어간다. 이어서 k6 종료 코드(`k6_exit`, ramp는 최대 안정 단계의 값), k6 최대 RSS(`k6_max_rss_kb`, 러너에 GNU time이 있을 때만), 기준 요청률과 출처(`base_rate`, `base_rate_source`), CloudWatch 다시 받기 결과(`cw_complete`), 건너뛴 셀의 이유(`skip_reason`), spike 탐침 요청률(`probe_rate`), ramp의 처리 가능 요청률(`capacity_rate`), k6 요청 타임아웃(`request_timeout`), kit 소스 해시(`kit_hash`, search의 sh, js, py, sql, yml, Makefile과 monitoring의 yml을 경로 순서로 이어 붙인 sha256 앞 12자리. `make sync`가 같은 묶음을 `s3://<bucket>/kit/<kit_hash>.tgz`로도 올린다), 변형을 시작할 때의 history_long consumer 상태(`ps_history_long`), steady 반복의 순번 오프셋(`trace_offset`)이 들어간다. 모르는 값은 `na`다.
+env.txt에는 run마다 rev, 트리 해시, merge-base, dirty 여부, jar sha256, hibernate-core와 elasticsearch-java 버전, 검색 테스트 종료 코드, RDS id와 클래스와 엔진 버전, 버퍼 풀 크기, 다이제스트 길이와 `long_query_time` 파라미터, api와 러너 인스턴스 타입, api 상한, Hikari 최대값, 적용 DDL, 스키마와 인덱스 해시, manifest 일치, 변형 환경변수, 요청률, 시나리오, `max_vus`, k6 버전, 버퍼 풀 디스크 읽기 차이, dropped_iterations, 최대 안정 요청률이 들어간다. 이어서 k6 종료 코드(`k6_exit`, ramp는 최대 안정 단계의 값), k6 최대 RSS(`k6_max_rss_kb`, 러너에 GNU time이 있을 때만), 기준 요청률과 출처(`base_rate`, `base_rate_source`), CloudWatch 다시 받기 결과(`cw_complete`), 건너뛴 셀의 이유(`skip_reason`), spike 탐침 요청률(`probe_rate`), ramp의 처리 가능 요청률(`capacity_rate`), k6 요청 타임아웃(`request_timeout`), kit 소스 해시(`kit_hash`, search의 sh, js, py, sql, yml, Makefile과 monitoring의 yml을 경로 순서로 이어 붙인 sha256 앞 12자리. `make sync`가 같은 묶음을 `s3://<bucket>/kit/<kit_hash>.tgz`로도 올린다), 변형을 시작할 때의 history_long consumer 상태(`ps_history_long`), steady 반복의 순번 오프셋(`trace_offset`), 검색어 구성(`keyword_set`), 대조 요청률(`control_rate`), 교란 값(`perturb`부터 `perturb_result`), ES 요청 캐시와 refresh 차이(`es_rc_hits`부터 `es_ext_refreshes`)가 들어간다. 모르는 값은 `na`다.
 
 ## 지표와 판정
 

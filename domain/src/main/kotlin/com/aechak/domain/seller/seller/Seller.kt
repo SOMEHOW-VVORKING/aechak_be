@@ -34,12 +34,25 @@ class Seller protected constructor(
     var previousStatus: SellerStatus? = null
         protected set
 
-    @Column(length = 500)
+    @Column(length = SUSPENSION_REASON_MAX_LENGTH)
     var suspensionReason: String? = null
+        protected set
+
+    /**
+     * 현재 판매정지의 해제 예정 시각. 무기한 정지는 null이다.
+     * 이 값이 지나도 상태는 저절로 풀리지 않는다 — 노출·쓰기 게이트는 status만 보고, 해제는 운영자 조치다.
+     */
+    @Column
+    var suspensionUntil: LocalDateTime? = null
         protected set
 
     @Column(nullable = false)
     var statusChangedAt: LocalDateTime = LocalDateTime.now()
+        protected set
+
+    /** 셀러별 운영자 내부 메모 한 칸. 셀러에게 노출하지 않는다. */
+    @Column(length = ADMIN_MEMO_MAX_LENGTH)
+    var adminMemo: String? = null
         protected set
 
     @Column(length = 100, nullable = false)
@@ -217,6 +230,56 @@ class Seller protected constructor(
         this.shippingPolicyText = shippingPolicyText
     }
 
+    /**
+     * 판매정지 — 지금 상태를 previousStatus에 보관하고 SUSPENDED로 옮긴다.
+     * 셀러센터 쓰기와 노출 조회의 게이트가 전부 `status != ACTIVE`를 보고 있어 이 전이 하나로 효과가 전역에 든다.
+     * 상품의 판매 상태(products.sale_status)는 건드리지 않는다 — 일괄로 바꾸면 해제할 때 원래 값을 복원할 수 없다.
+     *
+     * @param reason 사람이 읽는 사유 한 줄. 해제하면 비운다
+     * @param until 해제 예정 시각. null이면 무기한 정지(자동 해제 경로는 없다)
+     */
+    fun suspend(
+        reason: String?,
+        until: LocalDateTime?,
+    ) {
+        if (status == SellerStatus.SUSPENDED) {
+            throw BusinessException(SellerErrorCode.SELLER_ALREADY_SUSPENDED)
+        }
+        // 탈퇴·탈퇴 요청은 되돌릴 상태로 보관할 수 없다 — 해제가 탈퇴한 셀러를 영업 상태로 살려낸다
+        if (status !in SUSPENDABLE_STATUSES) {
+            throw BusinessException(SellerErrorCode.SELLER_STATUS_TRANSITION_NOT_ALLOWED)
+        }
+        previousStatus = status
+        status = SellerStatus.SUSPENDED
+        suspensionReason = reason
+        suspensionUntil = until
+        statusChangedAt = LocalDateTime.now()
+    }
+
+    /**
+     * 판매정지 해제 — 정지 직전 상태로 되돌린다.
+     * previousStatus가 비어 있는 행은 이 전이가 생기기 전에 정지된 셀러라 ACTIVE로 되돌린다.
+     */
+    fun releaseSuspension() {
+        if (status != SellerStatus.SUSPENDED) {
+            throw BusinessException(SellerErrorCode.SELLER_NOT_SUSPENDED)
+        }
+        status = previousStatus ?: SellerStatus.ACTIVE
+        previousStatus = null
+        suspensionReason = null
+        suspensionUntil = null
+        statusChangedAt = LocalDateTime.now()
+    }
+
+    /** 운영자 내부 메모 덮어쓰기. 빈 값은 메모를 지운 것으로 본다. */
+    fun updateAdminMemo(memo: String?) {
+        val trimmed = memo?.trim()
+        if (trimmed != null && trimmed.length > ADMIN_MEMO_MAX_LENGTH) {
+            throw BusinessException(SellerErrorCode.SELLER_SANCTION_TEXT_TOO_LONG)
+        }
+        adminMemo = trimmed?.takeIf { it.isNotEmpty() }
+    }
+
     /** 상호는 구매자에게 보이는 이름이라 빈 값·컬럼 초과를 엔티티가 막는다. */
     private fun validateStoreName(storeName: String) {
         if (storeName.isEmpty()) {
@@ -283,6 +346,15 @@ class Seller protected constructor(
 
         /** brand_intro 컬럼 길이. */
         const val MAX_BRAND_INTRO_LENGTH = 1000
+
+        /** suspension_reason 컬럼 길이. */
+        const val SUSPENSION_REASON_MAX_LENGTH = 500
+
+        /** admin_memo 컬럼 길이. 요청 DTO의 상한이 이 상수를 참조한다. */
+        const val ADMIN_MEMO_MAX_LENGTH = 500
+
+        /** 판매정지를 걸 수 있는 상태 — 해제가 되돌릴 자리가 있는 상태뿐이다. */
+        private val SUSPENDABLE_STATUSES = setOf(SellerStatus.ACTIVE, SellerStatus.PAUSED)
 
         /** profile_image_key·banner_image_key 컬럼 길이. */
         const val MAX_IMAGE_KEY_LENGTH = 1024
