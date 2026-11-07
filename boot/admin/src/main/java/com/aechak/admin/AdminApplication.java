@@ -44,6 +44,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
             "com.aechak.application.order.claim.admin",
             // 상품 검수 큐의 노출 전이(ProductInspectionGate 구현). 검수 패키지 자체는 InspectionScanConfig가 스캔함
             "com.aechak.application.product.product.service",
+            // 상품 카탈로그 전수 관리(목록·판매중지·재개). 상품 BC 중 어드민 전용 하위만 넣는다 —
+            // 상위를 넣으면 구매자측 조회·찜 파사드가 딸려와 검색·추천 포트 어댑터를 요구한다
+            "com.aechak.application.product.product.admin",
             // 리뷰 관리 패키지는 AdminReviewScanConfig가 스캔함 — 같은 BC의 구매자측 조립을 빼야 해서 여기 두지 않는다
             "com.aechak.infra.persistence", // 리포지토리·UserStatusReader 어댑터
             "com.aechak.infra.s3", // FileStorage 어댑터
