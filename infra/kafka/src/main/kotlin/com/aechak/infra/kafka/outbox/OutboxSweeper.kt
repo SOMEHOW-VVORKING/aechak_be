@@ -5,6 +5,7 @@ import org.apache.kafka.common.errors.InvalidTopicException
 import org.apache.kafka.common.errors.RecordTooLargeException
 import org.apache.kafka.common.errors.SerializationException
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
 import org.springframework.transaction.support.TransactionTemplate
@@ -30,6 +31,19 @@ internal class OutboxSweeper(
     private val db: JdbcClient,
     private val sender: KafkaSender,
     private val tx: TransactionTemplate,
+    /**
+     * 즉시 발행에 양보하는 유예(초). 이보다 젊은 행은 집지 않는다.
+     *
+     * 즉시 발행(`OutboxMessagePublisher.publishImmediately`)은 브로커 ack 를 받은 **뒤에**
+     * 별 스레드에서 PUBLISHED 로 표시한다. 그 사이 행은 PENDING 이고, 스위퍼가 그때 틱하면
+     * 같은 메시지를 한 번 더 보낸다. `FOR UPDATE SKIP LOCKED` 는 스위퍼끼리의 중복만 막고
+     * 즉시 발행 경로와는 락을 공유하지 않아 이 경합에는 무효다.
+     *
+     * 스위퍼는 폴백이므로 빠른 경로와 경합해서는 안 된다. 기본 10초는 ack 와 UPDATE 가
+     * 끝날 시간을 넉넉히 준 값이다. 대가는 즉시 발행이 **정말** 실패한 행의 재발행이
+     * 유예만큼 늦어지는 것인데, 폴백의 성격상 받아들일 수 있다.
+     */
+    @Value("\${outbox.sweep-grace-seconds:10}") private val graceSeconds: Long,
 ) : OutboxSweepTrigger {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -53,11 +67,13 @@ internal class OutboxSweeper(
                        o.ordering_key, o.event_type, o.trace_id, o.payload, o.expired_at
                 FROM outbox_message o
                 WHERE o.status = ${OutboxStatus.PENDING}
+                  AND o.occurred_at < DATE_SUB(NOW(6), INTERVAL :graceSeconds SECOND)
                 ORDER BY o.occurred_at, o.id
                 LIMIT $CHUNK
                 FOR UPDATE SKIP LOCKED
                 """,
-                ).query { rs, _ ->
+                ).param("graceSeconds", graceSeconds)
+                .query { rs, _ ->
                     OutboxRow(
                         id = rs.getLong("id"),
                         eventId = rs.getString("event_id"),

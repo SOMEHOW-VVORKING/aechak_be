@@ -251,7 +251,14 @@ class Seller protected constructor(
         }
         previousStatus = status
         status = SellerStatus.SUSPENDED
-        suspensionReason = reason
+        // 넘치면 자른다. 호출부가 넘기는 값은 어휘 라벨에 상세 사유를 이어 붙인 것이어서
+        // (SellerSanctionReasonCode.describe) 상세가 상한을 채우면 라벨과 구분자만큼 컬럼을
+        // 넘고, 그대로 두면 MySQL strict 모드가 Data too long 으로 전이 트랜잭션을 되돌린다.
+        // 메모(updateAdminMemo)와 달리 거부하지 않는 이유가 둘이다. 입구가 상세 사유를
+        // REASON_DETAIL_MAX_LENGTH 까지 받아 주는데 여기서 막으면 운영자가 통과하는 길이를
+        // 알 수 없고(라벨 길이만큼 어휘마다 다르다), 이 칸은 어드민 목록·상세가 읽는 표시용
+        // 사본이라 원문이 seller_sanctions.reason_detail 에 그대로 남는다.
+        suspensionReason = reason?.take(SUSPENSION_REASON_MAX_LENGTH)
         suspensionUntil = until
         statusChangedAt = LocalDateTime.now()
     }

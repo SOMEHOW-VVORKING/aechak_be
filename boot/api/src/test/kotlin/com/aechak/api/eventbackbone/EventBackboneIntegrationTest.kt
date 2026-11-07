@@ -1,6 +1,7 @@
 package com.aechak.api.eventbackbone
 
 import com.aechak.api.support.KafkaIntegrationTestBase
+import com.aechak.api.support.SWEEP_GRACE_SECONDS
 import com.aechak.application.messaging.MessagePublisher
 import com.aechak.application.messaging.ProcessedMessages
 import com.aechak.infra.kafka.Topics
@@ -559,6 +560,32 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     }
 
     @Test
+    fun `즉시 발행이 아직 끝나지 않은 행은 스위퍼가 집지 않는다`() {
+        val orderingKey = "sweep-grace-fresh"
+        // 방금 커밋돼 PUBLISHED 표시를 기다리는 상태. 즉시 발행이 ack 를 받은 뒤 별 스레드에서
+        // 표시하므로 이 구간의 행은 멀쩡한데도 PENDING 이다.
+        insertOutboxRow(orderingKey = orderingKey, occurredAgoSeconds = 0)
+
+        sweeper.sweepNow()
+
+        assertThat(statusOf(orderingKey))
+            .`as`("유예 안의 행을 집으면 즉시 발행과 경합해 같은 메시지를 두 번 보낸다")
+            .isEqualTo(0)
+    }
+
+    @Test
+    fun `유예를 지난 행은 스위퍼가 재발행한다`() {
+        val orderingKey = "sweep-grace-aged"
+        insertOutboxRow(orderingKey = orderingKey, occurredAgoSeconds = SWEEP_GRACE_SECONDS + 5)
+
+        sweeper.sweepNow()
+
+        assertThat(statusOf(orderingKey))
+            .`as`("유예가 폴백을 아예 막아 버리면 즉시 발행이 실패한 행이 영원히 안 나간다")
+            .isEqualTo(1)
+    }
+
+    @Test
     fun `발행 완료 기록 전에 죽어 같은 행이 두 번 발행돼도 컨슈머 효과는 한 번이다`() {
         val eventId = UUID.randomUUID().toString()
         val orderingKey = "redelivery-test"
@@ -809,24 +836,31 @@ class EventBackboneIntegrationTest : KafkaIntegrationTestBase() {
     /**
      * 발행 경로를 거치지 않고 아웃박스 행을 직접 심음. payload는 실제 발행과 같은 엔벨로프 JSON.
      * 만료 시딩은 JVM 시계로 받음. DB NOW와 혼용하면 컨테이너(UTC)와 JVM(KST)의 타임존 스큐로 비교가 뒤틀림
+     *
+     * `occurredAgoSeconds` 기본값이 0이 아닌 이유: 스위퍼는 즉시 발행에 양보하는 유예보다 젊은 행을
+     * 집지 않는다. 기본을 0으로 두면 스위퍼 기구를 보려는 테스트들이 전부 "아무것도 발행되지 않음"으로
+     * 깨진다. 유예 자체를 보는 테스트만 이 값을 0으로 준다.
      */
     private fun insertOutboxRow(
         aggregateType: String = "order",
         orderingKey: String,
         eventId: String = UUID.randomUUID().toString(),
         expiredAt: Instant? = null,
+        occurredAgoSeconds: Long = SWEEP_GRACE_SECONDS + 5,
     ) {
         db
             .sql(
                 """
                 INSERT INTO outbox_message (event_id, aggregate_type, ordering_key, event_type, trace_id, payload, occurred_at, expired_at)
-                VALUES (:eventId, :aggregateType, :orderingKey, 'SyntheticMessage', '', :payload, NOW(6), :expiredAt)
+                VALUES (:eventId, :aggregateType, :orderingKey, 'SyntheticMessage', '', :payload,
+                        DATE_SUB(NOW(6), INTERVAL :occurredAgoSeconds SECOND), :expiredAt)
                 """.trimIndent(),
             ).param("expiredAt", expiredAt?.let { java.sql.Timestamp.from(it) })
             .param("eventId", eventId)
             .param("aggregateType", aggregateType)
             .param("orderingKey", orderingKey)
             .param("payload", envelopeJson(eventId))
+            .param("occurredAgoSeconds", occurredAgoSeconds)
             .update()
     }
 

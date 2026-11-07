@@ -6,7 +6,9 @@ import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.inspection.service.InspectionAppealService
 import com.aechak.application.inspection.service.InspectionQueryService
 import com.aechak.application.inspection.service.InspectionRequestService
+import com.aechak.application.inspection.service.InspectionSnapshot
 import com.aechak.application.inspection.usecase.command.RequestProductInspectionCommand
+import com.aechak.application.inspection.usecase.result.InspectionViolationResult
 import com.aechak.application.product.like.service.ProductLikeStatusService
 import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.application.product.product.service.ProductService
@@ -275,19 +277,29 @@ class ProductFacade(
 
     private fun inspectionResultOf(product: Product): SellerProductInspectionResult {
         val openReview = inspectionQueryService.findOpenProductReview(product.id)
+        val snapshot = inspectionQueryService.findLatestProductInspection(product.id)
+        // 사유는 지금 그 행을 막고 있는 판정에서 읽는다. 가장 최근 검수에서 읽으면 모델이
+        // 답을 못 준 뒤에 반려만 남고 고칠 곳을 알려 주는 문구가 사라진다.
+        val blocking =
+            openReview?.let {
+                inspectionQueryService.findBlockingProductInspection(product.id, it.blindedAt)
+            }
+        val blame = blocking ?: snapshot
         return SellerProductInspectionResult.of(
             product = product,
-            snapshot = inspectionQueryService.findLatestProductInspection(product.id),
+            snapshot = snapshot,
             openReview = openReview,
-            // 사유는 지금 그 행을 막고 있는 판정에서 읽는다. 가장 최근 검수에서 읽으면 모델이
-            // 답을 못 준 뒤에 반려만 남고 고칠 곳을 알려 주는 문구가 사라진다.
-            blocking =
-                openReview?.let {
-                    inspectionQueryService.findBlockingProductInspection(product.id, it.blindedAt)
-                },
+            blame = blame,
             adminRejectReason = inspectionQueryService.findAdminRejectReason(product.id),
+            violations = violationsOf(blame),
         )
     }
+
+    private fun violationsOf(blame: InspectionSnapshot?): List<InspectionViolationResult> =
+        blame
+            ?.let { inspectionQueryService.findViolations(it.inspectionId) }
+            ?.map(InspectionViolationResult::from)
+            .orEmpty()
 
     /** 셀러가 아니면 seller BC가 10004로 거른다 — 여기 코드는 등록된 셀러의 상태 정책만 가린다 */
     private fun requireActiveSeller(sellerId: Long) {
