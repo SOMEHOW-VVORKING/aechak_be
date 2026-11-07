@@ -1,6 +1,7 @@
 package com.aechak.admin.product.response;
 
 import com.aechak.application.inspection.usecase.result.AdminProductInspectionDetailResult;
+import com.aechak.application.inspection.usecase.result.InspectionViolationResult;
 import com.aechak.application.inspection.usecase.result.ProductRejectionResult;
 import com.aechak.domain.inspection.enums.InspectionJudgment;
 import com.aechak.domain.inspection.enums.InspectionProcessingState;
@@ -27,6 +28,7 @@ public record AdminProductInspectionDetailResponse(
         String reasonCode,
         String reasonSummary,
         String sellerNotice,
+        List<Violation> violations,
         LocalDateTime requestedAt,
         LocalDateTime settledAt,
         List<Rejection> rejections) {
@@ -49,9 +51,17 @@ public record AdminProductInspectionDetailResponse(
                 result.reasonCode(),
                 result.reasonSummary(),
                 result.sellerNotice(),
+                result.violations().stream().map(Violation::from).toList(),
                 result.requestedAt(),
                 result.settledAt(),
                 result.rejections().stream().map(Rejection::from).toList());
+    }
+
+    public record Violation(String category, String quote, String suggestion) {
+
+        static Violation from(InspectionViolationResult result) {
+            return new Violation(result.getCategory(), result.getQuote(), result.getSuggestion());
+        }
     }
 
     public record Rejection(String reason, LocalDateTime rejectedAt) {
