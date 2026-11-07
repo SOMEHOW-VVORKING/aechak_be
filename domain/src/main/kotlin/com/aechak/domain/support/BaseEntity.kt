@@ -26,13 +26,13 @@ abstract class BaseEntity {
 
     @PrePersist
     protected fun prePersistBase() {
-        val now = LocalDateTime.now()
+        val now = dbNow()
         createdAt = now
         updatedAt = now
     }
 
     @PreUpdate
     protected fun preUpdateBase() {
-        updatedAt = LocalDateTime.now()
+        updatedAt = dbNow()
     }
 }

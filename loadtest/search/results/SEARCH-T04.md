@@ -110,3 +110,66 @@ like 기준 요청률 0.25 req/s (직접 지정). steady는 0.7배, spike는 3�
 |---|---|---|---|---|---|
 | like | 1m | 3 | 8623 | 7787~9165 | 16.0% |
 
+
+## 2026-11-05 1m match
+
+match 기준 요청률 0.25 req/s (직접 지정). steady는 0.7배, spike는 3배로 돌렸다.
+
+| run | 셀 | 변형 | 데이터 | 목표 req/s | 실제 req/s | 첫 페이지 p50/p95/p99/max (n) | 전체 p50/p95/p99/max (n) | 실패율 | 상태 코드 | 오류 코드 | dropped | RDS CPU 평균/최대 % | DB 접속 평균/최대 | 요청당 RDS CPU초 | 버퍼 풀 디스크 읽기 | 상위 다이제스트 | rev | jar | DDL |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `2026-11-05-SEARCH-T04-1m-ramp-match-r1` | ramp (dropped는 마지막 단계) | match | 1m | SLO 미충족 (처리 가능 0.5) | - | - | - | - | - | - | 0 | - | - | - | 0 | SELECT products 43%, COUNT products 33%, SELECT products 13% | 9c715056a644 | ed059d04 | SEARCH-T02-fulltext |
+| `2026-11-05-SEARCH-T04-1m-steady-match-r1` | steady | match | 1m | 0.175 | 0.19 | 1,725/14,520/표본 부족(n=19)/14,689 | 969/6,241/표본 부족(n=34)/14,689 | 0.00% | 200:34 | - | 0 | 22.5/22.9 | 10/10 | 2.3841 | 0 | SELECT products 43%, COUNT products 39%, SELECT products 13% | 9c715056a644 | ed059d04 | SEARCH-T02-fulltext |
+| `2026-11-05-SEARCH-T04-1m-steady-match-r2` | steady | match | 1m | 0.175 | 0.19 | 1,174/2,467/표본 부족(n=20)/14,603 | 962/4,919/표본 부족(n=35)/14,603 | 0.00% | 200:35 | - | 0 | 13.7/15.0 | 10/10 | 1.4170 | 0 | SELECT products 31%, COUNT products 28%, COUNT products 14% | 9c715056a644 | ed059d04 | SEARCH-T02-fulltext |
+| `2026-11-05-SEARCH-T04-1m-steady-match-r3` | steady | match | 1m | 0.175 | 0.18 | 1,271/14,684/표본 부족(n=19)/14,997 | 1,161/14,534/표본 부족(n=32)/14,997 | 0.00% | 200:32 | - | 0 | 16.8/21.5 | 10/10 | 1.8905 | 0 | SELECT products 37%, COUNT products 34%, SELECT products 24% | 9c715056a644 | ed059d04 | SEARCH-T02-fulltext |
+| `2026-11-05-SEARCH-T04-1m-sequential-match-r1` | sequential | match | 1m | - | 0.40 | - | 446/12,536/표본 부족(n=81)/14,655 | 0.00% | 200:81 | - | 0 | 42.6/52.2 | 10/10 | ≈2.1270 | 0 | COUNT products 36%, SELECT products 13%, SELECT products 13% | 9c715056a644 | ed059d04 | SEARCH-T02-fulltext |
+| `2026-11-05-SEARCH-T04-1m-explain-match-r1` | explain | match | 1m | - | - | - | - | - | - | - | 0 | 41.7/51.6 | 11/11 | - | 0 | COUNT products 22%, COUNT products 14%, EXPLAIN products 11% | 9c715056a644 | ed059d04 | SEARCH-T02-fulltext |
+
+### steady 첫 페이지 p95
+
+| 변형 | 데이터 | 반복 | 중앙값 | 최소~최대 | 폭(중앙값 대비) |
+|---|---|---|---|---|---|
+| match | 1m | 3 | 14520 | 2467~14684 | 84.1% |
+
+### ramp `2026-11-05-SEARCH-T04-1m-ramp-match-r1`
+
+SLO를 지킨 단계가 없어 최대 안정 요청률은 0(SLO 미충족)이고 대표 행은 비어 있다. 처리 가능 요청률은 0.5 req/s다.
+
+| 목표 req/s | 실제 req/s | 첫 페이지 p95 | 첫 페이지 p99 (n) | 실패율 % | dropped | RDS CPU 평균 % | k6 종료 | 통과 기준 |
+|---|---|---|---|---|---|---|---|---|
+| 2 | 1.1 | 30000.03 | 표본 부족(n=45) | 6.41 | 9 | 45.3 | 0 | 없음 |
+| 1 | 0.8 | 23826.22 | 표본 부족(n=26) | 4.44 | 0 | ≈46.9 | 0 | 없음 |
+| 0.5 | 0.49 | 16223.9 | 표본 부족(n=16) | 0 | 0 | ≈57.1 | 0 | 처리 기준만 |
+| 0.25 | 0.26 | 15401.17 | 표본 부족(n=16) | 0 | 0 | 11.1 | 0 | 처리 기준만 |
+
+### sequential `2026-11-05-SEARCH-T04-1m-sequential-match-r1`
+
+| 등급 | 정렬 | 페이지 | 중앙값 | p90 | 최대 |
+|---|---|---|---|---|---|
+| high | popular | 1 | 14,553 | 14,635 | 14,655 |
+| high | popular | 2 | 7,567 | 7,578 | 7,581 |
+| high | price_asc | 1 | 12,536 | 12,569 | 12,577 |
+| high | price_asc | 2 | 5,744 | 5,844 | 5,869 |
+| high | latest | 1 | 12,497 | 12,512 | 12,515 |
+| high | latest | 2 | 5,601 | 5,768 | 5,810 |
+| mid | popular | 1 | 1,740 | 1,770 | 1,778 |
+| mid | popular | 2 | 918 | 944 | 951 |
+| mid | price_asc | 1 | 1,290 | 1,291 | 1,291 |
+| mid | price_asc | 2 | 552 | 605 | 618 |
+| mid | latest | 1 | 1,279 | 1,313 | 1,321 |
+| mid | latest | 2 | 525 | 544 | 549 |
+| low | popular | 1 | 556 | 581 | 587 |
+| low | popular | 2 | 303 | 304 | 305 |
+| low | price_asc | 1 | 442 | 450 | 451 |
+| low | price_asc | 2 | 190 | 222 | 230 |
+| low | latest | 1 | 431 | 443 | 446 |
+| low | latest | 2 | 177 | 180 | 180 |
+| rare | popular | 1 | 46 | 47 | 47 |
+| rare | popular | 2 | 31 | 32 | 32 |
+| rare | price_asc | 1 | 42 | 42 | 42 |
+| rare | price_asc | 2 | 23 | 25 | 26 |
+| rare | latest | 1 | 40 | 41 | 41 |
+| rare | latest | 2 | 22 | 22 | 23 |
+| none | popular | 1 | 9 | 10 | 10 |
+| none | price_asc | 1 | 8 | 13 | 14 |
+| none | latest | 1 | 8 | 9 | 9 |
+

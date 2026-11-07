@@ -14,9 +14,12 @@ import com.aechak.application.review.admin.usecase.command.UnblindReviewCommand
 import com.aechak.application.review.admin.usecase.query.AdminReviewSearchQuery
 import com.aechak.application.review.admin.usecase.result.AdminReviewDetailResult
 import com.aechak.application.review.admin.usecase.result.AdminReviewSummaryResult
+import com.aechak.application.sns.commentdeletion.usecase.SnsCommentDeletionUseCase
+import com.aechak.application.sns.postdeletion.usecase.SnsPostDeletionUseCase
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.user.sanction.usecase.AdminMemberUseCase
 import com.aechak.application.user.sanction.usecase.command.ReleaseSanctionCommand
+import com.aechak.application.user.sanction.usecase.command.ResetMemberProfileCommand
 import com.aechak.application.user.sanction.usecase.command.SanctionMemberCommand
 import com.aechak.application.user.sanction.usecase.query.MemberSearchQuery
 import com.aechak.application.user.sanction.usecase.result.MemberDetailResult
@@ -67,6 +70,8 @@ class AdminReportFacadeTest {
             visibility,
             reviews,
             members,
+            UnusedSnsPostDeletionUseCase(),
+            UnusedSnsCommentDeletionUseCase(),
             StubUserUseCase(),
         )
 
@@ -333,6 +338,23 @@ private class RecordingAdminReviewUseCase : AdminReviewUseCase {
     override fun delete(command: DeleteReviewCommand): Unit = unused()
 }
 
+private class UnusedSnsPostDeletionUseCase : SnsPostDeletionUseCase {
+    override fun deleteByAuthor(
+        userId: Long,
+        publicId: String,
+    ) = error("신고 처리는 작성자 삭제를 부르지 않는다")
+
+    override fun deleteByOperator(publicId: String) = error("이 테스트는 SNS 게시물 신고를 다루지 않는다")
+
+    override fun deleteByWithdrawal(authorId: Long) = error("이 테스트는 탈퇴를 다루지 않는다")
+}
+
+private class UnusedSnsCommentDeletionUseCase : SnsCommentDeletionUseCase {
+    override fun deleteByOperator(publicId: String) = error("이 테스트는 SNS 댓글 신고를 다루지 않는다")
+
+    override fun deleteByWithdrawal(authorId: Long) = error("이 테스트는 탈퇴를 다루지 않는다")
+}
+
 private class RecordingAdminMemberUseCase : AdminMemberUseCase {
     val sanctioned = mutableListOf<SanctionMemberCommand>()
 
@@ -345,6 +367,8 @@ private class RecordingAdminMemberUseCase : AdminMemberUseCase {
     override fun getMember(userId: Long): MemberDetailResult = unused()
 
     override fun release(command: ReleaseSanctionCommand): Unit = unused()
+
+    override fun resetProfile(command: ResetMemberProfileCommand): Unit = unused()
 }
 
 private class StubUserUseCase : UserUseCase {

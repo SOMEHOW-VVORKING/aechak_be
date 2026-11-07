@@ -14,4 +14,7 @@ interface PostRepository {
         authorId: Long,
         idempotencyKey: String,
     ): Post?
+
+    /** 쓰기 경로 전용. 작성자의 게시된 게시물을 모두 잠가 읽는다 */
+    fun findPublishedByAuthorIdForUpdate(authorId: Long): List<Post>
 }

@@ -19,4 +19,7 @@ interface BlockRepository {
         viewerId: Long,
         targetId: Long,
     ): Set<Long>
+
+    /** blocker가 건 차단을 모두 하드 삭제. 다른 사용자가 blocker에게 건 차단은 남긴다 */
+    fun deleteAllByBlocker(blockerId: Long)
 }

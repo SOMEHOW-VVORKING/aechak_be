@@ -40,6 +40,12 @@ interface BlockJpaRepository : JpaRepository<Block, Long> {
         @Param("blockerId") blockerId: Long,
         @Param("blockedId") blockedId: Long,
     ): Int
+
+    @Modifying
+    @Query("delete from Block b where b.blockerId = :blockerId")
+    fun deleteAllByBlockerId(
+        @Param("blockerId") blockerId: Long,
+    ): Int
 }
 
 @Repository
@@ -60,4 +66,8 @@ class BlockRepositoryAdapter(
         viewerId: Long,
         targetId: Long,
     ): Set<Long> = jpaRepository.findBlockerIdsForShare(viewerId, targetId).toSet()
+
+    override fun deleteAllByBlocker(blockerId: Long) {
+        jpaRepository.deleteAllByBlockerId(blockerId)
+    }
 }

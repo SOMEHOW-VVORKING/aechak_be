@@ -1,8 +1,10 @@
 package com.aechak.api.user.user
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.application.file.error.FileErrorCode
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.user.user.User
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -17,6 +19,9 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.DefaultMockMvcBuilder
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * 통합 — 내 정보(/users/me) 계열이 실 보안 체인·실 MySQL에서 계약대로 동작하는지.
@@ -75,6 +80,61 @@ class UserMeIntegrationTest : IntegrationTestBase() {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.status").value("ACTIVE"))
             .andExpect(jsonPath("$.data.nickname").value("보리집사"))
+    }
+
+    /**
+     * 운영자 초기화가 users 행을 잠근 동안 회원이 바꾸지 않은 이미지 key로 소개글만 고치면, 회원 쪽은 잠그기 전에
+     * 옛 key를 읽는다. 잠근 뒤 저장값과 다시 대조하지 않으면 운영자가 막 비운 key가 되살아난다.
+     */
+    @Test
+    fun `운영자 초기화와 겹친 프로필 수정은 초기화 전 이미지 key를 되살리지 않는다`() {
+        val userId = createOnboardedUser("보리집사")
+        val oldKey = "users/$userId/profile/old.png"
+        tx.executeWithoutResult {
+            em
+                .createQuery("update UserProfile p set p.profileImageKey = :key, p.bio = :bio where p.userId = :id")
+                .setParameter("key", oldKey)
+                .setParameter("bio", "괴롭힘 문구")
+                .setParameter("id", userId)
+                .executeUpdate()
+        }
+        val token = mintAccessToken(userId)
+        val locked = CountDownLatch(1)
+        val executor = Executors.newSingleThreadExecutor()
+        val operatorReset =
+            executor.submit {
+                tx.executeWithoutResult {
+                    em
+                        .createNativeQuery("select id from users where id = :id for update")
+                        .setParameter("id", userId)
+                        .singleResult
+                    em
+                        .createQuery("update UserProfile p set p.profileImageKey = null, p.bio = null where p.userId = :id")
+                        .setParameter("id", userId)
+                        .executeUpdate()
+                    locked.countDown()
+                    // 회원 요청이 잠그기 전 읽기를 마치고 행 잠금을 기다리게 둔다
+                    Thread.sleep(1_000)
+                }
+            }
+        assertThat(locked.await(5, TimeUnit.SECONDS)).isTrue()
+
+        mockMvc
+            .perform(putProfile(token, """{"nickname":"보리집사","bio":"새 소개","profileImageKey":"$oldKey"}"""))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value(FileErrorCode.FILE_ACCESS_DENIED.code))
+
+        operatorReset.get(5, TimeUnit.SECONDS)
+        executor.shutdown()
+        val stored =
+            tx.execute {
+                em
+                    .createQuery("select p.profileImageKey from UserProfile p where p.userId = :id", String::class.java)
+                    .setParameter("id", userId)
+                    .resultList
+                    .single()
+            }
+        assertThat(stored).isNull()
     }
 
     /** 정상 경로 미러 — 도메인 전이(completeOnboarding)로 프로필까지 생성된 ACTIVE 유저. */

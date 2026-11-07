@@ -52,6 +52,10 @@ application/src/main/kotlin/com/aechak/application/
 - 선례: `application/file`(업로드 URL 발급, 승격, 삭제), `application/moderation`(금칙어 판정. 리뷰와 SNS가 같은 기준을 쓴다).
 - 구조는 BC 패키지와 같은 usecase, facade, service, port이고 애그리거트와 리포지토리 포트는 없다. 에러코드가 필요하면 `error/`에 둔다(file).
 - 다른 BC는 이 패키지의 UseCase만 주입받는다. 판정 결과를 어떤 응답으로 바꿀지는 호출한 BC가 정한다.
+- `application/ratelimit`(사용자별 요청 빈도 제한)은 예외로 응답을 직접 정한다. 넘으면 `RateLimitUseCase.check`가 429 `CommonErrorCode.TOO_MANY_REQUESTS`(90012)를 던진다. 쓰는 BC가 늘어도 코드는 하나여야 해서 공통 코드를 쓴다.
+  - 규칙은 쓰는 BC가 `RateLimitRule`을 구현한 enum으로 둔다(선례 `application/sns/support/SnsRateLimitRule`). `key`가 같은 규칙은 함께 센다. 켜기와 끄기를 합쳐 세는 행동은 규칙 하나를 두 요청이 함께 쓴다.
+  - 창이 여럿인 규칙은 모든 창이 한도 아래일 때만 받고 모든 창을 함께 올린다. 거절된 요청은 어느 창도 올리지 않는다. 한 규칙에 같은 길이의 창을 둘 두지 않는다(`check`가 거부한다).
+  - Redis가 실패하면(`DataAccessException`) 통과시키고 다른 예외는 그대로 던진다. 대기는 api의 `spring.data.redis.timeout`(1초)까지다.
 
 ## 2. UseCase / Facade / Service 역할 계약
 
@@ -77,6 +81,11 @@ package com.aechak.application.order.usecase
  *   피드와 프로필 탭 목록(SnsFeedUseCase, SnsFeedFacade)은 게시물 유스케이스에 넣으면 메서드가 열 개를 넘어 나눈다.
  *   금지어 판정과 파일 승격 없이 목록 조회 포트와 카드 조립만 쓴다.
  *   좋아요(SnsLikeUseCase, SnsLikeFacade)도 같은 이유로 나눈다. 금지어 판정 없이 게시물 판정과 좋아요 행만 쓴다.
+ *   댓글(SnsCommentUseCase, SnsCommentFacade)은 금지어 판정을 받는 쪽이라 금지어가 필요 없는 좋아요와 나눈다.
+ *   댓글 삭제의 상태 전이(CommentDeletionService)는 commentdeletion 패키지에 두어 운영자 삭제와 탈퇴 정리를 붙일 admin과 batch가 이 패키지만 스캔한다.
+ *   탈퇴 정리(SnsWithdrawalUseCase, SnsWithdrawalFacade)는 탈퇴 트랜잭션 안에서 게시물 삭제와 댓글 삭제의 탈퇴 메서드를 부르고 그 사이에 관계와 반응을 지운다.
+ *   게시가 태그 행을 통계 행보다 먼저 잠그므로 게시물을 먼저 지운다.
+ *   검색(SnsSearchUseCase, SnsSearchFacade)도 같은 이유로 피드와 나눈다. 검색 조회 포트와 인기순 순위 저장소를 쓰고 피드의 순위 페이지 나누기를 함께 쓴다.
  * - 이 인터페이스만이 외부(Controller / Consumer / Batch / 타 도메인 Facade)에 노출된다.
  * - 타 도메인이 order를 부를 때도 반드시 이 인터페이스로만 — OrderService 직접 호출 금지.
  *
@@ -147,6 +156,7 @@ override fun confirmPayment(command: ConfirmPaymentCommand): PaymentResult {
 }
 ```
 
+- 빈도 제한(`RateLimitUseCase.check`)도 Redis를 부르므로 트랜잭션을 열기 전에 확인한다. 이 때문에 확인이 붙은 쓰기 메서드는 `@Transactional` 대신 `TransactionTemplate`으로 경계를 연다(선례 `SnsFacade.follow`).
 - 후속 작업이 비동기여도 되면(알림 등) 트랜잭션 분리 대신 §3의 AFTER_COMMIT 리스너를 쓴다.
 - 이 규칙의 대상 아님: `@TransactionalEventListener`(리스너 위치가 정상), Spring Batch Step/chunk 트랜잭션(framework 관리).
 
@@ -288,16 +298,19 @@ data class ProductCatalogView(
 ### 4-2. 조회 포트 구현의 user 테이블 읽기 조인
 
 > 다른 BC는 사용자 표시 정보(닉네임, 프로필 이미지)를 user BC의 `UserUseCase.getAuthors`로 따로 받아 Facade에서 붙인다(리뷰 목록, 셀러 주문 목록).
-> SNS 관계 목록, 좋아요한 사람 목록, SNS 피드만 예외로 조회 포트 구현이 user 테이블을 직접 조인한다.
+> SNS 관계 목록, 좋아요한 사람 목록, 댓글 목록, SNS 피드, SNS 검색만 예외로 조회 포트 구현이 user 테이블을 직접 조인한다.
 
 - `SnsUserListQueryPort` 구현이 `sns_follows`, `sns_blocks`, `sns_mutes`를 `users`, `user_profiles`와 id 값 동등 조건으로
   조인해 publicId, 닉네임, 프로필 이미지 key를 읽는다.
 - 두 단계 조회(`UserUseCase`로 표시 정보를 따로 붙이기)로는 닉네임 검색 결과를 페이지 크기만큼 채울 수 없어서
   keyset 페이지, 탈퇴 사용자 제외(프로필 행이 없으면 INNER JOIN에서 빠진다), 검색을 한 쿼리로 끝낸다.
-- 같은 구현이 게시물 좋아요한 사람 목록도 `sns_post_likes`를 같은 조건으로 조인해 읽는다. 차단 관계인 사용자와 탈퇴 사용자를
+- 같은 구현이 게시물과 댓글 좋아요한 사람 목록도 `sns_post_likes`, `sns_comment_likes`를 같은 조건으로 조인해 읽는다. 차단 관계인 사용자와 탈퇴 사용자를
   LIMIT 전에 빼야 최근 100명이 덜 차지 않는다.
+- `SnsCommentQueryPort` 구현은 댓글 목록과 단건의 작성자 publicId, 닉네임, 프로필 이미지 key를 같은 방식으로 읽되 LEFT JOIN이다.
+  프로필 행이 없는 작성자의 댓글도 그 자리에 안내 문구로 남아야 한다. 답글과 좋아요 대상 판정과 댓글 수는 user 테이블을 읽지 않는다.
 - `SnsFeedQueryPort` 구현도 카드의 작성자 publicId, 닉네임, 프로필 이미지 key를 같은 방식으로 읽고 프로필 행이 없는
   작성자의 글을 목록 쿼리에서 뺀다. 탈퇴 작성자를 앱에서 거르면 keyset 페이지가 크기만큼 차지 않는다.
+- `SnsSearchQueryPort` 구현도 계정 검색에서 `user_profiles`의 닉네임으로 찾고 정렬하며 게시물 검색에서 프로필 행이 없는 작성자의 글을 뺀다.
 - 읽기 전용 조회 포트 구현에서만 쓴다. 도메인 리포지토리와 쓰기 경로는 user 테이블을 읽지 않는다.
 - JPA 연관과 FK는 두지 않고 user 테이블에 쓰지 않는다.
 - 서비스를 나눌 때는 SNS 쪽 닉네임 사본으로 바꾼다.

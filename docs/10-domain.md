@@ -220,6 +220,10 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
      게시물을 먼저 찾으므로 FK가 막을 고아 행이 없다. FK를 두면 저장마다 게시물 행에 공유 잠금이 걸려 그 게시물의 수정과 삭제가 저장을 기다린다.
    - `PostLike.postId`도 `Save.postId`와 같은 이유로 `Post`를 연관과 FK 없이 값참조한다. 좋아요는 저장보다 잦아서 FK를 두면
      게시물의 수정과 삭제가 좋아요의 공유 잠금을 더 자주 기다린다.
+   - `CommentLike.commentId`도 같은 이유로 `Comment`를 연관과 FK 없이 값참조한다. 댓글 수정, 삭제, 대댓글 작성이 댓글 행을
+     배타 잠금으로 읽으므로 FK를 두면 그 처리와 좋아요가 서로의 잠금을 기다린다. 댓글은 행을 지우지 않아 FK가 막을 고아 행이 없다.
+   - `PostReport.postId`도 같은 sns BC의 `Post`를 연관과 FK 없이 값참조한다. 저장과 같은 이유이고, 신고 행은 게시물을 로딩하지 않고 어드민 조회가 게시물 표와 조인해 읽는다.
+   - `CommentReport.commentId`도 같은 이유로 `Comment`를 연관과 FK 없이 값참조한다. 신고 행은 댓글을 로딩하지 않고 어드민 조회가 댓글 표와 조인해 읽는다.
 
 ## 2-2. 공통 시각 컬럼과 외부 노출 식별자 (2026-07-10 결정)
 
@@ -230,7 +234,7 @@ class Order protected constructor(          // JPA용 기본 생성자는 plugin
    common에 두지 않는 이유: common은 무의존 모듈이라 jakarta.persistence 반입 불가(05 문서).
 2. **publicId(ULID)**: 내부 bigint id의 열거(enumeration) 노출이 치명적인 애그리거트는
    `@Column(nullable=false, updatable=false, length=26) val publicId: String = Ulid.generate()` + UNIQUE.
-   생성기는 `support/Ulid` 파사드(ulid-creator 위임 — 엔티티가 라이브러리를 직접 부르지 않는다). 현재 적용: Product·OrderGroup(주문번호 역할)·Order·Claim·User·ProductInquiry·Notice·Post.
+   생성기는 `support/Ulid` 파사드(ulid-creator 위임 — 엔티티가 라이브러리를 직접 부르지 않는다). 현재 적용: Product·OrderGroup(주문번호 역할)·Order·Claim·User·ProductInquiry·Notice·Post·Comment.
    외부 API·URL에는 publicId만 노출하고 내부 id는 응답에 싣지 않는다.
    - 채번은 필드 초기화식(생성 시점 신원 확보 — DDD identity-at-creation). 엔티티를 도메인 밖에서
      new로 재구성해 detached merge하면 재채번되므로 **재구성 merge 금지, 항상 load 후 수정**.

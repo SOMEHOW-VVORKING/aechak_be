@@ -1,10 +1,12 @@
 package com.aechak.application.user.sanction.facade
 
+import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.user.sanction.service.AdminMemberService
 import com.aechak.application.user.sanction.support.MemberCursorCodec
 import com.aechak.application.user.sanction.usecase.AdminMemberUseCase
 import com.aechak.application.user.sanction.usecase.command.ReleaseSanctionCommand
+import com.aechak.application.user.sanction.usecase.command.ResetMemberProfileCommand
 import com.aechak.application.user.sanction.usecase.command.SanctionMemberCommand
 import com.aechak.application.user.sanction.usecase.query.MemberSearchQuery
 import com.aechak.application.user.sanction.usecase.result.MemberDetailResult
@@ -19,6 +21,7 @@ import java.time.LocalDateTime
 @Service
 class AdminMemberFacade(
     private val adminMemberService: AdminMemberService,
+    private val fileUseCase: FileUseCase,
 ) : AdminMemberUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -35,14 +38,19 @@ class AdminMemberFacade(
     }
 
     @Transactional(readOnly = true)
-    override fun getMember(userId: Long): MemberDetailResult =
-        MemberDetailResult(
-            member = MemberSummaryResult.from(adminMemberService.findMember(userId), LocalDateTime.now()),
+    override fun getMember(userId: Long): MemberDetailResult {
+        val member = MemberSummaryResult.from(adminMemberService.findMember(userId), LocalDateTime.now())
+        val user = adminMemberService.findProfileUser(userId)
+        return MemberDetailResult(
+            member = member,
+            profileImageUrl = fileUseCase.resolveMediaUrl(user.profileImageKey),
+            bio = user.bio,
             sanctions =
                 adminMemberService
                     .findSanctionHistory(userId, SANCTION_HISTORY_LIMIT)
                     .map(SanctionHistoryResult::from),
         )
+    }
 
     @Transactional
     override fun sanction(command: SanctionMemberCommand) {
@@ -60,6 +68,12 @@ class AdminMemberFacade(
     override fun release(command: ReleaseSanctionCommand) {
         adminMemberService.release(command)
         log.info("회원 제재 해제 adminId={} targetUserId={}", command.adminId, command.targetUserId)
+    }
+
+    @Transactional
+    override fun resetProfile(command: ResetMemberProfileCommand) {
+        adminMemberService.resetProfile(command)
+        log.info("회원 프로필 초기화 adminId={} targetUserId={}", command.adminId, command.targetUserId)
     }
 
     private companion object {

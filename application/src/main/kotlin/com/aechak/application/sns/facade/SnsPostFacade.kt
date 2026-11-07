@@ -7,12 +7,14 @@ import com.aechak.application.file.usecase.command.DeleteFileCommand
 import com.aechak.application.file.usecase.command.PromoteFileCommand
 import com.aechak.application.moderation.usecase.ModerationUseCase
 import com.aechak.application.moderation.usecase.result.ModerationDecision
+import com.aechak.application.ratelimit.usecase.RateLimitUseCase
 import com.aechak.application.sns.service.HashtagService
 import com.aechak.application.sns.service.PostAccessService
 import com.aechak.application.sns.service.PostCardAssembler
 import com.aechak.application.sns.service.PostCommandService
 import com.aechak.application.sns.service.RepostService
 import com.aechak.application.sns.service.SaveService
+import com.aechak.application.sns.support.SnsRateLimitRule
 import com.aechak.application.sns.usecase.SnsPostUseCase
 import com.aechak.application.sns.usecase.command.CreatePostCommand
 import com.aechak.application.sns.usecase.command.RepostPostCommand
@@ -55,6 +57,7 @@ class SnsPostFacade(
     private val userUseCase: UserUseCase,
     private val petProfileUseCase: PetProfileUseCase,
     private val fileUseCase: FileUseCase,
+    private val rateLimitUseCase: RateLimitUseCase,
     transactionManager: PlatformTransactionManager,
 ) : SnsPostUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -66,6 +69,7 @@ class SnsPostFacade(
 
     override fun createPost(command: CreatePostCommand): CreatePostResult {
         findIdempotent(command)?.let { return it }
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.POST_CREATE)
 
         // shortcut: 서버가 영상을 변환하지 않고 길이는 FE가 보낸 durationMs를 믿는다. 고친 클라이언트는 100MB 안에서 60초를 넘는 영상을 올릴 수 있고
         // 아이폰 HEVC .mov는 일부 브라우저에서 재생되지 않을 수 있다. 재생되지 않는 영상 신고가 들어오거나 앱 출시로 녹화 형식이 늘어나면
@@ -127,6 +131,7 @@ class SnsPostFacade(
     }
 
     override fun updatePost(command: UpdatePostCommand) {
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.POST_UPDATE)
         // 규칙은 게시물 조회보다 먼저 본다. 없는 게시물이어도 규칙을 어긴 수정은 404가 아니라 400이다
         val draftCaption = Post.normalizeCaption(command.caption)
         val hashtags = Post.normalizeHashtags(command.hashtags)
@@ -157,6 +162,7 @@ class SnsPostFacade(
     }
 
     override fun repost(command: RepostPostCommand) {
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.REPOST)
         tx.execute {
             val post = postAccessService.requirePublished(command.publicId)
             if (post.authorId == command.userId) throw BusinessException(SnsErrorCode.SNS_REPOST_OWN_POST)
@@ -167,6 +173,7 @@ class SnsPostFacade(
 
     // 끄기는 상태, 작성자, 관계를 보지 않아 볼 수 없게 된 원글의 리포스트도 지운다
     override fun unrepost(command: RepostPostCommand) {
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.REPOST)
         tx.execute {
             val post = postRepository.findByPublicId(command.publicId) ?: throw BusinessException(SnsErrorCode.SNS_POST_UNAVAILABLE)
             repostService.unrepost(command.userId, post.id)
@@ -175,6 +182,7 @@ class SnsPostFacade(
 
     // 본인 글과 뮤트한 작성자의 글도 저장한다. 끄기 하나와 켜기 둘이 겹쳐 교착으로 되돌아가면 한 번 다시 한다
     override fun save(command: SavePostCommand) {
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.SAVE)
         retryOnceOnDeadlock {
             tx.execute {
                 val post = postAccessService.requirePublished(command.publicId)
@@ -187,6 +195,7 @@ class SnsPostFacade(
 
     // 끄기는 상태, 작성자, 관계를 보지 않아 볼 수 없게 된 게시물의 저장도 지운다
     override fun unsave(command: SavePostCommand) {
+        rateLimitUseCase.check(command.userId, SnsRateLimitRule.SAVE)
         tx.execute {
             val post = postRepository.findByPublicId(command.publicId) ?: throw BusinessException(SnsErrorCode.SNS_POST_UNAVAILABLE)
             saveService.unsave(command.userId, post.id)

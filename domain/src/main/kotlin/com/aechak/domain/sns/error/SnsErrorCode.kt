@@ -38,4 +38,21 @@ enum class SnsErrorCode(
 
     // 리포스트 130600번대
     SNS_REPOST_OWN_POST(130600, "본인 게시물은 리포스트할 수 없습니다.", 400),
+
+    // 댓글 130700번대. 없는 댓글, 삭제, 차단 관계, 뮤트, 섀도우 처리를 구분하지 않는다
+    SNS_COMMENT_UNAVAILABLE(130700, "볼 수 없는 댓글입니다.", 404),
+    SNS_COMMENT_NOT_AUTHOR(130701, "본인 댓글만 수정하거나 삭제할 수 있습니다.", 403),
+    SNS_COMMENT_EMPTY(130702, "댓글 내용을 입력해 주세요.", 400),
+    SNS_COMMENT_TOO_LONG(130703, "댓글은 500자까지 쓸 수 있습니다.", 400),
+    SNS_COMMENT_BLOCKED(130704, "부적절한 표현이 있어 댓글을 등록할 수 없습니다.", 400),
+    SNS_COMMENT_REPLY_CLOSED(130705, "답글을 달 수 없는 댓글입니다.", 409),
+
+    // 게시물 신고 130800번대
+    SNS_POST_REPORT_SELF(130800, "본인 게시물은 신고할 수 없습니다.", 400),
+    SNS_POST_REPORT_REASON_TEXT_REQUIRED(130801, "기타 사유로 신고하려면 상세 내용을 입력해 주세요.", 400),
+    SNS_POST_ALREADY_REPORTED(130802, "이미 신고한 게시물입니다.", 409),
+
+    // 댓글 신고. 기타 사유의 상세 내용 누락은 게시물 신고와 같은 130801이다
+    SNS_COMMENT_REPORT_SELF(130803, "본인 댓글은 신고할 수 없습니다.", 400),
+    SNS_COMMENT_ALREADY_REPORTED(130804, "이미 신고한 댓글입니다.", 409),
 }

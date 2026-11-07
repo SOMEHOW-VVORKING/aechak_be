@@ -8,6 +8,7 @@ import com.aechak.application.user.sanction.port.view.MemberSummaryView
 import com.aechak.application.user.sanction.port.view.SanctionHistoryView
 import com.aechak.application.user.sanction.support.MemberCursorCodec
 import com.aechak.application.user.sanction.usecase.command.ReleaseSanctionCommand
+import com.aechak.application.user.sanction.usecase.command.ResetMemberProfileCommand
 import com.aechak.application.user.sanction.usecase.command.SanctionMemberCommand
 import com.aechak.application.user.sanction.usecase.query.MemberSearchQuery
 import com.aechak.common.error.BusinessException
@@ -36,6 +37,9 @@ class AdminMemberService(
 
     fun findMember(userId: Long): MemberSummaryView =
         adminMemberQueryPort.findMember(userId) ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+
+    /** 상세 화면이 보여 줄 현재 프로필. 회원 존재와 역할 판정은 [findMember]가 먼저 끝냈다. */
+    fun findProfileUser(userId: Long): User = userRepository.findById(userId) ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
 
     fun findSanctionHistory(
         userId: Long,
@@ -79,6 +83,20 @@ class AdminMemberService(
             )
         target.releaseSanction()
         userSanctionRepository.save(history)
+    }
+
+    /** 운영자 프로필 초기화 — 관리자 계정은 회원 목록과 상세처럼 이 경로의 대상이 아니라 없는 회원으로 답한다. */
+    fun resetProfile(command: ResetMemberProfileCommand) {
+        // 행을 잠그고 읽는다 — 사용자의 프로필 수정도 같은 행을 잠그므로 두 쓰기가 차례로 적용된다
+        val target =
+            userRepository.findByIdForUpdate(command.targetUserId)
+                ?: throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+        // 관리자 계정을 겨눈 거부 행에도 대상 이름이 남게 역할 판정보다 먼저 집는다
+        AdminAuditContextHolder.label(target.nickname)
+        if (target.role != UserRole.GENERAL) {
+            throw BusinessException(UserErrorCode.USER_NOT_FOUND)
+        }
+        target.resetProfileByOperator()
     }
 
     private fun applyToAccount(
