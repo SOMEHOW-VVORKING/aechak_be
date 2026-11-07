@@ -53,7 +53,7 @@ application/src/main/kotlin/com/aechak/application/
 - 구조는 BC 패키지와 같은 usecase, facade, service, port이고 애그리거트와 리포지토리 포트는 없다. 에러코드가 필요하면 `error/`에 둔다(file).
 - 다른 BC는 이 패키지의 UseCase만 주입받는다. 판정 결과를 어떤 응답으로 바꿀지는 호출한 BC가 정한다.
 - `application/ratelimit`(사용자별 요청 빈도 제한)은 예외로 응답을 직접 정한다. 넘으면 `RateLimitUseCase.check`가 429 `CommonErrorCode.TOO_MANY_REQUESTS`(90012)를 던진다. 쓰는 BC가 늘어도 코드는 하나여야 해서 공통 코드를 쓴다.
-  - 규칙은 쓰는 BC가 `RateLimitRule`을 구현한 enum으로 둔다(선례 `application/sns/support/SnsRateLimitRule`). `key`가 같은 규칙은 함께 센다. 켜기와 끄기를 합쳐 세는 행동은 규칙 하나를 두 요청이 함께 쓴다.
+  - 규칙은 쓰는 BC가 `RateLimitRule`을 구현한 enum으로 둔다(선례 `application/sns/support/SnsRateLimitRule`, 업로드 주소 발급의 `application/file/support/FileRateLimitRule`). `key`가 같은 규칙은 함께 센다. 켜기와 끄기를 합쳐 세는 행동은 규칙 하나를 두 요청이 함께 쓴다.
   - 창이 여럿인 규칙은 모든 창이 한도 아래일 때만 받고 모든 창을 함께 올린다. 거절된 요청은 어느 창도 올리지 않는다. 한 규칙에 같은 길이의 창을 둘 두지 않는다(`check`가 거부한다).
   - Redis가 실패하면(`DataAccessException`) 통과시키고 다른 예외는 그대로 던진다. 대기는 api의 `spring.data.redis.timeout`(1초)까지다.
 
@@ -172,6 +172,7 @@ override fun confirmPayment(command: ConfirmPaymentCommand): PaymentResult {
   결과 enum으로 돌려주고, 호출한 배치가 경고를 남기고 회차를 끊는다).
 - 닉네임과 소개글의 금지어 판정(ModerationUseCase)도 판정기가 api에만 있어 UserFacade가 nullable로 받는다. UserFacade는
   admin, seller, batch에도 올라가지만 그 모듈에는 닉네임과 프로필을 쓰는 경로가 없고 판정기가 없는데 불리면 예외로 끊는다.
+- 업로드 주소 발급의 빈도 제한(RateLimitUseCase)도 같은 이유로 FileFacade가 nullable로 받는다. 발급 경로는 api에만 있다.
 
 ## 3. 이벤트 리스너 — 수신자 위치
 
