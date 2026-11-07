@@ -19,6 +19,7 @@ import com.aechak.domain.sns.comment.enums.CommentDeletionReason
 import com.aechak.domain.sns.comment.enums.CommentStatus
 import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.post.Post
+import com.aechak.domain.user.user.enums.UserStatus
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
@@ -62,22 +63,41 @@ class CommentQueryService(
         viewerId: Long?,
     ): Map<Long, Long> = commentQueryPort.countVisible(postIds, viewerId)
 
-    /** 보는 사람에게 보이는 이 게시물의 댓글을 답글 대상으로 찾는다. 없거나 보이지 않으면 130700이다 */
+    /**
+     * 보는 사람에게 보이는 이 게시물의 댓글을 답글 대상으로 찾는다. 없거나 보이지 않으면 130700이다.
+     * 포트가 사용자 표를 읽지 않으므로 영구 정지 작성자의 대댓글은 여기서 거르고 최상위 댓글은 [requireOpenRoot]가 거른다
+     */
     fun requireReplyTarget(
+        scope: SnsCommentScope,
+        commentPublicId: String,
+    ): SnsCommentRefView {
+        val ref = findVisibleRef(scope, commentPublicId)
+        if (ref.parentId != null && isBanned(ref.authorId)) throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
+        return ref
+    }
+
+    /** 좋아요할 수 있는 댓글의 id. 보이지 않거나 안내 문구만 남은 댓글(지운 댓글, 영구 정지 작성자의 댓글)이면 130700이다 */
+    fun requireLikeTarget(
+        scope: SnsCommentScope,
+        commentPublicId: String,
+    ): Long {
+        val ref = findVisibleRef(scope, commentPublicId)
+        if (ref.status == CommentStatus.DELETED || isBanned(ref.authorId)) throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
+        return ref.id
+    }
+
+    /** 영구 정지 작성자의 최상위 댓글은 안내 문구라 지운 댓글처럼 답글을 받지 않는다(130705) */
+    fun requireOpenRoot(root: Comment) {
+        if (isBanned(root.authorId)) throw BusinessException(SnsErrorCode.SNS_COMMENT_REPLY_CLOSED)
+    }
+
+    private fun findVisibleRef(
         scope: SnsCommentScope,
         commentPublicId: String,
     ): SnsCommentRefView =
         commentQueryPort.findVisibleRef(scope, commentPublicId) ?: throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
 
-    /** 좋아요할 수 있는 댓글의 id. 보이지 않거나 안내 문구만 남은 댓글이면 130700이다 */
-    fun requireLikeTarget(
-        scope: SnsCommentScope,
-        commentPublicId: String,
-    ): Long {
-        val ref = requireReplyTarget(scope, commentPublicId)
-        if (ref.status == CommentStatus.DELETED) throw BusinessException(SnsErrorCode.SNS_COMMENT_UNAVAILABLE)
-        return ref.id
-    }
+    private fun isBanned(userId: Long): Boolean = userUseCase.findPublicProfileById(userId)?.status == UserStatus.BANNED
 
     /** 최상위 댓글 size개와 그 대댓글을 스레드 순서로 이어 붙인 한 페이지 */
     fun getPage(
@@ -110,7 +130,7 @@ class CommentQueryService(
         likes: CommentLikes,
     ): SnsCommentItemResult {
         val author =
-            view.authorNickname?.let {
+            view.authorNickname?.takeIf { view.authorStatus != UserStatus.BANNED }?.let {
                 SnsPostAuthorResult(
                     view.authorPublicId!!,
                     it,
@@ -120,7 +140,7 @@ class CommentQueryService(
         return item(
             publicId = view.publicId,
             parentPublicId = parentPublicId,
-            status = statusOf(view.status, view.deletionReason),
+            status = statusOf(view.status, view.deletionReason, view.authorStatus == UserStatus.BANNED),
             rootStatus = rootStatus,
             author = author,
             content = view.content,
@@ -146,8 +166,8 @@ class CommentQueryService(
         return item(
             publicId = comment.publicId,
             parentPublicId = root?.publicId,
-            status = statusOf(comment.status, comment.deletionReason),
-            rootStatus = root?.let { statusOf(it.status, it.deletionReason) },
+            status = statusOf(comment.status, comment.deletionReason, authorBanned = false),
+            rootStatus = root?.let { statusOf(it.status, it.deletionReason, isBanned(it.authorId)) },
             author = author,
             content = comment.content,
             edited = comment.editedAt != null,
@@ -164,18 +184,26 @@ class CommentQueryService(
         viewerId: Long?,
     ): CommentLikes = CommentLikes(likeService.countByCommentIds(commentIds), likeService.findLikedCommentIdsAmong(viewerId, commentIds))
 
+    /** 프로필 행이 없는 작성자(탈퇴)와 영구 정지 작성자는 null이다 */
     private fun authorOf(userId: Long): SnsPostAuthorResult? =
-        userUseCase.findPublicProfileById(userId)?.let { profile ->
+        userUseCase.findPublicProfileById(userId)?.takeIf { it.status != UserStatus.BANNED }?.let { profile ->
             profile.nickname?.let { SnsPostAuthorResult(profile.publicId, it, profile.profileImageUrl) }
         }
 
+    /** authorBanned면 영구 정지 작성자다 */
     private fun statusOf(
         status: CommentStatus,
         reason: CommentDeletionReason?,
+        authorBanned: Boolean,
     ): SnsCommentItemStatus =
         when {
             status == CommentStatus.DELETED && reason == CommentDeletionReason.WITHDRAWAL -> SnsCommentItemStatus.WITHDRAWN
+
             status == CommentStatus.DELETED -> SnsCommentItemStatus.DELETED
+
+            // 영구 정지 작성자의 댓글은 탈퇴한 사용자의 댓글과 같은 안내 문구다. 목록 조건이 대댓글이 남은 최상위 댓글만 남긴다
+            authorBanned -> SnsCommentItemStatus.WITHDRAWN
+
             else -> SnsCommentItemStatus.ACTIVE
         }
 
