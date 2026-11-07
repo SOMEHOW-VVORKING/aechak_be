@@ -58,4 +58,7 @@ enum class ProductErrorCode(
 
     // 검수 운영 지표
     INSPECTION_METRICS_WINDOW_INVALID(40506, "지표 집계 창이 올바르지 않습니다.", 400),
+
+    // 검수 진행 현황 조회
+    INSPECTION_NOT_FOUND(40508, "검수 기록을 찾을 수 없습니다.", 404),
 }
