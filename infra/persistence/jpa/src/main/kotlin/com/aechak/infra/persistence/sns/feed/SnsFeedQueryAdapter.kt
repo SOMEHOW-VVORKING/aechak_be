@@ -22,6 +22,7 @@ import com.aechak.domain.sns.save.QSave
 import com.aechak.domain.sns.stats.QSnsPostStats
 import com.aechak.domain.user.user.QUser
 import com.aechak.domain.user.user.QUserProfile
+import com.aechak.domain.user.user.enums.UserStatus
 import com.aechak.infra.persistence.sns.comment.publicCommentCount
 import com.querydsl.core.types.Projections
 import com.querydsl.core.types.dsl.BooleanExpression
@@ -47,13 +48,15 @@ private val follow = QFollow.follow
 private val user = QUser.user
 private val profile = QUserProfile.userProfile
 
-/** 볼 수 있는 사용자. 프로필 행이 없는 탈퇴, 온보딩 전 사용자는 빠진다 */
-private fun visibleUser(userId: NumberExpression<Long>): BooleanExpression =
-    JPAExpressions
+/** 볼 수 있는 사용자. 프로필 행이 없는 탈퇴, 온보딩 전 사용자와 영구 정지 사용자는 빠진다 */
+private fun visibleUser(userId: NumberExpression<Long>): BooleanExpression {
+    val visible = QUser("visibleUser")
+    return JPAExpressions
         .selectOne()
-        .from(profile)
-        .where(profile.userId.eq(userId))
+        .from(profile, visible)
+        .where(profile.userId.eq(userId), visible.id.eq(userId), visible.status.ne(UserStatus.BANNED))
         .exists()
+}
 
 /** 게시 시각이 from과 to 사이인 원글. from이 null이면 to까지 기간 없이 */
 private fun createdBetween(
@@ -62,7 +65,9 @@ private fun createdBetween(
 ): BooleanExpression = from?.let { post.createdAt.between(it, to) } ?: post.createdAt.loe(to)
 
 /** visibleUser와 같은 조건의 네이티브 조각. 팔로잉 피드의 원천, 원글 작성자, 리포스트한 사람이 함께 쓴다 */
-internal fun visibleUserSql(userIdColumn: String): String = "EXISTS (SELECT 1 FROM user_profiles vp WHERE vp.user_id = $userIdColumn)"
+internal fun visibleUserSql(userIdColumn: String): String =
+    "EXISTS (SELECT 1 FROM user_profiles vp JOIN users vu ON vu.id = vp.user_id " +
+        "WHERE vp.user_id = $userIdColumn AND vu.status <> '${UserStatus.BANNED.name}')"
 
 /** 팔로잉 피드 원천 src. 나와 내가 팔로우하는 사용자 중 볼 수 있고 숨김 밖인 사용자다 */
 private fun followingSourcesSql(hasHidden: Boolean): String =
