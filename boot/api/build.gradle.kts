@@ -9,6 +9,7 @@ dependencies {
     implementation(project(":pii"))                     // PII 암호화 엔진+키 조립 — 루트 스캔이 PiiCryptoConfig를 활성화
     implementation(project(":application"))
     implementation(project(":jpa-persistence"))         // 도메인 포트의 구현체 조립. 다른 infra 모듈도 어댑터가 생기면 여기 추가
+    implementation(project(":elasticsearch-persistence")) // 키워드 검색 Elasticsearch 어댑터. aechak.search.engine=es일 때만 검색에 쓴다
     implementation(project(":social-client"))           // 소셜 id_token 검증 어댑터(ACC-01)
     implementation(project(":sms-client"))              // SMS 발송 어댑터(전화 인증)
     implementation(project(":redis"))                   // refresh token 저장소 어댑터(ACC-01)
@@ -39,6 +40,7 @@ dependencies {
     testFixturesApi(project(":application"))            // FakeFileStorage(FileStorage)·고정 코드 생성기 — domain은 api 전이
     testFixturesApi(libs.spring.boot.starter.test)      // @SpringBootTest·DynamicPropertyRegistry 등 상속 표면
     testFixturesApi(libs.testcontainers.mysql)          // MySQL·Redis 컨테이너(코어 전이)
+    testFixturesImplementation(libs.testcontainers.elasticsearch) // 검색 색인 컨테이너. spring.elasticsearch.uris를 처음 읽을 때만 뜬다
     testFixturesApi(libs.jackson.databind)              // 생성 OpenAPI 문서 파싱(계약 테스트 지원) — 컨테이너의 매퍼로 읽는다
     testFixturesImplementation(libs.spring.webmvc)      // 핸들러 매핑에서 선언 성공 코드 수집(계약 테스트 지원)
     testFixturesImplementation(project(":web-security"))                        // JwtConfig.ROLE_CLAIM(토큰 민팅)

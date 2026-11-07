@@ -78,7 +78,7 @@ resource "aws_db_instance" "perf" {
   username = local.db_username
   password = random_password.db.result
 
-  allocated_storage = 20
+  allocated_storage = lookup(var.db_storage_gb, each.key, 20)
   storage_type      = "gp3"
   storage_encrypted = true
 

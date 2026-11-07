@@ -6,7 +6,13 @@ variable "region" {
 variable "datasets" {
   description = "측정층 RDS를 만들 데이터 크기 목록"
   type        = list(string)
-  default     = ["100k", "1m"]
+  default     = ["100k", "1m", "10m", "100m"]
+}
+
+variable "db_storage_gb" {
+  description = "데이터 크기별 RDS 저장 공간(GB). 목록에 없는 크기는 20GB"
+  type        = map(number)
+  default     = { "10m" = 40, "100m" = 150 }
 }
 
 variable "db_instance_class" {

@@ -19,7 +19,7 @@ enum class ProductErrorCode(
     PRODUCT_SEARCH_TIMEOUT(40008, "검색이 지연되어 결과를 가져오지 못했습니다. 잠시 뒤에 다시 시도해 주세요.", 503),
 
     // 어드민 판매중지 — 셀러의 판매중지(sale_status 토글)와 다른 층이다
-    PRODUCT_SALE_ALREADY_BLOCKED_BY_ADMIN(40008, "이미 관리자가 판매를 중지한 상품입니다.", 409),
+    PRODUCT_SALE_ALREADY_BLOCKED_BY_ADMIN(40012, "이미 관리자가 판매를 중지한 상품입니다.", 409),
     PRODUCT_SALE_NOT_BLOCKED_BY_ADMIN(40009, "관리자가 판매를 중지한 상품이 아닙니다.", 409),
     PRODUCT_SALE_BLOCKED_BY_ADMIN(40010, "관리자가 판매를 중지한 상품은 판매 상태를 바꿀 수 없습니다.", 409),
     PRODUCT_SALE_BLOCK_CONFLICT(40011, "다른 조치가 먼저 반영됐습니다. 다시 조회한 뒤 시도해 주세요.", 409),

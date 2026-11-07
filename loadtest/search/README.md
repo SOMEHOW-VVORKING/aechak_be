@@ -8,7 +8,7 @@
 
 | 층 | 구성 | 쓰는 단계 |
 |---|---|---|
-| 측정층 | RDS `db.m7g.large`(데이터 크기마다 하나, `aechak-perf-100k`와 `aechak-perf-1m`), api 호스트 EC2 `m7i.large`(api 컨테이너는 dev 태스크와 같은 1 vCPU, 2GB), 러너 EC2 `c7g.large`(k6와 모니터링), T07부터 ES 호스트 `m7g.large` | 모든 단계의 수치 |
+| 측정층 | RDS `db.m7g.large`(데이터 크기마다 하나, `aechak-perf-100k`, `aechak-perf-1m`, `aechak-perf-10m`, `aechak-perf-100m`), api 호스트 EC2 `m7i.large`(api 컨테이너는 dev 태스크와 같은 1 vCPU, 2GB), 러너 EC2 `c7g.large`(k6와 모니터링), T07부터 ES 호스트 `m7g.large`(1억 건은 `r7g.xlarge`에 ES CPU 2개) | 모든 단계의 수치 |
 | 운영 거울층 | 10만 건 기준 스냅샷을 dev와 prod가 쓰는 `db.t4g.micro`로 복원한 `aechak-perf-mirror`. 나머지는 측정층과 같고 manifest는 10만 건 것과 비교한다 | T01과 T10만 |
 
 측정층은 버스트 크레딧이 없는 고정 성능 인스턴스라서 앞 측정이 쓴 크레딧이 뒤 측정에 섞이지 않는다. 운영 거울층은 실제 서비스 크기에서 같은 셀을 돌려 측정층 숫자가 현실과 얼마나 다른지 보여 준다. 거울층에서는 `CPUCreditBalance`와 `CPUSurplusCreditBalance`를 함께 기록한다. 거울층 RDS는 unlimited 모드라 크레딧이 바닥나도 CPU가 기준 성능으로 깎이지 않고 초과분 요금만 붙으므로 그 셀도 유효하다. 대신 크레딧이 바닥난 시각과 초과 크레딧 최대값, `CPUSurplusCreditsCharged`를 결과에 적어 다음 거울층 측정(T10)이 같은 상태에서 돌았는지 비교한다.
@@ -60,7 +60,7 @@ make down
 | `make manifest DATASET=..` | manifest를 다시 만든다 |
 | `make prom` | 러너 Prometheus 9090을 localhost:19090으로 |
 | `make shell-runner`, `make shell-api` | SSM 세션 |
-| `make reindex` | ES 단계에서 만든다(지금은 종료 코드 1) |
+| `make reindex DATASET= REV=` | 엔진을 es로 둔 api를 재색인 속성(`AECHAK_SEARCH_ES_REINDEX_ON_STARTUP=true`)과 함께 다시 띄우고 ES 색인 문서 수가 상품 수와 같아질 때까지 기다린다. 재색인이 끝나야 api가 준비 상태가 되므로 준비 대기를 4시간까지 늘린다(1억 건). 걸린 시간과 색인 크기를 `REINDEX_DONE` 줄로 남긴다 |
 
 `make jar`는 `loadtest/` 밖에 커밋하지 않은 변경이 있으면 멈춘다. `ALLOW_DIRTY=1`이면 rev 뒤에 `-dirty-<diff 해시>`를 붙여 빌드한다. HEAD가 아닌 커밋은 `.perf/build/` 아래 임시 워크트리에서 빌드한다. `SKIP_TESTS=1`이면 검색 테스트를 건너뛰고 `search_test_exit=skipped`로 적는다.
 
@@ -73,6 +73,7 @@ make down
 | `MAX_VUS_CAP` | 1500 | k6 VU 상한 |
 | `IDLE_RDS_CPU_MAX` | 5 | 변형 시작에서 기다리는 RDS CPU 유휴 기준(%) |
 | `RAMP_FLOOR_RATES` | `1 0.5 0.25`, QUICK은 `1 0.5` | ramp 첫 단계가 SLO를 못 지키면 내려가며 시도할 요청률 |
+| `RAMP_RATES` | `2 4 8 16 32 64 128 256` | ramp가 올라갈 요청률(QUICK에는 쓰지 않는다). 처리 한계가 256 req/s보다 높으면 더 높은 단계를 준다 |
 | `WARMUP_RATE` | 2 | 워밍업 요청률 |
 
 ## 셀과 시간
@@ -135,7 +136,7 @@ Grafana 캡처도 이 뒤에 한꺼번에 찍는다. ramp, steady, spike는 전�
   | none | 없는상품 | 0% |
 
 - 경계 집합은 `n % 1000`이 503, 504, 505인 상품(0.3%)이다. `description`이 `perf-boundary:expired`, `perf-boundary:upcoming`, `perf-boundary:open`으로 시작하고 각각 이미 끝난 할인, 시작 전 할인, 기간 제한 없는 할인이다. 이름은 바꾸지 않아 검색어 비율이 그대로다. 할인 만료 같은 시간 경계를 보는 셀만 이 행을 쓴다.
-- manifest(`results/manifest/<size>.json`)는 테이블별 행 수, 시드 컬럼의 CRC, 활성 할인 수, 노출 상품 수, 검색어별 일치 수, 인덱스 목록, 테이블 크기를 담는다. `run.sh`는 변형마다 행 수와 CRC를 manifest와 비교하고 다르면 종료 코드 3으로 멈춘다. 이때는 `make reseed`로 되돌린다.
+- manifest(`results/manifest/<size>.json`)는 테이블별 행 수, 시드 컬럼의 CRC, 활성 할인 수, 노출 상품 수, 검색어별 일치 수, 인덱스 목록, 테이블 크기를 담는다. 1억 건은 노출 상품 수와 검색어별 일치 수를 세지 않는다. `run.sh`는 변형마다 행 수와 CRC를 manifest와 비교하고 다르면 종료 코드 3으로 멈춘다. 이때는 `make reseed`로 되돌린다.
 - 부하 시나리오는 모두 비로그인 검색이라 DB에 쓰지 않는다. 쓰기가 있는 셀은 세션 맨 끝에 돌리고 끝나면 `make reseed`로 manifest 상태로 되돌린다. 스냅샷 복원은 새 인스턴스를 만들므로 거울층과 사고 복구에만 쓴다.
 - 첫 부팅 뒤 api는 항상 `SPRING_FLYWAY_ENABLED=false`와 `SPRING_JPA_HIBERNATE_DDL_AUTO=none`으로 뜬다. 새 jar가 부팅하면서 인덱스나 컬럼을 만들면 before 셀이 두 변수를 함께 바꾼 셀이 되기 때문이다. 스키마 변경은 `ddl/<id>.sql`로만 하고(`ddl/README.md`), `run.sh --ddl "id ..."`가 러너에서 적용해 `perf_applied_ddl`에 id와 파일 sha256을 적는다. 적용된 id가 `--ddl`과 다르거나 파일이 바뀌었으면 종료 코드 4로 멈춘다.
 - before 상태로 돌아갈 때는 `make shell-runner`로 러너에 들어가 `results/rollback/<id>.sql`을 손으로 적용한다. 이 파일의 마지막 문장은 `perf_applied_ddl`에서 그 id 행을 지운다.
@@ -168,7 +169,7 @@ Grafana 캡처도 이 뒤에 한꺼번에 찍는다. ramp, steady, spike는 전�
 | `seed.sql`, `sql/` | 시드, manifest, exporter 계정, warm set |
 | `ddl/` | 측정용 스키마 변경 |
 | `compose.yml` | 노트북 kit 개발 스택 |
-| `es/` | T08 nori 시연 이미지 |
+| `es/` | ES 호스트 스택(`compose.yml`, Elasticsearch 9.2.6 단일 노드와 수집기, `make up`이 띄운다)과 T09 nori 시연 이미지 |
 
 run id는 `<YYYY-MM-DD>-<STEP>-<DATASET>-<CELL>-<VARIANT>-r<N>`이고 날짜는 서울 시각이다(예: `2026-11-05-SEARCH-T01-100k-steady-base-r2`). steady만 r1에서 r3까지 있고 ramp는 run id 하나에 단계별 파일을 둔다. AWS에서 같은 run id가 이미 있으면 종료 코드 1로 멈춘다. `FORCE=1`이면 그 run id의 러너 raw 파일, 캡처, S3 객체와 노트북에 받아 둔 파일을 지우고 지운 목록을 로그에 남긴 뒤 다시 잰다. `make step`도 `FORCE`를 따른다. local 모드는 늘 지우고 다시 쓴다.
 

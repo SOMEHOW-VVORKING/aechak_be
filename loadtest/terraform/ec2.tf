@@ -10,7 +10,7 @@ locals {
   hosts = {
     runner = { ami = data.aws_ssm_parameter.al2023_arm64.insecure_value, type = "c7g.large", disk = 30, sg = aws_security_group.runner.id }
     api    = { ami = data.aws_ssm_parameter.al2023_x86_64.insecure_value, type = "m7i.large", disk = 20, sg = aws_security_group.api.id }
-    es     = { ami = data.aws_ssm_parameter.al2023_arm64.insecure_value, type = var.es_instance_type, disk = 40, sg = aws_security_group.es.id }
+    es     = { ami = data.aws_ssm_parameter.al2023_arm64.insecure_value, type = var.es_instance_type, disk = 80, sg = aws_security_group.es.id }
   }
   enabled_hosts = { for k, v in local.hosts : k => v if k != "es" || var.es_enabled }
 }

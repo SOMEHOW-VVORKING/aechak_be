@@ -6,19 +6,22 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 --rev REV --dataset 100k|1m|mirror|local [--first-boot] [--env KEY=VALUE]..." >&2
+  echo "usage: $0 --rev REV --dataset 100k|1m|10m|100m|mirror|local [--first-boot] [--ready-timeout SEC] [--env KEY=VALUE]..." >&2
   exit 2
 }
 
 REV=""
 DATASET=""
 FIRST_BOOT=0
+# 시작 직후 재색인처럼 준비 상태가 늦게 오는 실행은 --ready-timeout으로 늘린다
+READY_TIMEOUT=240
 EXTRA_ENV=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --rev) [ $# -ge 2 ] || usage; REV=$2; shift 2 ;;
     --dataset) [ $# -ge 2 ] || usage; DATASET=$2; shift 2 ;;
     --first-boot) FIRST_BOOT=1; shift ;;
+    --ready-timeout) [ $# -ge 2 ] || usage; READY_TIMEOUT=$2; shift 2 ;;
     --env)
       [ $# -ge 2 ] || usage
       case "$2" in [A-Za-z_]*=*) EXTRA_ENV+=("$2") ;; *) usage ;; esac
@@ -66,7 +69,7 @@ if [ "$MODE" = aws ]; then
   done
   case "$DATASET" in
     mirror) DB_HOST=$(jq -er '.mirror.value.address' "$OUTPUTS"); DB_PORT=$(jq -er '.mirror.value.port' "$OUTPUTS") ;;
-    100k | 1m)
+    100k | 1m | 10m | 100m)
       DB_HOST=$(jq -er --arg d "$DATASET" '.rds.value[$d].address' "$OUTPUTS")
       DB_PORT=$(jq -er --arg d "$DATASET" '.rds.value[$d].port' "$OUTPUTS") ;;
     *) usage ;;
@@ -75,6 +78,7 @@ if [ "$MODE" = aws ]; then
   DB_PASS=$(aws ssm get-parameter --name "$(jq -er '.db_password_param.value' "$OUTPUTS")" \
     --with-decryption --query Parameter.Value --output text)
   ENV_FILE=$STATE/api.env
+  ES_IP=$(jq -r '.es.value.private_ip // empty' "$OUTPUTS")
   HEALTH_URL=http://localhost:8081/actuator/health
   COMPOSE=(docker compose -p aechak-perf-api -f "$KIT_DIR/apihost/compose.yml")
   SUPPORT_SERVICES=(redis kafka node-exporter cadvisor)
@@ -128,6 +132,8 @@ umask 077
   kv MANAGEMENT_METRICS_DISTRIBUTION_PERCENTILESHISTOGRAM_HTTP_SERVER_REQUESTS true
   kv SPRING_FLYWAY_ENABLED "$FLYWAY"
   kv SPRING_JPA_HIBERNATE_DDL_AUTO "$DDL_AUTO"
+  # ES 호스트가 있을 때만 검색 엔진 주소를 준다. 엔진 선택은 --env AECHAK_SEARCH_ENGINE으로 한다
+  if [ -n "${ES_IP:-}" ]; then kv SPRING_ELASTICSEARCH_URIS "http://$ES_IP:9200"; fi
 } >"$ENV_FILE.tmp"
 # --env는 같은 키의 기본값을 대신한다
 for pair in ${EXTRA_ENV[@]+"${EXTRA_ENV[@]}"}; do
@@ -150,7 +156,7 @@ fail() {
 STARTED_MS=$(now_ms)
 "${COMPOSE[@]}" up -d --force-recreate --no-deps api
 CID=$("${COMPOSE[@]}" ps -q api)
-DEADLINE=$(($(date +%s) + 240))
+DEADLINE=$(($(date +%s) + READY_TIMEOUT))
 until curl -fsS --max-time 3 "$HEALTH_URL" 2>/dev/null | grep -q '"status":"UP"'; do
   [ "$(docker inspect -f '{{.State.Running}}' "$CID" 2>/dev/null)" = true ] || fail exited
   [ "$(date +%s)" -lt "$DEADLINE" ] || fail timeout

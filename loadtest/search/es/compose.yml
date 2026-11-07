@@ -1,0 +1,44 @@
+# ES 호스트(EC2 m7g.large, 1억 건은 r7g.xlarge) 스택. 측정 대상 Elasticsearch와 수집기다. laptop.sh up이 띄운다.
+name: aechak-perf-es
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.6
+    container_name: perf-es
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      # 힙은 호스트 크기와 무관하게 4GB이고 나머지 메모리는 파일 캐시로 쓴다
+      ES_JAVA_OPTS: -Xms4g -Xmx4g
+    # 호스트가 커도 CPU는 m7g.large와 같은 2개만 쓴다
+    cpus: 2
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+
+  es-exporter:
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.11.0
+    command: ["--es.uri=http://elasticsearch:9200", "--es.indices", "--web.listen-address=:9114"]
+    depends_on: [elasticsearch]
+    ports:
+      - "9114:9114"
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    network_mode: host
+    pid: host
+    command: ["--path.rootfs=/host", "--web.listen-address=:9100"]
+    volumes:
+      - /:/host:ro,rslave
+
+volumes:
+  es-data:

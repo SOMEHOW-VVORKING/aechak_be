@@ -35,6 +35,7 @@ include(
     "admin",                          // 어드민 API — 셀러 심사 등 운영자 전용
     "batch",
     "jpa-persistence",
+    "elasticsearch-persistence",      // 키워드 검색 Elasticsearch 어댑터
     "pg-client",          // kafka는 어댑터 코드가 생길 때 하위 모듈 추가
     "social-client",
     "tracking-client",                       // 택배사 추적 조회 어댑터 — 현재는 목 구현만
@@ -51,6 +52,7 @@ project(":seller-api").projectDir = file("boot/seller")
 project(":admin").projectDir = file("boot/admin")
 project(":batch").projectDir = file("boot/batch")
 project(":jpa-persistence").projectDir = file("infra/persistence/jpa")
+project(":elasticsearch-persistence").projectDir = file("infra/persistence/elasticsearch")
 project(":pg-client").projectDir = file("infra/client/pg-client")
 project(":social-client").projectDir = file("infra/client/social-client")
 project(":tracking-client").projectDir = file("infra/client/tracking-client")
