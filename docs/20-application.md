@@ -83,6 +83,8 @@ package com.aechak.application.order.usecase
  *   좋아요(SnsLikeUseCase, SnsLikeFacade)도 같은 이유로 나눈다. 금지어 판정 없이 게시물 판정과 좋아요 행만 쓴다.
  *   댓글(SnsCommentUseCase, SnsCommentFacade)은 금지어 판정을 받는 쪽이라 금지어가 필요 없는 좋아요와 나눈다.
  *   댓글 삭제의 상태 전이(CommentDeletionService)는 commentdeletion 패키지에 두어 운영자 삭제와 탈퇴 정리를 붙일 admin과 batch가 이 패키지만 스캔한다.
+ *   탈퇴 정리(SnsWithdrawalUseCase, SnsWithdrawalFacade)는 탈퇴 트랜잭션 안에서 게시물 삭제와 댓글 삭제의 탈퇴 메서드를 부르고 그 사이에 관계와 반응을 지운다.
+ *   게시가 태그 행을 통계 행보다 먼저 잠그므로 게시물을 먼저 지운다.
  *   검색(SnsSearchUseCase, SnsSearchFacade)도 같은 이유로 피드와 나눈다. 검색 조회 포트와 인기순 순위 저장소를 쓰고 피드의 순위 페이지 나누기를 함께 쓴다.
  * - 이 인터페이스만이 외부(Controller / Consumer / Batch / 타 도메인 Facade)에 노출된다.
  * - 타 도메인이 order를 부를 때도 반드시 이 인터페이스로만 — OrderService 직접 호출 금지.
@@ -301,14 +303,16 @@ data class ProductCatalogView(
 - `SnsUserListQueryPort` 구현이 `sns_follows`, `sns_blocks`, `sns_mutes`를 `users`, `user_profiles`와 id 값 동등 조건으로
   조인해 publicId, 닉네임, 프로필 이미지 key를 읽는다.
 - 두 단계 조회(`UserUseCase`로 표시 정보를 따로 붙이기)로는 닉네임 검색 결과를 페이지 크기만큼 채울 수 없어서
-  keyset 페이지, 탈퇴 사용자 제외(프로필 행이 없으면 INNER JOIN에서 빠진다), 검색을 한 쿼리로 끝낸다.
+  keyset 페이지, 탈퇴 사용자 제외(프로필 행이 없으면 INNER JOIN에서 빠진다), 영구 정지 사용자 제외(`users.status`), 검색을 한 쿼리로 끝낸다.
 - 같은 구현이 게시물과 댓글 좋아요한 사람 목록도 `sns_post_likes`, `sns_comment_likes`를 같은 조건으로 조인해 읽는다. 차단 관계인 사용자와 탈퇴 사용자를
   LIMIT 전에 빼야 최근 100명이 덜 차지 않는다.
 - `SnsCommentQueryPort` 구현은 댓글 목록과 단건의 작성자 publicId, 닉네임, 프로필 이미지 key를 같은 방식으로 읽되 LEFT JOIN이다.
-  프로필 행이 없는 작성자의 댓글도 그 자리에 안내 문구로 남아야 한다. 답글과 좋아요 대상 판정과 댓글 수는 user 테이블을 읽지 않는다.
+  프로필 행이 없는 작성자의 댓글도 그 자리에 안내 문구로 남아야 한다. 영구 정지 작성자의 댓글은 지운 댓글처럼 다루므로
+  목록, 단건, 댓글 수의 조건이 `users.status`를 읽는다. 답글, 좋아요, 신고 대상 판정은 쓰기 경로라 user 테이블을 읽지 않고
+  영구 정지 작성자를 `UserUseCase`로 거른다.
 - `SnsFeedQueryPort` 구현도 카드의 작성자 publicId, 닉네임, 프로필 이미지 key를 같은 방식으로 읽고 프로필 행이 없는
-  작성자의 글을 목록 쿼리에서 뺀다. 탈퇴 작성자를 앱에서 거르면 keyset 페이지가 크기만큼 차지 않는다.
-- `SnsSearchQueryPort` 구현도 계정 검색에서 `user_profiles`의 닉네임으로 찾고 정렬하며 게시물 검색에서 프로필 행이 없는 작성자의 글을 뺀다.
+  작성자와 영구 정지 작성자의 글을 목록 쿼리에서 뺀다. 탈퇴 작성자를 앱에서 거르면 keyset 페이지가 크기만큼 차지 않는다.
+- `SnsSearchQueryPort` 구현도 계정 검색에서 `user_profiles`의 닉네임으로 찾고 정렬하며 계정 검색과 게시물 검색에서 프로필 행이 없는 사용자와 영구 정지 사용자를 뺀다.
 - 읽기 전용 조회 포트 구현에서만 쓴다. 도메인 리포지토리와 쓰기 경로는 user 테이블을 읽지 않는다.
 - JPA 연관과 FK는 두지 않고 user 테이블에 쓰지 않는다.
 - 서비스를 나눌 때는 SNS 쪽 닉네임 사본으로 바꾼다.

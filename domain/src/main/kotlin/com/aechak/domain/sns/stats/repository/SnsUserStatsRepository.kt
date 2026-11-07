@@ -28,4 +28,15 @@ interface SnsUserStatsRepository {
 
     /** 게시물 수 -1(post_count > 0), 갱신 행 수 반환 */
     fun decreasePostCount(userId: Long): Int
+
+    /** 통계 행들을 user_id 오름차순으로 만들거나 배타 잠금 */
+    fun lockAllInUserIdOrder(userIds: Collection<Long>)
+
+    /** 사용자마다 팔로워 수 -1(follower_count > 0) */
+    fun decreaseFollowerCounts(userIds: Collection<Long>)
+
+    /** 사용자마다 팔로잉 수 -1(following_count > 0) */
+    fun decreaseFollowingCounts(userIds: Collection<Long>)
+
+    fun deleteByUserId(userId: Long)
 }

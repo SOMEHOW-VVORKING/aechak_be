@@ -15,7 +15,10 @@ import jakarta.persistence.UniqueConstraint
 @Table(
     name = "sns_post_likes",
     uniqueConstraints = [UniqueConstraint(name = "uk_sns_post_likes_post_user", columnNames = ["post_id", "user_id"])],
-    indexes = [Index(name = "ix_sns_post_likes_post_recent", columnList = "post_id, id, user_id")],
+    indexes = [
+        Index(name = "ix_sns_post_likes_post_recent", columnList = "post_id, id, user_id"),
+        Index(name = "ix_sns_post_likes_user", columnList = "user_id"),
+    ],
 )
 class PostLike protected constructor(
     @Column(name = "post_id", nullable = false)

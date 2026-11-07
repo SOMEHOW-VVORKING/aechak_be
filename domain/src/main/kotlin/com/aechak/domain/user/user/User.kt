@@ -150,6 +150,12 @@ class User protected constructor() : AggregateRoot() {
         profile.updateProfile(nickname, bio, profileImageKey)
     }
 
+    /** 운영자 프로필 초기화 — 제재와 별개라 계정 상태를 보지 않는다. 프로필이 없는 계정(온보딩 전, 탈퇴)은 대상이 아니다. */
+    fun resetProfileByOperator() {
+        val profile = _profile ?: throw BusinessException(UserErrorCode.PROFILE_NOT_RESETTABLE)
+        profile.resetByOperator()
+    }
+
     /**
      * 전화 인증
      * 전화번호 암호문, 검색용 해시, 인증 상태를 함께 저장

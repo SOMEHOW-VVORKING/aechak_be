@@ -17,4 +17,7 @@ interface SaveRepository {
         userId: Long,
         postIds: Collection<Long>,
     ): Set<Long>
+
+    /** user가 한 저장을 모두 하드 삭제 */
+    fun deleteAllByUser(userId: Long)
 }

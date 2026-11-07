@@ -25,8 +25,11 @@ import com.aechak.domain.review.report.enums.ReviewReportReason;
 import com.aechak.domain.review.review.Review;
 import com.aechak.domain.review.review.enums.ReviewStatus;
 import com.aechak.domain.seller.seller.Seller;
+import com.aechak.domain.sns.comment.Comment;
+import com.aechak.domain.sns.comment.enums.CommentDeletionReason;
 import com.aechak.domain.sns.post.Post;
 import com.aechak.domain.sns.post.enums.PostDeletionReason;
+import com.aechak.domain.sns.report.CommentReport;
 import com.aechak.domain.sns.report.PostReport;
 import com.aechak.domain.sns.report.enums.PostReportReason;
 import com.aechak.domain.support.Ulid;
@@ -340,7 +343,7 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
 
     @Test
     void 알_수_없는_대상_종류_경로는_400_90001_이다() throws Exception {
-        mockMvc.perform(bearer(get(BASE + "/SNS_COMMENT/1"), adminToken))
+        mockMvc.perform(bearer(get(BASE + "/SNS_STORY/1"), adminToken))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value(90001));
     }
@@ -722,6 +725,82 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
         assertThat(decisions()).isEmpty();
     }
 
+    // --- SNS 댓글 ---
+
+    @Test
+    void SNS_댓글_신고가_목록에_댓글_publicId와_본문으로_나오고_소유자는_댓글_작성자다() throws Exception {
+        long postAuthorId = createMember("게시물주인", UserRole.GENERAL);
+        String postPublicId = persistSnsPost(postAuthorId, "산책 사진");
+        String commentPublicId = persistSnsComment(authorId, postPublicId, "광고 댓글이에요");
+        long reportId = persistSnsCommentReport(commentPublicId, PostReportReason.SPAM, null);
+
+        mockMvc.perform(bearer(get(BASE).param("targetType", "SNS_COMMENT"), adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(1))
+                .andExpect(jsonPath("$.data.items[0].targetType").value("SNS_COMMENT"))
+                .andExpect(jsonPath("$.data.items[0].reportId").value(reportId))
+                .andExpect(jsonPath("$.data.items[0].targetKey").value(commentPublicId))
+                .andExpect(jsonPath("$.data.items[0].targetName").value("광고 댓글이에요"))
+                .andExpect(jsonPath("$.data.items[0].targetOwnerNickname").value("초코집사"))
+                .andExpect(jsonPath("$.data.items[0].reasonCode").value("SPAM"));
+    }
+
+    @Test
+    void SNS_댓글_신고의_비공개_전환은_댓글을_운영자_삭제로_지우고_내용을_비운다() throws Exception {
+        String postPublicId = persistSnsPost(createMember("게시물주인", UserRole.GENERAL), "산책 사진");
+        String commentPublicId = persistSnsComment(authorId, postPublicId, "욕설 댓글");
+        long reportId = persistSnsCommentReport(commentPublicId, PostReportReason.ABUSE, "욕설이에요");
+
+        decide("SNS_COMMENT", reportId, hideBody("ABUSE")).andExpect(status().isNoContent());
+
+        assertThat(commentStateOf(commentPublicId)).isEqualTo("DELETED/OPERATOR/null");
+        assertThat(postStatusOf(postPublicId)).isEqualTo("PUBLISHED/null");
+        assertThat(decisions()).hasSize(1);
+        assertThat(decisions().get(0).getTargetOwnerUserId()).isEqualTo(authorId);
+        assertThat(sanctionsOf(authorId)).isEmpty();
+    }
+
+    @Test
+    void SNS_댓글_신고의_계정_제재는_댓글을_지우고_댓글_작성자를_제재한다() throws Exception {
+        String postPublicId = persistSnsPost(createMember("게시물주인", UserRole.GENERAL), "산책 사진");
+        String commentPublicId = persistSnsComment(authorId, postPublicId, "욕설 댓글");
+        long reportId = persistSnsCommentReport(commentPublicId, PostReportReason.ABUSE, null);
+
+        decide("SNS_COMMENT", reportId, sanctionBody("ABUSE", "RESTRICT", "OTHER", null))
+                .andExpect(status().isNoContent());
+
+        assertThat(commentStateOf(commentPublicId)).isEqualTo("DELETED/OPERATOR/null");
+        assertThat(statusOf(authorId)).isEqualTo(UserStatus.RESTRICTED);
+    }
+
+    @Test
+    void 작성자가_이미_지운_SNS_댓글의_신고도_비공개_전환으로_종결하고_삭제_주체는_그대로다() throws Exception {
+        String postPublicId = persistSnsPost(createMember("게시물주인", UserRole.GENERAL), "산책 사진");
+        String commentPublicId = persistSnsComment(authorId, postPublicId, "곧 지울 댓글");
+        long reportId = persistSnsCommentReport(commentPublicId, PostReportReason.SPAM, null);
+        tx.executeWithoutResult(txStatus -> commentOf(commentPublicId).delete(CommentDeletionReason.AUTHOR));
+
+        decide("SNS_COMMENT", reportId, hideBody("ABUSE")).andExpect(status().isNoContent());
+
+        assertThat(commentStateOf(commentPublicId)).isEqualTo("DELETED/AUTHOR/null");
+        assertThat(decisions()).hasSize(1);
+    }
+
+    @Test
+    void 제재가_거절되면_SNS_댓글_삭제도_되돌아간다() throws Exception {
+        long adminAuthorId = createMember("부운영자", UserRole.ADMIN);
+        String postPublicId = persistSnsPost(createMember("게시물주인", UserRole.GENERAL), "산책 사진");
+        String commentPublicId = persistSnsComment(adminAuthorId, postPublicId, "욕설 댓글");
+        long reportId = persistSnsCommentReport(commentPublicId, PostReportReason.ABUSE, null);
+
+        decide("SNS_COMMENT", reportId, sanctionBody("ABUSE", "BAN", "ABUSIVE_REVIEW", null))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value(30021));
+
+        assertThat(commentStateOf(commentPublicId)).isEqualTo("ACTIVE/null/욕설 댓글");
+        assertThat(decisions()).isEmpty();
+    }
+
     // --- 요청 본문 ---
 
     private ResultActions decide(String targetType, long reportId, String body) throws Exception {
@@ -923,6 +1002,43 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
                         .setParameter("id", postPublicId)
                         .getSingleResult()));
         return row[0] + "/" + row[1];
+    }
+
+    private String persistSnsComment(long author, String postPublicId, String content) {
+        return Objects.requireNonNull(tx.execute(txStatus -> {
+            Post post = em.createQuery("select p from Post p where p.publicId = :id", Post.class)
+                    .setParameter("id", postPublicId)
+                    .getSingleResult();
+            Comment comment = Comment.Companion.write(post, null, author, content, Ulid.INSTANCE.generate());
+            em.persist(comment);
+            em.flush();
+            return comment.getPublicId();
+        }));
+    }
+
+    private Comment commentOf(String commentPublicId) {
+        return em.createQuery("select c from Comment c where c.publicId = :id", Comment.class)
+                .setParameter("id", commentPublicId)
+                .getSingleResult();
+    }
+
+    private long persistSnsCommentReport(String commentPublicId, PostReportReason reasonCode, String reasonText) {
+        return Objects.requireNonNull(tx.execute(txStatus -> {
+            CommentReport report =
+                    CommentReport.Companion.report(commentOf(commentPublicId), createUser(), reasonCode, reasonText);
+            em.persist(report);
+            em.flush();
+            return report.getId();
+        }));
+    }
+
+    /** "상태/삭제 주체/내용" 문자열. 아직 지우지 않았으면 삭제 주체는 null 이다. */
+    private String commentStateOf(String commentPublicId) {
+        Object[] row = (Object[]) Objects.requireNonNull(tx.execute(txStatus -> em.createNativeQuery(
+                        "select status, deletion_reason, content from sns_comments where public_id = :id")
+                .setParameter("id", commentPublicId)
+                .getSingleResult()));
+        return row[0] + "/" + row[1] + "/" + row[2];
     }
 
     private FakeFileStorage fakeFileStorage() {

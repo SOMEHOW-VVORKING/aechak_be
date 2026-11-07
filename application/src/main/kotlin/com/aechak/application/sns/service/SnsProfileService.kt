@@ -7,15 +7,16 @@ import com.aechak.application.user.user.usecase.result.UserPublicProfileResult
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.stats.repository.SnsUserStatsRepository
+import com.aechak.domain.user.user.enums.UserStatus
 import org.springframework.stereotype.Service
 
 @Service
 class SnsProfileService(
     private val snsUserStatsRepository: SnsUserStatsRepository,
 ) {
-    /** 없는 사용자와 프로필 행이 없는 사용자(탈퇴, 온보딩 전)는 같은 130000으로 거른다. */
+    /** 없는 사용자, 프로필 행이 없는 사용자(탈퇴, 온보딩 전), 영구 정지 사용자는 같은 130000으로 거른다. */
     fun requireVisible(target: UserPublicProfileResult?): UserPublicProfileResult {
-        if (target?.nickname == null) throw BusinessException(SnsErrorCode.SNS_USER_UNAVAILABLE)
+        if (target?.nickname == null || target.status == UserStatus.BANNED) throw BusinessException(SnsErrorCode.SNS_USER_UNAVAILABLE)
         return target
     }
 

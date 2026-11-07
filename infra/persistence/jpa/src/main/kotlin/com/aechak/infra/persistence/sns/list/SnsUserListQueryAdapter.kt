@@ -13,6 +13,7 @@ import com.aechak.domain.sns.like.QPostLike
 import com.aechak.domain.sns.mute.QMute
 import com.aechak.domain.user.user.QUser
 import com.aechak.domain.user.user.QUserProfile
+import com.aechak.domain.user.user.enums.UserStatus
 import com.querydsl.core.types.EntityPath
 import com.querydsl.core.types.Projections
 import com.querydsl.core.types.dsl.DateTimePath
@@ -29,6 +30,9 @@ private val postLike = QPostLike.postLike
 private val commentLike = QCommentLike.commentLike
 private val user = QUser.user
 private val profile = QUserProfile.userProfile
+
+/** 영구 정지 사용자는 탈퇴한 사용자처럼 목록에서 빠진다. 제재가 풀리면 다시 나온다 */
+private val notBanned = user.status.ne(UserStatus.BANNED)
 
 /** 관계 테이블의 컬럼 묶음. 차단과 뮤트가 같은 쿼리를 쓴다 */
 private class RelationTable(
@@ -52,7 +56,7 @@ private fun SnsRelationKind.table(): RelationTable =
         SnsRelationKind.MUTE -> RelationTable(mute, mute.id, mute.muterId, mute.mutedId, mute.createdAt)
     }
 
-/** user BC의 users, user_profiles를 id 동등 조건으로 읽기만 하는 조인. 프로필 행이 없는 탈퇴 사용자는 빠진다 */
+/** user BC의 users, user_profiles를 id 동등 조건으로 읽기만 하는 조인. 프로필 행이 없는 탈퇴 사용자와 영구 정지 사용자는 빠진다 */
 @Repository
 class SnsUserListQueryAdapter(
     private val queryFactory: JPAQueryFactory,
@@ -111,6 +115,7 @@ class SnsUserListQueryAdapter(
             .on(profile.userId.eq(user.id))
             .where(
                 ownerColumn.eq(ownerId),
+                notBanned,
                 lastFollowId?.let { follow.id.lt(it) },
                 // 빈 집합이면 NOT IN 조건을 빼 거르지 않는다
                 hiddenUserIds.takeIf { it.isNotEmpty() }?.let { rowUserColumn.notIn(it) },
@@ -141,6 +146,7 @@ class SnsUserListQueryAdapter(
             .on(profile.userId.eq(user.id))
             .where(
                 postLike.postId.eq(postId),
+                notBanned,
                 hiddenUserIds.takeIf { it.isNotEmpty() }?.let { postLike.userId.notIn(it) },
             ).orderBy(postLike.id.desc())
             .limit(limit.toLong())
@@ -167,6 +173,7 @@ class SnsUserListQueryAdapter(
             .on(profile.userId.eq(user.id))
             .where(
                 commentLike.commentId.eq(commentId),
+                notBanned,
                 hiddenUserIds.takeIf { it.isNotEmpty() }?.let { commentLike.userId.notIn(it) },
             ).orderBy(commentLike.id.desc())
             .limit(limit.toLong())
@@ -183,7 +190,7 @@ class SnsUserListQueryAdapter(
             .on(user.id.eq(t.targetId))
             .join(profile)
             .on(profile.userId.eq(user.id))
-            .where(t.ownerId.eq(ownerId))
+            .where(t.ownerId.eq(ownerId), notBanned)
 
     private fun relationProjection(t: RelationTable) =
         Projections.constructor(

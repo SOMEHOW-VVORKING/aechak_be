@@ -40,6 +40,12 @@ interface CommentLikeJpaRepository : JpaRepository<CommentLike, Long> {
         @Param("userId") userId: Long,
         @Param("commentIds") commentIds: Collection<Long>,
     ): List<Long>
+
+    @Modifying
+    @Query("delete from CommentLike l where l.userId = :userId")
+    fun deleteAllByUserId(
+        @Param("userId") userId: Long,
+    ): Int
 }
 
 @Repository
@@ -70,4 +76,8 @@ class CommentLikeRepositoryAdapter(
         userId: Long,
         commentIds: Collection<Long>,
     ): Set<Long> = if (commentIds.isEmpty()) emptySet() else jpaRepository.findCommentIds(userId, commentIds).toSet()
+
+    override fun deleteAllByUser(userId: Long) {
+        jpaRepository.deleteAllByUserId(userId)
+    }
 }

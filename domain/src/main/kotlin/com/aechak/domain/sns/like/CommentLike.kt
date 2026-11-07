@@ -15,7 +15,10 @@ import jakarta.persistence.UniqueConstraint
 @Table(
     name = "sns_comment_likes",
     uniqueConstraints = [UniqueConstraint(name = "uk_sns_comment_likes_comment_user", columnNames = ["comment_id", "user_id"])],
-    indexes = [Index(name = "ix_sns_comment_likes_comment_recent", columnList = "comment_id, id, user_id")],
+    indexes = [
+        Index(name = "ix_sns_comment_likes_comment_recent", columnList = "comment_id, id, user_id"),
+        Index(name = "ix_sns_comment_likes_user", columnList = "user_id"),
+    ],
 )
 class CommentLike protected constructor(
     @Column(name = "comment_id", nullable = false)
