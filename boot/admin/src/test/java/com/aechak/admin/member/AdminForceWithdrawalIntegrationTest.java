@@ -7,9 +7,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.aechak.admin.support.FakeFileStorage;
 import com.aechak.admin.support.IntegrationTestBase;
 import com.aechak.application.file.port.FileStorage;
+import com.aechak.application.user.sanction.usecase.AdminMemberUseCase;
+import com.aechak.application.user.sanction.usecase.command.SanctionMemberCommand;
 import com.aechak.domain.sns.comment.Comment;
 import com.aechak.domain.sns.post.Post;
 import com.aechak.domain.support.Ulid;
+import com.aechak.domain.user.sanction.enums.SanctionAction;
+import com.aechak.domain.user.sanction.enums.SanctionReasonCode;
 import com.aechak.domain.user.social.SocialIdentity;
 import com.aechak.domain.user.social.enums.SocialProvider;
 import com.aechak.domain.user.user.User;
@@ -38,8 +42,12 @@ class AdminForceWithdrawalIntegrationTest extends IntegrationTestBase {
     @Autowired
     private FileStorage fileStorage;
 
+    @Autowired
+    private AdminMemberUseCase adminMemberUseCase;
+
     private MockMvc mockMvc;
     private String actorToken;
+    private long actorId;
 
     @BeforeEach
     void setUp() {
@@ -47,7 +55,8 @@ class AdminForceWithdrawalIntegrationTest extends IntegrationTestBase {
                 .addFilters(securityFilterChain)
                 .build();
         ((FakeFileStorage) fileStorage).reset();
-        actorToken = mintAccessToken(createMember("운영자", UserRole.ADMIN));
+        actorId = createMember("운영자", UserRole.ADMIN);
+        actorToken = mintAccessToken(actorId);
     }
 
     @Test
@@ -66,6 +75,29 @@ class AdminForceWithdrawalIntegrationTest extends IntegrationTestBase {
         assertThat(statusAndReason("sns_posts", otherPostId)).isEqualTo("PUBLISHED/null");
         assertThat(((FakeFileStorage) fileStorage).deletedKeys())
                 .containsExactlyInAnyOrder(mediaKeyOf(postId), profileImageKey);
+    }
+
+    @Test
+    void 바깥_트랜잭션이_롤백되면_SNS_정리도_되돌리고_프로필_이미지와_미디어를_지우지_않는다() {
+        long targetId = createMember("문제회원", UserRole.GENERAL);
+        setProfileImage(targetId, "users/profile/" + Ulid.INSTANCE.generate() + ".jpg");
+        String postId = persistSnsPost(targetId);
+
+        // 신고 처리처럼 바깥 트랜잭션 안에서 제재를 부른 뒤 바깥이 롤백되는 경우
+        tx.executeWithoutResult(txStatus -> {
+            adminMemberUseCase.sanction(new SanctionMemberCommand(
+                    actorId,
+                    targetId,
+                    SanctionAction.FORCE_WITHDRAW,
+                    SanctionReasonCode.FALSE_REPORT,
+                    null,
+                    null,
+                    null));
+            txStatus.setRollbackOnly();
+        });
+
+        assertThat(statusAndReason("sns_posts", postId)).isEqualTo("PUBLISHED/null");
+        assertThat(((FakeFileStorage) fileStorage).deletedKeys()).isEmpty();
     }
 
     @Test
