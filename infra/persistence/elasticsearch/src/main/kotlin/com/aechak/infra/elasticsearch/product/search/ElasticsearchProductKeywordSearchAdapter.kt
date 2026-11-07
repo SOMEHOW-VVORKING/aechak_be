@@ -23,6 +23,7 @@ import org.springframework.stereotype.Repository
 import java.math.BigDecimal
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
+import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
@@ -34,9 +35,19 @@ import java.util.concurrent.TimeoutException
 class ElasticsearchProductKeywordSearchAdapter(
     client: ElasticsearchClient,
     @Value("\${aechak.search.query-timeout-ms:3000}") private val queryTimeoutMs: Long,
+    @Value("\${aechak.search.max-concurrent-requests:10}") maxConcurrentRequests: Int,
 ) : ProductKeywordSearchPort {
     // 응답 대기 상한을 검색 요청에만 걸려고 비동기 클라이언트로 보내고 결과를 기다림
     private val client = ElasticsearchAsyncClient(client._transport())
+
+    // ES 연결 수와 같은 동시 요청 자리. 보낸 요청이 연결을 기다리지 않게 함
+    private val permits = Semaphore(maxConcurrentRequests)
+
+    init {
+        require(maxConcurrentRequests >= MAX_REQUESTS_PER_CALL) {
+            "aechak.search.max-concurrent-requests는 검색 한 번이 보내는 최대 요청 수($MAX_REQUESTS_PER_CALL) 이상이어야 합니다."
+        }
+    }
 
     override val readsDatabase = false
 
@@ -74,7 +85,7 @@ class ElasticsearchProductKeywordSearchAdapter(
         val now = ProductSearchIndex.epochMicros(condition.now)
         val pages = pageRequests(condition, now)
         val counts = if (trackTotalHits) countRequests(condition, now) else emptyList()
-        val responses = awaitAll(pages + counts)
+        val responses = awaitAll(send(pages + counts))
         val pageResponses = responses.take(pages.size)
         val hits =
             if (pageResponses.size == 1) {
@@ -94,11 +105,11 @@ class ElasticsearchProductKeywordSearchAdapter(
     private fun pageRequests(
         condition: ProductKeywordSearchCondition,
         now: Long,
-    ): List<CompletableFuture<SearchResponse<Map<*, *>>>> {
+    ): List<() -> CompletableFuture<SearchResponse<Map<*, *>>>> {
         val idDesc = fieldSort("id", SortOrder.Desc)
         return when (condition.sort) {
             ProductKeywordSearchSort.POPULAR -> {
-                listOf(search(condition, filters(condition, now), listOf(fieldSort("review_count", SortOrder.Desc), idDesc)))
+                listOf({ search(condition, filters(condition, now), listOf(fieldSort("review_count", SortOrder.Desc), idDesc)) })
             }
 
             ProductKeywordSearchSort.PRICE_ASC -> {
@@ -106,13 +117,13 @@ class ElasticsearchProductKeywordSearchAdapter(
                 val onDiscountFilters = common + discountedAt(now) + priceRange(condition, "discount_price")
                 val regularFilters = common + notDiscountedAt(now) + priceRange(condition, "regular_price")
                 listOf(
-                    search(condition, onDiscountFilters, listOf(fieldSort("discount_price", SortOrder.Asc), idDesc)),
-                    search(condition, regularFilters, listOf(fieldSort("regular_price", SortOrder.Asc), idDesc)),
+                    { search(condition, onDiscountFilters, listOf(fieldSort("discount_price", SortOrder.Asc), idDesc)) },
+                    { search(condition, regularFilters, listOf(fieldSort("regular_price", SortOrder.Asc), idDesc)) },
                 )
             }
 
             ProductKeywordSearchSort.LATEST -> {
-                listOf(search(condition, filters(condition, now), listOf(idDesc)))
+                listOf({ search(condition, filters(condition, now), listOf(idDesc)) })
             }
         }
     }
@@ -125,14 +136,14 @@ class ElasticsearchProductKeywordSearchAdapter(
     private fun countRequests(
         condition: ProductKeywordSearchCondition,
         now: Long,
-    ): List<CompletableFuture<SearchResponse<Map<*, *>>>> {
+    ): List<() -> CompletableFuture<SearchResponse<Map<*, *>>>> {
         if (condition.filter.minPrice == null && condition.filter.maxPrice == null) {
-            return listOf(countRequest(filters(condition, now)))
+            return listOf({ countRequest(filters(condition, now)) })
         }
         val common = filters(condition, now, withPrice = false)
         return listOf(
-            countRequest(common + discountedAt(now) + priceRange(condition, "discount_price")),
-            countRequest(common + notDiscountedAt(now) + priceRange(condition, "regular_price")),
+            { countRequest(common + discountedAt(now) + priceRange(condition, "discount_price")) },
+            { countRequest(common + notDiscountedAt(now) + priceRange(condition, "regular_price")) },
         )
     }
 
@@ -301,7 +312,25 @@ class ElasticsearchProductKeywordSearchAdapter(
         )
     }
 
-    private fun <T> withTimeout(request: () -> CompletableFuture<T>): T = awaitAll(listOf(request())).single()
+    private fun <T> withTimeout(request: () -> CompletableFuture<T>): T = awaitAll(send(listOf(request))).single()
+
+    /**
+     * 요청 수만큼 동시 요청 자리를 한 번에 잡고 보냄. 자리가 모자라면 ES 연결을 기다리지 않고 QueryTimeoutException을 던짐
+     * 자리는 응답이 오거나 요청이 취소되면 돌려줌
+     */
+    private fun <T> send(requests: List<() -> CompletableFuture<T>>): List<CompletableFuture<T>> {
+        if (!permits.tryAcquire(requests.size)) throw QueryTimeoutException("검색 엔진 동시 요청 상한 초과")
+        val sent = ArrayList<CompletableFuture<T>>(requests.size)
+        try {
+            requests.forEach { request -> sent += request().also { it.whenComplete { _, _ -> permits.release() } } }
+        } catch (e: Exception) {
+            // 보내지 못한 요청의 자리는 여기서 돌려주고 이미 보낸 요청은 취소해 돌려받음
+            permits.release(requests.size - sent.size)
+            sent.forEach { it.cancel(true) }
+            throw e
+        }
+        return sent
+    }
 
     /** queryTimeoutMs 안에 모든 응답이 오지 않으면 요청을 모두 취소하고 QueryTimeoutException을 던짐 */
     private fun <T> awaitAll(futures: List<CompletableFuture<T>>): List<T> {
@@ -352,6 +381,9 @@ class ElasticsearchProductKeywordSearchAdapter(
     ): Query = Query.of { q -> q.range { r -> r.untyped { it.field(field).gte(gte).lte(lte) } } }
 
     companion object {
+        // 낮은 가격순 결과 2개와 가격 필터 개수 2개
+        private const val MAX_REQUESTS_PER_CALL = 4
+
         private val BY_PRICE_THEN_ID_DESC =
             compareBy<Hit<Map<*, *>>> { it.sort()[0].longValue() }.thenByDescending { it.sort()[1].longValue() }
     }
