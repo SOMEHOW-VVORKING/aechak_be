@@ -8,7 +8,10 @@ import com.aechak.application.product.search.port.ProductKeywordFilter
 import com.aechak.application.product.search.port.ProductKeywordSearchCondition
 import com.aechak.application.product.search.port.ProductKeywordSearchSort
 import org.apache.hc.core5.http.HttpHost
+import org.springframework.dao.DataAccessException
 import org.springframework.dao.QueryTimeoutException
+import org.springframework.dao.TransientDataAccessResourceException
+import java.io.IOException
 import java.net.ServerSocket
 import java.net.Socket
 import java.time.LocalDateTime
@@ -26,6 +29,7 @@ import kotlin.test.assertTrue
 /**
  * 계약: 검색 엔진이 응답하지 않으면 어댑터가 QueryTimeoutException을 던져 서비스가 503으로 바꿀 수 있는지
  * 동시 요청 상한이 차 있으면 요청을 보내지 않고 바로 실패하고, 시간을 넘긴 요청은 끝날 때까지 자리를 쥐는지
+ * 연결하지 못하면 일시적 실패(TransientDataAccessResourceException)로 바꿔 던지는지
  */
 class ElasticsearchProductKeywordSearchAdapterTest {
     @Test
@@ -68,21 +72,36 @@ class ElasticsearchProductKeywordSearchAdapterTest {
                 assertTrue(fourAccepted.await(5, TimeUnit.SECONDS), "요청 4개가 서버에 닿지 않았다")
 
                 // 시간을 넘긴 요청을 취소하지 않으므로 자리가 그대로이고 다음 요청은 보내지 않고 거절함
-                val rejected = assertFailsWith<QueryTimeoutException> { adapter.findIdByPublicId("01JD5G7HJK8M2N4PQ6RSTV9WXY") }
+                val rejected =
+                    assertFailsWith<TransientDataAccessResourceException> { adapter.findIdByPublicId("01JD5G7HJK8M2N4PQ6RSTV9WXY") }
                 assertNull(rejected.cause)
 
                 // 서버가 연결을 닫으면 요청이 끝나 자리가 돌아오고 다음 요청은 보낸 뒤 응답을 기다리다 시간을 넘김
                 accepted.forEach { it.close() }
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
-                var sent: QueryTimeoutException
+                var sent: DataAccessException
                 do {
-                    sent = assertFailsWith<QueryTimeoutException> { adapter.findIdByPublicId("01JD5G7HJK8M2N4PQ6RSTV9WXY") }
-                    if (sent.cause == null) Thread.sleep(20)
-                } while (sent.cause == null && System.nanoTime() < deadline)
+                    sent = assertFailsWith<DataAccessException> { adapter.findIdByPublicId("01JD5G7HJK8M2N4PQ6RSTV9WXY") }
+                    if (sent is TransientDataAccessResourceException) Thread.sleep(20)
+                } while (sent is TransientDataAccessResourceException && System.nanoTime() < deadline)
+                assertIs<QueryTimeoutException>(sent)
                 assertIs<TimeoutException>(sent.cause)
                 // 남은 요청을 끝내 클라이언트를 닫을 때 기다리지 않게 함
                 accepted.forEach { it.close() }
             }
+        }
+    }
+
+    @Test
+    fun `연결하지 못하면 일시적 실패로 바꿔 던진다`() {
+        // 아무도 듣지 않는 포트
+        val port = ServerSocket(0).use { it.localPort }
+        Rest5Client.builder(HttpHost("http", "localhost", port)).build().use { restClient ->
+            val client = ElasticsearchClient(Rest5ClientTransport(restClient, Jackson3JsonpMapper()))
+            val adapter = ElasticsearchProductKeywordSearchAdapter(client, queryTimeoutMs = 2_000, maxConcurrentRequests = 4)
+
+            val failed = assertFailsWith<TransientDataAccessResourceException> { adapter.findIdByPublicId("01JD5G7HJK8M2N4PQ6RSTV9WXY") }
+            assertIs<IOException>(failed.cause)
         }
     }
 

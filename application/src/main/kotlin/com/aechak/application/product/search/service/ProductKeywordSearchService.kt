@@ -14,7 +14,7 @@ import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.repository.CategoryRepository
 import com.aechak.domain.product.error.ProductErrorCode
-import org.springframework.dao.QueryTimeoutException
+import org.springframework.dao.TransientDataAccessException
 import org.springframework.stereotype.Service
 import java.text.Normalizer
 import java.time.LocalDateTime
@@ -33,7 +33,7 @@ class ProductKeywordSearchService(
         categoryIds: Set<Long> = searchableCategoryIds(query.categoryId),
     ): CursorPageResult<ProductCatalogView> {
         val filter = toFilter(query)
-        val anchor = query.cursor?.let { timeoutAsSearchDelay { resolveCursor(it, query.sort, filter, now) } }
+        val anchor = query.cursor?.let { transientFailureAsSearchDelay { resolveCursor(it, query.sort, filter, now) } }
         val queryNow = anchor?.anchorNow ?: now
         val condition =
             ProductKeywordSearchCondition(
@@ -48,7 +48,7 @@ class ProductKeywordSearchService(
             )
         // 첫 페이지에서만 총개수 계산
         val (fetched, totalCount) =
-            timeoutAsSearchDelay {
+            transientFailureAsSearchDelay {
                 if (query.cursor == null) {
                     productKeywordSearchPort.searchFirstPage(condition).let { it.fetched to it.totalCount }
                 } else {
@@ -62,11 +62,11 @@ class ProductKeywordSearchService(
         ) { last -> encodeCursor(query.sort, filter, last, queryNow) }
     }
 
-    /** 검색 포트의 응답 대기 상한 초과를 검색 지연 오류(503)로 바꿈 */
-    private inline fun <T> timeoutAsSearchDelay(block: () -> T): T =
+    /** 검색 포트의 일시적 실패(응답 대기 상한 초과, 동시 요청 상한 초과, 연결 실패)를 검색 지연 오류(503)로 바꿈 */
+    private inline fun <T> transientFailureAsSearchDelay(block: () -> T): T =
         try {
             block()
-        } catch (e: QueryTimeoutException) {
+        } catch (e: TransientDataAccessException) {
             throw BusinessException(ProductErrorCode.PRODUCT_SEARCH_TIMEOUT, e)
         }
 

@@ -55,9 +55,9 @@
   - 재작성은 `aechak.search.es.reindex-on-startup=true`(기본 false)일 때 api가 시작 직후 한 번 돌린다. 클라이언트는 시작할 때 Elasticsearch에 연결하지 않는다. 주소는 `spring.elasticsearch.uris`다.
   - 알려진 한계: 실시간 동기화가 없다. 색인은 마지막 재작성 시점의 데이터다. 그 뒤 바뀐 상품, 셀러, 카테고리 상태, 리뷰 수는 다음 재작성 전까지 반영되지 않는다. 카테고리 활성 여부는 요청마다 application이 계산한 id 목록으로 걸러 즉시 반영된다.
   - Elasticsearch 상태는 `/actuator/health`에 넣지 않는다(`management.health.elasticsearch.enabled=false`). api는 기본 `jpa`로 Elasticsearch 없이 배포한다.
-  - 응답 대기 상한은 `aechak.search.query-timeout-ms`다. 넘기면 어댑터가 `QueryTimeoutException`으로 바꿔 던지고 서비스가 `PRODUCT_SEARCH_TIMEOUT`(503)으로 바꾼다. 다음 페이지 커서를 해석하는 요청도 같다.
+  - 응답 대기 상한은 `aechak.search.query-timeout-ms`다. 넘기면 어댑터가 `QueryTimeoutException`을 던진다. 연결 실패, 연결 끊김 같은 I/O 실패는 `TransientDataAccessResourceException`으로 바꿔 던진다. 서비스는 일시적 실패(`TransientDataAccessException`)를 모두 `PRODUCT_SEARCH_TIMEOUT`(503)으로 바꾼다. 다음 페이지 커서를 해석하는 요청도 같다.
   - 시간을 넘긴 ES 요청은 취소하지 않고 응답이 오거나 소켓 제한 시간이 될 때까지 둔다. 취소하면 요청 본문 자원 해제가 클라이언트 I/O 스레드와 겹쳐 I/O 스레드가 멈추고, 앱을 다시 띄울 때까지 모든 검색이 실패한 적이 있다.
-  - 동시 요청 상한: 어댑터는 ES 요청을 `aechak.search.max-concurrent-requests`(기본 40)개까지만 동시에 보낸다. 검색 한 번이 보내는 요청 수(1개에서 4개)만큼 자리를 한 번에 잡고, 모자라면 보내지 않고 `QueryTimeoutException`을 던져 503으로 끝낸다. 자리는 요청이 끝나면 돌려준다. 상한은 4 이상이어야 한다.
+  - 동시 요청 상한: 어댑터는 ES 요청을 `aechak.search.max-concurrent-requests`(기본 40)개까지만 동시에 보낸다. 검색 한 번이 보내는 요청 수(1개에서 4개)만큼 자리를 한 번에 잡고, 모자라면 보내지 않고 `TransientDataAccessResourceException`을 던져 503으로 끝낸다. 자리는 요청이 끝나면 돌려준다. 상한은 4 이상이어야 한다.
   - ES 클라이언트 연결 수(노드당, 전체)는 `ElasticsearchConnectionPoolConfig`가 동시 요청 상한과 같은 값으로 둔다. 보낸 요청은 연결을 기다리지 않으므로 응답 대기 상한이 ES 응답 시간만 센다. 색인 재작성도 같은 클라이언트를 써서 재작성 중에는 검색 요청이 연결을 기다릴 수 있다.
 - **키워드 검색의 쿼리 타임아웃**: 표본, 목록, 총개수 쿼리에 `jakarta.persistence.query.timeout` 힌트를 건다. 값은 `aechak.search.query-timeout-ms`(기본 3000)다.
   - Hibernate가 밀리초를 초로 반올림해 JDBC에 넘기므로 500 미만은 타임아웃이 없는 것과 같다.

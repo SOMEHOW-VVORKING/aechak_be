@@ -13,17 +13,22 @@ import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.category.repository.CategoryRepository
 import com.aechak.domain.product.error.ProductErrorCode
 import org.springframework.dao.QueryTimeoutException
+import org.springframework.dao.TransientDataAccessResourceException
 import java.time.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
-/** 계약: 다음 페이지 커서를 해석하는 검색 엔진 요청이 응답 대기 상한을 넘겨도 검색 지연 오류(503)로 끝나는지 */
+/**
+ * 계약: 검색 엔진의 일시적 실패(응답 대기 상한 초과, 동시 요청 상한 초과, 연결 실패)가
+ * 다음 페이지 커서를 해석할 때도 첫 페이지를 검색할 때도 검색 지연 오류(503)로 끝나는지
+ */
 class ProductKeywordSearchServiceTest {
+    private val now = LocalDateTime.of(2026, 11, 7, 12, 0)
+
     @Test
     fun `커서 해석이 응답 대기 상한을 넘기면 검색 지연 오류로 바꾼다`() {
-        val service = ProductKeywordSearchService(TimingOutPort(), NoCategories)
-        val now = LocalDateTime.of(2026, 11, 7, 12, 0)
+        val service = ProductKeywordSearchService(FailingPort(QueryTimeoutException("검색 엔진 응답 시간 초과")), NoCategories)
         val filter = ProductKeywordFilter("강아지", null, null, null, null, freeShipping = false, excludeSoldOut = false)
         val cursor =
             ProductKeywordSearchCursorCodec.encode(
@@ -41,15 +46,26 @@ class ProductKeywordSearchServiceTest {
         assertEquals(ProductErrorCode.PRODUCT_SEARCH_TIMEOUT, error.errorCode)
     }
 
-    /** 커서 해석에서 응답 대기 상한을 넘기는 검색 포트 */
-    private class TimingOutPort : ProductKeywordSearchPort {
+    @Test
+    fun `동시 요청 상한 초과나 연결 실패도 검색 지연 오류로 바꾼다`() {
+        val service = ProductKeywordSearchService(FailingPort(TransientDataAccessResourceException("검색 엔진 연결 실패")), NoCategories)
+
+        val error = assertFailsWith<BusinessException> { service.searchPage(ProductKeywordSearchQuery(keyword = "강아지"), now, setOf(1L)) }
+
+        assertEquals(ProductErrorCode.PRODUCT_SEARCH_TIMEOUT, error.errorCode)
+    }
+
+    /** 모든 요청에서 정한 예외를 던지는 검색 포트 */
+    private class FailingPort(
+        private val failure: RuntimeException,
+    ) : ProductKeywordSearchPort {
         override val readsDatabase = false
 
-        override fun search(condition: ProductKeywordSearchCondition): List<ProductCatalogView> = error("커서 해석에서 끝나야 한다")
+        override fun search(condition: ProductKeywordSearchCondition): List<ProductCatalogView> = throw failure
 
-        override fun searchFirstPage(condition: ProductKeywordSearchCondition): ProductKeywordSearchFirstPage = error("커서 해석에서 끝나야 한다")
+        override fun searchFirstPage(condition: ProductKeywordSearchCondition): ProductKeywordSearchFirstPage = throw failure
 
-        override fun findIdByPublicId(publicId: String): Long? = throw QueryTimeoutException("검색 엔진 응답 시간 초과")
+        override fun findIdByPublicId(publicId: String): Long? = throw failure
     }
 
     private object NoCategories : CategoryRepository {

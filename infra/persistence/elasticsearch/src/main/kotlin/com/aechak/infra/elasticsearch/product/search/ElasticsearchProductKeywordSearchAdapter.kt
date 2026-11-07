@@ -19,7 +19,9 @@ import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.dao.QueryTimeoutException
+import org.springframework.dao.TransientDataAccessResourceException
 import org.springframework.stereotype.Repository
+import java.io.IOException
 import java.math.BigDecimal
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
@@ -315,11 +317,11 @@ class ElasticsearchProductKeywordSearchAdapter(
     private fun <T> withTimeout(request: () -> CompletableFuture<T>): T = awaitAll(send(listOf(request))).single()
 
     /**
-     * 요청 수만큼 동시 요청 자리를 한 번에 잡고 보냄. 자리가 모자라면 ES 연결을 기다리지 않고 QueryTimeoutException을 던짐
+     * 요청 수만큼 동시 요청 자리를 한 번에 잡고 보냄. 자리가 모자라면 ES 연결을 기다리지 않고 TransientDataAccessResourceException을 던짐
      * 자리는 요청이 끝나면(응답, 실패, 소켓 제한 시간) 돌려줌
      */
     private fun <T> send(requests: List<() -> CompletableFuture<T>>): List<CompletableFuture<T>> {
-        if (!permits.tryAcquire(requests.size)) throw QueryTimeoutException("검색 엔진 동시 요청 상한 초과")
+        if (!permits.tryAcquire(requests.size)) throw TransientDataAccessResourceException("검색 엔진 동시 요청 상한 초과")
         val sent = ArrayList<CompletableFuture<T>>(requests.size)
         try {
             requests.forEach { request -> sent += request().also { it.whenComplete { _, _ -> permits.release() } } }
@@ -332,7 +334,7 @@ class ElasticsearchProductKeywordSearchAdapter(
     }
 
     /**
-     * queryTimeoutMs 안에 모든 응답이 오지 않으면 QueryTimeoutException을 던짐
+     * queryTimeoutMs 안에 모든 응답이 오지 않으면 QueryTimeoutException을, 연결 실패나 연결 끊김이면 TransientDataAccessResourceException을 던짐
      * 요청은 취소하지 않음. 취소하면 요청 스레드와 클라이언트 I/O 스레드가 요청 본문 자원을 함께 해제하다 I/O 스레드가 멈춤
      */
     private fun <T> awaitAll(futures: List<CompletableFuture<T>>): List<T> {
@@ -341,7 +343,9 @@ class ElasticsearchProductKeywordSearchAdapter(
         } catch (e: TimeoutException) {
             throw QueryTimeoutException("검색 엔진 응답 시간 초과", e)
         } catch (e: ExecutionException) {
-            throw e.cause ?: e
+            val cause = e.cause ?: throw e
+            if (cause is IOException) throw TransientDataAccessResourceException("검색 엔진 연결 실패", cause)
+            throw cause
         }
         return futures.map { it.join() }
     }
