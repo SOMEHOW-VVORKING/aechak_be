@@ -8,6 +8,7 @@ import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.post.Post
 import com.aechak.domain.sns.post.enums.PostStatus
 import com.aechak.domain.sns.post.repository.PostRepository
+import com.aechak.domain.user.user.enums.UserStatus
 import org.springframework.stereotype.Service
 
 /** 보는 사람이 게시물을 볼 수 있는지 판정한다. 상세와 이후 피드, 좋아요, 댓글이 같은 판정을 쓴다 */
@@ -23,8 +24,9 @@ class PostAccessService(
         return post
     }
 
-    /** 프로필 행이 없는 작성자(탈퇴)의 게시물은 130400이다 */
+    /** 프로필 행이 없는 작성자(탈퇴)와 영구 정지 작성자의 게시물은 130400이다 */
     fun requireActiveAuthor(author: UserPublicProfileResult?): SnsPostAuthorResult {
+        if (author?.status == UserStatus.BANNED) throw BusinessException(SnsErrorCode.SNS_POST_UNAVAILABLE)
         val nickname = author?.nickname ?: throw BusinessException(SnsErrorCode.SNS_POST_UNAVAILABLE)
         return SnsPostAuthorResult(author.publicId, nickname, author.profileImageUrl)
     }
