@@ -19,6 +19,7 @@ import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.seller.seller.Seller
+import org.hamcrest.Matchers.hasSize
 import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -378,6 +379,126 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
         assertTrue(warnings.all { it.throwableProxy == null }, "예외 메시지가 저장값 조각을 물고 올 수 있어 예외를 남기면 안 된다")
     }
 
+    @Test
+    fun `단계는 항상 RULE TRIAGE MODEL 세 줄이다`() {
+        givenFlagged()
+        seedFinding(InspectionPerspectiveKind.RULE, PerspectiveOutcome.CLEAR)
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.stages.length()").value(3))
+            .andExpect(jsonPath("$.data.stages[0].stage").value("RULE"))
+            .andExpect(jsonPath("$.data.stages[1].stage").value("TRIAGE"))
+            .andExpect(jsonPath("$.data.stages[2].stage").value("MODEL"))
+            .andExpect(jsonPath("$.data.stages[0].outcome").value("CLEAR"))
+            .andExpect(jsonPath("$.data.stages[1].outcome").value("UNCHECKED"))
+            .andExpect(jsonPath("$.data.stages[2].outcome").value("UNCHECKED"))
+    }
+
+    @Test
+    fun `검수를 한 번도 타지 않은 상품도 세 줄을 받는다`() {
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.stages.length()").value(3))
+            .andExpect(jsonPath("$.data.stages[0].outcome").value("UNCHECKED"))
+            .andExpect(jsonPath("$.data.stages[0].detail").value("아직 이 단계에 닿지 않았어요"))
+    }
+
+    @Test
+    fun `모델 관점이 여러 개여도 MODEL 한 줄로 접고 가장 센 결과를 쓴다`() {
+        givenFlagged()
+        seedFinding(InspectionPerspectiveKind.DISPLAY_ADS, PerspectiveOutcome.CLEAR)
+        seedFinding(InspectionPerspectiveKind.CONDUCT_TRADE, PerspectiveOutcome.VIOLATION)
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.stages.length()").value(3))
+            .andExpect(jsonPath("$.data.stages[2].outcome").value("VIOLATION"))
+            .andExpect(jsonPath("$.data.stages[2].detail").value(nullValue()))
+    }
+
+    @Test
+    fun `돌지 않은 단계의 사유를 셀러가 읽는 문장으로 돌려준다`() {
+        givenFlagged()
+        seedFinding(InspectionPerspectiveKind.RULE, PerspectiveOutcome.VIOLATION)
+        seedFinding(InspectionPerspectiveKind.TRIAGE, PerspectiveOutcome.UNCHECKED, skipReason = "RULE_HIT")
+        seedFinding(InspectionPerspectiveKind.ALL, PerspectiveOutcome.UNCHECKED, skipReason = "RULE_HIT")
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.stages[1].detail").value("앞 단계에서 이미 걸려 더 보지 않았어요"))
+            .andExpect(jsonPath("$.data.stages[2].detail").value("앞 단계에서 이미 걸려 더 보지 않았어요"))
+    }
+
+    @Test
+    fun `판정이 끝난 뒤 행이 없는 단계는 돌지 않았다고 말한다`() {
+        // 규칙에 걸려 바로 끝난 반려. TRIAGE·MODEL 은 행이 없고 앞으로도 생기지 않는다
+        givenFlagged()
+        seedFinding(InspectionPerspectiveKind.RULE, PerspectiveOutcome.VIOLATION)
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.processingState").value("SETTLED"))
+            .andExpect(jsonPath("$.data.stages[1].detail").value("이 단계는 돌지 않았어요"))
+            .andExpect(jsonPath("$.data.stages[2].detail").value("이 단계는 돌지 않았어요"))
+    }
+
+    @Test
+    fun `아직 돌고 있으면 행이 없는 단계는 닿지 않았다고 말한다`() {
+        tx.execute {
+            val inspection = inspections.save(queuedInspection("f".repeat(64)))
+            inspection.lease("test", LocalDateTime.now(), Duration.ofMinutes(1), Duration.ofMinutes(1))
+            inspections.save(inspection)
+        }
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.processingState").value("IN_FLIGHT"))
+            .andExpect(jsonPath("$.data.stages[0].detail").value("아직 이 단계에 닿지 않았어요"))
+            .andExpect(jsonPath("$.data.stages[2].detail").value("아직 이 단계에 닿지 않았어요"))
+    }
+
+    @Test
+    fun `모르는 사유는 비우지 않고 돌지 않았다고 말한다`() {
+        givenFlagged()
+        seedFinding(InspectionPerspectiveKind.TRIAGE, PerspectiveOutcome.UNCHECKED, skipReason = "NEW_REASON")
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.stages[1].detail").value("이 단계는 돌지 않았어요"))
+    }
+
+    @Test
+    fun `단계는 stage outcome detail 세 키만 싣는다`() {
+        givenFlagged()
+        seedFinding(InspectionPerspectiveKind.RULE, PerspectiveOutcome.VIOLATION)
+        seedFinding(
+            InspectionPerspectiveKind.TRIAGE,
+            PerspectiveOutcome.UNCHECKED,
+            skipReason = "RULE_HIT",
+            stored =
+                """
+                [{"category":"MEDICAL_CLAIM","perspective":"TRIAGE","spanStart":0,"spanEnd":6,"quote":"슬개골 완치","confidence":0.9}]
+                """.trimIndent(),
+        )
+
+        mockMvc
+            .perform(inspectionRequest(publicId))
+            .andExpect(status().isOk)
+            // 세 값이 다 차 있는 줄에서 키 수를 센다. 이름을 하나씩 막는 것으로는 다른 이름으로 들어오는 필드를 못 잡는다
+            .andExpect(jsonPath("$.data.stages[1].*", hasSize<Any>(3)))
+            .andExpect(jsonPath("$.data.stages[1].stage").value("TRIAGE"))
+            .andExpect(jsonPath("$.data.stages[1].outcome").value("UNCHECKED"))
+            .andExpect(jsonPath("$.data.stages[1].detail").value("앞 단계에서 이미 걸려 더 보지 않았어요"))
+    }
+
     private fun givenFlagged() {
         settledInspection(
             hash = "a".repeat(64),
@@ -392,10 +513,17 @@ class SellerProductInspectionReasonIntegrationTest : IntegrationTestBase() {
     private fun seedFinding(
         perspective: InspectionPerspectiveKind,
         stored: String,
+    ): Long = seedFinding(perspective, PerspectiveOutcome.VIOLATION, stored = stored)
+
+    private fun seedFinding(
+        perspective: InspectionPerspectiveKind,
+        outcome: PerspectiveOutcome,
+        skipReason: String? = null,
+        stored: String? = null,
     ): Long =
         tx.execute {
             val inspectionId = inspections.findLatestByTarget(InspectionTargetType.PRODUCT, productId)!!.id
-            em.persist(InspectionFinding.of(inspectionId, perspective, PerspectiveOutcome.VIOLATION, violations = stored))
+            em.persist(InspectionFinding.of(inspectionId, perspective, outcome, skipReason, stored))
             inspectionId
         }!!
 

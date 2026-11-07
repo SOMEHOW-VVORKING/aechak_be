@@ -1,9 +1,11 @@
 package com.aechak.seller.product.response
 
+import com.aechak.application.inspection.usecase.result.InspectionStage
 import com.aechak.application.product.product.usecase.result.InspectionProgressStep
 import com.aechak.application.product.product.usecase.result.SellerProductInspectionResult
 import com.aechak.domain.inspection.enums.InspectionJudgment
 import com.aechak.domain.inspection.enums.InspectionProcessingState
+import com.aechak.domain.inspection.enums.PerspectiveOutcome
 import com.aechak.domain.product.product.enums.InspectionStatus
 import java.time.LocalDateTime
 
@@ -24,6 +26,13 @@ import java.time.LocalDateTime
  *
  * [appealCleared]가 참이면 접수한 이의가 그 뒤 바뀐 내용 때문에 무효가 됐다는 뜻이고 재접수가
  * 열려 있다. [appealedAt]이 빈 이유를 이것으로 가른다 — 없으면 "접수한 적 없음"과 구별되지 않는다.
+ *
+ * [stages]는 RULE·TRIAGE·MODEL 순서로 **항상 세 줄**이다. 보지 않은 단계도 UNCHECKED 한 줄로
+ * 오므로 화면이 단계 수를 세지 않는다. 통과(CLEAR)와 미검사(UNCHECKED)는 다른 값이다.
+ *
+ * 미검사 줄의 detail 은 그 단계가 **아직 남았는가**를 가른다 — 판정 전(REQUESTED·AI_REVIEWING)에
+ * 비어 있는 단계는 "아직 닿지 않았다"이고, 판정이 끝났는데 비어 있는 단계는 "돌지 않았다"다.
+ * 선별(TRIAGE)은 운영 기본값이 꺼짐이라 확정된 판정에서 늘 후자다.
  */
 data class SellerProductInspectionResponse(
     val productId: String,
@@ -35,6 +44,7 @@ data class SellerProductInspectionResponse(
     val reasonSummary: String?,
     val sellerNotice: String?,
     val violations: List<Violation>,
+    val stages: List<Stage>,
     val rejectReason: String?,
     val appealedAt: LocalDateTime?,
     val appealReason: String?,
@@ -46,6 +56,13 @@ data class SellerProductInspectionResponse(
         val category: String,
         val quote: String?,
         val suggestion: String?,
+    )
+
+    /** [detail]은 UNCHECKED일 때만 찬다 — 위반·통과는 설명할 것이 없다 */
+    data class Stage(
+        val stage: InspectionStage,
+        val outcome: PerspectiveOutcome,
+        val detail: String?,
     )
 
     companion object {
@@ -60,6 +77,7 @@ data class SellerProductInspectionResponse(
                 reasonSummary = result.reasonSummary,
                 sellerNotice = result.sellerNotice,
                 violations = result.violations.map { Violation(it.category, it.quote, it.suggestion) },
+                stages = result.stages.map { Stage(it.stage, it.outcome, it.detail) },
                 rejectReason = result.rejectReason,
                 appealedAt = result.appealedAt,
                 appealReason = result.appealReason,

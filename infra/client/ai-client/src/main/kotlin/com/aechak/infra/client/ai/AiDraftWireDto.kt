@@ -10,6 +10,8 @@ internal data class AiDraftRequestBody(
     val requestId: String,
     val productName: String,
     val categoryId: Long?,
+    /** FILL·REFINE. 열거가 아니라 문자열로 싣는다 — 와이어 모양을 AI 쪽 값 추가에 묶지 않는다 */
+    val mode: String,
     val lockedFields: AiLockedFields?,
     /** 어긋나면 AI가 409로 거절한다 — 모르는 계약을 조용히 처리하지 않는 쪽이 맞다 */
     val schemaVersion: Int = SCHEMA_VERSION,
