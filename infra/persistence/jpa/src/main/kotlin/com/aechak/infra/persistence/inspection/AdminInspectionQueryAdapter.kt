@@ -26,12 +26,16 @@ private val product = QProduct.product
  * 상품 이름은 조인으로 함께 가져온다. 행마다 상품을 따로 물으면 조회가 행 수만큼 늘고, 그 비용은
  * 페이지 폭을 늘릴 때마다 커진다.
  *
- * **요청 시각에 인덱스를 두지 않는다.** 이 질의는 상태·종류·판정 등호 + `requested_at` 정렬이고
- * 지금 `content_inspections`의 보조 인덱스는 `settled_at` 하나뿐이라 정렬은 파일소트다. 지표 창이
- * 닫힌 건만 세느라 그 칼럼을 쓰고, 이쪽 축은 아직 인덱스가 없다. 조회만 하는 변경에 스키마를
- * 건드리지 않으려 이번에는 두지 않았다 — 목록이 눈에 보이게 느려지면 `(requested_at)` 또는
- * `(processing_state, requested_at)`을 더한다. 더할 때는 마이그레이션과 엔티티 선언을 함께 바꿔야
- * ddl-auto 환경과 Flyway 환경의 조회 계획이 갈리지 않는다.
+ * **요청 시각에 인덱스를 두지 않는다.** 이 질의는 상태·종류·판정 등호 + `requested_at` 정렬이다.
+ * `content_inspections`의 보조 인덱스는 셋인데 정렬에 닿는 것이 없다 — `(processing_state,
+ * next_retry_at)`은 타임아웃 승격이 쓰고, `(target_type, target_ref, id)`는 셀러·구매자 화면이
+ * 대상으로 최신 검수를 찾는 경로이고, `(settled_at)`은 지표가 닫힌 건을 세는 자리다. 상태나 종류로
+ * 거르면 앞의 둘이 선두 칼럼으로 범위를 좁혀 주지만 둘째 칼럼이 정렬 축과 달라 파일소트는 남고,
+ * 필터 없이 열면 전체 스캔이다. 조회만 하는 변경에 스키마를 건드리지 않으려 이번에는 두지 않았다 —
+ * 목록이 눈에 보이게 느려지면 `(requested_at)` 또는 `(processing_state, requested_at)`을 더한다.
+ * 후자는 기존 `(processing_state, next_retry_at)`과 선두가 겹쳐 승격 조회가 어느 쪽을 집을지
+ * 옵티마이저에 달리므로, 더한 뒤 그 경로의 실행 계획을 같이 본다. 더할 때는 마이그레이션과 엔티티
+ * 선언을 함께 바꿔야 ddl-auto 환경과 Flyway 환경의 조회 계획이 갈리지 않는다.
  */
 @Repository
 class AdminInspectionQueryAdapter(
