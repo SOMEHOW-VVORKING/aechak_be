@@ -27,7 +27,7 @@ SET @stmt = IF(
         SELECT 1 FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'admin_sale_blocked_at'
     ),
-    'ALTER TABLE products ADD COLUMN admin_sale_blocked_at DATETIME(6) NULL, ALGORITHM=INSTANT',
+    'ALTER TABLE products ADD COLUMN admin_sale_blocked_at DATETIME(6) NULL',
     'SELECT 1'
 );
 PREPARE add_blocked_at FROM @stmt;
@@ -43,7 +43,7 @@ SET @stmt = IF(
         SELECT 1 FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'admin_sale_block_reason'
     ),
-    'ALTER TABLE products ADD COLUMN admin_sale_block_reason VARCHAR(500) NULL, ALGORITHM=INSTANT',
+    'ALTER TABLE products ADD COLUMN admin_sale_block_reason VARCHAR(500) NULL',
     'SELECT 1'
 );
 PREPARE add_block_reason FROM @stmt;
@@ -59,7 +59,7 @@ SET @stmt = IF(
         SELECT 1 FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'admin_sale_blocked_by_admin_id'
     ),
-    'ALTER TABLE products ADD COLUMN admin_sale_blocked_by_admin_id BIGINT NULL, ALGORITHM=INSTANT',
+    'ALTER TABLE products ADD COLUMN admin_sale_blocked_by_admin_id BIGINT NULL',
     'SELECT 1'
 );
 PREPARE add_blocked_by FROM @stmt;
@@ -76,7 +76,7 @@ SET @stmt = IF(
         SELECT 1 FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'admin_sale_block_previous_status'
     ),
-    'ALTER TABLE products ADD COLUMN admin_sale_block_previous_status VARCHAR(30) NULL, ALGORITHM=INSTANT',
+    'ALTER TABLE products ADD COLUMN admin_sale_block_previous_status VARCHAR(30) NULL',
     'SELECT 1'
 );
 PREPARE add_block_previous_status FROM @stmt;
