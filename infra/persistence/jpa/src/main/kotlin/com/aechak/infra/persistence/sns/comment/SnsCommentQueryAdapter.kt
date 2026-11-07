@@ -10,6 +10,7 @@ import com.aechak.domain.sns.mute.QMute
 import com.aechak.domain.sns.post.QPost
 import com.aechak.domain.user.user.QUser
 import com.aechak.domain.user.user.QUserProfile
+import com.aechak.domain.user.user.enums.UserStatus
 import com.querydsl.core.types.ExpressionUtils
 import com.querydsl.core.types.Predicate
 import com.querydsl.core.types.Projections
@@ -30,6 +31,7 @@ private val profile = QUserProfile.userProfile
 /**
  * 댓글 X가 보는 사람에게 보이는 조건을 한 곳에서 만든다. R은 X의 최상위 댓글이다(최상위 댓글이면 X 자신).
  * X와 R의 작성자가 보는 사람에게 숨긴 사용자가 아니고, X가 ACTIVE이거나 X가 지운 최상위 댓글이며 그 아래 보이는 ACTIVE 대댓글이 있어야 한다.
+ * 영구 정지 작성자의 댓글은 지운 댓글처럼 다룬다. 사용자 표를 읽지 않는 findVisibleRef만 이 조건을 빼고 호출한 쪽이 거른다.
  */
 @Repository
 class SnsCommentQueryAdapter(
@@ -46,7 +48,7 @@ class SnsCommentQueryAdapter(
                 comment.parent.isNull,
                 lastRootId?.let { comment.id.gt(it) },
                 authorVisible(comment.authorId, scope),
-                visibleState(comment, scope),
+                visibleState(comment, scope, excludeBanned = true),
             ).orderBy(comment.id.asc())
             .limit(limit.toLong())
             .fetch()
@@ -63,6 +65,7 @@ class SnsCommentQueryAdapter(
             .where(
                 comment.parent.id.`in`(rootIds),
                 comment.status.eq(CommentStatus.ACTIVE),
+                notBanned(comment.authorId),
                 authorVisible(comment.authorId, scope),
             ).orderBy(comment.parent.id.asc(), comment.id.asc())
             .fetch()
@@ -77,7 +80,7 @@ class SnsCommentQueryAdapter(
             .select(Projections.constructor(SnsCommentRefView::class.java, comment.id, comment.parent.id, comment.authorId, comment.status))
             .from(comment)
             .leftJoin(comment.parent, root)
-            .where(comment.publicId.eq(commentPublicId), visibleWithRoot(root, scope))
+            .where(comment.publicId.eq(commentPublicId), visibleWithRoot(root, scope, excludeBanned = false))
             .fetchOne()
     }
 
@@ -88,7 +91,7 @@ class SnsCommentQueryAdapter(
         val root = QComment("visibleRoot")
         return selectViews(comment)
             .leftJoin(comment.parent, root)
-            .where(comment.id.eq(commentId), visibleWithRoot(root, scope))
+            .where(comment.id.eq(commentId), visibleWithRoot(root, scope, excludeBanned = true))
             .fetchOne()
     }
 
@@ -96,15 +99,16 @@ class SnsCommentQueryAdapter(
     private fun visibleWithRoot(
         root: QComment,
         scope: SnsCommentScope,
+        excludeBanned: Boolean,
     ): Predicate? =
         ExpressionUtils.allOf(
             comment.post.id.eq(scope.postId),
             authorVisible(comment.authorId, scope),
             comment.parent.isNull.or(authorVisible(root.authorId, scope)),
-            visibleState(comment, scope),
+            visibleState(comment, scope, excludeBanned),
         )
 
-    // shortcut: 상세와 카드마다 댓글 행을 센다. 행마다 sns_mutes 고유 인덱스를 두 번 찾고 최상위 댓글 작성자를 기본 키로 한 번 읽는다.
+    // shortcut: 상세와 카드마다 댓글 행을 센다. 행마다 sns_mutes 고유 인덱스를 두 번 찾고 최상위 댓글 작성자와 댓글 작성자의 users 행을 기본 키로 한 번씩 읽는다.
     // 게시물 하나의 댓글이 1만 개를 넘거나 상세 P95가 200ms, 피드 P95가 300ms를 넘으면
     // 공개 수를 게시물 통계 행에 저장하고 섀도우 처리된 작성자의 댓글만 볼 때 빼는 방식으로 바꾼다
     override fun countVisible(
@@ -114,7 +118,7 @@ class SnsCommentQueryAdapter(
         if (postIds.isEmpty()) return emptyMap()
         val post = QPost("countedPost")
         val root = QComment("countedRoot")
-        // 차단과 일반 뮤트는 보는 사람에게만 숨기므로 수를 줄이지 않는다. 섀도우 규칙과 ACTIVE만 쓴다
+        // 차단과 일반 뮤트는 보는 사람에게만 숨기므로 수를 줄이지 않는다. 섀도우 규칙, ACTIVE, 영구 정지만 쓴다
         val rows =
             queryFactory
                 .select(comment.post.id, comment.id.count())
@@ -124,6 +128,7 @@ class SnsCommentQueryAdapter(
                 .where(
                     comment.post.id.`in`(postIds),
                     comment.status.eq(CommentStatus.ACTIVE),
+                    notBanned(comment.authorId),
                     notShadowed(comment.authorId, post.authorId, viewerId),
                     comment.parent.isNull.or(notShadowed(root.authorId, post.authorId, viewerId)),
                 ).groupBy(comment.post.id)
@@ -143,6 +148,7 @@ class SnsCommentQueryAdapter(
                     c.parent.id,
                     c.authorId,
                     user.publicId,
+                    user.status,
                     profile.nickname,
                     profile.profileImageKey,
                     c.content,
@@ -157,19 +163,28 @@ class SnsCommentQueryAdapter(
             .leftJoin(profile)
             .on(profile.userId.eq(c.authorId))
 
-    /** ACTIVE이거나, 지운 최상위 댓글이고 그 아래 보이는 ACTIVE 대댓글이 하나 이상 있다(안내 문구) */
+    /**
+     * ACTIVE이거나, 지운 최상위 댓글이고 그 아래 보이는 ACTIVE 대댓글이 하나 이상 있다(안내 문구).
+     * excludeBanned면 영구 정지 작성자의 댓글을 지운 댓글처럼 다룬다
+     */
     private fun visibleState(
         c: QComment,
         scope: SnsCommentScope,
+        excludeBanned: Boolean,
     ): BooleanExpression {
         val reply = QComment("visibleReply")
         val hasVisibleReply =
             JPAExpressions
                 .selectOne()
                 .from(reply)
-                .where(reply.parent.id.eq(c.id), reply.status.eq(CommentStatus.ACTIVE), authorVisible(reply.authorId, scope))
-                .exists()
-        return c.status.eq(CommentStatus.ACTIVE).or(c.parent.isNull.and(hasVisibleReply))
+                .where(
+                    reply.parent.id.eq(c.id),
+                    reply.status.eq(CommentStatus.ACTIVE),
+                    if (excludeBanned) notBanned(reply.authorId) else null,
+                    authorVisible(reply.authorId, scope),
+                ).exists()
+        val live = c.status.eq(CommentStatus.ACTIVE).let { if (excludeBanned) it.and(notBanned(c.authorId)) else it }
+        return live.or(c.parent.isNull.and(hasVisibleReply))
     }
 
     /** 이 사용자가 쓴 댓글이 보는 사람에게 숨겨지지 않는다. 섀도우 처리, 차단 관계, 보는 사람의 뮤트다 */
@@ -183,6 +198,16 @@ class SnsCommentQueryAdapter(
             scope.hidden.takeIf { it.isNotEmpty() }?.let { authorId.notIn(it) },
             scope.muted.takeIf { it.isNotEmpty() }?.let { authorId.notIn(it) },
         )
+}
+
+/** 작성자가 영구 정지 상태가 아니다. 한 쿼리의 댓글 별칭마다 다른 사용자 별칭을 쓴다 */
+private fun notBanned(authorId: NumberPath<Long>): BooleanExpression {
+    val banned = QUser("bannedOf${authorId.metadata.parent!!.metadata.name}")
+    return JPAExpressions
+        .selectOne()
+        .from(banned)
+        .where(banned.id.eq(authorId), banned.status.eq(UserStatus.BANNED))
+        .notExists()
 }
 
 /**
