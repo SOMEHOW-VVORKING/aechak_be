@@ -14,6 +14,10 @@
 --     파일은 그 뒤로 영구 미적용으로 남는다(V55와 같은 수렴 방식).
 --  2) products는 Flyway가 만드는 테이블이 아니다(아직 ddl-auto 소유). 빈 DB에 전체 적용하는
 --     경로에서는 이 시점에 테이블이 아예 없으므로 테이블 조건도 함께 본다(V22와 같은 방식).
+--
+-- ALGORITHM을 지정하지 않는다. products에는 V88이 넣은 FULLTEXT 인덱스가 있고, FULLTEXT가 있는
+-- 테이블의 ADD COLUMN을 MySQL이 INSTANT로 받지 않는다. 미지정이면 서버가 쓸 수 있을 때 INSTANT를
+-- 고르고 못 쓰면 INPLACE로 내려간다. 긴 락은 위의 lock_wait_timeout이 받는다.
 
 SET @saved_lock_wait_timeout = @@SESSION.lock_wait_timeout;
 SET SESSION lock_wait_timeout = 5;
@@ -27,7 +31,7 @@ SET @stmt = IF(
         SELECT 1 FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'admin_sale_blocked_at'
     ),
-    'ALTER TABLE products ADD COLUMN admin_sale_blocked_at DATETIME(6) NULL, ALGORITHM=INSTANT',
+    'ALTER TABLE products ADD COLUMN admin_sale_blocked_at DATETIME(6) NULL',
     'SELECT 1'
 );
 PREPARE add_blocked_at FROM @stmt;
@@ -43,7 +47,7 @@ SET @stmt = IF(
         SELECT 1 FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'admin_sale_block_reason'
     ),
-    'ALTER TABLE products ADD COLUMN admin_sale_block_reason VARCHAR(500) NULL, ALGORITHM=INSTANT',
+    'ALTER TABLE products ADD COLUMN admin_sale_block_reason VARCHAR(500) NULL',
     'SELECT 1'
 );
 PREPARE add_block_reason FROM @stmt;
@@ -59,7 +63,7 @@ SET @stmt = IF(
         SELECT 1 FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'admin_sale_blocked_by_admin_id'
     ),
-    'ALTER TABLE products ADD COLUMN admin_sale_blocked_by_admin_id BIGINT NULL, ALGORITHM=INSTANT',
+    'ALTER TABLE products ADD COLUMN admin_sale_blocked_by_admin_id BIGINT NULL',
     'SELECT 1'
 );
 PREPARE add_blocked_by FROM @stmt;
@@ -76,7 +80,7 @@ SET @stmt = IF(
         SELECT 1 FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'products' AND COLUMN_NAME = 'admin_sale_block_previous_status'
     ),
-    'ALTER TABLE products ADD COLUMN admin_sale_block_previous_status VARCHAR(30) NULL, ALGORITHM=INSTANT',
+    'ALTER TABLE products ADD COLUMN admin_sale_block_previous_status VARCHAR(30) NULL',
     'SELECT 1'
 );
 PREPARE add_block_previous_status FROM @stmt;
