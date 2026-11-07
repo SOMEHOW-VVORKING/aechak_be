@@ -21,6 +21,18 @@ import org.springframework.transaction.support.TransactionTemplate
 import java.time.Duration
 
 /**
+ * 스위퍼가 즉시 발행에 양보하는 유예(초). 아래 `@SpringBootTest` 속성이 이 값을 주입하므로
+ * 테스트는 운영 기본값과 무관하게 이 숫자만 보면 된다.
+ *
+ * 이보다 젊은 아웃박스 행은 스위퍼가 집지 않는다. 스위퍼 기구를 보는 테스트는 행을 이 값보다
+ * 오래된 시각으로 넣어야 한다.
+ *
+ * 컴패니언이 아니라 최상위에 둔 이유: 클래스 자신의 애너테이션 인자에서는 그 클래스의
+ * 컴패니언 상수를 참조할 수 없다.
+ */
+const val SWEEP_GRACE_SECONDS = 10L
+
+/**
  * 이벤트 백본(Kafka) 통합 테스트의 공용 베이스
  *
  * IntegrationTestBase와 갈라진 이유: 내장 Kafka 브로커와 flyway가 필요한데,
@@ -46,6 +58,9 @@ import java.time.Duration
         "spring.kafka.consumer.value-deserializer=org.apache.kafka.common.serialization.StringDeserializer",
         "spring.kafka.consumer.auto-offset-reset=earliest",
         "spring.kafka.listener.ack-mode=RECORD",
+        // 스위퍼 유예를 못박는다. 운영 기본값에 기대면 그 값이 바뀔 때 아웃박스 테스트가
+        // 영문 모를 자리에서 깨진다. 아래 SWEEP_GRACE_SECONDS 와 한 값에서 나온다.
+        "outbox.sweep-grace-seconds=$SWEEP_GRACE_SECONDS",
     ],
 )
 @Import(IntegrationTestConfig::class, FlywayCleanMigrateConfig::class)
