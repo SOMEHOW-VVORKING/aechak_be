@@ -16,10 +16,10 @@ data class ReportRowView(
     val reportedAt: LocalDateTime,
     /** 대상의 내부 id — 누적 신고를 세는 축 */
     val targetId: Long,
-    /** 화면이 대상을 다시 열 때 쓰는 식별자. 상품, 사용자, SNS 게시물은 publicId, 리뷰는 내부 id 의 문자열 */
+    /** 화면이 대상을 다시 열 때 쓰는 식별자. 상품, 사용자, SNS 게시물과 댓글은 publicId, 리뷰는 내부 id 의 문자열 */
     val targetKey: String,
     val targetName: String?,
-    /** 대상 소유자 — 상품은 셀러, 리뷰와 SNS 게시물은 작성자, 사용자는 본인 */
+    /** 대상 소유자 — 상품은 셀러, 리뷰와 SNS 게시물, SNS 댓글은 작성자, 사용자는 본인 */
     val targetOwnerUserId: Long,
     /**
      * 내려진 결정. 없으면 아직 미처리(RECEIVED)

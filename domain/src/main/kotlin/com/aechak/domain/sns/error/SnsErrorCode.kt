@@ -51,4 +51,8 @@ enum class SnsErrorCode(
     SNS_POST_REPORT_SELF(130800, "본인 게시물은 신고할 수 없습니다.", 400),
     SNS_POST_REPORT_REASON_TEXT_REQUIRED(130801, "기타 사유로 신고하려면 상세 내용을 입력해 주세요.", 400),
     SNS_POST_ALREADY_REPORTED(130802, "이미 신고한 게시물입니다.", 409),
+
+    // 댓글 신고. 기타 사유의 상세 내용 누락은 게시물 신고와 같은 130801이다
+    SNS_COMMENT_REPORT_SELF(130803, "본인 댓글은 신고할 수 없습니다.", 400),
+    SNS_COMMENT_ALREADY_REPORTED(130804, "이미 신고한 댓글입니다.", 409),
 }

@@ -1,6 +1,7 @@
 package com.aechak.infra.persistence.sns.post
 
 import com.aechak.domain.sns.post.Post
+import com.aechak.domain.sns.post.enums.PostStatus
 import com.aechak.domain.sns.post.repository.PostRepository
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
@@ -23,6 +24,14 @@ interface PostJpaRepository : JpaRepository<Post, Long> {
     fun findForUpdateByPublicId(
         @Param("publicId") publicId: String,
     ): Post?
+
+    // 쓰기 경로 전용. ix_sns_posts_author 순서로 게시물 행만 잠근다
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Post p where p.authorId = :authorId and p.status = :status")
+    fun findForUpdateByAuthorIdAndStatus(
+        @Param("authorId") authorId: Long,
+        @Param("status") status: PostStatus,
+    ): List<Post>
 }
 
 @Repository
@@ -39,4 +48,7 @@ class PostRepositoryAdapter(
         authorId: Long,
         idempotencyKey: String,
     ): Post? = jpaRepository.findByAuthorIdAndIdempotencyKey(authorId, idempotencyKey)
+
+    override fun findPublishedByAuthorIdForUpdate(authorId: Long): List<Post> =
+        jpaRepository.findForUpdateByAuthorIdAndStatus(authorId, PostStatus.PUBLISHED)
 }

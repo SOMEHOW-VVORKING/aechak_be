@@ -12,7 +12,9 @@ import com.aechak.domain.report.decision.enums.ReportDecisionType
 import com.aechak.domain.report.decision.enums.ReportTargetType
 import com.aechak.domain.review.report.QReviewReport
 import com.aechak.domain.review.review.QReview
+import com.aechak.domain.sns.comment.QComment
 import com.aechak.domain.sns.post.QPost
+import com.aechak.domain.sns.report.QCommentReport
 import com.aechak.domain.sns.report.QPostReport
 import com.aechak.domain.user.report.QUserReport
 import com.aechak.domain.user.user.QUser
@@ -31,10 +33,12 @@ private val productReport = QProductReport.productReport
 private val reviewReport = QReviewReport.reviewReport
 private val userReport = QUserReport.userReport
 private val postReport = QPostReport.postReport
+private val commentReport = QCommentReport.commentReport
 private val product = QProduct.product
 private val review = QReview.review
 private val targetUser = QUser.user
 private val post = QPost.post
+private val comment = QComment.comment
 private val decision = QReportDecision.reportDecision
 
 /**
@@ -213,6 +217,28 @@ class AdminReportQueryAdapter(
                     .join(post)
                     .on(post.id.eq(postReport.postId))
             }
+
+            // 지운 댓글도 행이 남아 inner join 한다. 지운 댓글의 본문은 null 이다
+            ReportTargetType.SNS_COMMENT -> {
+                queryFactory
+                    .select(
+                        commentReport.id,
+                        commentReport.reporterId,
+                        commentReport.reasonCode,
+                        commentReport.reasonText,
+                        commentReport.createdAt,
+                        comment.id,
+                        comment.publicId,
+                        comment.content,
+                        comment.authorId,
+                        decision.decision,
+                        decision.reasonCode,
+                        decision.createdAt,
+                        decision.actedByAdminId,
+                    ).from(commentReport)
+                    .join(comment)
+                    .on(comment.id.eq(commentReport.commentId))
+            }
         }
 
     private fun toRow(
@@ -290,6 +316,25 @@ class AdminReportQueryAdapter(
                     targetKey = tuple.get(post.publicId)!!,
                     targetName = tuple.get(post.caption),
                     targetOwnerUserId = tuple.get(post.authorId)!!,
+                    decision = tuple.get(decision.decision),
+                    decisionReasonCode = tuple.get(decision.reasonCode),
+                    decidedAt = tuple.get(decision.createdAt),
+                    decidedByAdminId = tuple.get(decision.actedByAdminId),
+                )
+            }
+
+            ReportTargetType.SNS_COMMENT -> {
+                ReportRowView(
+                    targetType = ReportTargetType.SNS_COMMENT,
+                    reportId = tuple.get(commentReport.id)!!,
+                    reporterId = tuple.get(commentReport.reporterId)!!,
+                    reasonCode = tuple.get(commentReport.reasonCode)!!.name,
+                    reasonText = tuple.get(commentReport.reasonText),
+                    reportedAt = tuple.get(commentReport.createdAt)!!,
+                    targetId = tuple.get(comment.id)!!,
+                    targetKey = tuple.get(comment.publicId)!!,
+                    targetName = tuple.get(comment.content),
+                    targetOwnerUserId = tuple.get(comment.authorId)!!,
                     decision = tuple.get(decision.decision),
                     decisionReasonCode = tuple.get(decision.reasonCode),
                     decidedAt = tuple.get(decision.createdAt),
@@ -379,6 +424,7 @@ class AdminReportQueryAdapter(
             ReportTargetType.REVIEW -> reviewReport
             ReportTargetType.USER -> userReport
             ReportTargetType.SNS_POST -> postReport
+            ReportTargetType.SNS_COMMENT -> commentReport
         }
 
     private fun reportIdPath(targetType: ReportTargetType): NumberPath<Long> =
@@ -387,6 +433,7 @@ class AdminReportQueryAdapter(
             ReportTargetType.REVIEW -> reviewReport.id
             ReportTargetType.USER -> userReport.id
             ReportTargetType.SNS_POST -> postReport.id
+            ReportTargetType.SNS_COMMENT -> commentReport.id
         }
 
     private fun createdAtPath(targetType: ReportTargetType): DateTimePath<LocalDateTime> =
@@ -395,6 +442,7 @@ class AdminReportQueryAdapter(
             ReportTargetType.REVIEW -> reviewReport.createdAt
             ReportTargetType.USER -> userReport.createdAt
             ReportTargetType.SNS_POST -> postReport.createdAt
+            ReportTargetType.SNS_COMMENT -> commentReport.createdAt
         }
 
     private fun targetIdPath(targetType: ReportTargetType): NumberPath<Long> =
@@ -403,5 +451,6 @@ class AdminReportQueryAdapter(
             ReportTargetType.REVIEW -> reviewReport.review.id
             ReportTargetType.USER -> userReport.targetUser.id
             ReportTargetType.SNS_POST -> postReport.postId
+            ReportTargetType.SNS_COMMENT -> commentReport.commentId
         }
 }

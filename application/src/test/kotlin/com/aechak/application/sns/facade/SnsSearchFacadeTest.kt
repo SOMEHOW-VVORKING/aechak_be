@@ -222,4 +222,6 @@ private class UnusedBlockRepository : BlockRepository {
         viewerId: Long,
         targetId: Long,
     ): Set<Long> = throw UnsupportedOperationException()
+
+    override fun deleteAllByBlocker(blockerId: Long) = throw UnsupportedOperationException()
 }

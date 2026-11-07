@@ -36,6 +36,7 @@ class ReportController(
             ReportTargetType.REVIEW -> reviewReportUseCase.submitReviewReport(request.toReviewCommand(principal.userId))
             ReportTargetType.USER -> userReportUseCase.submitUserReport(request.toUserCommand(principal.userId))
             ReportTargetType.SNS_POST -> snsReportUseCase.submitPostReport(request.toSnsPostCommand(principal.userId))
+            ReportTargetType.SNS_COMMENT -> snsReportUseCase.submitCommentReport(request.toSnsCommentCommand(principal.userId))
             ReportTargetType.SNS_USER -> snsReportUseCase.submitUserReport(request.targetId, request.toSnsUserCommand(principal.userId))
         }
         return ResponseEntity.status(HttpStatus.CREATED).build()

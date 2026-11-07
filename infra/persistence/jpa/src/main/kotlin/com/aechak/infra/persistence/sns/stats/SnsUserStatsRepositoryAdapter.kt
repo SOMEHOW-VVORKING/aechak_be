@@ -88,6 +88,30 @@ interface SnsUserStatsJpaRepository : JpaRepository<SnsUserStats, Long> {
     fun decreasePostCount(
         @Param("userId") userId: Long,
     ): Int
+
+    @Modifying
+    @Query(
+        "update SnsUserStats s set s.followerCount = s.followerCount - 1, s.updatedAt = CURRENT_TIMESTAMP " +
+            "where s.userId in :userIds and s.followerCount > 0",
+    )
+    fun decreaseFollowerCounts(
+        @Param("userIds") userIds: Collection<Long>,
+    ): Int
+
+    @Modifying
+    @Query(
+        "update SnsUserStats s set s.followingCount = s.followingCount - 1, s.updatedAt = CURRENT_TIMESTAMP " +
+            "where s.userId in :userIds and s.followingCount > 0",
+    )
+    fun decreaseFollowingCounts(
+        @Param("userIds") userIds: Collection<Long>,
+    ): Int
+
+    @Modifying
+    @Query("delete from SnsUserStats s where s.userId = :userId")
+    fun deleteByUserIdInBulk(
+        @Param("userId") userId: Long,
+    ): Int
 }
 
 // shortcut: 인기 사용자 한 명에게 오는 팔로우, 언팔로우, 차단은 그 사용자의 통계 행 잠금 하나를 차례로 기다린다.
@@ -117,4 +141,20 @@ class SnsUserStatsRepositoryAdapter(
     override fun increasePostCount(userId: Long): Int = jpaRepository.increasePostCount(userId)
 
     override fun decreasePostCount(userId: Long): Int = jpaRepository.decreasePostCount(userId)
+
+    override fun lockAllInUserIdOrder(userIds: Collection<Long>) {
+        userIds.distinct().sorted().forEach { jpaRepository.insertOrLock(it) }
+    }
+
+    override fun decreaseFollowerCounts(userIds: Collection<Long>) {
+        if (userIds.isNotEmpty()) jpaRepository.decreaseFollowerCounts(userIds)
+    }
+
+    override fun decreaseFollowingCounts(userIds: Collection<Long>) {
+        if (userIds.isNotEmpty()) jpaRepository.decreaseFollowingCounts(userIds)
+    }
+
+    override fun deleteByUserId(userId: Long) {
+        jpaRepository.deleteByUserIdInBulk(userId)
+    }
 }

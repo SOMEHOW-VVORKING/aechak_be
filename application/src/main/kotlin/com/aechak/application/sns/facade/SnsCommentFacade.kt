@@ -80,7 +80,7 @@ class SnsCommentFacade(
                 val root =
                     command.parentPublicId?.let {
                         val target = commentQueryService.requireReplyTarget(commentQueryService.scopeOf(post, command.userId), it)
-                        commentCommandService.lockReplyRoot(target.parentId ?: target.id)
+                        commentCommandService.lockReplyRoot(target.parentId ?: target.id).also(commentQueryService::requireOpenRoot)
                     }
                 val comment = commentCommandService.write(post, root, command.userId, content, command.idempotencyKey)
                 commentQueryService.itemOf(comment, command.userId)
