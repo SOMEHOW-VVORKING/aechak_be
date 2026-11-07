@@ -89,7 +89,7 @@ prom_query() {
   curl -sf --max-time 5 "$PROM_URL/api/v1/query" --data-urlencode "query=$1" | jq -r '.data.result[0].value[1] // empty'
 }
 
-# prom_export <start_ms> <end_ms>: run 구간의 Hikari, api CPU와 스로틀링, MySQL 실행 스레드, 서버 p95, 러너 CPU와 메모리를 JSON 한 줄로 찍는다. 없는 값은 null
+# prom_export <start_ms> <end_ms>: run 구간의 Hikari, api CPU와 스로틀링, MySQL 실행 스레드, 서버 p95, 러너 CPU와 메모리, ES 호스트 CPU와 힙을 JSON 한 줄로 찍는다. 없는 값은 null
 prom_export() {
   local e=$(( $2 / 1000 )) d=$(( ($2 - $1) / 1000 )) k q v out=
   if [ "$d" -lt 15 ]; then d=15; fi
@@ -108,6 +108,9 @@ threads_running_max|max_over_time(mysql_global_status_threads_running{job="mysql
 server_p95_max_s|max_over_time(histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job="spring",uri="/api/v1/search/products"}[30s])))[@D:5s])
 runner_cpu_max|max_over_time((1 - avg(rate(node_cpu_seconds_total{job="node",host="runner",mode="idle"}[30s])))[@D:5s])
 runner_mem_available_min_mib|min_over_time(node_memory_MemAvailable_bytes{job="node",host="runner"}[@D]) / 1048576
+es_cpu_avg|avg_over_time((1 - avg(rate(node_cpu_seconds_total{job="node",host="es",mode="idle"}[30s])))[@D:5s])
+es_cpu_max|max_over_time((1 - avg(rate(node_cpu_seconds_total{job="node",host="es",mode="idle"}[30s])))[@D:5s])
+es_heap_max_ratio|max_over_time((sum(elasticsearch_jvm_memory_used_bytes{job="es",area="heap"}) / sum(elasticsearch_jvm_memory_max_bytes{job="es",area="heap"}))[@D:5s])
 EOF
   echo "$out" | jq -sc add
 }

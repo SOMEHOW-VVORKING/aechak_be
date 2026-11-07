@@ -60,7 +60,7 @@ make down
 | `make manifest DATASET=..` | manifest를 다시 만든다 |
 | `make prom` | 러너 Prometheus 9090을 localhost:19090으로 |
 | `make shell-runner`, `make shell-api` | SSM 세션 |
-| `make reindex` | ES 단계에서 만든다(지금은 종료 코드 1) |
+| `make reindex DATASET= REV=` | 엔진을 es로 둔 api를 재색인 속성(`AECHAK_SEARCH_ES_REINDEX_ON_STARTUP=true`)과 함께 다시 띄우고 ES 색인 문서 수가 상품 수와 같아질 때까지 기다린다. 걸린 시간과 색인 크기를 `REINDEX_DONE` 줄로 남긴다 |
 
 `make jar`는 `loadtest/` 밖에 커밋하지 않은 변경이 있으면 멈춘다. `ALLOW_DIRTY=1`이면 rev 뒤에 `-dirty-<diff 해시>`를 붙여 빌드한다. HEAD가 아닌 커밋은 `.perf/build/` 아래 임시 워크트리에서 빌드한다. `SKIP_TESTS=1`이면 검색 테스트를 건너뛰고 `search_test_exit=skipped`로 적는다.
 
@@ -73,6 +73,7 @@ make down
 | `MAX_VUS_CAP` | 1500 | k6 VU 상한 |
 | `IDLE_RDS_CPU_MAX` | 5 | 변형 시작에서 기다리는 RDS CPU 유휴 기준(%) |
 | `RAMP_FLOOR_RATES` | `1 0.5 0.25`, QUICK은 `1 0.5` | ramp 첫 단계가 SLO를 못 지키면 내려가며 시도할 요청률 |
+| `RAMP_RATES` | `2 4 8 16 32 64 128 256` | ramp가 올라갈 요청률(QUICK에는 쓰지 않는다). 처리 한계가 256 req/s보다 높으면 더 높은 단계를 준다 |
 | `WARMUP_RATE` | 2 | 워밍업 요청률 |
 
 ## 셀과 시간
@@ -168,7 +169,7 @@ Grafana 캡처도 이 뒤에 한꺼번에 찍는다. ramp, steady, spike는 전�
 | `seed.sql`, `sql/` | 시드, manifest, exporter 계정, warm set |
 | `ddl/` | 측정용 스키마 변경 |
 | `compose.yml` | 노트북 kit 개발 스택 |
-| `es/` | T08 nori 시연 이미지 |
+| `es/` | ES 호스트 스택(`compose.yml`, Elasticsearch 9.2.6 단일 노드와 수집기, `make up`이 띄운다)과 T08 nori 시연 이미지 |
 
 run id는 `<YYYY-MM-DD>-<STEP>-<DATASET>-<CELL>-<VARIANT>-r<N>`이고 날짜는 서울 시각이다(예: `2026-11-05-SEARCH-T01-100k-steady-base-r2`). steady만 r1에서 r3까지 있고 ramp는 run id 하나에 단계별 파일을 둔다. AWS에서 같은 run id가 이미 있으면 종료 코드 1로 멈춘다. `FORCE=1`이면 그 run id의 러너 raw 파일, 캡처, S3 객체와 노트북에 받아 둔 파일을 지우고 지운 목록을 로그에 남긴 뒤 다시 잰다. `make step`도 `FORCE`를 따른다. local 모드는 늘 지우고 다시 쓴다.
 
