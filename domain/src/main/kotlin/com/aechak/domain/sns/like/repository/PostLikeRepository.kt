@@ -22,4 +22,7 @@ interface PostLikeRepository {
         userId: Long,
         postIds: Collection<Long>,
     ): Set<Long>
+
+    /** user가 누른 게시물 좋아요를 모두 하드 삭제 */
+    fun deleteAllByUser(userId: Long)
 }

@@ -29,6 +29,12 @@ interface MuteJpaRepository : JpaRepository<Mute, Long> {
         @Param("muterId") muterId: Long,
         @Param("mutedId") mutedId: Long,
     ): Int
+
+    @Modifying
+    @Query("delete from Mute m where m.muterId = :muterId")
+    fun deleteAllByMuterId(
+        @Param("muterId") muterId: Long,
+    ): Int
 }
 
 @Repository
@@ -46,4 +52,8 @@ class MuteRepositoryAdapter(
         muterId: Long,
         mutedId: Long,
     ): Int = jpaRepository.deleteByPair(muterId, mutedId)
+
+    override fun deleteAllByMuter(muterId: Long) {
+        jpaRepository.deleteAllByMuterId(muterId)
+    }
 }

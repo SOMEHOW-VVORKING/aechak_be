@@ -40,6 +40,12 @@ interface PostLikeJpaRepository : JpaRepository<PostLike, Long> {
         @Param("userId") userId: Long,
         @Param("postIds") postIds: Collection<Long>,
     ): List<Long>
+
+    @Modifying
+    @Query("delete from PostLike l where l.userId = :userId")
+    fun deleteAllByUserId(
+        @Param("userId") userId: Long,
+    ): Int
 }
 
 @Repository
@@ -69,4 +75,8 @@ class PostLikeRepositoryAdapter(
         userId: Long,
         postIds: Collection<Long>,
     ): Set<Long> = jpaRepository.findPostIds(userId, postIds).toSet()
+
+    override fun deleteAllByUser(userId: Long) {
+        jpaRepository.deleteAllByUserId(userId)
+    }
 }

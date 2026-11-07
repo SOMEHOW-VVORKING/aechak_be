@@ -1,12 +1,19 @@
 package com.aechak.api.report
 
 import com.aechak.api.sns.SnsPostIntegrationTestBase
+import com.aechak.application.sns.report.usecase.SnsReportUseCase
+import com.aechak.application.sns.report.usecase.command.SubmitCommentReportCommand
+import com.aechak.common.error.BusinessException
 import com.aechak.common.error.CommonErrorCode
 import com.aechak.domain.review.review.Review
+import com.aechak.domain.sns.comment.enums.CommentDeletionReason
 import com.aechak.domain.sns.error.SnsErrorCode
+import com.aechak.domain.sns.report.CommentReport
 import com.aechak.domain.sns.report.PostReport
 import com.aechak.domain.sns.report.enums.PostReportReason
+import com.aechak.domain.sns.report.event.CommentReportReceivedEvent
 import com.aechak.domain.sns.report.event.PostReportReceivedEvent
+import com.aechak.domain.support.Ulid
 import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.report.UserReport
 import com.aechak.domain.user.report.enums.ReportReasonCode
@@ -34,6 +41,9 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 class SnsReportIntegrationTest : SnsPostIntegrationTestBase() {
     @Autowired
     private lateinit var applicationEvents: ApplicationEvents
+
+    @Autowired
+    private lateinit var snsReportUseCase: SnsReportUseCase
 
     // ---------- 게시물 ----------
 
@@ -166,6 +176,142 @@ class SnsReportIntegrationTest : SnsPostIntegrationTestBase() {
         assertNoPostReport()
     }
 
+    // ---------- 댓글 ----------
+
+    @Test
+    fun `타인 대댓글을 신고하면 201을 반환하고 그 대댓글만 신고로 저장하며 접수 이벤트를 한 번 발행한다`() {
+        val postPublicId = createdPublicId(onboardedUser())
+        val root = seedComment(onboardedUser(), postPublicId)
+        val reply = seedComment(onboardedUser(), postPublicId, parentPublicId = root)
+        val reporterId = onboardedUser()
+
+        postReport(reporterId, reportJson("SNS_COMMENT", reply, "OTHER", "  욕설이에요  ")).andExpect(status().isCreated)
+
+        val report = commentReports().single()
+        assertEquals(commentIdOf(reply), report.commentId)
+        assertEquals(reporterId, report.reporterId)
+        assertEquals(PostReportReason.OTHER, report.reasonCode)
+        assertEquals("욕설이에요", report.reasonText)
+        val event = recorded<CommentReportReceivedEvent>().single()
+        assertEquals(report.id, event.reportId)
+        assertEquals(reply, event.commentPublicId)
+        assertEquals(postPublicId, event.postPublicId)
+    }
+
+    @Test
+    fun `본인 댓글을 신고하면 400과 130803을 반환한다`() {
+        val authorId = onboardedUser()
+        val comment = seedComment(authorId, createdPublicId(onboardedUser()))
+
+        expectError(postReport(authorId, reportJson("SNS_COMMENT", comment, "SPAM")), 400, SnsErrorCode.SNS_COMMENT_REPORT_SELF.code)
+        assertNoCommentReport()
+    }
+
+    @Test
+    fun `댓글 신고가 기타 사유인데 상세 내용이 없으면 400과 130801을 반환한다`() {
+        val comment = seedComment(onboardedUser(), createdPublicId(onboardedUser()))
+
+        expectError(
+            postReport(onboardedUser(), reportJson("SNS_COMMENT", comment, "OTHER", "   ")),
+            400,
+            SnsErrorCode.SNS_POST_REPORT_REASON_TEXT_REQUIRED.code,
+        )
+        assertNoCommentReport()
+    }
+
+    @Test
+    fun `같은 댓글을 다시 신고하면 409와 130804를 반환하고 다른 신고자는 각각 접수한다`() {
+        val comment = seedComment(onboardedUser(), createdPublicId(onboardedUser()))
+        val reporterId = onboardedUser()
+
+        postReport(reporterId, reportJson("SNS_COMMENT", comment, "SPAM")).andExpect(status().isCreated)
+        expectError(
+            postReport(reporterId, reportJson("SNS_COMMENT", comment, "ABUSE")),
+            409,
+            SnsErrorCode.SNS_COMMENT_ALREADY_REPORTED.code,
+        )
+        postReport(onboardedUser(), reportJson("SNS_COMMENT", comment, "SPAM")).andExpect(status().isCreated)
+
+        assertEquals(2, commentReports().size)
+        assertEquals(2, recorded<CommentReportReceivedEvent>().size)
+    }
+
+    @Test
+    fun `같은 신고자가 같은 댓글을 동시에 신고해도 한 건만 저장되고 나머지는 130804로 거절된다`() {
+        val comment = seedComment(onboardedUser(), createdPublicId(onboardedUser()))
+        val reporterId = onboardedUser()
+        // 빈도 제한(1분 5건)에 걸리지 않도록 4건만 보낸다
+        val command = SubmitCommentReportCommand(reporterId, comment, PostReportReason.SPAM, null)
+
+        val errors = runConcurrently(List(4) { { snsReportUseCase.submitCommentReport(command) } })
+
+        assertEquals(1, commentReports().size)
+        assertEquals(3, errors.size)
+        assertTrue(
+            errors.all { (it as? BusinessException)?.errorCode == SnsErrorCode.SNS_COMMENT_ALREADY_REPORTED },
+            "나머지는 모두 130804여야 한다: $errors",
+        )
+    }
+
+    @Test
+    fun `지운 게시물의 댓글과 나를 차단한 게시물 작성자의 댓글은 130400, 내가 차단한 게시물 작성자의 댓글은 403 130001이다`() {
+        val reporterId = onboardedUser()
+        val deletedPostAuthor = onboardedUser()
+        val deletedPost = createdPublicId(deletedPostAuthor)
+        val onDeleted = seedComment(onboardedUser(), deletedPost)
+        deletePost(deletedPost, deletedPostAuthor).andExpect(status().isNoContent)
+        val blockingAuthor = onboardedUser()
+        val onBlocking = seedComment(onboardedUser(), createdPublicId(blockingAuthor))
+        relate(blockingAuthor, reporterId, "block")
+        val blockedAuthor = onboardedUser()
+        val onBlocked = seedComment(onboardedUser(), createdPublicId(blockedAuthor))
+        relate(reporterId, blockedAuthor, "block")
+
+        listOf(onDeleted, onBlocking).forEach {
+            expectError(postReport(reporterId, reportJson("SNS_COMMENT", it, "SPAM")), 404, SnsErrorCode.SNS_POST_UNAVAILABLE.code)
+        }
+        expectError(postReport(reporterId, reportJson("SNS_COMMENT", onBlocked, "SPAM")), 403, SnsErrorCode.SNS_USER_BLOCKED_BY_VIEWER.code)
+        assertNoCommentReport()
+    }
+
+    @Test
+    fun `없는 댓글, 지운 댓글, 안내 문구만 남은 댓글, 차단하거나 뮤트한 작성자의 댓글은 모두 404와 130700이다`() {
+        val reporterId = onboardedUser()
+        val postPublicId = createdPublicId(onboardedUser())
+        val placeholder = seedComment(onboardedUser(), postPublicId)
+        seedComment(onboardedUser(), postPublicId, parentPublicId = placeholder)
+        deleteCommentRow(placeholder)
+        val deleted = seedComment(onboardedUser(), postPublicId, deletedBy = CommentDeletionReason.OPERATOR)
+        val blockingId = onboardedUser()
+        val byBlocking = seedComment(blockingId, postPublicId)
+        relate(blockingId, reporterId, "block")
+        val blockedId = onboardedUser()
+        val byBlocked = seedComment(blockedId, postPublicId)
+        relate(reporterId, blockedId, "block")
+        val mutedId = onboardedUser()
+        val byMuted = seedComment(mutedId, postPublicId)
+        relate(reporterId, mutedId, "mute")
+
+        listOf(Ulid.generate(), placeholder, deleted, byBlocking, byBlocked, byMuted).forEach {
+            expectError(postReport(reporterId, reportJson("SNS_COMMENT", it, "SPAM")), 404, SnsErrorCode.SNS_COMMENT_UNAVAILABLE.code)
+        }
+        assertNoCommentReport()
+    }
+
+    @Test
+    fun `섀도우 처리된 댓글 아래 대댓글은 제3자에게 130700이고 섀도우 처리된 작성자 본인은 신고할 수 있다`() {
+        val postAuthor = onboardedUser()
+        val postPublicId = createdPublicId(postAuthor)
+        val shadowedId = onboardedUser()
+        val root = seedComment(shadowedId, postPublicId)
+        val reply = seedComment(onboardedUser(), postPublicId, parentPublicId = root)
+        relate(postAuthor, shadowedId, "mute")
+
+        expectError(postReport(onboardedUser(), reportJson("SNS_COMMENT", reply, "SPAM")), 404, SnsErrorCode.SNS_COMMENT_UNAVAILABLE.code)
+        postReport(shadowedId, reportJson("SNS_COMMENT", reply, "SPAM")).andExpect(status().isCreated)
+        assertEquals(1, commentReports().size)
+    }
+
     // ---------- 프로필 유저 ----------
 
     @Test
@@ -290,6 +436,25 @@ class SnsReportIntegrationTest : SnsPostIntegrationTestBase() {
 
     private fun postIdOf(publicId: String): Long =
         jdbcTemplate.queryForObject("select id from sns_posts where public_id = ?", Long::class.java, publicId)!!
+
+    private fun commentIdOf(publicId: String): Long =
+        jdbcTemplate.queryForObject("select id from sns_comments where public_id = ?", Long::class.java, publicId)!!
+
+    private fun commentReports(): List<CommentReport> =
+        tx.execute { em.createQuery("select r from CommentReport r order by r.id", CommentReport::class.java).resultList }!!
+
+    private fun assertNoCommentReport() {
+        assertTrue(commentReports().isEmpty(), "댓글 신고가 저장되면 안 된다")
+        assertTrue(recorded<CommentReportReceivedEvent>().isEmpty(), "댓글 신고 접수 이벤트가 발행되면 안 된다")
+    }
+
+    private fun expectError(
+        result: ResultActions,
+        httpStatus: Int,
+        errorCode: Int,
+    ) {
+        result.andExpect(status().`is`(httpStatus)).andExpect(jsonPath("$.errorCode").value(errorCode))
+    }
 
     private fun postReports(): List<PostReport> =
         tx.execute { em.createQuery("select r from PostReport r order by r.id", PostReport::class.java).resultList }!!

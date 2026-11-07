@@ -1,5 +1,6 @@
 package com.aechak.application.user.user.facade
 
+import com.aechak.application.file.error.FileErrorCode
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
@@ -120,7 +121,12 @@ class UserFacade(
             }
         try {
             tx.execute {
-                userService.getByIdForUpdate(command.userId).updateProfile(command.nickname, command.bio, finalKey)
+                val user = userService.getByIdForUpdate(command.userId)
+                // 잠그기 전에 읽은 key가 그사이 바뀌었으면(운영자 초기화 등) 더 이상 소유 증명이 아니다
+                if (finalKey != null && finalKey == currentKey && user.profileImageKey != currentKey) {
+                    throw BusinessException(FileErrorCode.FILE_ACCESS_DENIED)
+                }
+                user.updateProfile(command.nickname, command.bio, finalKey)
             }
         } catch (e: DataIntegrityViolationException) {
             translateNicknameConflict(e)

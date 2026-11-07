@@ -20,4 +20,10 @@ interface RepostRepository {
         reposterId: Long,
         postIds: Collection<Long>,
     ): Set<Long>
+
+    /** 쓰기 경로 전용. reposter의 리포스트 행을 잠금 읽기로 읽어 게시물 id를 돌려준다 */
+    fun findPostIdsByReposterForUpdate(reposterId: Long): List<Long>
+
+    /** reposter가 한 리포스트를 모두 하드 삭제 */
+    fun deleteAllByReposter(reposterId: Long)
 }

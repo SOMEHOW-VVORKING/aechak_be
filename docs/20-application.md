@@ -83,6 +83,8 @@ package com.aechak.application.order.usecase
  *   좋아요(SnsLikeUseCase, SnsLikeFacade)도 같은 이유로 나눈다. 금지어 판정 없이 게시물 판정과 좋아요 행만 쓴다.
  *   댓글(SnsCommentUseCase, SnsCommentFacade)은 금지어 판정을 받는 쪽이라 금지어가 필요 없는 좋아요와 나눈다.
  *   댓글 삭제의 상태 전이(CommentDeletionService)는 commentdeletion 패키지에 두어 운영자 삭제와 탈퇴 정리를 붙일 admin과 batch가 이 패키지만 스캔한다.
+ *   탈퇴 정리(SnsWithdrawalUseCase, SnsWithdrawalFacade)는 탈퇴 트랜잭션 안에서 게시물 삭제와 댓글 삭제의 탈퇴 메서드를 부르고 그 사이에 관계와 반응을 지운다.
+ *   게시가 태그 행을 통계 행보다 먼저 잠그므로 게시물을 먼저 지운다.
  *   검색(SnsSearchUseCase, SnsSearchFacade)도 같은 이유로 피드와 나눈다. 검색 조회 포트와 인기순 순위 저장소를 쓰고 피드의 순위 페이지 나누기를 함께 쓴다.
  * - 이 인터페이스만이 외부(Controller / Consumer / Batch / 타 도메인 Facade)에 노출된다.
  * - 타 도메인이 order를 부를 때도 반드시 이 인터페이스로만 — OrderService 직접 호출 금지.

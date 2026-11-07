@@ -2,6 +2,7 @@ package com.aechak.api.report.request
 
 import com.aechak.application.product.report.usecase.command.SubmitProductReportCommand
 import com.aechak.application.review.report.usecase.command.SubmitReviewReportCommand
+import com.aechak.application.sns.report.usecase.command.SubmitCommentReportCommand
 import com.aechak.application.sns.report.usecase.command.SubmitPostReportCommand
 import com.aechak.application.user.report.usecase.command.SubmitUserReportCommand
 import com.aechak.common.error.BusinessException
@@ -10,6 +11,7 @@ import com.aechak.domain.product.report.ProductReport
 import com.aechak.domain.product.report.enums.ProductReportReason
 import com.aechak.domain.review.report.ReviewReport
 import com.aechak.domain.review.report.enums.ReviewReportReason
+import com.aechak.domain.sns.report.CommentReport
 import com.aechak.domain.sns.report.PostReport
 import com.aechak.domain.sns.report.enums.PostReportReason
 import com.aechak.domain.user.report.UserReport
@@ -26,7 +28,7 @@ data class SubmitReportRequest(
     @field:Schema(
         description =
             "PRODUCT는 상품 productId(ULID), REVIEW는 리뷰 id, USER는 신고할 사용자가 쓴 리뷰 id. " +
-                "SNS_POST는 게시물 publicId, SNS_USER는 사용자 publicId",
+                "SNS_POST는 게시물 publicId, SNS_COMMENT는 댓글 publicId, SNS_USER는 사용자 publicId",
     )
     val targetId: String,
     @field:NotBlank(message = "신고 사유는 필수입니다.")
@@ -34,7 +36,7 @@ data class SubmitReportRequest(
         description =
             "PRODUCT는 FALSE_AD, INFO_ERROR, ILLEGAL, INAPPROPRIATE, OTHER. " +
                 "REVIEW와 USER는 FRAUD, ABUSE, SPAM, INAPPROPRIATE, OTHER. " +
-                "SNS_POST와 SNS_USER는 SPAM, ABUSE, INAPPROPRIATE, FRAUD, OTHER",
+                "SNS_POST, SNS_COMMENT, SNS_USER는 SPAM, ABUSE, INAPPROPRIATE, FRAUD, OTHER",
     )
     val reasonCode: String,
     val reasonText: String? = null,
@@ -69,6 +71,14 @@ data class SubmitReportRequest(
             postPublicId = targetId,
             reasonCode = parseEnum<PostReportReason>("reasonCode", reasonCode),
             reasonText = reasonTextWithin(PostReport.REASON_TEXT_MAX),
+        )
+
+    fun toSnsCommentCommand(userId: Long): SubmitCommentReportCommand =
+        SubmitCommentReportCommand(
+            reporterId = userId,
+            commentPublicId = targetId,
+            reasonCode = parseEnum<PostReportReason>("reasonCode", reasonCode),
+            reasonText = reasonTextWithin(CommentReport.REASON_TEXT_MAX),
         )
 
     fun toSnsUserCommand(userId: Long): SubmitUserReportCommand =
@@ -107,5 +117,6 @@ enum class ReportTargetType {
     REVIEW,
     USER,
     SNS_POST,
+    SNS_COMMENT,
     SNS_USER,
 }

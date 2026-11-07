@@ -21,7 +21,6 @@ import com.aechak.domain.sns.error.SnsErrorCode
 import com.aechak.domain.sns.post.Post
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
-import java.time.temporal.ChronoUnit
 
 /** 댓글 읽기. 보는 사람 기준 거르기는 포트의 조건식이 하고 이 서비스는 항목을 조립한다 */
 @Service
@@ -121,7 +120,7 @@ class CommentQueryService(
         return item(
             publicId = view.publicId,
             parentPublicId = parentPublicId,
-            status = statusOf(view.status, view.deletionReason, author != null),
+            status = statusOf(view.status, view.deletionReason),
             rootStatus = rootStatus,
             author = author,
             content = view.content,
@@ -147,14 +146,13 @@ class CommentQueryService(
         return item(
             publicId = comment.publicId,
             parentPublicId = root?.publicId,
-            status = statusOf(comment.status, comment.deletionReason, author != null),
-            rootStatus = root?.let { statusOf(it.status, it.deletionReason, authorOf(it.authorId) != null) },
+            status = statusOf(comment.status, comment.deletionReason),
+            rootStatus = root?.let { statusOf(it.status, it.deletionReason) },
             author = author,
             content = comment.content,
             edited = comment.editedAt != null,
             isMine = comment.authorId == viewerId,
-            // 방금 저장한 엔티티는 나노초까지 들고 있어 DB 정밀도(DATETIME(6))로 맞춰 다시 읽은 값과 같게 한다
-            createdAt = comment.createdAt.truncatedTo(ChronoUnit.MICROS),
+            createdAt = comment.createdAt,
             likeCount = likes.counts[comment.id] ?: 0,
             liked = comment.id in likes.liked,
         )
@@ -171,21 +169,13 @@ class CommentQueryService(
             profile.nickname?.let { SnsPostAuthorResult(profile.publicId, it, profile.profileImageUrl) }
         }
 
-    /** hasProfile이 false면 프로필 행이 없는 작성자(탈퇴)다 */
     private fun statusOf(
         status: CommentStatus,
         reason: CommentDeletionReason?,
-        hasProfile: Boolean,
     ): SnsCommentItemStatus =
         when {
             status == CommentStatus.DELETED && reason == CommentDeletionReason.WITHDRAWAL -> SnsCommentItemStatus.WITHDRAWN
-
             status == CommentStatus.DELETED -> SnsCommentItemStatus.DELETED
-
-            // shortcut: SNS-T18 전에 탈퇴한 작성자의 댓글은 프로필 행이 없어 안내 문구로 바꿔 보여주고 수에는 남긴다.
-            // SNS-T18이 탈퇴 때 댓글을 사유 WITHDRAWAL로 지우게 되면 이 분기를 지운다
-            !hasProfile -> SnsCommentItemStatus.WITHDRAWN
-
             else -> SnsCommentItemStatus.ACTIVE
         }
 

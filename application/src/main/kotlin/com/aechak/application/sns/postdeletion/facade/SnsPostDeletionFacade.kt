@@ -48,9 +48,23 @@ class SnsPostDeletionFacade(
     @Transactional(propagation = Propagation.MANDATORY)
     override fun deleteByOperator(publicId: String) {
         val mediaKeys = postDeletionService.delete(postDeletionService.lock(publicId), PostDeletionReason.OPERATOR)
+        deleteMediaFilesAfterCommit(publicId, mediaKeys)
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    override fun deleteByWithdrawal(authorId: Long) {
+        postDeletionService.lockPublishedOf(authorId).forEach { post ->
+            deleteMediaFilesAfterCommit(post.publicId, postDeletionService.delete(post, PostDeletionReason.WITHDRAWAL))
+        }
+    }
+
+    private fun deleteMediaFilesAfterCommit(
+        publicId: String,
+        keys: List<String>,
+    ) {
         TransactionSynchronizationManager.registerSynchronization(
             object : TransactionSynchronization {
-                override fun afterCommit() = deleteMediaFiles(publicId, mediaKeys)
+                override fun afterCommit() = deleteMediaFiles(publicId, keys)
             },
         )
     }

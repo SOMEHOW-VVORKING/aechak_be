@@ -1,10 +1,12 @@
 package com.aechak.api.sns
 
+import com.aechak.application.user.withdrawal.usecase.WithdrawalUseCase
 import com.aechak.domain.sns.comment.enums.CommentDeletionReason
 import com.aechak.domain.user.user.User
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.test.web.servlet.ResultActions
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -18,6 +20,9 @@ import kotlin.test.assertNull
  * 통합 — 댓글 목록이 최상위 댓글 단위로 페이지를 나누고 대댓글을 부모 아래 붙이며 지운 댓글을 안내 문구 규칙대로 보여주는지.
  */
 class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
+    @Autowired
+    private lateinit var withdrawalUseCase: WithdrawalUseCase
+
     @Test
     fun `최상위 댓글은 오래된순이고 대댓글은 부모 바로 아래 작성 순서로 붙는다`() {
         val postId = createdPublicId(onboardedUser())
@@ -159,14 +164,14 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
-    fun `프로필 행이 없는 작성자의 댓글과 대댓글은 WITHDRAWN이고 그 아래 대댓글도 답글을 달 수 없다`() {
+    fun `탈퇴한 작성자의 대댓글이 달린 댓글은 WITHDRAWN이고 그 아래 대댓글은 답글을 달 수 없으며 탈퇴한 작성자의 대댓글은 사라진다`() {
         val withdrawnId = onboardedUser()
         val postId = createdPublicId(onboardedUser())
         val root = seedComment(withdrawnId, postId)
         val reply = seedComment(onboardedUser(), postId, parentPublicId = root)
         val other = seedComment(onboardedUser(), postId)
         val withdrawnReply = seedComment(withdrawnId, postId, parentPublicId = other)
-        tx.execute { em.find(User::class.java, withdrawnId).withdraw() }
+        withdrawalUseCase.withdraw(withdrawnId)
 
         val items = commentPage(postId).feedItems().associateBy { it["publicId"] }
 
@@ -174,7 +179,7 @@ class CommentListIntegrationTest : SnsPostIntegrationTestBase() {
         assertEquals("ACTIVE", items.getValue(reply)["status"])
         assertEquals(false, items.getValue(reply)["replyable"])
         assertEquals(true, items.getValue(other)["replyable"])
-        assertPlaceholder(items.getValue(withdrawnReply), "WITHDRAWN")
+        assertFalse(withdrawnReply in items)
     }
 
     @Test
