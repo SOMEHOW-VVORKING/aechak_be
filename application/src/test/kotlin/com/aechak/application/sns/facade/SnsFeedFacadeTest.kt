@@ -339,6 +339,8 @@ internal class UnusedPostRepository : PostRepository {
         authorId: Long,
         idempotencyKey: String,
     ): Post? = throw UnsupportedOperationException()
+
+    override fun findPublishedByAuthorIdForUpdate(authorId: Long): List<Post> = throw UnsupportedOperationException()
 }
 
 internal class UnusedVisibilityQueryPort : SnsVisibilityQueryPort {
@@ -368,6 +370,10 @@ internal class UnusedRepostRepository : RepostRepository {
         reposterId: Long,
         postIds: Collection<Long>,
     ): Set<Long> = throw UnsupportedOperationException()
+
+    override fun findPostIdsByReposterForUpdate(reposterId: Long): List<Long> = throw UnsupportedOperationException()
+
+    override fun deleteAllByReposter(reposterId: Long) = throw UnsupportedOperationException()
 }
 
 internal class UnusedSaveRepository : SaveRepository {
@@ -385,6 +391,8 @@ internal class UnusedSaveRepository : SaveRepository {
         userId: Long,
         postIds: Collection<Long>,
     ): Set<Long> = throw UnsupportedOperationException()
+
+    override fun deleteAllByUser(userId: Long) = throw UnsupportedOperationException()
 }
 
 internal class NoCommentQueryPort : SnsCommentQueryPort {
@@ -432,6 +440,8 @@ internal class UnusedCommentLikeRepository : CommentLikeRepository {
         userId: Long,
         commentIds: Collection<Long>,
     ): Set<Long> = throw UnsupportedOperationException()
+
+    override fun deleteAllByUser(userId: Long) = throw UnsupportedOperationException()
 }
 
 internal class NoPostLikeRepository : PostLikeRepository {
@@ -451,6 +461,8 @@ internal class NoPostLikeRepository : PostLikeRepository {
         userId: Long,
         postIds: Collection<Long>,
     ): Set<Long> = throw UnsupportedOperationException()
+
+    override fun deleteAllByUser(userId: Long) = throw UnsupportedOperationException()
 }
 
 internal class UnusedFollowRepository : FollowRepository {
@@ -468,6 +480,16 @@ internal class UnusedFollowRepository : FollowRepository {
         followerId: Long,
         followeeIds: Collection<Long>,
     ): Set<Long> = throw UnsupportedOperationException()
+
+    override fun findFolloweeIds(followerId: Long): List<Long> = throw UnsupportedOperationException()
+
+    override fun findFollowerIds(followeeId: Long): List<Long> = throw UnsupportedOperationException()
+
+    override fun findFolloweeIdsForUpdate(followerId: Long): List<Long> = throw UnsupportedOperationException()
+
+    override fun findFollowerIdsForUpdate(followeeId: Long): List<Long> = throw UnsupportedOperationException()
+
+    override fun deleteAllOf(userId: Long) = throw UnsupportedOperationException()
 }
 
 internal class UnusedUserStatsRepository : SnsUserStatsRepository {
@@ -489,6 +511,14 @@ internal class UnusedUserStatsRepository : SnsUserStatsRepository {
     override fun increasePostCount(userId: Long): Int = throw UnsupportedOperationException()
 
     override fun decreasePostCount(userId: Long): Int = throw UnsupportedOperationException()
+
+    override fun lockAllInUserIdOrder(userIds: Collection<Long>) = throw UnsupportedOperationException()
+
+    override fun decreaseFollowerCounts(userIds: Collection<Long>) = throw UnsupportedOperationException()
+
+    override fun decreaseFollowingCounts(userIds: Collection<Long>) = throw UnsupportedOperationException()
+
+    override fun deleteByUserId(userId: Long) = throw UnsupportedOperationException()
 }
 
 internal class UnusedUserUseCase : UserUseCase {

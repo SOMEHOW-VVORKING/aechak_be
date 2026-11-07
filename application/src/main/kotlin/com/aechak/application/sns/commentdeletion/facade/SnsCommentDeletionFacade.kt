@@ -17,4 +17,9 @@ class SnsCommentDeletionFacade(
     override fun deleteByOperator(publicId: String) {
         commentDeletionService.delete(commentDeletionService.lock(publicId), CommentDeletionReason.OPERATOR)
     }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    override fun deleteByWithdrawal(authorId: Long) {
+        commentDeletionService.lockActiveOf(authorId).forEach { commentDeletionService.delete(it, CommentDeletionReason.WITHDRAWAL) }
+    }
 }

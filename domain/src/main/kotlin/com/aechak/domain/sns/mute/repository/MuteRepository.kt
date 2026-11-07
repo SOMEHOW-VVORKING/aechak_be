@@ -13,4 +13,7 @@ interface MuteRepository {
         muterId: Long,
         mutedId: Long,
     ): Int
+
+    /** muter가 건 뮤트를 모두 하드 삭제. 다른 사용자가 muter에게 건 뮤트는 남긴다 */
+    fun deleteAllByMuter(muterId: Long)
 }

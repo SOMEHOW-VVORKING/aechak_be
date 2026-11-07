@@ -22,4 +22,7 @@ interface CommentLikeRepository {
         userId: Long,
         commentIds: Collection<Long>,
     ): Set<Long>
+
+    /** user가 누른 댓글 좋아요를 모두 하드 삭제 */
+    fun deleteAllByUser(userId: Long)
 }

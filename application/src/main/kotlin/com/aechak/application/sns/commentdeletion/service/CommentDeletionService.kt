@@ -24,4 +24,7 @@ class CommentDeletionService(
         comment: Comment,
         reason: CommentDeletionReason,
     ): Boolean = comment.delete(reason)
+
+    /** 작성자의 지우지 않은 댓글을 모두 잠가 읽는다 */
+    fun lockActiveOf(authorId: Long): List<Comment> = commentRepository.findActiveByAuthorIdForUpdate(authorId)
 }
