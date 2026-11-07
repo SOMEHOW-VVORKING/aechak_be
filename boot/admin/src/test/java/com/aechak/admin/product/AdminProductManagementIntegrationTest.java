@@ -321,13 +321,13 @@ class AdminProductManagementIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    void 이미_막힌_상품의_판매중지는_409_40008_이고_사유를_덮지_않는다() throws Exception {
+    void 이미_막힌_상품의_판매중지는_409_40012_이고_사유를_덮지_않는다() throws Exception {
         String productId = seedProduct("연어 건사료", leafCategoryId);
         suspend(productId, "1차 사유").andExpect(status().isNoContent());
 
         suspend(productId, "2차 사유")
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.errorCode").value(40008));
+                .andExpect(jsonPath("$.errorCode").value(40012));
 
         assertThat(productOf(productId).getAdminSaleBlockReason()).isEqualTo("1차 사유");
     }

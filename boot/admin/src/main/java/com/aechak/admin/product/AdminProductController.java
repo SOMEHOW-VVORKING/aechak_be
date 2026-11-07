@@ -61,7 +61,7 @@ public class AdminProductController {
 
     /**
      * 판매중지 — 판매 상태를 SUSPENDED로 옮기고 막음 표시를 남긴다. 그 표시가 있는 동안 셀러의
-     * 판매 상태 변경이 40010으로 거부된다. 이미 막혀 있으면 409(40008), 동시 조치 충돌은 409(40011).
+     * 판매 상태 변경이 40010으로 거부된다. 이미 막혀 있으면 409(40012), 동시 조치 충돌은 409(40011).
      */
     @PostMapping("/{productId}/sale-suspensions")
     @ResponseStatus(HttpStatus.NO_CONTENT)

@@ -48,7 +48,7 @@ class ProductAdminSaleBlockTest {
     }
 
     @Test
-    fun `이미 막힌 상품을 다시 막으면 40008로 거부한다`() {
+    fun `이미 막힌 상품을 다시 막으면 40012로 거부한다`() {
         val product = product()
         product.blockSaleByAdmin(1L, "1차 사유")
 
