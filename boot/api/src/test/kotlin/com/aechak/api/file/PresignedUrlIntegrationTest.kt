@@ -1,12 +1,16 @@
 package com.aechak.api.file
 
 import com.aechak.api.support.IntegrationTestBase
+import com.aechak.api.support.SwitchableRateLimitCounter
+import com.aechak.application.ratelimit.facade.RateLimitFacade
 import org.hamcrest.Matchers.allOf
 import org.hamcrest.Matchers.endsWith
 import org.hamcrest.Matchers.startsWith
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.security.web.FilterChainProxy
@@ -28,6 +32,12 @@ class PresignedUrlIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var securityFilterChain: FilterChainProxy
+
+    @Autowired
+    private lateinit var counter: SwitchableRateLimitCounter
+
+    @Autowired
+    private lateinit var redisTemplate: StringRedisTemplate
 
     private lateinit var mockMvc: MockMvc
     private var userId = 0L
@@ -123,6 +133,25 @@ class PresignedUrlIntegrationTest : IntegrationTestBase() {
         issue("""{"purpose":"SNS_POST_VIDEO","contentType":"video/webm","contentLength":1024}""")
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value(100000))
+    }
+
+    @Test
+    fun `발급은 용도와 상관없이 1분 61번째가 429 90012다`() {
+        redisTemplate.delete(redisTemplate.keys("${RateLimitFacade.PREFIX}*"))
+        counter.enabled = true
+
+        repeat(30) { issue("""{"purpose":"REVIEW_IMAGE","contentType":"image/png"}""").andExpect(status().isOk) }
+        repeat(30) {
+            issue("""{"purpose":"SNS_POST_IMAGE","contentType":"image/jpeg","contentLength":1}""").andExpect(status().isOk)
+        }
+        issue("""{"purpose":"USER_PROFILE","contentType":"image/png"}""")
+            .andExpect(status().isTooManyRequests)
+            .andExpect(jsonPath("$.errorCode").value(90012))
+    }
+
+    @AfterEach
+    fun disableRateLimit() {
+        counter.enabled = false
     }
 
     private fun issue(body: String): ResultActions =

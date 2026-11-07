@@ -29,6 +29,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
             // 인증(Redis·SMS 포트) 조립까지 요구해 하위로 좁힌다
             "com.aechak.application.user.term", // UserFacade의 약관 동의 의존(ConsentService)
             "com.aechak.application.user.sanction", // 일반 회원 조회·제재 유스케이스
+            // 강제 탈퇴의 SNS 정리. 이 패키지가 부르는 게시물과 댓글 삭제는 AdminReportScanConfig가 스캔한다
+            "com.aechak.application.sns.withdrawal",
             // 공지 작성·게시. admin 하위만 넣는다 — notice 상위를 넣으면 독자측 읽기 파사드(read·seller)가
             // 딸려오고 그 중 셀러측은 seller BC의 자격 게이트를 요구해 어드민이 쓰지 않는 조립이 늘어난다.
             "com.aechak.application.notice.admin",
