@@ -19,6 +19,15 @@ enum class SellerErrorCode(
     INVALID_SHIPPING_POLICY(10005, "배송 정책 값이 올바르지 않습니다.", 400),
     INVALID_STORE_SETTINGS(10006, "스토어 설정 값이 올바르지 않습니다.", 400),
 
+    // 판매정지(어드민 셀러 계정 제재) — 계정 로그인 차단(UserStatus)과 다른 층이다
+    SELLER_ALREADY_SUSPENDED(10007, "이미 판매정지된 셀러입니다.", 409),
+    SELLER_NOT_SUSPENDED(10008, "판매정지 상태가 아닌 셀러입니다.", 409),
+
+    // 탈퇴·탈퇴 요청 셀러의 정지, 그리고 동시 조치의 낙관적 락 충돌을 묶는 상태 충돌 의미
+    SELLER_STATUS_TRANSITION_NOT_ALLOWED(10009, "현재 셀러 상태에서 허용되지 않는 전이입니다.", 409),
+    SELLER_SANCTION_REASON_DETAIL_REQUIRED(10010, "기타 사유를 고르면 상세 사유가 필수입니다.", 400),
+    SELLER_SANCTION_TEXT_TOO_LONG(10011, "제재 사유·메모가 허용 길이를 넘었습니다.", 400),
+
     // 입점 신청
     SELLER_APPLICATION_NOT_FOUND(10100, "입점 신청을 찾을 수 없습니다.", 404),
 

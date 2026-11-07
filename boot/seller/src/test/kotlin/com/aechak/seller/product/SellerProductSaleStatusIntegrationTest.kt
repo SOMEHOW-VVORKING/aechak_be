@@ -12,6 +12,7 @@ import com.aechak.domain.order.order.Order
 import com.aechak.domain.order.order.OrderItem
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.error.ProductErrorCode
+import com.aechak.domain.product.product.Product
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.seller.seller.Seller
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -38,6 +39,9 @@ import java.time.LocalDateTime
 /**
  * 셀러 판매 상태 변경 통합 테스트. 판매중지가 구매자 노출을 어디까지 끊고 어디를 안 건드리는지를 고정한다.
  * 노출은 saleStatus 화이트리스트 한 줄이 목록, 검색, 상세, 옵션 네 경로를 동시에 거르므로 여기가 무너지면 넷이 함께 무너진다.
+ *
+ * 운영자가 막아 둔 상품을 셀러가 되돌리려는 경로도 여기서 본다. SUSPENDED는 셀러가 지정할 수 있는 값이라
+ * 막음 표시를 보지 않으면 어드민 판매중지가 이 엔드포인트 한 번에 뒤집힌다 — 조치가 무의미해지는 자리다.
  */
 class SellerProductSaleStatusIntegrationTest : IntegrationTestBase() {
     @Autowired
@@ -229,6 +233,44 @@ class SellerProductSaleStatusIntegrationTest : IntegrationTestBase() {
             tx.execute { em.createQuery("select p.saleStatus from Product p", SaleStatus::class.java).singleResult },
             "원하는 결과와 같은 상태라 오류가 아니고 상태도 그대로여야 한다",
         )
+    }
+
+    @Test
+    fun `운영자가 막은 상품은 셀러가 판매중으로 되돌릴 수 없다`() {
+        blockSaleByAdmin()
+
+        mockMvc
+            .perform(statusRequest(token, productId, "ON_SALE"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(40010))
+
+        assertEquals(
+            SaleStatus.SUSPENDED,
+            tx.execute { em.createQuery("select p.saleStatus from Product p", SaleStatus::class.java).singleResult },
+            "어드민 조치가 셀러 요청 한 번에 뒤집히면 안 된다",
+        )
+        assertFalse(listedProductIds().contains(productId), "거부됐으니 노출도 그대로 끊겨 있어야 한다")
+    }
+
+    @Test
+    fun `운영자가 막은 상품은 셀러가 판매중지로 다시 지정하는 것도 거부된다`() {
+        blockSaleByAdmin()
+
+        mockMvc
+            .perform(statusRequest(token, productId, "SUSPENDED"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(40010))
+    }
+
+    /** 어드민 엔드포인트는 다른 실행 모듈에 있어 도메인 전이를 직접 부른다. */
+    private fun blockSaleByAdmin() {
+        tx.execute {
+            em
+                .createQuery("select p from Product p where p.publicId = :publicId", Product::class.java)
+                .setParameter("publicId", productId)
+                .singleResult
+                .blockSaleByAdmin(adminId = 99L, reason = "원산지 표기 허위")
+        }
     }
 
     @Test
