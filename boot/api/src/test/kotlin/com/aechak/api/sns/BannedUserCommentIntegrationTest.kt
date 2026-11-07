@@ -80,6 +80,11 @@ class BannedUserCommentIntegrationTest : SnsPostIntegrationTestBase() {
         expectError(likeComment(s.bannedReply, viewer), 404, SnsErrorCode.SNS_COMMENT_UNAVAILABLE.code)
         expectError(report(viewer, s.bannedRoot), 404, SnsErrorCode.SNS_COMMENT_UNAVAILABLE.code)
         expectError(
+            createComment(viewer, postId, commentBody(parentPublicId = s.bannedReply)),
+            404,
+            SnsErrorCode.SNS_COMMENT_UNAVAILABLE.code,
+        )
+        expectError(
             createComment(viewer, postId, commentBody(parentPublicId = s.bannedRoot)),
             409,
             SnsErrorCode.SNS_COMMENT_REPLY_CLOSED.code,

@@ -98,6 +98,28 @@ class BannedUserVisibilityIntegrationTest : SnsPostIntegrationTestBase() {
         assertEquals(2, (likers["likeCount"] as Number).toInt())
     }
 
+    @Test
+    fun `영구 정지 사용자는 차단과 뮤트 관리 목록과 수, 댓글 좋아요한 사람 목록에서 빠진다`() {
+        val viewer = onboardedUser()
+        val banned = onboardedUser()
+        val kept = onboardedUser()
+        val postId = createdPublicId(onboardedUser())
+        val comment = seedComment(onboardedUser(), postId)
+        listOf(banned, kept).forEach {
+            likeComment(comment, it).andExpect(status().is2xxSuccessful)
+            relate(viewer, it, "block")
+            relate(viewer, it, "mute")
+        }
+        setStatus(banned, UserStatus.BANNED)
+
+        listOf("blocks", "mutes").forEach { kind ->
+            val page = data(userGet("/api/v1/sns/me/$kind", viewer))
+            assertEquals(listOf(publicIdOf(kept)), page.itemIds(), kind)
+            assertEquals(1, (page["totalCount"] as Number).toInt(), kind)
+        }
+        assertEquals(listOf(publicIdOf(kept)), data(commentLikers(comment, onboardedUser())).itemIds())
+    }
+
     private fun setStatus(
         userId: Long,
         status: UserStatus,
