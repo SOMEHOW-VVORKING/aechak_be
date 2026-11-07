@@ -29,6 +29,7 @@ aechak/                              # A-4 확정: 루트 패키지 com.aechak
 │   └── batch/                       # 실행 모듈. Spring Batch
 └── infra/                           # 그룹핑 폴더 — 기술 분류 폴더 아래 구체 모듈 (40 문서)
     ├── persistence/jpa/             # :jpa-persistence — JPA 어댑터 (A-1 결정 L2)
+    ├── persistence/elasticsearch/   # :elasticsearch-persistence — 키워드 검색 Elasticsearch 어댑터
     ├── client/pg-client/       # :pg-client — PG 외부 API 어댑터
     ├── kafka/                       # 어댑터 코드가 생기면 하위에 구체 모듈 추가
     └── redis/                       # 〃

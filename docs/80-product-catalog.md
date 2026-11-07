@@ -43,6 +43,16 @@
 - **키워드 검색의 총개수**: 첫 페이지(`cursor == null`)만 센다(`ProductKeywordSearchPort.searchFirstPage`). 이후 페이지는 세지 않고 `null`이다.
   - FULLTEXT와 스캔 경로는 목록 쿼리에 `count(*) over()`를 붙여 목록과 총개수를 한 번에 읽는다. 윈도 값은 LIMIT 전에 계산되므로 일치 행 전체 수다. 일치 행이 없으면 값을 실을 행도 없어서 0으로 둔다. MySQL은 윈도 값을 구하려고 일치 행 전부를 임시 테이블에 넣은 뒤 LIMIT을 적용하므로 일치 행이 적은 경로에만 쓴다.
   - 인덱스 순서 경로는 목록을 정렬 인덱스로 읽고 총개수는 따로 센다. 총개수 쿼리는 상품 테이블만 순서대로 훑고 셀러는 id 목록으로 거른다. 상품 통계는 최소 평점 필터가 있을 때만 붙인다. 조건은 상품명 LIKE를 맨 앞에 둬 일치하지 않는 행은 나머지 조건을 계산하지 않는다.
+- **키워드 검색 엔진**: `aechak.search.engine`(기본 `jpa`)이 `es`면 Elasticsearch 어댑터, 아니면 위의 JPA 어댑터로 검색한다. 두 어댑터는 늘 빈으로 있고, api의 `ProductSearchEngineConfig`가 `@Primary` 포트 빈으로 둘 중 하나를 고른다.
+  - 색인(`products`, 샤드 1, 복제 0)에는 노출 여부와 무관하게 모든 상품을 넣고 노출 조건과 필터는 검색할 때 건다. 노출 조건, 필터, 정렬, keyset, 첫 페이지 총개수는 JPA 어댑터와 같다. 정렬 커서는 `search_after`로, 총개수는 같은 요청의 `track_total_hits`로 구한다.
+  - 상품명은 2글자 ngram(공백과 문장부호도 조각에 포함, 소문자화)으로 색인하고 2글자 이상 검색어는 구문 일치(`match_phrase`)로 찾는다. 길이가 같은 조각을 연속 위치로 요구하므로 `LIKE '%검색어%'`와 같은 상품을 찾는다. 길이가 다른 조각을 섞으면(min_gram과 max_gram이 다르면) 이 성질이 깨진다. 1글자 검색어는 1글자 ngram 하위 필드(`name.unigram`)로 찾는다.
+  - 낮은 가격순은 `params.now` 시각의 유효가격을 painless 스크립트 정렬로 계산하고, 가격대 필터는 할인 중인 상품의 할인가와 나머지 상품의 정가에 범위 조건을 나눠 건다. 할인 시각은 UTC 기준 epoch 마이크로초로 저장하고 검색할 때도 같은 변환을 쓴다.
+  - 평균 별점은 문자열로 보내 `scaled_float`(배율 100)로 거르고, 표시값은 `_source`의 원래 소수 자릿수로 돌려준다. 통계 행이 없으면 표시용 리뷰 수는 0, 평균 별점은 null이다.
+  - 색인 재작성: `ProductSearchReindexService`가 jpa 모듈의 읽기 포트로 상품 전체를 id 순서로 1,000개씩 읽어(셀러와 상품 통계는 왼쪽 조인) 쓰기 포트로 적재한다. 색인을 지우고 매핑으로 다시 만든 뒤 적재 동안 `refresh_interval`을 -1로 두고 끝에 한 번 refresh한다. 끝나면 `SEARCH_REINDEX_DONE count=<n> ms=<t>` 한 줄을 남긴다.
+  - 재작성은 `aechak.search.es.reindex-on-startup=true`(기본 false)일 때 api가 시작 직후 한 번 돌린다. 클라이언트는 시작할 때 Elasticsearch에 연결하지 않는다. 주소는 `spring.elasticsearch.uris`다.
+  - 알려진 한계: 실시간 동기화가 없다. 색인은 마지막 재작성 시점의 데이터다. 그 뒤 바뀐 상품, 셀러, 카테고리 상태, 리뷰 수는 다음 재작성 전까지 반영되지 않는다. 카테고리 활성 여부는 요청마다 application이 계산한 id 목록으로 걸러 즉시 반영된다.
+  - Elasticsearch 상태는 `/actuator/health`에 넣지 않는다(`management.health.elasticsearch.enabled=false`). api는 기본 `jpa`로 Elasticsearch 없이 배포한다.
+  - 응답 대기 상한은 `aechak.search.query-timeout-ms`다. 넘기면 어댑터가 `QueryTimeoutException`으로 바꿔 던지고 서비스가 `PRODUCT_SEARCH_TIMEOUT`(503)으로 바꾼다.
 - **키워드 검색의 쿼리 타임아웃**: 표본, 목록, 총개수 쿼리에 `jakarta.persistence.query.timeout` 힌트를 건다. 값은 `aechak.search.query-timeout-ms`(기본 3000)다.
   - Hibernate가 밀리초를 초로 반올림해 JDBC에 넘기므로 500 미만은 타임아웃이 없는 것과 같다.
   - 시간을 넘기면 드라이버가 서버에 `KILL QUERY`를 보내 쿼리를 멈춘다. 서비스는 이 예외(`QueryTimeoutException`)를 `PRODUCT_SEARCH_TIMEOUT`(40008, 503)으로 바꿔 던진다.

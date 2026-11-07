@@ -69,6 +69,8 @@ management:
   health:
     redis:
       enabled: false # Redis 장애로 앱 전체가 unhealthy 판정되는 것 방지
+    elasticsearch:
+      enabled: false # 검색 엔진 기본값이 jpa라 Elasticsearch 없이 배포한다. 연결 여부가 헬스 판정에 섞이지 않게 끈다
 
 # 이 파일은 전 환경 공통(정책값과 불변 엔드포인트)만 담는다.
 # datasource와 redis는 프로파일 yml 소유 (dev=SSM 로드, local=docker compose 표준값).
