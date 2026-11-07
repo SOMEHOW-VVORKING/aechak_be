@@ -14,6 +14,7 @@ import com.aechak.application.review.admin.usecase.command.UnblindReviewCommand
 import com.aechak.application.review.admin.usecase.query.AdminReviewSearchQuery
 import com.aechak.application.review.admin.usecase.result.AdminReviewDetailResult
 import com.aechak.application.review.admin.usecase.result.AdminReviewSummaryResult
+import com.aechak.application.sns.commentdeletion.usecase.SnsCommentDeletionUseCase
 import com.aechak.application.sns.postdeletion.usecase.SnsPostDeletionUseCase
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.user.sanction.usecase.AdminMemberUseCase
@@ -70,6 +71,7 @@ class AdminReportFacadeTest {
             reviews,
             members,
             UnusedSnsPostDeletionUseCase(),
+            UnusedSnsCommentDeletionUseCase(),
             StubUserUseCase(),
         )
 
@@ -343,6 +345,10 @@ private class UnusedSnsPostDeletionUseCase : SnsPostDeletionUseCase {
     ) = error("신고 처리는 작성자 삭제를 부르지 않는다")
 
     override fun deleteByOperator(publicId: String) = error("이 테스트는 SNS 게시물 신고를 다루지 않는다")
+}
+
+private class UnusedSnsCommentDeletionUseCase : SnsCommentDeletionUseCase {
+    override fun deleteByOperator(publicId: String) = error("이 테스트는 SNS 댓글 신고를 다루지 않는다")
 }
 
 private class RecordingAdminMemberUseCase : AdminMemberUseCase {

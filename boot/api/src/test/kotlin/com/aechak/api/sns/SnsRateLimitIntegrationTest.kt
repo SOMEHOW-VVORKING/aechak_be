@@ -173,12 +173,14 @@ class SnsRateLimitIntegrationTest : SnsPostIntegrationTestBase() {
     }
 
     @Test
-    fun `신고는 게시물과 사용자 신고를 합쳐 1분 6번째가 429이고 거절된 요청은 1일 수를 쓰지 않는다`() {
+    fun `신고는 게시물, 댓글, 사용자 신고를 합쳐 1분 6번째가 429이고 거절된 요청은 1일 수를 쓰지 않는다`() {
         val me = onboardedUser()
-        val posts = List(3) { createdPublicId(onboardedUser()) }
+        val posts = List(2) { createdPublicId(onboardedUser()) }
+        val comment = seedComment(onboardedUser(), createdPublicId(onboardedUser()))
         val users = List(3) { publicIdOf(onboardedUser()) }
 
         posts.forEach { report(me, "SNS_POST", it).andExpect(status().isCreated) }
+        report(me, "SNS_COMMENT", comment).andExpect(status().isCreated)
         users.take(2).forEach { report(me, "SNS_USER", it).andExpect(status().isCreated) }
         report(me, "SNS_USER", users[2])
             .andExpect(status().isTooManyRequests)
