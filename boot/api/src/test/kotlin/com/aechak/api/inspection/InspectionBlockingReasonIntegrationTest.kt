@@ -4,6 +4,7 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.inspection.service.ProductReviewQueueService
 import com.aechak.application.inspection.usecase.InspectionUseCase
 import com.aechak.application.inspection.usecase.command.ApplyVerdictCommand
+import com.aechak.application.inspection.usecase.result.InspectionViolationResult
 import com.aechak.application.product.product.usecase.SellerProductUseCase
 import com.aechak.application.product.product.usecase.result.InspectionProgressStep
 import com.aechak.application.product.product.usecase.result.SellerProductInspectionResult
@@ -198,6 +199,123 @@ class InspectionBlockingReasonIntegrationTest : IntegrationTestBase() {
         assertNull(seen.reasonSummary, "막고 있는 것이 없는데 지난 위반 문구를 보여 주면 고친 셀러가 또 고치려 든다")
     }
 
+    @Test
+    fun `판정으로 저장한 위반을 위치 순서로 읽는다`() {
+        applyVerdictWith(
+            givenQueued(FIRST_CONTENT),
+            InspectionVerdict.FLAG,
+            perspectives =
+                listOf(
+                    PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.VIOLATION),
+                    PerspectiveResult(InspectionPerspective.CONDUCT_TRADE, ContractOutcome.VIOLATION),
+                ),
+            violations =
+                listOf(
+                    violation(ViolationCategory.MEDICAL_CLAIM, InspectionPerspective.DISPLAY_ADS, 30, "슬개골 완치", "건강 관리에 도움을 줄 수 있는"),
+                    violation(ViolationCategory.OFF_PLATFORM, InspectionPerspective.CONDUCT_TRADE, 10, "오픈채팅 문의", "상품 문의를 이용해 주세요"),
+                    violation(ViolationCategory.EFFICACY_OVERCLAIM, InspectionPerspective.DISPLAY_ADS, 0, "100% 회복", "개선에 도움을 줄 수 있습니다"),
+                ),
+        )
+
+        assertEquals(
+            listOf(
+                InspectionViolationResult("EFFICACY_OVERCLAIM", "100% 회복", "개선에 도움을 줄 수 있습니다"),
+                InspectionViolationResult("OFF_PLATFORM", "오픈채팅 문의", "상품 문의를 이용해 주세요"),
+                InspectionViolationResult("MEDICAL_CLAIM", "슬개골 완치", "건강 관리에 도움을 줄 수 있는"),
+            ),
+            inspection().violations,
+            "실제 판정 수신 경로로 저장한 값을 관점과 상관없이 위치 순서로 읽어야 한다",
+        )
+    }
+
+    @Test
+    fun `규칙 단계 위반은 제안이 null이다`() {
+        applyVerdictWith(
+            givenQueued(FIRST_CONTENT),
+            InspectionVerdict.FLAG,
+            perspectives = listOf(PerspectiveResult(InspectionPerspective.RULE, ContractOutcome.VIOLATION)),
+            violations = listOf(violation(ViolationCategory.BANNED_INGREDIENT, InspectionPerspective.RULE, null, "자일리톨", null)),
+        )
+
+        assertEquals(
+            listOf(InspectionViolationResult("BANNED_INGREDIENT", "자일리톨", null)),
+            inspection().violations,
+            "규칙 단계는 제안을 만들지 않는다",
+        )
+    }
+
+    @Test
+    fun `판정이 실패해도 앞선 위반의 목록이 사유와 함께 남는다`() {
+        flag(givenQueued(FIRST_CONTENT))
+
+        applyVerdict(givenQueued(SECOND_CONTENT), InspectionVerdict.FAILED)
+
+        val seen = inspection()
+        assertEquals(InspectionJudgment.FAILED, seen.judgment, "진행 축은 최신 검수의 것이다")
+        assertEquals(QUOTE, seen.reasonSummary)
+        assertEquals(
+            listOf(InspectionViolationResult("MEDICAL_CLAIM", QUOTE, null)),
+            seen.violations,
+            "목록을 가장 최근 검수에서 읽으면 사유와 목록이 다른 판정을 가리킨다",
+        )
+    }
+
+    @Test
+    fun `증거 없는 통과 뒤에도 앞선 위반의 목록이 남는다`() {
+        flag(givenQueued(FIRST_CONTENT))
+
+        applyVerdict(
+            givenQueued(SECOND_CONTENT),
+            InspectionVerdict.PASS,
+            perspectives = listOf(PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.UNCHECKED, "RATE_LIMITED")),
+        )
+
+        assertEquals(
+            listOf(InspectionViolationResult("MEDICAL_CLAIM", QUOTE, null)),
+            inspection().violations,
+            "게이트가 버린 통과가 목록을 지우면 사유와 어긋난다",
+        )
+    }
+
+    @Test
+    fun `고친 내용이 통과해 행이 닫히면 위반 목록이 빈다`() {
+        flag(givenQueued(FIRST_CONTENT))
+
+        applyVerdict(givenQueued(SECOND_CONTENT), InspectionVerdict.PASS)
+
+        assertEquals(emptyList(), inspection().violations, "이미 고친 위반을 다시 보여 주면 안 된다")
+    }
+
+    @Test
+    fun `위반이 없는 통과 판정은 위반 목록이 비어 있다`() {
+        applyVerdict(givenQueued(FIRST_CONTENT), InspectionVerdict.PASS)
+
+        assertEquals(emptyList(), inspection().violations, "위반이 없으면 빈 목록이다")
+    }
+
+    @Test
+    fun `통과 판정에 남은 규칙 위반은 사유와 같게 목록에 담긴다`() {
+        applyVerdictWith(
+            givenQueued(FIRST_CONTENT),
+            InspectionVerdict.PASS,
+            perspectives =
+                listOf(
+                    PerspectiveResult(InspectionPerspective.RULE, ContractOutcome.VIOLATION),
+                    PerspectiveResult(InspectionPerspective.DISPLAY_ADS, ContractOutcome.CLEAR),
+                ),
+            violations = listOf(violation(ViolationCategory.BANNED_INGREDIENT, InspectionPerspective.RULE, null, "코코넛오일", null)),
+        )
+
+        val seen = inspection()
+        assertEquals(InspectionJudgment.PASS, seen.judgment)
+        assertEquals("코코넛오일", seen.reasonSummary, "사유 필드는 통과 판정의 규칙 위반도 채운다")
+        assertEquals(
+            listOf(InspectionViolationResult("BANNED_INGREDIENT", "코코넛오일", null)),
+            seen.violations,
+            "목록과 사유 필드는 같은 값을 가리켜야 한다",
+        )
+    }
+
     private fun inspection(): SellerProductInspectionResult = sellerProductUseCase.getMyProductInspection(sellerUserId, productPublicId)
 
     private fun flag(
@@ -234,6 +352,31 @@ class InspectionBlockingReasonIntegrationTest : IntegrationTestBase() {
         verdict: InspectionVerdict,
         perspectives: List<PerspectiveResult> = defaultPerspectives(verdict),
     ) = inspectionUseCase.applyVerdict(ApplyVerdictCommand(verdictFor(inspection, verdict, perspectives)))
+
+    private fun applyVerdictWith(
+        inspection: ContentInspection,
+        verdict: InspectionVerdict,
+        perspectives: List<PerspectiveResult>,
+        violations: List<Violation>,
+    ) = inspectionUseCase.applyVerdict(
+        ApplyVerdictCommand(verdictFor(inspection, verdict, perspectives).copy(violations = violations)),
+    )
+
+    private fun violation(
+        category: ViolationCategory,
+        perspective: InspectionPerspective,
+        spanStart: Int?,
+        quote: String,
+        suggestion: String?,
+    ) = Violation(
+        category = category,
+        perspective = perspective,
+        spanStart = spanStart,
+        spanEnd = spanStart?.plus(quote.length),
+        quote = quote,
+        suggestion = suggestion,
+        confidence = null,
+    )
 
     /** 판정을 뒷받침하는 관점 결과. 어긋나게 실으면 증거를 보는 분기가 우연히 통과한다 */
     private fun defaultPerspectives(verdict: InspectionVerdict): List<PerspectiveResult> =

@@ -9,5 +9,7 @@ dependencies {
     implementation(libs.spring.context)      // @Repository 스테레오타입
     implementation(libs.spring.data.jpa)
     implementation(libs.hibernate.core)      // 제약 위반 종류·이름 판별(예외 메시지 파싱 금지)
+    implementation(libs.jackson.databind)    // 저장된 위반 JSON 읽기. :kafka가 없는 어드민도 이 모듈은 쓰기 때문임
+    implementation(libs.jackson.module.kotlin)
     implementation(libs.querydsl.jpa)        // JPAQueryFactory + domain의 Q클래스 참조 (QueryDSL은 이 모듈에 가둔다)
 }
