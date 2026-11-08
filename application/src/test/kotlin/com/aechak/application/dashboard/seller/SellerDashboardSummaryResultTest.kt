@@ -1,13 +1,13 @@
 package com.aechak.application.dashboard.seller
 
 import com.aechak.application.dashboard.seller.usecase.result.SellerDashboardSummaryResult
+import com.aechak.application.inquiry.product.port.view.SellerUnansweredInquiryCountView
 import com.aechak.application.order.claim.usecase.result.SellerClaimMetricsResult
 import com.aechak.application.order.seller.usecase.result.SellerOrderMetricsResult
 import com.aechak.application.product.product.usecase.result.SellerProductStatusCountsResult
 import com.aechak.application.settlement.seller.port.view.SellerSettlementSummaryView
 import com.aechak.application.settlement.seller.usecase.result.SellerSettlementSummaryResult
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -50,16 +50,15 @@ class SellerDashboardSummaryResultTest {
     }
 
     @Test
-    fun `미응답 문의만 미지원이고 0은 값이 아니라 미지원 표시다`() {
+    fun `미응답 문의도 값과 직전 값을 실은 지원 지표다`() {
         val result = assemble(previous = true)
 
-        assertFalse(result.metrics.unansweredInquiries.supported)
-        assertEquals(0L, result.metrics.unansweredInquiries.value)
-        assertNull(result.metrics.unansweredInquiries.previousValue)
-        assertTrue(result.metrics.newOrders.supported)
-        assertTrue(result.metrics.cancelRequests.supported)
-        assertTrue(result.metrics.collectionInvoicePending.supported)
-        assertTrue(result.metrics.reshipPending.supported)
+        assertTrue(result.metrics.unansweredInquiries.supported)
+        assertEquals(
+            13L to 10L,
+            result.metrics.unansweredInquiries.value to result.metrics.unansweredInquiries.previousValue,
+        )
+        assertNull(assemble(previous = false).metrics.unansweredInquiries.previousValue)
     }
 
     @Test
@@ -98,6 +97,7 @@ class SellerDashboardSummaryResultTest {
                 } else {
                     null
                 },
+            unansweredInquiries = SellerUnansweredInquiryCountView(current = 13L, previous = if (previous) 10L else null),
             settlement = SellerSettlementSummaryResult(totalAmount = 0L, pendingAmount = 0L, onHoldAmount = 0L),
             productStatuses =
                 SellerProductStatusCountsResult(awaitingInspection = 0L, rejected = 0L, suspended = 0L, soldOut = 0L),

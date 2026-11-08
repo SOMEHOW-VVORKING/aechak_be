@@ -1,6 +1,9 @@
 package com.aechak.application.user.sanction.facade
 
+import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
+import com.aechak.application.file.usecase.command.DeleteFileCommand
+import com.aechak.application.sns.withdrawal.usecase.SnsWithdrawalUseCase
 import com.aechak.application.support.CursorPageResult
 import com.aechak.application.user.sanction.service.AdminMemberService
 import com.aechak.application.user.sanction.support.MemberCursorCodec
@@ -12,9 +15,12 @@ import com.aechak.application.user.sanction.usecase.query.MemberSearchQuery
 import com.aechak.application.user.sanction.usecase.result.MemberDetailResult
 import com.aechak.application.user.sanction.usecase.result.MemberSummaryResult
 import com.aechak.application.user.sanction.usecase.result.SanctionHistoryResult
+import com.aechak.domain.user.sanction.enums.SanctionAction
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.LocalDateTime
 
 /** AdminMemberUseCase의 유일한 구현체. 트랜잭션 경계는 여기 고정. */
@@ -22,6 +28,7 @@ import java.time.LocalDateTime
 class AdminMemberFacade(
     private val adminMemberService: AdminMemberService,
     private val fileUseCase: FileUseCase,
+    private val snsWithdrawalUseCase: SnsWithdrawalUseCase,
 ) : AdminMemberUseCase {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -52,9 +59,14 @@ class AdminMemberFacade(
         )
     }
 
+    /** 탈퇴 처리는 자기 탈퇴처럼 SNS 데이터를 정리하고 커밋 뒤에 프로필 이미지를 지운다. 신고 처리 트랜잭션 안에서도 불린다 */
     @Transactional
     override fun sanction(command: SanctionMemberCommand) {
-        adminMemberService.sanction(command)
+        val profileImageKey = adminMemberService.sanction(command)
+        if (command.action == SanctionAction.FORCE_WITHDRAW) {
+            snsWithdrawalUseCase.cleanUp(command.targetUserId)
+            profileImageKey?.let { deleteProfileImageAfterCommit(command.targetUserId, it) }
+        }
         log.info(
             "회원 제재 adminId={} targetUserId={} action={} reasonCode={}",
             command.adminId,
@@ -74,6 +86,20 @@ class AdminMemberFacade(
     override fun resetProfile(command: ResetMemberProfileCommand) {
         adminMemberService.resetProfile(command)
         log.info("회원 프로필 초기화 adminId={} targetUserId={}", command.adminId, command.targetUserId)
+    }
+
+    private fun deleteProfileImageAfterCommit(
+        userId: Long,
+        key: String,
+    ) {
+        TransactionSynchronizationManager.registerSynchronization(
+            object : TransactionSynchronization {
+                override fun afterCommit() {
+                    runCatching { fileUseCase.delete(DeleteFileCommand(key, UploadPurpose.USER_PROFILE)) }
+                        .onFailure { log.error("강제 탈퇴 후 프로필 이미지 삭제 실패, 수동 확인 필요 (userId={}, key={})", userId, key, it) }
+                }
+            },
+        )
     }
 
     private companion object {

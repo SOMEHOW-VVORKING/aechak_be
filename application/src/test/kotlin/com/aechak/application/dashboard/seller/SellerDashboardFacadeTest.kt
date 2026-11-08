@@ -3,6 +3,13 @@ package com.aechak.application.dashboard.seller
 import com.aechak.application.dashboard.seller.facade.SellerDashboardFacade
 import com.aechak.application.dashboard.seller.usecase.query.DashboardPeriod
 import com.aechak.application.dashboard.seller.usecase.query.SellerDashboardSummaryQuery
+import com.aechak.application.inquiry.product.port.view.SellerUnansweredInquiryCountView
+import com.aechak.application.inquiry.product.usecase.SellerProductInquiryUseCase
+import com.aechak.application.inquiry.product.usecase.command.AnswerProductInquiryCommand
+import com.aechak.application.inquiry.product.usecase.query.SellerProductInquirySearchQuery
+import com.aechak.application.inquiry.product.usecase.query.SellerUnansweredInquiryQuery
+import com.aechak.application.inquiry.product.usecase.result.AnswerProductInquiryResult
+import com.aechak.application.inquiry.product.usecase.result.SellerProductInquiryPageResult
 import com.aechak.application.order.claim.usecase.SellerClaimUseCase
 import com.aechak.application.order.claim.usecase.command.ApproveClaimCommand
 import com.aechak.application.order.claim.usecase.command.CompleteClaimCollectionCommand
@@ -66,6 +73,7 @@ class SellerDashboardFacadeTest {
     private val claims = RecordingClaimUseCase()
     private val settlement = RecordingSettlementUseCase()
     private val products = RecordingProductUseCase()
+    private val inquiries = RecordingInquiryUseCase()
 
     @Test
     fun `한 응답의 현재 기간과 직전 기간은 같은 기준 시각을 쓴다`() {
@@ -109,6 +117,19 @@ class SellerDashboardFacadeTest {
     }
 
     @Test
+    fun `미응답 문의 집계도 주문 집계와 같은 구간을 받는다`() {
+        facade(SellerStatus.ACTIVE).getSummary(SellerDashboardSummaryQuery(SELLER_ID, DashboardPeriod.LAST_7_DAYS))
+
+        val current = orders.queries[0]
+        val previous = orders.queries[1]
+        assertEquals(
+            listOf(SellerUnansweredInquiryQuery(SELLER_ID, current.orderedFrom, current.orderedToExclusive, previous.orderedFrom)),
+            inquiries.calls,
+            "현재·직전 구간을 한 번에 묻는다",
+        )
+    }
+
+    @Test
     fun `모든 집계는 요청자의 셀러 범위로만 묻는다`() {
         facade(SellerStatus.ACTIVE).getSummary(SellerDashboardSummaryQuery(SELLER_ID, DashboardPeriod.LAST_7_DAYS))
 
@@ -138,6 +159,7 @@ class SellerDashboardFacadeTest {
         assertTrue(claims.queries.isEmpty(), "집계 하나만 게이트 앞으로 올라가도 거절된 요청이 그 BC를 읽는다")
         assertTrue(settlement.sellerIds.isEmpty())
         assertTrue(products.sellerIds.isEmpty())
+        assertTrue(inquiries.calls.isEmpty())
     }
 
     /**
@@ -162,7 +184,21 @@ class SellerDashboardFacadeTest {
             sellerClaimUseCase = claims,
             sellerSettlementUseCase = settlement,
             sellerProductUseCase = products,
+            sellerProductInquiryUseCase = inquiries,
         )
+
+    private class RecordingInquiryUseCase : SellerProductInquiryUseCase {
+        val calls = mutableListOf<SellerUnansweredInquiryQuery>()
+
+        override fun countUnansweredInquiries(query: SellerUnansweredInquiryQuery): SellerUnansweredInquiryCountView {
+            calls += query
+            return SellerUnansweredInquiryCountView(current = 0L, previous = null)
+        }
+
+        override fun searchMyInquiries(query: SellerProductInquirySearchQuery): SellerProductInquiryPageResult = unused()
+
+        override fun answerProductInquiry(command: AnswerProductInquiryCommand): AnswerProductInquiryResult = unused()
+    }
 
     private class FixedSellerUseCase(
         private val status: SellerStatus?,
