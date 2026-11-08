@@ -48,6 +48,8 @@ enum class UserErrorCode(
         409,
     ),
     PROFILE_NOT_RESETTABLE(30024, "프로필이 없는 계정은 프로필을 초기화할 수 없습니다.", 409),
+    NICKNAME_BANNED_WORD(30025, "닉네임에 쓸 수 없는 단어가 있습니다.", 400),
+    BIO_BANNED_WORD(30026, "부적절한 표현이 있어 소개글을 저장할 수 없습니다.", 400),
 
     // 적립금
     INVALID_POINT_AMOUNT(30100, "적립금 거래 금액은 0보다 커야 합니다.", 400),

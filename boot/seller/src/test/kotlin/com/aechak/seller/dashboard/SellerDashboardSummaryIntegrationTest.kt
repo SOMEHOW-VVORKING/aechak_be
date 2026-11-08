@@ -2,6 +2,9 @@ package com.aechak.seller.dashboard
 
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.pii.support.PiiStringCodec
+import com.aechak.domain.inquiry.product.ProductInquiry
+import com.aechak.domain.inquiry.product.enums.ProductInquiryCategory
+import com.aechak.domain.inquiry.product.enums.ProductInquiryStatus
 import com.aechak.domain.order.claim.Claim
 import com.aechak.domain.order.claim.ClaimItem
 import com.aechak.domain.order.claim.enums.ClaimReasonCode
@@ -367,12 +370,28 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
     }
 
     @Test
-    fun `미응답 문의는 미지원으로 내려간다`() {
+    fun `미응답 문의는 내 상품의 답변 대기 문의만 센다`() {
+        seedInquiry()
+        seedInquiry()
+        seedInquiry(status = ProductInquiryStatus.ANSWERED)
+        seedInquiry(status = ProductInquiryStatus.WITHDRAWN)
+        seedInquiry(sellerId = createActiveUser().also { openSeller(it) })
+
         summary()
-            .andExpect(jsonPath("$.data.metrics.unansweredInquiries.supported").value(false))
-            .andExpect(jsonPath("$.data.metrics.unansweredInquiries.value").value(0))
+            .andExpect(jsonPath("$.data.metrics.unansweredInquiries.supported").value(true))
+            .andExpect(jsonPath("$.data.metrics.unansweredInquiries.value").value(2))
             .andExpect(jsonPath("$.data.metrics.unansweredInquiries.previousValue").value(nullValue()))
-            .andExpect(jsonPath("$.data.metrics.newOrders.supported").value(true))
+    }
+
+    @Test
+    fun `미응답 문의는 접수일로 자르고 직전 기간을 함께 내린다`() {
+        seedInquiry(askedAt = LocalDateTime.now().minusDays(2))
+        seedInquiry(askedAt = LocalDateTime.now().minusDays(10))
+        seedInquiry(askedAt = LocalDateTime.now().minusDays(20))
+
+        summary("7d")
+            .andExpect(jsonPath("$.data.metrics.unansweredInquiries.value").value(1))
+            .andExpect(jsonPath("$.data.metrics.unansweredInquiries.previousValue").value(1))
     }
 
     @Test
@@ -632,6 +651,37 @@ class SellerDashboardSummaryIntegrationTest : IntegrationTestBase() {
                 .createQuery("update Claim c set c.requestedAt = :requestedAt where c.publicId = :publicId")
                 .setParameter("requestedAt", requestedAt)
                 .setParameter("publicId", claimPublicId)
+                .executeUpdate()
+        }
+    }
+
+    /** 상품은 값참조라 실제 행이 없어도 된다. 상태·접수일은 생성 콜백 뒤에 네이티브 UPDATE로 바꾼다. */
+    private fun seedInquiry(
+        sellerId: Long = sellerUserId,
+        status: ProductInquiryStatus = ProductInquiryStatus.RECEIVED,
+        askedAt: LocalDateTime? = null,
+    ) {
+        tx.execute {
+            val inquiry =
+                ProductInquiry.ask(
+                    productId = 1L,
+                    productPublicId = "P${System.nanoTime()}",
+                    sellerId = sellerId,
+                    authorUserId = buyerUserId,
+                    productNameSnapshot = "간식",
+                    category = ProductInquiryCategory.PRODUCT,
+                    title = "크기 문의",
+                    content = "입구 높이가 몇 cm 인가요",
+                    secret = false,
+                    now = askedAt ?: LocalDateTime.now(),
+                )
+            em.persist(inquiry)
+            em.flush()
+            em
+                .createNativeQuery("update product_inquiries set status = ?, created_at = ? where id = ?")
+                .setParameter(1, status.name)
+                .setParameter(2, askedAt ?: inquiry.createdAt)
+                .setParameter(3, inquiry.id)
                 .executeUpdate()
         }
     }

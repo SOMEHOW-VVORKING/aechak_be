@@ -53,7 +53,7 @@ application/src/main/kotlin/com/aechak/application/
 - 구조는 BC 패키지와 같은 usecase, facade, service, port이고 애그리거트와 리포지토리 포트는 없다. 에러코드가 필요하면 `error/`에 둔다(file).
 - 다른 BC는 이 패키지의 UseCase만 주입받는다. 판정 결과를 어떤 응답으로 바꿀지는 호출한 BC가 정한다.
 - `application/ratelimit`(사용자별 요청 빈도 제한)은 예외로 응답을 직접 정한다. 넘으면 `RateLimitUseCase.check`가 429 `CommonErrorCode.TOO_MANY_REQUESTS`(90012)를 던진다. 쓰는 BC가 늘어도 코드는 하나여야 해서 공통 코드를 쓴다.
-  - 규칙은 쓰는 BC가 `RateLimitRule`을 구현한 enum으로 둔다(선례 `application/sns/support/SnsRateLimitRule`). `key`가 같은 규칙은 함께 센다. 켜기와 끄기를 합쳐 세는 행동은 규칙 하나를 두 요청이 함께 쓴다.
+  - 규칙은 쓰는 BC가 `RateLimitRule`을 구현한 enum으로 둔다(선례 `application/sns/support/SnsRateLimitRule`, 업로드 주소 발급의 `application/file/support/FileRateLimitRule`). `key`가 같은 규칙은 함께 센다. 켜기와 끄기를 합쳐 세는 행동은 규칙 하나를 두 요청이 함께 쓴다.
   - 창이 여럿인 규칙은 모든 창이 한도 아래일 때만 받고 모든 창을 함께 올린다. 거절된 요청은 어느 창도 올리지 않는다. 한 규칙에 같은 길이의 창을 둘 두지 않는다(`check`가 거부한다).
   - Redis가 실패하면(`DataAccessException`) 통과시키고 다른 예외는 그대로 던진다. 대기는 api의 `spring.data.redis.timeout`(1초)까지다.
 
@@ -83,7 +83,7 @@ package com.aechak.application.order.usecase
  *   좋아요(SnsLikeUseCase, SnsLikeFacade)도 같은 이유로 나눈다. 금지어 판정 없이 게시물 판정과 좋아요 행만 쓴다.
  *   댓글(SnsCommentUseCase, SnsCommentFacade)은 금지어 판정을 받는 쪽이라 금지어가 필요 없는 좋아요와 나눈다.
  *   댓글 삭제의 상태 전이(CommentDeletionService)는 commentdeletion 패키지에 두어 운영자 삭제와 탈퇴 정리를 붙일 admin과 batch가 이 패키지만 스캔한다.
- *   탈퇴 정리(SnsWithdrawalUseCase, SnsWithdrawalFacade)는 탈퇴 트랜잭션 안에서 게시물 삭제와 댓글 삭제의 탈퇴 메서드를 부르고 그 사이에 관계와 반응을 지운다.
+ *   탈퇴 정리(SnsWithdrawalUseCase, SnsWithdrawalFacade)는 탈퇴 트랜잭션 안에서 게시물 삭제와 댓글 삭제의 탈퇴 메서드를 부르고 그 사이에 관계와 반응을 지운다. 자기 탈퇴(WithdrawalFacade)와 운영자 탈퇴 처리(AdminMemberFacade)가 함께 부른다.
  *   게시가 태그 행을 통계 행보다 먼저 잠그므로 게시물을 먼저 지운다.
  *   검색(SnsSearchUseCase, SnsSearchFacade)도 같은 이유로 피드와 나눈다. 검색 조회 포트와 인기순 순위 저장소를 쓰고 피드의 순위 페이지 나누기를 함께 쓴다.
  * - 이 인터페이스만이 외부(Controller / Consumer / Batch / 타 도메인 Facade)에 노출된다.
@@ -170,6 +170,9 @@ override fun confirmPayment(command: ConfirmPaymentCommand): PaymentResult {
   배송완료 전이(OrderDeliveryFacade)와 추적 갱신(ShipmentTrackingFacade)이 그렇게 갈려 있다.
 - 포트가 없을 때의 동작은 **유스케이스 결과로 드러낸다** — 조용히 성공으로 접지 않는다(추적 갱신은 어댑터 부재를
   결과 enum으로 돌려주고, 호출한 배치가 경고를 남기고 회차를 끊는다).
+- 닉네임과 소개글의 금지어 판정(ModerationUseCase)도 판정기가 api에만 있어 UserFacade가 nullable로 받는다. UserFacade는
+  admin, seller, batch에도 올라가지만 그 모듈에는 닉네임과 프로필을 쓰는 경로가 없고 판정기가 없는데 불리면 예외로 끊는다.
+- 업로드 주소 발급의 빈도 제한(RateLimitUseCase)도 같은 이유로 FileFacade가 nullable로 받는다. 발급 경로는 api에만 있다.
 
 ## 3. 이벤트 리스너 — 수신자 위치
 

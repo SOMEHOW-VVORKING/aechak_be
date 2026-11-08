@@ -4,6 +4,8 @@ import com.aechak.application.dashboard.seller.usecase.SellerDashboardUseCase
 import com.aechak.application.dashboard.seller.usecase.query.DashboardWindow
 import com.aechak.application.dashboard.seller.usecase.query.SellerDashboardSummaryQuery
 import com.aechak.application.dashboard.seller.usecase.result.SellerDashboardSummaryResult
+import com.aechak.application.inquiry.product.usecase.SellerProductInquiryUseCase
+import com.aechak.application.inquiry.product.usecase.query.SellerUnansweredInquiryQuery
 import com.aechak.application.order.claim.usecase.SellerClaimUseCase
 import com.aechak.application.order.claim.usecase.query.SellerClaimMetricsQuery
 import com.aechak.application.order.seller.usecase.SellerOrderUseCase
@@ -33,6 +35,7 @@ class SellerDashboardFacade(
     private val sellerClaimUseCase: SellerClaimUseCase,
     private val sellerSettlementUseCase: SellerSettlementUseCase,
     private val sellerProductUseCase: SellerProductUseCase,
+    private val sellerProductInquiryUseCase: SellerProductInquiryUseCase,
 ) : SellerDashboardUseCase {
     @Transactional(readOnly = true)
     override fun getSummary(query: SellerDashboardSummaryQuery): SellerDashboardSummaryResult {
@@ -44,6 +47,7 @@ class SellerDashboardFacade(
             previousOrders = window.previous?.let { orderMetrics(query.sellerId, window.at, it) },
             claims = claimMetrics(query.sellerId, window.current),
             previousClaims = window.previous?.let { claimMetrics(query.sellerId, it) },
+            unansweredInquiries = unansweredInquiries(query.sellerId, window),
             settlement = sellerSettlementUseCase.getSummary(query.sellerId),
             productStatuses = sellerProductUseCase.getMyProductStatusCounts(query.sellerId),
         )
@@ -70,6 +74,19 @@ class SellerDashboardFacade(
             sellerId = sellerId,
             requestedFrom = range?.from,
             requestedToExclusive = range?.toExclusive,
+        ),
+    )
+
+    /** 현재·직전 구간을 한 번에 묻는다 — 구간마다 따로 물으면 기간 필터 하나에 쿼리가 둘 붙는다. */
+    private fun unansweredInquiries(
+        sellerId: Long,
+        window: DashboardWindow,
+    ) = sellerProductInquiryUseCase.countUnansweredInquiries(
+        SellerUnansweredInquiryQuery(
+            sellerId = sellerId,
+            askedFrom = window.current?.from,
+            askedToExclusive = window.current?.toExclusive,
+            previousAskedFrom = window.previous?.from,
         ),
     )
 
