@@ -696,6 +696,22 @@ class AdminReportIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void SNS_게시물_신고의_강제_탈퇴는_신고된_글을_운영자_삭제로_다른_글을_탈퇴_삭제로_지우고_미디어를_커밋_뒤에_지운다() throws Exception {
+        String reportedId = persistSnsPost(authorId, "욕설이 섞인 글");
+        String otherId = persistSnsPost(authorId, "산책 사진");
+        long reportId = persistSnsPostReport(reportedId, PostReportReason.ABUSE, null);
+
+        decide("SNS_POST", reportId, sanctionBody("ABUSE", "FORCE_WITHDRAW", "OTHER", null))
+                .andExpect(status().isNoContent());
+
+        assertThat(statusOf(authorId)).isEqualTo(UserStatus.WITHDRAWN);
+        assertThat(postStatusOf(reportedId)).isEqualTo("DELETED/OPERATOR");
+        assertThat(postStatusOf(otherId)).isEqualTo("DELETED/WITHDRAWAL");
+        assertThat(fakeFileStorage().deletedKeys())
+                .containsExactlyInAnyOrder(mediaKeyOf(reportedId), mediaKeyOf(otherId));
+    }
+
+    @Test
     void 작성자가_이미_지운_SNS_게시물의_신고도_비공개_전환으로_종결하고_삭제_주체는_그대로다() throws Exception {
         String postPublicId = persistSnsPost(authorId, "곧 지울 글");
         long reportId = persistSnsPostReport(postPublicId, PostReportReason.SPAM, null);
