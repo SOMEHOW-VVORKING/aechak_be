@@ -2,6 +2,7 @@ package com.aechak.infra.client.ai
 
 import com.aechak.application.product.draft.port.ProductDraftAutofillRequest
 import com.aechak.application.product.draft.port.ProductDraftAutofillResult
+import com.aechak.application.product.draft.usecase.command.ProductDraftAutofillMode
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -170,11 +171,24 @@ class AiDraftClientAdapterTest {
             .andExpect(jsonPath("$.productName").value("모모의 하루 목줄 M"))
             .andExpect(jsonPath("$.categoryId").value(152))
             .andExpect(jsonPath("$.lockedFields.optionGroups[0].name").value("사이즈"))
+            .andExpect(jsonPath("$.mode").value("FILL"))
             .andExpect(jsonPath("$.sellerId").doesNotExist())
             .andExpect(jsonPath("$.image").doesNotExist())
             .andRespond(withSuccess(SKIPPED_RESPONSE_JSON, MediaType.APPLICATION_JSON))
 
         adapter.generate(request())
+
+        server.verify()
+    }
+
+    @Test
+    fun `보강 모드를 본문에 싣는다`() {
+        server
+            .expect(requestTo("$BASE_URL/internal/seller-draft"))
+            .andExpect(jsonPath("$.mode").value("REFINE"))
+            .andRespond(withSuccess(SKIPPED_RESPONSE_JSON, MediaType.APPLICATION_JSON))
+
+        adapter.generate(request(ProductDraftAutofillMode.REFINE))
 
         server.verify()
     }
@@ -190,7 +204,7 @@ class AiDraftClientAdapterTest {
         server.verify()
     }
 
-    private fun request() =
+    private fun request(mode: ProductDraftAutofillMode = ProductDraftAutofillMode.FILL) =
         ProductDraftAutofillRequest(
             requestId = "req-1",
             productName = "모모의 하루 목줄 M",
@@ -200,6 +214,7 @@ class AiDraftClientAdapterTest {
                     description = null,
                     optionGroups = listOf(ProductDraftAutofillRequest.OptionGroup("사이즈", listOf("S", "M"))),
                 ),
+            mode = mode,
         )
 
     companion object {

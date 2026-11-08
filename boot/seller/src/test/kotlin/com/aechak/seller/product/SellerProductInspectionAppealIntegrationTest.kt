@@ -2,9 +2,12 @@ package com.aechak.seller.product
 
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.domain.inspection.ContentInspection
+import com.aechak.domain.inspection.InspectionFinding
 import com.aechak.domain.inspection.ProductReviewQueueItem
 import com.aechak.domain.inspection.enums.InspectionJudgment
+import com.aechak.domain.inspection.enums.InspectionPerspectiveKind
 import com.aechak.domain.inspection.enums.InspectionTargetType
+import com.aechak.domain.inspection.enums.PerspectiveOutcome
 import com.aechak.domain.inspection.enums.ReviewQueueStatus
 import com.aechak.domain.inspection.repository.ContentInspectionRepository
 import com.aechak.domain.inspection.repository.ProductReviewQueueRepository
@@ -425,6 +428,30 @@ class SellerProductInspectionAppealIntegrationTest : IntegrationTestBase() {
             .perform(appealRequest(otherPublicId, "억울합니다."))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.errorCode").value(40000))
+    }
+
+    @Test
+    fun `이의를 접수한 응답에도 위반 목록이 담긴다`() {
+        changeStatus(productId, InspectionStatus.REJECTED)
+        settledInspection(InspectionJudgment.FLAG)
+        openReview(productId)
+        tx.execute {
+            val inspectionId = inspections.findLatestByTarget(InspectionTargetType.PRODUCT, productId)!!.id
+            em.persist(
+                InspectionFinding.of(
+                    inspectionId,
+                    InspectionPerspectiveKind.DISPLAY_ADS,
+                    PerspectiveOutcome.VIOLATION,
+                    violations = """[{"category":"MEDICAL_CLAIM","quote":"슬개골 완치","suggestion":"건강 관리에 도움을 줄 수 있는"}]""",
+                ),
+            )
+        }
+
+        mockMvc
+            .perform(appealRequest(publicId, "치료 효능이 아니라 성분 설명입니다."))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.violations[0].quote").value("슬개골 완치"))
+            .andExpect(jsonPath("$.data.violations[0].suggestion").value("건강 관리에 도움을 줄 수 있는"))
     }
 
     private fun appealRequest(

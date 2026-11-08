@@ -16,12 +16,14 @@ import java.sql.Timestamp
 import javax.sql.DataSource
 
 /**
- * V66(탈퇴한 사용자의 승인 전 입점 신청 소급 취소)이 어떤 행을 바꾸는지 본다.
+ * V72(탈퇴한 사용자의 승인 전 입점 신청 소급 취소)가 어떤 행을 바꾸는지 본다.
  * 깨지면 탈퇴한 계정의 신청이 승인 대기로 남거나 탈퇴하지 않은 사용자의 신청까지 취소된다.
- * 컨텍스트를 새로 띄우지 않으려고 공용 베이스를 쓴다. V66은 별도 DB에 적용한다.
+ * 컨텍스트를 새로 띄우지 않으려고 공용 베이스를 쓴다. V72는 별도 DB에 적용한다.
+ *
+ * 이 마이그레이션은 번호 충돌로 V66에서 다시 번호를 땄다. 클래스 이름도 함께 옮겼다.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class V66CancelWithdrawnApplicationsMigrationIntegrationTest : IntegrationTestBase() {
+class V72CancelWithdrawnApplicationsMigrationIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var dataSource: DataSource
 
@@ -29,8 +31,8 @@ class V66CancelWithdrawnApplicationsMigrationIntegrationTest : IntegrationTestBa
 
     @BeforeAll
     fun migrateSeededRows() {
-        migratedUrl = recreateDatabase("v66_cancel")
-        // users는 Flyway가 만들지 않는다. V52까지 적용한 뒤 V66이 읽는 컬럼만 가진 users를 만들어 심는다
+        migratedUrl = recreateDatabase("v72_cancel")
+        // users는 Flyway가 만들지 않는다. V52까지 적용한 뒤 V72가 읽는 컬럼만 가진 users를 만들어 심는다
         migrateUpTo(migratedUrl, "52")
         execute(migratedUrl, listOf("CREATE TABLE users (id BIGINT NOT NULL PRIMARY KEY, status VARCHAR(30) NOT NULL)") + seedRows())
         flyway(migratedUrl).migrate()

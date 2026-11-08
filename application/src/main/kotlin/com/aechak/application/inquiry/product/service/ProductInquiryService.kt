@@ -6,12 +6,14 @@ import com.aechak.application.inquiry.product.port.ProductInquiryQueryPort
 import com.aechak.application.inquiry.product.port.SellerProductInquiryCondition
 import com.aechak.application.inquiry.product.port.view.ProductInquiryView
 import com.aechak.application.inquiry.product.port.view.SellerProductInquiryMetricsView
+import com.aechak.application.inquiry.product.port.view.SellerUnansweredInquiryCountView
 import com.aechak.application.inquiry.product.usecase.command.AnswerProductInquiryCommand
 import com.aechak.application.inquiry.product.usecase.command.AskProductInquiryCommand
 import com.aechak.application.inquiry.product.usecase.command.WithdrawProductInquiryCommand
 import com.aechak.application.inquiry.product.usecase.query.MyProductInquiryListQuery
 import com.aechak.application.inquiry.product.usecase.query.ProductInquiryListQuery
 import com.aechak.application.inquiry.product.usecase.query.SellerProductInquirySearchQuery
+import com.aechak.application.inquiry.product.usecase.query.SellerUnansweredInquiryQuery
 import com.aechak.application.product.product.usecase.result.ProductRefResult
 import com.aechak.application.support.OffsetPageResult
 import com.aechak.common.error.BusinessException
@@ -114,6 +116,9 @@ class ProductInquiryService(
         sellerId: Long,
         now: LocalDateTime,
     ): SellerProductInquiryMetricsView = productInquiryQueryPort.countSellerMetrics(sellerId, now)
+
+    fun countSellerUnanswered(query: SellerUnansweredInquiryQuery): SellerUnansweredInquiryCountView =
+        productInquiryQueryPort.countSellerUnanswered(query)
 
     /** 상태를 바꾸기 전의 조회는 잠가서 읽는다 — 답변과 철회가 같은 RECEIVED를 보고 둘 다 성공하면 안 된다. */
     private fun load(publicId: String): ProductInquiry =

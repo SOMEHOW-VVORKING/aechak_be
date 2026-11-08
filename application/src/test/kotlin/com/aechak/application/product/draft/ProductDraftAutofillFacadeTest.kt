@@ -6,6 +6,7 @@ import com.aechak.application.product.draft.port.ProductDraftAutofillRequest
 import com.aechak.application.product.draft.port.ProductDraftAutofillResult
 import com.aechak.application.product.draft.port.ProductDraftAutofillThrottle
 import com.aechak.application.product.draft.usecase.command.AutofillProductDraftCommand
+import com.aechak.application.product.draft.usecase.command.ProductDraftAutofillMode
 import com.aechak.application.seller.usecase.SellerUseCase
 import com.aechak.common.error.BusinessException
 import com.aechak.domain.product.error.ProductErrorCode
@@ -79,6 +80,15 @@ class ProductDraftAutofillFacadeTest {
                 ?.name,
         )
         assertEquals(COOLDOWN, throttle.lastTtl, "쿨다운 길이는 설정값을 따른다")
+        assertEquals(ProductDraftAutofillMode.FILL, sent.mode, "커맨드 기본값은 기존 동작인 FILL 이다")
+    }
+
+    @Test
+    fun `보강 모드를 그대로 포트에 넘긴다`() {
+        facade().autofill(command().copy(mode = ProductDraftAutofillMode.REFINE))
+
+        val sent = assertNotNull(port.lastRequest)
+        assertEquals(ProductDraftAutofillMode.REFINE, sent.mode, "모드를 삼키면 보강 요청에 FILL 결과가 돌아온다")
     }
 
     private fun facade(port: ProductDraftAutofillPort? = this.port) = ProductDraftAutofillFacade(seller, port, throttle, COOLDOWN)

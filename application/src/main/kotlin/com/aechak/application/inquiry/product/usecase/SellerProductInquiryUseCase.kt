@@ -1,7 +1,9 @@
 package com.aechak.application.inquiry.product.usecase
 
+import com.aechak.application.inquiry.product.port.view.SellerUnansweredInquiryCountView
 import com.aechak.application.inquiry.product.usecase.command.AnswerProductInquiryCommand
 import com.aechak.application.inquiry.product.usecase.query.SellerProductInquirySearchQuery
+import com.aechak.application.inquiry.product.usecase.query.SellerUnansweredInquiryQuery
 import com.aechak.application.inquiry.product.usecase.result.AnswerProductInquiryResult
 import com.aechak.application.inquiry.product.usecase.result.SellerProductInquiryPageResult
 
@@ -11,4 +13,10 @@ interface SellerProductInquiryUseCase {
     fun searchMyInquiries(query: SellerProductInquirySearchQuery): SellerProductInquiryPageResult
 
     fun answerProductInquiry(command: AnswerProductInquiryCommand): AnswerProductInquiryResult
+
+    /**
+     * 셀러 대시보드의 미응답 문의 건수. 자격 게이트는 대시보드 파사드가 한 번 보므로 여기서 다시 보지 않는다 —
+     * 넘겨받은 sellerId 범위의 건수만 돌려주고 식별자를 내지 않는다.
+     */
+    fun countUnansweredInquiries(query: SellerUnansweredInquiryQuery): SellerUnansweredInquiryCountView
 }

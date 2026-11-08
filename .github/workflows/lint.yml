@@ -2,6 +2,7 @@ name: Lint
 
 on:
   pull_request:
+  merge_group: # 머지 큐의 merge group에도 돌린다(ci.yml과 같은 이유)
   push:
     branches: [ main, develop ]
 

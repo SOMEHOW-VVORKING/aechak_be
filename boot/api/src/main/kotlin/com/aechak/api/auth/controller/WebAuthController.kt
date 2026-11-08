@@ -2,8 +2,10 @@ package com.aechak.api.auth.controller
 
 import com.aechak.api.auth.cookie.LoginStateCookieFactory
 import com.aechak.api.auth.cookie.RefreshCookieFactory
+import com.aechak.api.auth.request.AdminPasswordLoginRequest
 import com.aechak.api.auth.response.WebTokenResponse
 import com.aechak.application.auth.error.AuthErrorCode
+import com.aechak.application.auth.usecase.AdminPasswordLoginUseCase
 import com.aechak.application.auth.usecase.LogoutUseCase
 import com.aechak.application.auth.usecase.TokenRefreshUseCase
 import com.aechak.application.auth.usecase.WebLoginUseCase
@@ -12,6 +14,7 @@ import com.aechak.common.error.BusinessException
 import com.aechak.domain.user.social.enums.SocialProvider
 import com.aechak.webcommon.response.ApiResponse
 import jakarta.servlet.http.HttpServletRequest
+import jakarta.validation.Valid
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -19,6 +22,7 @@ import org.springframework.web.bind.annotation.CookieValue
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
@@ -38,6 +42,7 @@ import java.net.URI
 @RequestMapping("/auth") // 접두(api.base-path)는 WebConfig가 일괄 부착
 class WebAuthController(
     private val webLoginUseCase: WebLoginUseCase,
+    private val adminPasswordLoginUseCase: AdminPasswordLoginUseCase,
     private val tokenRefreshUseCase: TokenRefreshUseCase,
     private val logoutUseCase: LogoutUseCase,
     private val refreshCookieFactory: RefreshCookieFactory,
@@ -111,6 +116,26 @@ class WebAuthController(
             response.header(HttpHeaders.SET_COOKIE, refreshCookieFactory.issue(completion.refreshToken, request).toString())
         }
         return response.build()
+    }
+
+    /**
+     * 아이디·비밀번호 로그인 — 소셜 리다이렉트 없이 한 번의 POST로 끝난다.
+     *
+     * 이 채널에 둔 이유: refresh를 쿠키로 심어야 한다. body 채널(AuthController)을 복사해 토큰을
+     * 응답 본문으로만 돌려주면 브라우저가 그것을 보관할 자리가 없어 새로고침하는 순간 세션이 끊기고,
+     * 쿠키가 없으니 /auth/web/refresh도 영구 실패한다. 응답 모양을 /web/refresh와 같게 맞춰
+     * FE가 로그인과 갱신을 같은 코드로 다룬다.
+     */
+    @PostMapping("/login/password")
+    fun loginWithPassword(
+        @Valid @RequestBody request: AdminPasswordLoginRequest,
+        httpRequest: HttpServletRequest,
+    ): ResponseEntity<ApiResponse<WebTokenResponse>> {
+        val result = adminPasswordLoginUseCase.loginWithPassword(request.toCommand())
+        return ResponseEntity
+            .ok()
+            .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.issue(result.refreshToken, httpRequest).toString())
+            .body(ApiResponse.of(WebTokenResponse.from(result)))
     }
 
     /** 세션 복원·갱신 — 빈 body, 쿠키가 자격증명. 새 refresh는 다시 Set-Cookie로(회전 = 쿠키 교체). */

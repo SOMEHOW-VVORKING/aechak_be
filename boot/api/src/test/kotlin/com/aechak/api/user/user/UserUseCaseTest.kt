@@ -396,4 +396,50 @@ class UserUseCaseTest : IntegrationTestBase() {
         assertEquals(userId, tx.execute { userRepository.findByPublicId(publicId)?.id }, "publicId로 찾은 사용자가 가입한 사용자여야 한다")
         assertNull(tx.execute { userRepository.findByPublicId("NOT-A-PUBLIC-ID") }, "없는 publicId는 null이어야 한다")
     }
+
+    @Test
+    fun `금지어가 든 닉네임은 온보딩 설정과 닉네임 검사에서 NICKNAME_BANNED_WORD로 거부한다`() {
+        val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
+        val userId = newPendingUser()
+        consentAll(userId, serviceId)
+
+        val check = assertThrows<BusinessException> { userUseCase.checkNickname(userId, "시발코코") }
+        val set = assertThrows<BusinessException> { setNickname(userId, "시발코코") }
+
+        assertEquals(UserErrorCode.NICKNAME_BANNED_WORD, check.errorCode)
+        assertEquals(UserErrorCode.NICKNAME_BANNED_WORD, set.errorCode)
+        assertEquals(UserStatus.PENDING_ONBOARDING, tx.execute { statusInDb(userId) })
+    }
+
+    @Test
+    fun `프로필 수정 - 금지어가 든 새 닉네임은 NICKNAME_BANNED_WORD로 거부하고 금지어가 이미 든 지금 닉네임은 그대로 둔다`() {
+        val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
+        val userId = newActiveUser(serviceId)
+
+        val e = assertThrows<BusinessException> { updateProfile(userId, "시발코코", null, null) }
+        assertEquals(UserErrorCode.NICKNAME_BANNED_WORD, e.errorCode)
+
+        // 금지어 사전에 나중에 들어간 단어처럼 이미 저장된 닉네임
+        tx.executeWithoutResult {
+            em
+                .createQuery("update UserProfile p set p.nickname = :nickname where p.userId = :id")
+                .setParameter("nickname", "시발코코")
+                .setParameter("id", userId)
+                .executeUpdate()
+        }
+        assertTrue(userUseCase.checkNickname(userId, "시발코코"))
+        assertEquals("새 소개", updateProfile(userId, "시발코코", "새 소개", null).bio)
+    }
+
+    @Test
+    fun `프로필 수정 - 소개글의 금지어는 가려서 저장하고 금지어 비율이 0_5를 넘으면 BIO_BANNED_WORD로 거부한다`() {
+        val serviceId = seedTerm(TermType.SERVICE, isRequired = true)
+        val userId = newActiveUser(serviceId)
+
+        assertEquals("** 코코와 삽니다", updateProfile(userId, "코코집사", "시발 코코와 삽니다", null).bio)
+        val e = assertThrows<BusinessException> { updateProfile(userId, "코코집사", "시발", null) }
+
+        assertEquals(UserErrorCode.BIO_BANNED_WORD, e.errorCode)
+        assertEquals("** 코코와 삽니다", userUseCase.getMe(userId).bio)
+    }
 }

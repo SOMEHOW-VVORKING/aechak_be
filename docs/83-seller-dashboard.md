@@ -110,7 +110,7 @@ UseCase만 주입받는다.
 | `collectionInvoicePending` | `status = COLLECTING AND collection_started_at IS NULL` |
 | `collectionCompletionPending` | `status = COLLECTING AND collection_started_at IS NOT NULL` |
 | `reshipPending` | `claim_type = EXCHANGE AND status = APPROVED AND collection_started_at IS NOT NULL AND resolved_at IS NULL` |
-| `unansweredInquiries` | **계산 불가** — `supported: false` |
+| `unansweredInquiries` | `product_inquiries.status = RECEIVED` (셀러 범위는 접수 시점에 복사한 `seller_id`) |
 
 - 기간 축은 주문 지표가 **주문일**(`order_groups.created_at`), 클레임 지표가 **요청일**
   (`claims.requested_at`)이다. 각 지표가 "언제 생긴 일인지"를 세는 축이 다르다.
@@ -152,9 +152,9 @@ UseCase만 주입받는다.
   종료일 다음 날 00:00까지다. 그래서 기간을 건 카드의 건수를 목록 필터로 정확히 재현할 수는 없다 — 목록이 양쪽
   경계에서 더 넓게 잡는다. 카드에서 목록으로 넘길 때 단계 축만 넘기고 기간은 넘기지 않으면 어긋나지 않는다.
   정확히 맞춰야 한다면 목록에도 시각 단위 구간을 열어야 한다.
-- `unansweredInquiries`는 셀러에게 귀속되는 문의 모델이 아직 없다(`admin_inquiries`는 어드민용).
-  0을 그냥 내리면 "문의가 없다"와 "집계할 수 없다"가 구분되지 않아 `supported: false`로 내리고
-  화면이 카드를 흐리게 표시한다.
+- `unansweredInquiries`는 상품 문의(`product_inquiries`)의 답변 대기 건이고, 기간 축은 **접수일**(`created_at`)이다.
+  셀러 문의 목록 지표의 `pending`과 판정이 같다(철회 건 제외). 전체 기간이면 두 숫자가 일치한다.
+  `supported` 필드는 계약에 남겨 둔다 — 지금 `false`인 지표는 없다.
 
 ---
 

@@ -17,6 +17,7 @@ import com.aechak.domain.user.error.UserErrorCode
 import com.aechak.domain.user.sanction.UserSanction
 import com.aechak.domain.user.sanction.enums.SanctionAction
 import com.aechak.domain.user.sanction.repository.UserSanctionRepository
+import com.aechak.domain.user.social.repository.SocialIdentityRepository
 import com.aechak.domain.user.user.User
 import com.aechak.domain.user.user.enums.UserRole
 import com.aechak.domain.user.user.repository.UserRepository
@@ -30,6 +31,7 @@ class AdminMemberService(
     private val userRepository: UserRepository,
     private val userSanctionRepository: UserSanctionRepository,
     private val adminMemberQueryPort: AdminMemberQueryPort,
+    private val socialIdentityRepository: SocialIdentityRepository,
 ) {
     fun findMemberPage(query: MemberSearchQuery): List<MemberSummaryView> = adminMemberQueryPort.findMemberPage(toCondition(query))
 
@@ -49,8 +51,10 @@ class AdminMemberService(
     /**
      * 제재 적용. 검증을 이력 행 생성(입력)과 상태 전이(도메인) 두 단계로 나눠 두고
      * 둘 다 통과한 뒤에만 저장한다 — 상태만 바뀌고 이력이 없는 행이 생기면 분쟁에서 쓸 수 없다.
+     *
+     * @return 탈퇴 처리로 프로필과 함께 지운 이미지 키. 스토리지에서 지울 키이고 다른 제재는 null이다
      */
-    fun sanction(command: SanctionMemberCommand) {
+    fun sanction(command: SanctionMemberCommand): String? {
         // 해제는 사유 어휘와 상태 판정이 다른 별도 경로다 — 제재 경로로 들어오면 요청 자체가 잘못됐다
         if (command.action == SanctionAction.RELEASE) {
             throw BusinessException(CommonErrorCode.INVALID_REQUEST)
@@ -67,8 +71,13 @@ class AdminMemberService(
                 memo = command.memo,
                 actedByAdminId = command.adminId,
             )
+        val profileImageKey = target.profileImageKey
         applyToAccount(target, command.action, effectiveUntil)
         userSanctionRepository.save(history)
+        if (command.action != SanctionAction.FORCE_WITHDRAW) return null
+        // 자기 탈퇴처럼 소셜 계정의 이메일과 토큰을 지운다
+        socialIdentityRepository.findByUserId(target.id)?.clearEmailAndRefreshToken()
+        return profileImageKey
     }
 
     /** 제재 해제 — 해제도 UPDATE가 아니라 이력 한 행으로 남긴다. */

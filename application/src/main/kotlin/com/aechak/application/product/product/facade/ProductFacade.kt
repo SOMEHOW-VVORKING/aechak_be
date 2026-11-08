@@ -7,6 +7,8 @@ import com.aechak.application.inspection.service.InspectionAppealService
 import com.aechak.application.inspection.service.InspectionQueryService
 import com.aechak.application.inspection.service.InspectionRequestService
 import com.aechak.application.inspection.usecase.command.RequestProductInspectionCommand
+import com.aechak.application.inspection.usecase.result.InspectionStageResult
+import com.aechak.application.inspection.usecase.result.InspectionViolationResult
 import com.aechak.application.product.like.service.ProductLikeStatusService
 import com.aechak.application.product.product.port.view.ProductCatalogView
 import com.aechak.application.product.product.service.ProductService
@@ -275,17 +277,25 @@ class ProductFacade(
 
     private fun inspectionResultOf(product: Product): SellerProductInspectionResult {
         val openReview = inspectionQueryService.findOpenProductReview(product.id)
+        val snapshot = inspectionQueryService.findLatestProductInspection(product.id)
+        // 사유는 지금 그 행을 막고 있는 판정에서 읽는다. 가장 최근 검수에서 읽으면 모델이
+        // 답을 못 준 뒤에 반려만 남고 고칠 곳을 알려 주는 문구가 사라진다.
+        val blocking =
+            openReview?.let {
+                inspectionQueryService.findBlockingProductInspection(product.id, it.blindedAt)
+            }
+        val blame = blocking ?: snapshot
+        // 위반과 단계를 한 번의 읽기에서 같이 받는다 -- 둘을 나눠 부르면 같은 SELECT 가 두 번 돈다
+        val detail = blame?.let(inspectionQueryService::findDetail)
         return SellerProductInspectionResult.of(
             product = product,
-            snapshot = inspectionQueryService.findLatestProductInspection(product.id),
+            snapshot = snapshot,
             openReview = openReview,
-            // 사유는 지금 그 행을 막고 있는 판정에서 읽는다. 가장 최근 검수에서 읽으면 모델이
-            // 답을 못 준 뒤에 반려만 남고 고칠 곳을 알려 주는 문구가 사라진다.
-            blocking =
-                openReview?.let {
-                    inspectionQueryService.findBlockingProductInspection(product.id, it.blindedAt)
-                },
+            blame = blame,
             adminRejectReason = inspectionQueryService.findAdminRejectReason(product.id),
+            violations = detail?.violations?.map(InspectionViolationResult::from).orEmpty(),
+            // 검수를 한 번도 타지 않은 상품도 세 줄을 받는다 -- 길이가 갈리면 화면이 단계 수를 세야 한다
+            stages = detail?.stages ?: InspectionStageResult.fold(emptyList(), processingState = null),
         )
     }
 
