@@ -1,13 +1,16 @@
 package com.aechak.application.auth.facade
 
 import com.aechak.application.auth.error.AuthErrorCode
+import com.aechak.application.auth.service.AdminPasswordLoginService
 import com.aechak.application.auth.service.SocialLoginService
 import com.aechak.application.auth.service.TokenService
 import com.aechak.application.auth.service.WebLoginService
+import com.aechak.application.auth.usecase.AdminPasswordLoginUseCase
 import com.aechak.application.auth.usecase.LogoutUseCase
 import com.aechak.application.auth.usecase.SocialLoginUseCase
 import com.aechak.application.auth.usecase.TokenRefreshUseCase
 import com.aechak.application.auth.usecase.WebLoginUseCase
+import com.aechak.application.auth.usecase.command.AdminPasswordLoginCommand
 import com.aechak.application.auth.usecase.command.SocialLoginCommand
 import com.aechak.application.auth.usecase.result.SocialLoginResult
 import com.aechak.application.auth.usecase.result.TokenResult
@@ -20,6 +23,7 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 
 /**
@@ -29,10 +33,12 @@ import org.springframework.transaction.support.TransactionTemplate
 @Service
 class AuthFacade(
     private val socialLoginService: SocialLoginService,
+    private val adminPasswordLoginService: AdminPasswordLoginService,
     private val webLoginService: WebLoginService,
     private val tokenService: TokenService,
     transactionManager: PlatformTransactionManager,
 ) : SocialLoginUseCase,
+    AdminPasswordLoginUseCase,
     TokenRefreshUseCase,
     LogoutUseCase,
     WebLoginUseCase {
@@ -41,6 +47,13 @@ class AuthFacade(
     private val tx = TransactionTemplate(transactionManager)
 
     override fun login(command: SocialLoginCommand): SocialLoginResult = loginWithRetry(command)
+
+    /**
+     * 비밀번호 로그인은 가입을 만들지 않아 동시 가입 충돌이 없다. 그래서 소셜 로그인과 달리
+     * TransactionTemplate 재시도를 두지 않고 읽기 트랜잭션 하나로 끝낸다.
+     */
+    @Transactional(readOnly = true)
+    override fun loginWithPassword(command: AdminPasswordLoginCommand): TokenResult = adminPasswordLoginService.login(command)
 
     override fun refresh(refreshToken: String): TokenResult = tokenService.rotate(refreshToken)
 

@@ -2,6 +2,8 @@ package com.aechak.application.product.product.usecase.result
 
 import com.aechak.application.inspection.service.InspectionSnapshot
 import com.aechak.application.inspection.service.OpenProductReviewSnapshot
+import com.aechak.application.inspection.usecase.result.InspectionStageResult
+import com.aechak.application.inspection.usecase.result.InspectionViolationResult
 import com.aechak.domain.inspection.enums.InspectionJudgment
 import com.aechak.domain.inspection.enums.InspectionProcessingState
 import com.aechak.domain.product.product.Product
@@ -45,6 +47,17 @@ data class SellerProductInspectionResult(
     val reasonCode: String?,
     val reasonSummary: String?,
     val sellerNotice: String?,
+    /** 사유 셋과 같은 판정의 위반 목록. 없으면 빈 목록 */
+    val violations: List<InspectionViolationResult>,
+    /**
+     * 사유 셋과 같은 판정의 단계별 결과. RULE·TRIAGE·MODEL 순서로 **항상 세 줄**이다.
+     *
+     * 검수를 타지 않은 상품도 세 줄이 온다 — 길이가 늘거나 줄면 화면이 단계 수를 세야 한다.
+     *
+     * 미검사 줄의 사유는 판정이 확정됐는지로 갈린다 — 확정 전이면 "아직 닿지 않았다"이고
+     * 확정 뒤면 "돌지 않았다"다. 확정된 판정에 "아직"을 적으면 셀러가 오지 않을 결과를 기다린다.
+     */
+    val stages: List<InspectionStageResult>,
     /** 관리자가 반려한 상품일 때만 채움. AI가 반려했으면 null이고 사유는 [reasonSummary]와 [sellerNotice]에 있음 */
     val rejectReason: String?,
     /** 이의를 접수한 시각. null이면 지금 걸린 것에 이의가 없다 */
@@ -65,18 +78,19 @@ data class SellerProductInspectionResult(
         /**
          * [snapshot]이 null이면 한 번도 검수를 타지 않은 상품이다. 오류로 다루지 않는다.
          *
-         * [blocking]은 지금 열린 검토 행을 막고 있는 판정이다. 되찾지 못하면(행이 없거나
-         * 이의가 접수 시각으로 연 행이면) [snapshot]으로 떨어진다.
+         * [blame]은 지금 열린 검토 행을 막고 있는 판정이다. 되찾지 못하면(행이 없거나
+         * 이의가 접수 시각으로 연 행이면) [snapshot]과 같다.
          */
         fun of(
             product: Product,
             snapshot: InspectionSnapshot?,
             openReview: OpenProductReviewSnapshot?,
-            blocking: InspectionSnapshot?,
+            blame: InspectionSnapshot?,
             adminRejectReason: String?,
-        ): SellerProductInspectionResult {
-            val blame = blocking ?: snapshot
-            return SellerProductInspectionResult(
+            violations: List<InspectionViolationResult>,
+            stages: List<InspectionStageResult>,
+        ): SellerProductInspectionResult =
+            SellerProductInspectionResult(
                 productId = product.publicId,
                 inspectionStatus = product.inspectionStatus,
                 progressStep = progressStepOf(product.inspectionStatus, snapshot, openReview, blame),
@@ -85,6 +99,8 @@ data class SellerProductInspectionResult(
                 reasonCode = blame?.reasonCode,
                 reasonSummary = blame?.reasonSummary,
                 sellerNotice = blame?.sellerNotice,
+                violations = violations,
+                stages = stages,
                 rejectReason = adminRejectReason.takeIf { product.inspectionStatus == InspectionStatus.REJECTED },
                 appealedAt = openReview?.appealedAt,
                 appealReason = openReview?.appealReason,
@@ -92,7 +108,6 @@ data class SellerProductInspectionResult(
                 requestedAt = snapshot?.requestedAt,
                 settledAt = snapshot?.settledAt,
             )
-        }
 
         /**
          * 진행 중인 검수, 이의 접수, 열린 검토 행, 상품 상태 순으로 봄. FE는 큐를 볼 수 없어 여기서 계산함.

@@ -4,6 +4,7 @@ import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.product.draft.port.ProductDraftAutofillPort
 import com.aechak.application.product.draft.port.ProductDraftAutofillRequest
 import com.aechak.application.product.draft.port.ProductDraftAutofillResult
+import com.aechak.application.product.draft.usecase.command.ProductDraftAutofillMode
 import com.aechak.domain.seller.seller.Seller
 import com.aechak.domain.seller.seller.enums.SellerStatus
 import org.junit.jupiter.api.BeforeEach
@@ -157,6 +158,51 @@ class SellerProductDraftAutofillIntegrationTest : IntegrationTestBase() {
         assertEquals("직접 쓴 설명", locked.description)
         assertEquals("사이즈", locked.optionGroups?.single()?.name)
         assertEquals(listOf("S", "M"), locked.optionGroups?.single()?.values)
+    }
+
+    @Test
+    fun `mode 를 생략하면 FILL 로 간다`() {
+        mockMvc
+            .perform(autofill(token, """{"productName": "모모의 하루 목줄 M"}"""))
+            .andExpect(status().isOk)
+
+        assertEquals(ProductDraftAutofillMode.FILL, assertNotNull(stubPort.lastRequest).mode, "모드를 모르던 호출자가 그대로 돌아야 한다")
+    }
+
+    @Test
+    fun `mode 가 명시적 null 이어도 400 이 아니고 FILL 로 간다`() {
+        mockMvc
+            .perform(autofill(token, """{"productName": "모모의 하루 목줄 M", "mode": null}"""))
+            .andExpect(status().isOk)
+
+        assertEquals(ProductDraftAutofillMode.FILL, assertNotNull(stubPort.lastRequest).mode, "빈 폼이 보내는 null 을 400 으로 막으면 초안 버튼이 죽는다")
+    }
+
+    @Test
+    fun `mode REFINE 은 그대로 AI 요청에 실린다`() {
+        mockMvc
+            .perform(
+                autofill(
+                    token,
+                    """{"productName": "모모의 하루 목줄 M",
+                        "mode": "REFINE",
+                        "lockedFields": {"description": "직접 쓴 설명"}}""",
+                ),
+            ).andExpect(status().isOk)
+
+        val sent = assertNotNull(stubPort.lastRequest)
+        assertEquals(ProductDraftAutofillMode.REFINE, sent.mode, "모드가 깎이면 셀러 원문을 다시 쓰라는 요청이 빈 칸 채우기가 된다")
+        assertEquals("직접 쓴 설명", sent.lockedFields?.description, "REFINE 은 이 값을 모델 입력으로 쓴다")
+    }
+
+    @Test
+    fun `모르는 mode 는 400 이고 모델을 부르지 않는다`() {
+        mockMvc
+            .perform(autofill(token, """{"productName": "모모의 하루 목줄 M", "mode": "BOGUS"}"""))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value(90001))
+
+        assertEquals(0, stubPort.calls, "역직렬화 실패가 500 이 되면 등록 화면에 전역 에러가 뜬다")
     }
 
     @Test

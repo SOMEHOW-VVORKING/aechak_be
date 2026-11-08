@@ -1,9 +1,15 @@
 package com.aechak.application.inspection.service
 
+import com.aechak.application.inspection.port.ViolationDeserializer
+import com.aechak.application.inspection.port.view.ViolationView
+import com.aechak.application.inspection.usecase.result.InspectionStageResult
+import com.aechak.domain.inspection.InspectionFinding
 import com.aechak.domain.inspection.enums.InspectionTargetType
 import com.aechak.domain.inspection.enums.ReviewQueueStatus
 import com.aechak.domain.inspection.repository.ContentInspectionRepository
+import com.aechak.domain.inspection.repository.InspectionFindingRepository
 import com.aechak.domain.inspection.repository.ProductReviewQueueRepository
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
@@ -18,7 +24,11 @@ import java.time.LocalDateTime
 class InspectionQueryService(
     private val inspections: ContentInspectionRepository,
     private val reviewQueue: ProductReviewQueueRepository,
+    private val findings: InspectionFindingRepository,
+    private val violationDeserializer: ViolationDeserializer,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     /** 상품의 가장 최근 검수. 한 번도 검수를 타지 않았으면 null */
     fun findLatestProductInspection(productId: Long): InspectionSnapshot? =
         inspections
@@ -68,6 +78,58 @@ class InspectionQueryService(
         inspections
             .findLatestByTargetAndSettledAt(InspectionTargetType.PRODUCT, productId, blindedAt)
             ?.let(InspectionSnapshot::from)
+
+    /**
+     * 검수 한 건의 관점 행을 **한 번 읽어** 위반 목록과 단계 셋을 함께 돌려준다.
+     *
+     * 두 투영을 따로 열지 않는 이유가 질의 수다. 셀러 검수 상세는 둘을 늘 같이 쓰므로, 메서드를
+     * 나눠 두면 같은 SELECT 가 요청마다 두 번 돈다.
+     *
+     * 투영 자체는 섞지 않는다 -- 위반 쪽은 관점 차원을 버려 목록을 합치는 것이 답이고 단계 쪽은
+     * "어느 단계까지 봤는가"가 답이라, 같이 뭉개면 미검사가 통과로 보인다.
+     */
+    fun findDetail(snapshot: InspectionSnapshot): InspectionDetailView {
+        val rows = findings.findByInspectionId(snapshot.inspectionId)
+        return InspectionDetailView(
+            violations = foldViolations(rows),
+            stages = InspectionStageResult.fold(rows, snapshot.processingState),
+        )
+    }
+
+    /**
+     * 검수 한 건의 위반 목록만. 단계를 쓰지 않는 어드민 상세가 이것을 부른다.
+     *
+     * 셀러 상세는 [findDetail]을 쓴다 -- 둘을 다 쓰는 자리에서 이것을 부르면 질의가 두 번 돈다.
+     */
+    fun findViolations(inspectionId: Long): List<ViolationView> = foldViolations(findings.findByInspectionId(inspectionId))
+
+    /** 관점별 위반을 합쳐 글 안의 위치 순서로 돌려줌. 읽지 못한 행은 건너뜀 */
+    private fun foldViolations(rows: List<InspectionFinding>): List<ViolationView> =
+        rows
+            .sortedBy { it.id }
+            .flatMap(::readViolations)
+            .groupBy { it.category to it.quote }
+            .values
+            .map { sameViolations ->
+                sameViolations.first().copy(
+                    spanStart = sameViolations.mapNotNull { it.spanStart }.minOrNull(),
+                    suggestion = sameViolations.firstNotNullOfOrNull { it.suggestion?.takeIf(String::isNotBlank) },
+                )
+            }.sortedWith(
+                compareBy<ViolationView, Int?>(nullsLast()) { it.spanStart }
+                    .thenBy { it.category }
+                    .thenBy(nullsLast()) { it.quote },
+            )
+
+    private fun readViolations(finding: InspectionFinding): List<ViolationView> {
+        val stored = finding.violations ?: return emptyList()
+        val violations = violationDeserializer.fromJson(stored)
+        if (violations == null) {
+            log.warn("저장된 위반을 읽지 못해 그 행을 건너뛴다. inspectionId={}", finding.inspectionId)
+            return emptyList()
+        }
+        return violations
+    }
 
     /** 가장 최근 관리자 결정이 반려일 때만 그 사유 */
     fun findAdminRejectReason(productId: Long): String? =

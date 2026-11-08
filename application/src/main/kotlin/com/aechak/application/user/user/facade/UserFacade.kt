@@ -4,6 +4,8 @@ import com.aechak.application.file.error.FileErrorCode
 import com.aechak.application.file.port.enums.UploadPurpose
 import com.aechak.application.file.usecase.FileUseCase
 import com.aechak.application.file.usecase.command.PromoteFileCommand
+import com.aechak.application.moderation.usecase.ModerationUseCase
+import com.aechak.application.moderation.usecase.result.ModerationDecision
 import com.aechak.application.pii.port.PiiCrypto
 import com.aechak.application.user.term.service.ConsentService
 import com.aechak.application.user.user.service.UserService
@@ -46,6 +48,8 @@ class UserFacade(
     private val consentService: ConsentService,
     private val fileUseCase: FileUseCase,
     private val piiCrypto: PiiCrypto,
+    // 금지어 판정기는 api에만 있다. 닉네임과 프로필을 쓰지 않는 admin, seller, batch에서는 null이다
+    private val moderationUseCase: ModerationUseCase?,
     transactionManager: PlatformTransactionManager,
 ) : UserUseCase {
     private val tx = TransactionTemplate(transactionManager)
@@ -54,7 +58,10 @@ class UserFacade(
     override fun checkNickname(
         userId: Long,
         nickname: String,
-    ): Boolean = userService.isNicknameAvailable(nickname, excludeUserId = userId) // 본인 현재 닉네임은 사용 가능
+    ): Boolean {
+        rejectBannedNickname(userService.getById(userId), nickname)
+        return userService.isNicknameAvailable(nickname, excludeUserId = userId) // 본인 현재 닉네임은 사용 가능
+    }
 
     override fun setNickname(command: SetNicknameCommand): UserMeResult {
         try {
@@ -63,6 +70,7 @@ class UserFacade(
                 val user = userService.getByIdForUpdate(command.userId)
                 when (user.effectiveStatus()) {
                     UserStatus.PENDING_ONBOARDING -> {
+                        rejectBannedNickname(user, command.nickname)
                         completeOnboarding(user, command.nickname)
                     }
 
@@ -114,6 +122,8 @@ class UserFacade(
      */
     override fun updateProfile(command: UpdateProfileCommand): UserMeResult {
         val currentKey = userService.getById(command.userId).profile.profileImageKey
+        // 승격 전에 판정해서 거부된 소개글이 승격한 이미지를 남기지 않게 한다
+        val bio = command.bio?.let(::moderateBio)
         // null=제거 / 저장값과 같으면 유지(저장값 대조가 곧 소유 증명) / 그 외는 전부 새 업로드로 보고 승격
         val finalKey =
             command.profileImageKey?.let {
@@ -126,13 +136,36 @@ class UserFacade(
                 if (finalKey != null && finalKey == currentKey && user.profileImageKey != currentKey) {
                     throw BusinessException(FileErrorCode.FILE_ACCESS_DENIED)
                 }
-                user.updateProfile(command.nickname, command.bio, finalKey)
+                // 지금 닉네임과의 비교는 잠근 행으로 한다. 겹친 다른 수정이 바꾼 닉네임을 옛 금지어 닉네임으로 되돌리지 않는다
+                rejectBannedNickname(user, command.nickname)
+                user.updateProfile(command.nickname, bio, finalKey)
             }
         } catch (e: DataIntegrityViolationException) {
             translateNicknameConflict(e)
         }
         return loadMe(command.userId)
     }
+
+    /** 지금 닉네임과 다른 닉네임에 금지어가 있으면 거부한다. 지금 닉네임은 금지어 사전이 늘어도 프로필 수정을 막지 않는다 */
+    private fun rejectBannedNickname(
+        user: User,
+        nickname: String,
+    ) {
+        val normalized = UserProfile.validateNickname(nickname)
+        if (normalized != user.nickname && moderation().containsBannedWord(normalized)) {
+            throw BusinessException(UserErrorCode.NICKNAME_BANNED_WORD)
+        }
+    }
+
+    /** 캡션과 같은 판정. 금지어 비율이 기준 이하면 가려서 저장한다 */
+    private fun moderateBio(bio: String): String =
+        when (val decision = moderation().decide(bio)) {
+            is ModerationDecision.Keep -> bio
+            is ModerationDecision.Mask -> decision.displayContent
+            is ModerationDecision.Block -> throw BusinessException(UserErrorCode.BIO_BANNED_WORD)
+        }
+
+    private fun moderation(): ModerationUseCase = checkNotNull(moderationUseCase) { "금지어 판정기가 없는 실행 모듈에서 닉네임과 프로필을 쓸 수 없습니다" }
 
     private fun promoteImage(
         userId: Long,
