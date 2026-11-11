@@ -230,13 +230,22 @@ class Product protected constructor(
      *
      * 운영자가 막아 둔 상품은 거부한다. SUSPENDED가 셀러 지정 가능 값이라 이 가드가 없으면
      * 운영자의 판매중지가 셀러의 다음 요청 한 번에 뒤집힌다.
+     *
+     * 검수에서 걸린 상품은 판매중으로 올리는 것만 거부한다. 걸렸다는 것은 검수 반려이거나
+     * 관리자 검토를 기다리는 중([awaitingInspectionReview])이라는 뜻이다. 판매중지로 내리는 것은 받는다.
      */
-    fun changeSaleStatusBySeller(status: SaleStatus) {
+    fun changeSaleStatusBySeller(
+        status: SaleStatus,
+        awaitingInspectionReview: Boolean,
+    ) {
         if (adminSaleBlocked) {
             throw BusinessException(ProductErrorCode.PRODUCT_SALE_BLOCKED_BY_ADMIN)
         }
         if (!status.isSellerAssignable()) {
             throw BusinessException(CommonErrorCode.INVALID_REQUEST, detail = "판매중과 판매중지만 지정할 수 있습니다.")
+        }
+        if (status == SaleStatus.ON_SALE && (inspectionStatus == InspectionStatus.REJECTED || awaitingInspectionReview)) {
+            throw BusinessException(ProductErrorCode.PRODUCT_SALE_BLOCKED_BY_INSPECTION)
         }
         saleStatus = status
     }

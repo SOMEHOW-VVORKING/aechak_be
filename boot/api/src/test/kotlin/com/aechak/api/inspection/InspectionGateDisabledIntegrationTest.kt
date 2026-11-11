@@ -30,7 +30,7 @@ import com.aechak.message.inspection.InspectionTargetType as ContractTargetType
 import com.aechak.message.inspection.PerspectiveOutcome as ContractOutcome
 
 /**
- * [통합] 노출 게이트 스위치가 **꺼진** 환경을 고정한다. 배포된 모든 환경의 값이 이것이다.
+ * [통합] 노출 게이트 스위치가 **꺼진** 환경을 고정한다. 스위치를 선언하지 않은 환경의 기본값이 이것이다.
  *
  * 이 수트가 있는 이유는 스위치 하나가 서로 다른 둘을 함께 끄고 있었기 때문이다. 스위치의 뜻은
  * "구매자 화면에 반영"인데 구현이 "관리자 큐에 등재"까지 함께 껐다. 그래서 꺼진 환경에서는

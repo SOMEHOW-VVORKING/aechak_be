@@ -3,9 +3,16 @@ package com.aechak.seller.product
 import com.aechak.api.support.IntegrationTestBase
 import com.aechak.application.file.port.FileKey
 import com.aechak.application.file.port.enums.UploadPurpose
+import com.aechak.application.inspection.service.ProductReviewQueueService
 import com.aechak.application.product.product.usecase.ProductUseCase
 import com.aechak.application.product.product.usecase.query.ProductSearchQuery
 import com.aechak.common.error.BusinessException
+import com.aechak.domain.inspection.ContentInspection
+import com.aechak.domain.inspection.ProductReviewQueueItem
+import com.aechak.domain.inspection.enums.InspectionJudgment
+import com.aechak.domain.inspection.enums.InspectionTargetType
+import com.aechak.domain.inspection.repository.ContentInspectionRepository
+import com.aechak.domain.inspection.repository.ProductReviewQueueRepository
 import com.aechak.domain.order.group.DeliveryAddressSnapshot
 import com.aechak.domain.order.group.OrderGroup
 import com.aechak.domain.order.order.Order
@@ -13,10 +20,12 @@ import com.aechak.domain.order.order.OrderItem
 import com.aechak.domain.product.category.Category
 import com.aechak.domain.product.error.ProductErrorCode
 import com.aechak.domain.product.product.Product
+import com.aechak.domain.product.product.enums.InspectionStatus
 import com.aechak.domain.product.product.enums.SaleStatus
 import com.aechak.domain.seller.seller.Seller
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -25,6 +34,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.security.web.FilterChainProxy
+import org.springframework.test.context.TestPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
@@ -42,7 +52,11 @@ import java.time.LocalDateTime
  *
  * 운영자가 막아 둔 상품을 셀러가 되돌리려는 경로도 여기서 본다. SUSPENDED는 셀러가 지정할 수 있는 값이라
  * 막음 표시를 보지 않으면 어드민 판매중지가 이 엔드포인트 한 번에 뒤집힌다 — 조치가 무의미해지는 자리다.
+ *
+ * 검수에서 걸린 상품을 판매중으로 올리려는 경로도 여기서 본다. 걸린 상품은 검수 반려이거나 관리자 검토를
+ * 기다리는 상품이고, 뒤쪽은 검수 상태가 승인으로 남아 있어도 막혀야 한다.
  */
+@TestPropertySource(properties = ["inspection.gate-enabled=true"])
 class SellerProductSaleStatusIntegrationTest : IntegrationTestBase() {
     @Autowired
     private lateinit var context: WebApplicationContext
@@ -52,6 +66,15 @@ class SellerProductSaleStatusIntegrationTest : IntegrationTestBase() {
 
     @Autowired
     private lateinit var productUseCase: ProductUseCase
+
+    @Autowired
+    private lateinit var reviewQueue: ProductReviewQueueRepository
+
+    @Autowired
+    private lateinit var reviewQueueService: ProductReviewQueueService
+
+    @Autowired
+    private lateinit var inspections: ContentInspectionRepository
 
     private lateinit var mockMvc: MockMvc
     private var sellerUserId = 0L
@@ -272,6 +295,131 @@ class SellerProductSaleStatusIntegrationTest : IntegrationTestBase() {
                 .blockSaleByAdmin(adminId = 99L, reason = "원산지 표기 허위")
         }
     }
+
+    @Test
+    fun `검수에서 반려된 상품은 판매중으로 올릴 수 없다`() {
+        mockMvc.perform(statusRequest(token, productId, "SUSPENDED")).andExpect(status().isOk)
+        tx.execute { findProduct().rejectByInspection() }
+
+        mockMvc
+            .perform(statusRequest(token, productId, "ON_SALE"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(40013))
+
+        assertEquals(SaleStatus.SUSPENDED, tx.execute { findProduct().saleStatus }, "거부된 요청이 상태를 바꾸면 안 된다")
+    }
+
+    @Test
+    fun `검수 상태가 승인이어도 열린 관리자 검토 행이 있으면 판매중으로 올릴 수 없다`() {
+        mockMvc.perform(statusRequest(token, productId, "SUSPENDED")).andExpect(status().isOk)
+        val review = openReview()
+
+        mockMvc
+            .perform(statusRequest(token, productId, "ON_SALE"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(40013))
+        assertEquals(SaleStatus.SUSPENDED, tx.execute { findProduct().saleStatus }, "거부된 요청이 상태를 바꾸면 안 된다")
+
+        tx.execute {
+            review.approve(LocalDateTime.now())
+            reviewQueue.save(review)
+        }
+        mockMvc
+            .perform(statusRequest(token, productId, "ON_SALE"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.saleStatus").value("ON_SALE"))
+    }
+
+    @Test
+    fun `검수에 걸렸던 상품도 통과 판정으로 승인되고 검토 행이 닫히면 판매중으로 올릴 수 있다`() {
+        mockMvc.perform(statusRequest(token, productId, "SUSPENDED")).andExpect(status().isOk)
+        tx.execute { findProduct().rejectByInspection() }
+        openReview()
+        mockMvc
+            .perform(statusRequest(token, productId, "ON_SALE"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value(40013))
+
+        applyPassJudgment()
+
+        assertEquals(InspectionStatus.APPROVED, tx.execute { findProduct().inspectionStatus }, "통과 판정이 반려를 풀어야 한다")
+        assertNull(tx.execute { reviewQueue.findPendingByProductId(findProduct().id) }, "통과 판정이 열린 검토 행을 닫아야 한다")
+        mockMvc
+            .perform(statusRequest(token, productId, "ON_SALE"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.saleStatus").value("ON_SALE"))
+        assertTrue(listedProductIds().contains(productId), "복귀한 상품은 목록에 돌아와야 한다")
+    }
+
+    /** 통과로 끝난 검수를 심고 판정 반영 서비스를 태운다. */
+    private fun applyPassJudgment() {
+        val settledAt = LocalDateTime.now()
+        tx.execute {
+            val target = findProduct().id
+            val inspection =
+                inspections.save(
+                    ContentInspection.queue(
+                        targetType = InspectionTargetType.PRODUCT,
+                        targetRef = target,
+                        contentHash = "b".repeat(64),
+                        policyVersion = "policy-v1",
+                        targetVersionNo = 1,
+                    ),
+                )
+            inspection.settle(
+                judgment = InspectionJudgment.PASS,
+                promptVersion = "inspection-v1+policy-v1",
+                reasonCode = null,
+                reasonSummary = null,
+                sellerNotice = null,
+                now = settledAt,
+            )
+            val settled = inspections.save(inspection)
+            reviewQueueService.applyJudgment(
+                productId = target,
+                inspectionId = settled.id,
+                judgment = InspectionJudgment.PASS,
+                judgedAt = settledAt,
+                contentHash = settled.contentHash,
+            )
+        }
+    }
+
+    @Test
+    fun `검수에서 걸린 상품도 판매중지로 내릴 수 있다`() {
+        tx.execute { findProduct().rejectByInspection() }
+        openReview()
+
+        mockMvc
+            .perform(statusRequest(token, productId, "SUSPENDED"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.saleStatus").value("SUSPENDED"))
+    }
+
+    @Test
+    fun `다른 상품의 열린 검토 행은 이 상품을 막지 않는다`() {
+        val other = registerProduct()
+        mockMvc.perform(statusRequest(token, productId, "SUSPENDED")).andExpect(status().isOk)
+        openReview(other)
+
+        mockMvc
+            .perform(statusRequest(token, productId, "ON_SALE"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.saleStatus").value("ON_SALE"))
+    }
+
+    private fun findProduct(publicId: String = productId): Product =
+        em
+            .createQuery("select p from Product p where p.publicId = :publicId", Product::class.java)
+            .setParameter("publicId", publicId)
+            .singleResult
+
+    private fun openReview(publicId: String = productId): ProductReviewQueueItem =
+        tx.execute {
+            reviewQueue.save(
+                ProductReviewQueueItem.openForProduct(findProduct(publicId).id, sellerUserId, "연어 건사료 2kg", LocalDateTime.now()),
+            )
+        }!!
 
     @Test
     fun `남의 상품 상태 변경은 403이 아니라 404다`() {

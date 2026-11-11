@@ -247,24 +247,24 @@ class ProductTest {
         val product = product()
         assertEquals(SaleStatus.ON_SALE, product.saleStatus, "등록 직후는 판매중이어야 한다")
 
-        product.changeSaleStatusBySeller(SaleStatus.SUSPENDED)
+        product.changeSaleStatusBySeller(SaleStatus.SUSPENDED, awaitingInspectionReview = false)
         assertEquals(SaleStatus.SUSPENDED, product.saleStatus, "판매중지로 내려가야 한다")
 
-        product.changeSaleStatusBySeller(SaleStatus.ON_SALE)
+        product.changeSaleStatusBySeller(SaleStatus.ON_SALE, awaitingInspectionReview = false)
         assertEquals(SaleStatus.ON_SALE, product.saleStatus, "판매중으로 되돌아와야 한다")
     }
 
     @Test
     fun `셀러는 품절과 판매종료를 지정할 수 없다`() {
-        assertRejectedAsInvalidRequest { product().changeSaleStatusBySeller(SaleStatus.OUT_OF_STOCK) }
-        assertRejectedAsInvalidRequest { product().changeSaleStatusBySeller(SaleStatus.ENDED) }
+        assertRejectedAsInvalidRequest { product().changeSaleStatusBySeller(SaleStatus.OUT_OF_STOCK, awaitingInspectionReview = false) }
+        assertRejectedAsInvalidRequest { product().changeSaleStatusBySeller(SaleStatus.ENDED, awaitingInspectionReview = false) }
     }
 
     @Test
     fun `거절된 상태 변경은 상태를 남기지 않는다`() {
         val product = product()
 
-        assertRejectedAsInvalidRequest { product.changeSaleStatusBySeller(SaleStatus.OUT_OF_STOCK) }
+        assertRejectedAsInvalidRequest { product.changeSaleStatusBySeller(SaleStatus.OUT_OF_STOCK, awaitingInspectionReview = false) }
 
         assertEquals(SaleStatus.ON_SALE, product.saleStatus, "거절됐으면 판매중 그대로여야 한다")
     }
@@ -303,7 +303,7 @@ class ProductTest {
     @Test
     fun `판매중지 상품은 재고가 바뀌어도 상태를 유지한다`() {
         val product = product()
-        product.changeSaleStatusBySeller(SaleStatus.SUSPENDED)
+        product.changeSaleStatusBySeller(SaleStatus.SUSPENDED, awaitingInspectionReview = false)
 
         product.syncSaleStatusWithStock(hasActiveStock = false)
         assertEquals(SaleStatus.SUSPENDED, product.saleStatus, "재고가 없어도 판매중지가 유지돼야 한다")

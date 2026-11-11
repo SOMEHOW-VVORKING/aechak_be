@@ -628,7 +628,7 @@ class AdminProductManagementIntegrationTest extends IntegrationTestBase {
 
     /** 셀러 경로의 도메인 전이를 그대로 부른다 — 셀러 HTTP 경로는 어드민 모듈에 없다. */
     private void changeSaleStatusBySeller(String productPublicId, SaleStatus saleStatus) {
-        tx.executeWithoutResult(txStatus -> findProduct(productPublicId).changeSaleStatusBySeller(saleStatus));
+        tx.executeWithoutResult(txStatus -> findProduct(productPublicId).changeSaleStatusBySeller(saleStatus, false));
     }
 
     private int sellerTransitionErrorCode(String productPublicId, SaleStatus saleStatus) {
