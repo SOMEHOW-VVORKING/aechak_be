@@ -209,7 +209,9 @@ class ProductFacade(
     @Transactional
     override fun changeProductSaleStatus(command: ChangeProductSaleStatusCommand): ProductSaleStatusChangeResult {
         requireActiveSeller(command.sellerId)
-        return productService.changeSaleStatus(command)
+        return productService.changeSaleStatus(command) { productId ->
+            inspectionQueryService.findOpenProductReview(productId) != null
+        }
     }
 
     @Transactional
