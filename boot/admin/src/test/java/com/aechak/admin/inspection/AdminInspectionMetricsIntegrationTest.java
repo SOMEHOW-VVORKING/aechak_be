@@ -257,6 +257,36 @@ class AdminInspectionMetricsIntegrationTest extends InspectionMetricsTestBase {
                 .andExpect(jsonPath("$.data.funnel.stage2.callFailedCount").value(0));
     }
 
+    /**
+     * 선별이 위반을 확정한 건은 <b>승급이 아니다</b>.
+     *
+     * <p>승급을 "분모에서 건너뜀만 뺀 값"으로 세면 관점 호출이 나가지 않은 확정 건이 승급에
+     * 들어가 승급률이 올라가고 손익분기 경보가 잘못 켜진다.
+     *
+     * <p>수치: 선별 호출 셋 중 통과 하나, 위반 확정 하나, 승급 하나라 승급률이 1/3이다. 확정
+     * 건을 승급으로 세면 2/3이 되어 손익분기 0.620을 넘는다.
+     */
+    @Test
+    void 선별이_위반을_확정한_건은_승급으로_세지_않는다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        triageCall(triageCleared(now), "SUCCESS", 900);
+        triageCall(triageFlagged(now), "SUCCESS", 900);
+        long promoted = modelClear(now);
+        finding(promoted, InspectionPerspectiveKind.TRIAGE, PerspectiveOutcome.UNCHECKED, "PROMOTED");
+        triageCall(promoted, "SUCCESS", 900);
+
+        mockMvc.perform(bearer(get(BASE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.funnel.stage2.enteredCount").value(3))
+                .andExpect(jsonPath("$.data.funnel.stage2.clearedCount").value(1))
+                .andExpect(jsonPath("$.data.funnel.stage2.flaggedCount").value(1))
+                .andExpect(jsonPath("$.data.funnel.stage2.promotedCount").value(1))
+                .andExpect(jsonPath("$.data.funnel.stage2.callFailedCount").value(0))
+                .andExpect(jsonPath("$.data.funnel.stage2.promotionRate").value(closeTo(1.0 / 3, 1e-9), Double.class))
+                .andExpect(jsonPath("$.data.funnel.stage2.overBreakeven").value(false))
+                .andExpect(jsonPath("$.data.funnel.unclassifiedCount").value(0));
+    }
+
     /** 호출이 전부 죽은 건은 실패로 센다. 위 규약이 실패 셈을 지워 버리지 않는 것을 함께 본다 */
     @Test
     void 선별_호출이_전부_죽으면_호출_실패로_센다() throws Exception {

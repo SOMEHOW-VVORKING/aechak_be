@@ -17,7 +17,7 @@ import org.springframework.test.context.TestPropertySource;
  *
  * <p>비율 지표는 분모를 잘못 잡아도 그럴듯한 숫자가 나와서 눈으로는 못 잡는다. 그래서 이
  * 파일의 각 테스트는 <b>분모에 들어오면 안 되는 건을 일부러 섞는다</b> — 미판정이 1단 분모에,
- * 레이트 리밋 건과 스텁 건과 선별이 건너뛴 건이 3단 분모에 들어오면 값이 달라지도록 수치를 골랐다.
+ * 레이트 리밋 건과 스텁 건과 선별이 건너뛴 건(통과·위반 확정)이 3단 분모에 들어오면 값이 달라지도록 수치를 골랐다.
  */
 @TestPropertySource(
         properties = {
@@ -33,16 +33,17 @@ class AdminInspectionFunnelMetricsIntegrationTest extends InspectionMetricsTestB
     private static final String BASE = "/api/v1/admin/inspection-metrics";
 
     /**
-     * 탈출을 일곱으로 못박는다.
+     * 탈출을 여덟으로 못박는다.
      *
-     * <p>파이프라인이 말하는 탈출은 다섯인데 터미널은 일곱이다 — 판정 실패와 미판정이 더 있다.
-     * 다섯만 세면 합이 설정 건수에 못 미쳐 "몇 퍼센트가 어디서 끝나는가"의 분모가 깨진다.
+     * <p>파이프라인이 말하는 탈출은 여섯인데 터미널은 여덟이다 — 판정 실패와 미판정이 더 있다.
+     * 여섯만 세면 합이 설정 건수에 못 미쳐 "몇 퍼센트가 어디서 끝나는가"의 분모가 깨진다.
      */
     @Test
-    void 탈출_분포는_일곱_버킷이고_합이_설정_건수와_맞는다() throws Exception {
+    void 탈출_분포는_여덟_버킷이고_합이_설정_건수와_맞는다() throws Exception {
         LocalDateTime now = LocalDateTime.now();
         ruleBlocked(now);
         triageCleared(now);
+        triageFlagged(now);
         modelClear(now);
         criticOverturned(now);
         modelFlag(now);
@@ -51,37 +52,41 @@ class AdminInspectionFunnelMetricsIntegrationTest extends InspectionMetricsTestB
 
         mockMvc.perform(bearer(get(BASE)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.funnel.settledCount").value(7))
+                .andExpect(jsonPath("$.data.funnel.settledCount").value(8))
                 .andExpect(jsonPath("$.data.funnel.unclassifiedCount").value(0))
-                .andExpect(jsonPath("$.data.funnel.exits.length()").value(7))
+                .andExpect(jsonPath("$.data.funnel.exits.length()").value(8))
                 // 순서가 고정이다. 화면이 세로 퍼널로 그대로 그린다.
                 .andExpect(jsonPath("$.data.funnel.exits[0].exit").value("RULE_BLOCKED"))
                 .andExpect(jsonPath("$.data.funnel.exits[0].stage").value(1))
                 .andExpect(jsonPath("$.data.funnel.exits[0].count").value(1))
                 .andExpect(
-                        jsonPath("$.data.funnel.exits[0].shareOfSettled").value(closeTo(1.0 / 7, 1e-9), Double.class))
+                        jsonPath("$.data.funnel.exits[0].shareOfSettled").value(closeTo(1.0 / 8, 1e-9), Double.class))
                 .andExpect(jsonPath("$.data.funnel.exits[1].exit").value("TRIAGE_CLEARED"))
                 .andExpect(jsonPath("$.data.funnel.exits[1].count").value(1))
-                .andExpect(jsonPath("$.data.funnel.exits[2].exit").value("MODEL_CLEAR"))
+                // 선별이 위반을 확정한 건. 선별 통과와 같은 2단에서 끝난다.
+                .andExpect(jsonPath("$.data.funnel.exits[2].exit").value("TRIAGE_FLAGGED"))
+                .andExpect(jsonPath("$.data.funnel.exits[2].stage").value(2))
                 .andExpect(jsonPath("$.data.funnel.exits[2].count").value(1))
-                .andExpect(jsonPath("$.data.funnel.exits[3].exit").value("CRITIC_OVERTURNED"))
+                .andExpect(jsonPath("$.data.funnel.exits[3].exit").value("MODEL_CLEAR"))
                 .andExpect(jsonPath("$.data.funnel.exits[3].count").value(1))
-                .andExpect(jsonPath("$.data.funnel.exits[4].exit").value("MODEL_FLAG"))
+                .andExpect(jsonPath("$.data.funnel.exits[4].exit").value("CRITIC_OVERTURNED"))
                 .andExpect(jsonPath("$.data.funnel.exits[4].count").value(1))
+                .andExpect(jsonPath("$.data.funnel.exits[5].exit").value("MODEL_FLAG"))
+                .andExpect(jsonPath("$.data.funnel.exits[5].count").value(1))
                 // 실패 터미널 둘은 퍼널 밖이다. stage 0으로 표시해 화면이 별도 칸으로 그린다.
-                .andExpect(jsonPath("$.data.funnel.exits[5].exit").value("VERDICT_FAILED"))
-                .andExpect(jsonPath("$.data.funnel.exits[5].stage").value(0))
-                .andExpect(jsonPath("$.data.funnel.exits[6].exit").value("UNJUDGED"))
+                .andExpect(jsonPath("$.data.funnel.exits[6].exit").value("VERDICT_FAILED"))
                 .andExpect(jsonPath("$.data.funnel.exits[6].stage").value(0))
-                // 교차 검증 — PASS = 선별통과 + 위반없음 + 뒤집힘, FLAG = 룰차단 + 확정위반
-                .andExpect(jsonPath("$.data.judgment.settledCount").value(7))
+                .andExpect(jsonPath("$.data.funnel.exits[7].exit").value("UNJUDGED"))
+                .andExpect(jsonPath("$.data.funnel.exits[7].stage").value(0))
+                // 교차 검증 — PASS = 선별통과 + 위반없음 + 뒤집힘, FLAG = 룰차단 + 선별확정 + 확정위반
+                .andExpect(jsonPath("$.data.judgment.settledCount").value(8))
                 .andExpect(jsonPath("$.data.judgment.passCount").value(3))
-                .andExpect(jsonPath("$.data.judgment.flagCount").value(2))
+                .andExpect(jsonPath("$.data.judgment.flagCount").value(3))
                 .andExpect(jsonPath("$.data.judgment.unjudgedCount").value(1))
                 .andExpect(jsonPath("$.data.judgment.failedCount").value(1))
-                .andExpect(jsonPath("$.data.judgment.passRate").value(closeTo(3.0 / 7, 1e-9), Double.class))
+                .andExpect(jsonPath("$.data.judgment.passRate").value(closeTo(3.0 / 8, 1e-9), Double.class))
                 .andExpect(jsonPath("$.data.funnel.stage5.passCount").value(3))
-                .andExpect(jsonPath("$.data.funnel.stage5.flagCount").value(2))
+                .andExpect(jsonPath("$.data.funnel.stage5.flagCount").value(3))
                 .andExpect(jsonPath("$.data.needsAttention").value(false));
     }
 
@@ -120,7 +125,8 @@ class AdminInspectionFunnelMetricsIntegrationTest extends InspectionMetricsTestB
      * 들여보냈다(스텁의 판정은 미판정이 아니라 실패다).
      *
      * <p>수치: 응답 온 건 셋 중 둘이 위반이라 2/3이다. 분모를 "모델 행이 있는 건"으로 잡으면
-     * 2/6, 스텁만 빠뜨리면 2/5, 선별 통과까지 넣으면 2/5다.
+     * 2/7, 스텁만 빠뜨리면 2/5, 선별 통과까지 넣으면 2/5다. 선별이 위반을 확정한 건을 호출이
+     * 나간 것으로 세면 3단 진입이 4가 아니라 5가 된다.
      */
     @Test
     void 삼단_검출율의_분모는_호출이_나간_검수다() throws Exception {
@@ -132,18 +138,40 @@ class AdminInspectionFunnelMetricsIntegrationTest extends InspectionMetricsTestB
         modelUnchecked(now);
         // 선별이 통과시킨 건. 모델 관점 행이 있지만 호출이 나가지 않았다.
         triageCleared(now);
+        // 선별이 위반을 확정한 건. 모델 관점 행이 있지만 호출이 나가지 않았다.
+        triageFlagged(now);
         // 스텁 모드. ALL 행이 있지만 호출이 한 번도 나가지 않았다.
         stubbed(now);
 
         mockMvc.perform(bearer(get(BASE)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.funnel.settledCount").value(6))
+                .andExpect(jsonPath("$.data.funnel.settledCount").value(7))
                 .andExpect(jsonPath("$.data.funnel.stage3.name").value("JUDGE"))
                 .andExpect(jsonPath("$.data.funnel.stage3.enteredCount").value(4))
                 .andExpect(jsonPath("$.data.funnel.stage3.respondedCount").value(3))
                 .andExpect(jsonPath("$.data.funnel.stage3.violationFoundCount").value(2))
                 .andExpect(jsonPath("$.data.funnel.stage3.clearCount").value(1))
                 .andExpect(jsonPath("$.data.funnel.stage3.detectionRate").value(closeTo(2.0 / 3, 1e-9), Double.class));
+    }
+
+    /** 단일 방식의 선별 확정은 탈출 TRIAGE_FLAGGED 로 세고 3단 진입에서 뺀다 */
+    @Test
+    void 단일_방식의_선별_확정도_선별_확정_탈출로_세고_삼단_진입에서_뺀다() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        triageFlaggedSinglePass(now);
+        modelFlag(now);
+
+        mockMvc.perform(bearer(get(BASE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.funnel.settledCount").value(2))
+                .andExpect(jsonPath("$.data.funnel.unclassifiedCount").value(0))
+                .andExpect(jsonPath("$.data.funnel.exits[2].exit").value("TRIAGE_FLAGGED"))
+                .andExpect(jsonPath("$.data.funnel.exits[2].count").value(1))
+                .andExpect(jsonPath("$.data.funnel.exits[5].exit").value("MODEL_FLAG"))
+                .andExpect(jsonPath("$.data.funnel.exits[5].count").value(1))
+                .andExpect(jsonPath("$.data.funnel.stage3.enteredCount").value(1))
+                .andExpect(jsonPath("$.data.funnel.stage3.respondedCount").value(1))
+                .andExpect(jsonPath("$.data.funnel.stage3.violationFoundCount").value(1));
     }
 
     /**

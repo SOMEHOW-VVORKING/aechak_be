@@ -159,6 +159,13 @@ variable "ai_draft_enabled" {
   default     = false
 }
 
+# 검수 컨슈머의 1차 선별 스위치. 켜면 검수마다 선별 호출이 한 번 더 나간다.
+variable "ai_triage_enabled" {
+  description = "AI 검수 1차 선별(AECHAK_AI_ENABLE_TRIAGE). 켜면 검수마다 선별 모델 호출 비용이 난다"
+  type        = bool
+  default     = false
+}
+
 # 배치 보트의 스케줄 스위치 여덟 개. 기본값은 코드와 같게 전부 false로 둔다 —
 # tfvars에 안 적힌 플래그가 조용히 켜지면 돈이 나가거나 비가역 전이가 일어난다.
 # 켜기 전 전제는 플래그마다 다르다. 아래 주석이 요약이고 정본은

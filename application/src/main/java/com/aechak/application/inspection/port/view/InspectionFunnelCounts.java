@@ -3,8 +3,8 @@ package com.aechak.application.inspection.port.view;
 /**
  * 단계별 탈출 분포의 원재료 — 검수 한 건이 어디서 끝났는지를 버킷으로 가른 건수.
  *
- * <p>터미널을 <b>여덟</b>으로 못박는다. 파이프라인이 말하는 탈출 다섯에 판정 실패와 미판정,
- * 그리고 미분류가 더해진 것이다. 다섯만 세면 합이 설정 건수에 못 미쳐 "몇 퍼센트가 어디서
+ * <p>터미널을 <b>아홉</b>으로 못박는다. 파이프라인이 말하는 탈출 여섯에 판정 실패와 미판정,
+ * 그리고 미분류가 더해진 것이다. 여섯만 세면 합이 설정 건수에 못 미쳐 "몇 퍼센트가 어디서
  * 끝나는가"라는 질문의 분모가 깨진다. {@code unclassifiedCount}는 평소 0이고, 0이 아니면
  * 그 자체가 사건이다 — 새 터미널이 생겼거나 분류 규칙이 실제 기록과 어긋났다는 뜻이다.
  *
@@ -17,8 +17,8 @@ package com.aechak.application.inspection.port.view;
  *
  * <p>{@code modelDispatchedCount}는 <b>모델 호출이 실제로 나간</b> 건이다. 레이트 리밋으로 못 본
  * 건이 여기 들어오고 {@code modelViolationCount + modelClearCount}에는 들어오지 않는다 — 그
- * 차이가 가용성 때문에 못 본 양이다. 선별이 건너뛴 건과 스텁 모드(LLM_DISABLED) 건과 기한 만료
- * 표식은 여기 들어오지 않는다. 호출이 한 번도 안 나간 건을 "모델 단계에 들어갔다"로 세면 3단
+ * 차이가 가용성 때문에 못 본 양이다. 선별이 건너뛴 건(통과·위반 확정 둘 다)과 스텁
+ * 모드(LLM_DISABLED) 건과 기한 만료 표식은 여기 들어오지 않는다. 호출이 한 번도 안 나간 건을 "모델 단계에 들어갔다"로 세면 3단
  * 검출율이 가용성이 아니라 조립 상태를 재게 된다.
  *
  * <p>{@code expiredMarkerCount}는 기한 정리가 남긴 미검사 표식({@code WAIT_LIMIT_EXCEEDED})이 있는
@@ -38,6 +38,7 @@ public record InspectionFunnelCounts(
         long failedCount,
         long ruleBlockedCount,
         long triageClearedCount,
+        long triageFlaggedCount,
         long modelClearExitCount,
         long criticOverturnedCount,
         long modelFlagCount,
@@ -52,6 +53,6 @@ public record InspectionFunnelCounts(
         long missingSkipReasonCount) {
 
     public static InspectionFunnelCounts empty() {
-        return new InspectionFunnelCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        return new InspectionFunnelCounts(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
 }

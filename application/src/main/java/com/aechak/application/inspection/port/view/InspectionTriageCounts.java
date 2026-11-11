@@ -10,17 +10,18 @@ package com.aechak.application.inspection.port.view;
  * (UNCHECKED/RULE_HIT) 호출하지도 않은 건이 분모에 들어와 승급률이 낮게 나온다. AI 레포의
  * 측정 하네스도 같은 분모를 쓴다.
  *
- * <p>승급 건수는 분모에서 {@code clearedCount}를 뺀 값이다. 건너뛴 건은 관점 행이
- * {@code CLEAR}인 것으로 가른다 — 행의 유무로 가르면 승급 경로에도 선별 행이 남으므로
+ * <p>승급 건수는 분모에서 {@code clearedCount}와 {@code flaggedCount}를 뺀 값이다. 둘 다 선별이
+ * 스스로 끝내 관점 호출이 나가지 않은 건이다. 건너뛴 건은 관점 행이 {@code CLEAR}인 것으로,
+ * 위반을 확정한 건은 {@code VIOLATION}인 것으로 가른다 — 행의 유무로 가르면 승급 경로에도 선별 행이 남으므로
  * (UNCHECKED/PROMOTED) 승급 전건이 건너뜀으로 분류되고 1순위 지표가 뒤집힌다.
  *
  * <p>선별 호출이 깨져 강제 승급된 건도 승급으로 센다 — 관점 호출이 실제로 나갔으므로 비용
  * 관점에서는 같다. 다만 그 건수를 {@code callFailedCount}로 따로 들고 있어야 "선별이 판단해서
  * 올린 것"과 "죽어서 올라간 것"을 가를 수 있다.
  */
-public record InspectionTriageCounts(long triagedCount, long clearedCount, long callFailedCount) {
+public record InspectionTriageCounts(long triagedCount, long clearedCount, long flaggedCount, long callFailedCount) {
 
     public static InspectionTriageCounts empty() {
-        return new InspectionTriageCounts(0, 0, 0);
+        return new InspectionTriageCounts(0, 0, 0, 0);
     }
 }

@@ -509,6 +509,7 @@ resource "aws_ecs_task_definition" "ai" {
       { name = "LANGCHAIN_TRACING_V2", value = "false" },
       # 리뷰 요약 러너는 검수 컨슈머와 같은 프로세스에서 돌기 때문에 이 자리가 그 스위치다.
       { name = "AECHAK_AI_ENABLE_REVIEW_SUMMARY", value = "true" },
+      { name = "AECHAK_AI_ENABLE_TRIAGE", value = tostring(var.ai_triage_enabled) },
     ]
 
     # 값을 terraform이 알 수 없는 것만 secrets로 받는다. 수기 등재가 전제다.
