@@ -11,11 +11,14 @@ import com.aechak.message.inspection.InspectionVerdict
 import com.aechak.message.inspection.PerspectiveOutcome
 import com.aechak.message.inspection.ProductInspectionRequestedMessage
 import com.aechak.message.inspection.ReviewInspectionRequestedMessage
+import com.aechak.message.inspection.ViolationCategory
+import tools.jackson.core.JacksonException
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.node.ObjectNode
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -291,6 +294,28 @@ class InspectionContractTest {
     }
 
     @Test
+    fun `처방 의약품과 생체 판매 분류가 든 판정을 역직렬화한다`() {
+        listOf(ViolationCategory.PRESCRIPTION_DRUG, ViolationCategory.LIVE_ANIMAL).forEach { category ->
+            val verdict = mapper.readValue(verdictWithCategory(category.name), ContentVerdictMessage::class.java)
+
+            assertEquals(category, verdict.violations.single().category)
+        }
+    }
+
+    /**
+     * 모르는 분류는 조용히 넘기지 않고 실패해야 한다. 실패해야 판정이 재시도 끝에 격리 토픽에
+     * 남아 다시 처리할 수 있고, AI 서버보다 BE를 먼저 배포해야 한다는 순서도 이 동작에 기대고 있음.
+     */
+    @Test
+    fun `모르는 분류가 든 판정은 역직렬화에 실패한다`() {
+        val error =
+            assertFailsWith<JacksonException>("모르는 분류를 기본값으로 읽으면 위반 판정이 엉뚱한 분류로 적힌다") {
+                mapper.readValue(verdictWithCategory("BRAND_NEW_CATEGORY"), ContentVerdictMessage::class.java)
+            }
+        assertTrue("BRAND_NEW_CATEGORY" in error.message.orEmpty(), "분류가 아닌 다른 이유로 실패했다: ${error.message}")
+    }
+
+    @Test
     fun `엔벨로프의 payload는 객체가 아니라 JSON 문자열이다`() {
         val envelopeJson = readFixture("verdict-envelope.json")
         val envelope = mapper.readValue(envelopeJson, Envelope::class.java)
@@ -315,6 +340,12 @@ class InspectionContractTest {
         assertEquals("product-inspection-1001:requested", productRequest.eventId)
         assertEquals("review-inspection-2002:requested", reviewRequest.eventId)
         assertEquals(productRequest.eventId, productRequest.copy(productName = "다른 이름").eventId)
+    }
+
+    private fun verdictWithCategory(category: String): String {
+        val verdict = mapper.readTree(readFixture("content-verdict.json")) as ObjectNode
+        (verdict.get("violations").get(0) as ObjectNode).put("category", category)
+        return mapper.writeValueAsString(verdict)
     }
 
     private fun readFixture(name: String): String =
