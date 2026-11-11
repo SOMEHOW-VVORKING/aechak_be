@@ -77,7 +77,7 @@ class ProductAdminSaleBlockTest {
     @Test
     fun `셀러가 스스로 내려 둔 판매중지는 재개가 판매중으로 올리지 않는다`() {
         val product = product()
-        product.changeSaleStatusBySeller(SaleStatus.SUSPENDED)
+        product.changeSaleStatusBySeller(SaleStatus.SUSPENDED, awaitingInspectionReview = false)
         product.blockSaleByAdmin(1L, "사유")
 
         product.unblockSaleByAdmin()
@@ -115,7 +115,8 @@ class ProductAdminSaleBlockTest {
         val product = product()
         product.blockSaleByAdmin(1L, "사유")
 
-        val thrown = assertThrownBusinessException { product.changeSaleStatusBySeller(SaleStatus.ON_SALE) }
+        val thrown =
+            assertThrownBusinessException { product.changeSaleStatusBySeller(SaleStatus.ON_SALE, awaitingInspectionReview = false) }
 
         assertEquals(ProductErrorCode.PRODUCT_SALE_BLOCKED_BY_ADMIN, thrown.errorCode)
         assertEquals(SaleStatus.SUSPENDED, product.saleStatus, "조치가 셀러 요청 한 번에 뒤집히면 안 된다")
@@ -126,7 +127,8 @@ class ProductAdminSaleBlockTest {
         val product = product()
         product.blockSaleByAdmin(1L, "사유")
 
-        val thrown = assertThrownBusinessException { product.changeSaleStatusBySeller(SaleStatus.SUSPENDED) }
+        val thrown =
+            assertThrownBusinessException { product.changeSaleStatusBySeller(SaleStatus.SUSPENDED, awaitingInspectionReview = false) }
 
         assertEquals(
             ProductErrorCode.PRODUCT_SALE_BLOCKED_BY_ADMIN,
@@ -142,7 +144,7 @@ class ProductAdminSaleBlockTest {
         product.blockSaleByAdmin(1L, "사유")
         product.unblockSaleByAdmin()
 
-        product.changeSaleStatusBySeller(SaleStatus.SUSPENDED)
+        product.changeSaleStatusBySeller(SaleStatus.SUSPENDED, awaitingInspectionReview = false)
 
         assertEquals(SaleStatus.SUSPENDED, product.saleStatus)
     }

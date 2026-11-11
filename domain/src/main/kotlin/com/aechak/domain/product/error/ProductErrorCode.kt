@@ -24,6 +24,9 @@ enum class ProductErrorCode(
     PRODUCT_SALE_BLOCKED_BY_ADMIN(40010, "관리자가 판매를 중지한 상품은 판매 상태를 바꿀 수 없습니다.", 409),
     PRODUCT_SALE_BLOCK_CONFLICT(40011, "다른 조치가 먼저 반영됐습니다. 다시 조회한 뒤 시도해 주세요.", 409),
 
+    // 검수에서 걸린 상품의 판매 재개
+    PRODUCT_SALE_BLOCKED_BY_INSPECTION(40013, "검수에서 걸린 상품은 판매중으로 바꿀 수 없습니다. 상품을 고쳐 다시 검수를 받아 주세요.", 409),
+
     // 카테고리
     INVALID_CATEGORY_DEPTH(40100, "카테고리 단계와 부모 참조가 일치하지 않습니다.", 400),
     CATEGORY_NOT_FOUND(40101, "카테고리를 찾을 수 없습니다.", 404),

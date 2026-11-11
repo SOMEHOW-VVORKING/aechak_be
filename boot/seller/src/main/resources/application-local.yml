@@ -38,7 +38,7 @@ aechak:
       1: ${PII_AES_KEY_V1:dxeyFW4YgkgYreLe9IX7laeZPHaP3Eada2M9yuBCA+Q=}
     hmac-key: ${PII_HMAC_KEY:Jtk5KHlAG6nnDtIBDhqoDXIs7FovvRs0kOckZP6cl7k=}
 
-# AI 검수. 섀도 단계에서는 요청만 보내고 노출 상태는 바꾸지 않는다.
+# AI 검수. 셀러센터는 요청만 보낸다. 판정을 노출 상태에 반영하는 것은 api다.
 inspection:
   enabled: true
   # 셀러 이의 제기 폭주 방지. 관리자 큐를 셀러 한 명이 혼자 채우면 사람이 보는 큐가 쓸모없어짐.

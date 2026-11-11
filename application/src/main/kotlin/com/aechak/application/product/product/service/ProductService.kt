@@ -146,13 +146,18 @@ class ProductService(
      * 상태 변경은 버전을 남기지 않음.
      * 셀러 의사를 먼저 적고 재고 파생을 뒤에 얹음. 재고 없이 판매중으로 올리면 그 자리에서 품절이 되고,
      * 재고가 들어오면 리스너가 판매중으로 되돌림.
+     *
+     * [awaitingInspectionReview]는 그 상품에 열린 관리자 검토 행이 있는지를 답함.
      */
-    fun changeSaleStatus(command: ChangeProductSaleStatusCommand): ProductSaleStatusChangeResult {
+    fun changeSaleStatus(
+        command: ChangeProductSaleStatusCommand,
+        awaitingInspectionReview: (productId: Long) -> Boolean,
+    ): ProductSaleStatusChangeResult {
         val product =
             productRepository.findByPublicIdAndSellerId(command.productPublicId, command.sellerId)
                 ?: throw BusinessException(ProductErrorCode.PRODUCT_NOT_FOUND)
 
-        product.changeSaleStatusBySeller(command.saleStatus)
+        product.changeSaleStatusBySeller(command.saleStatus, awaitingInspectionReview(product.id))
         product.syncSaleStatusWithStock(optionCombinationRepository.existsActiveStock(product.id))
         productRepository.saveNow(product)
         return ProductSaleStatusChangeResult.of(product)
