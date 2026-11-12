@@ -48,6 +48,12 @@ enum class ViolationCategory {
 
     /** 상품과 무관한 내용. 리뷰에만 쓴다 */
     IRRELEVANT,
+
+    /** 처방이 필요한 동물용 의약품 판매 */
+    PRESCRIPTION_DRUG,
+
+    /** 살아 있는 동물 판매와 분양 */
+    LIVE_ANIMAL,
 }
 
 /**
