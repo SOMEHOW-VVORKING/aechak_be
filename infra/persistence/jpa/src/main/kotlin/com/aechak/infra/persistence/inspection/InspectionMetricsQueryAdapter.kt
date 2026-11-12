@@ -77,7 +77,8 @@ class InspectionMetricsQueryAdapter(
 
         return InspectionTriageCounts(
             triaged,
-            countTriaged(window, triageClearedExists(ledger.inspectionId)),
+            countTriaged(window, triageOutcomeExists(ledger.inspectionId, PerspectiveOutcome.CLEAR)),
+            countTriaged(window, triageOutcomeExists(ledger.inspectionId, PerspectiveOutcome.VIOLATION)),
             // 호출이 깨져 강제 승급된 건. 승급으로 세지만 "선별이 판단해 올린 것"과 구분해 둔다.
             countTriaged(window, noSuccessfulTriageCall()),
         )
@@ -209,14 +210,17 @@ class InspectionMetricsQueryAdapter(
                 siblingCall.outcome.eq(CALL_SUCCESS),
             ).notExists()
 
-    /** 선별이 "볼 필요 없다"고 판단한 기록이 그 검수에 있는가 */
-    private fun triageClearedExists(inspectionId: NumberPath<Long>): Predicate =
+    /** 선별이 그 결과로 끝낸 기록이 그 검수에 있는가. 통과는 CLEAR, 위반 확정은 VIOLATION이다 */
+    private fun triageOutcomeExists(
+        inspectionId: NumberPath<Long>,
+        outcome: PerspectiveOutcome,
+    ): Predicate =
         JPAExpressions
             .selectOne()
             .from(finding)
             .where(
                 finding.inspectionId.eq(inspectionId),
                 finding.perspective.eq(InspectionPerspectiveKind.TRIAGE),
-                finding.outcome.eq(PerspectiveOutcome.CLEAR),
+                finding.outcome.eq(outcome),
             ).exists()
 }

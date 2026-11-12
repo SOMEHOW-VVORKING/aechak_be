@@ -139,6 +139,9 @@ CI/CD     = 내용물: 앱을 그릇에 배포한다      ← develop 푸시가 
   ① SSM 파라미터 생성(`aws_ssm_parameter`, rds.tf 패턴) → apply → ② profile yml에 `${...}` 계약 라인 + 앱 코드가 사용 → 배포
   (앱이 부팅 시 `/aechak/{env}/api/` 경로째 읽으므로 taskdef 수정 불필요)
 - terraform 변경은 develop 머지 시 자동 apply되고, 새 taskdef 반영을 위해 앱도 재배포됨 (deploy-dev.yml의 deploy-infra → deploy-api 순서)
+- **AI 서비스(`aechak-ai-dev`, `aechak-ai-draft-dev`)는 예외** — 이 레포의 배포가 재배포하지 않는다. 서비스가 `task_definition` 변경을 무시하므로(`ignore_changes`) apply는 새 taskdef 리비전만 등록하고 돌고 있는 태스크는 그대로다. AI 환경변수(`AECHAK_AI_ENABLE_TRIAGE`, `AECHAK_AI_ENABLE_DRAFT` 등)를 바꿨으면 순서 엄수:
+  ① 이 레포 develop 머지 → apply 완료 확인 → ② AI 레포의 deploy-dev 실행(main 푸시 또는 수동 실행). AI 배포가 패밀리의 최신 리비전을 복사해 이미지만 바꿔 등록하므로 그때 새 값이 실린다
+  (순서가 뒤집히면 AI 배포가 옛 리비전을 복사해 값이 빠진 채로 뜬다)
 
 ## 6. 지켜야 할 것
 

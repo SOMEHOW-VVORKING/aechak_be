@@ -55,6 +55,7 @@ class InspectionMetricsNativeQueries(
                            COALESCE(SUM(t.judgment = 'FAILED'), 0),
                            COALESCE(SUM(t.exit_code = 'RULE_BLOCKED'), 0),
                            COALESCE(SUM(t.exit_code = 'TRIAGE_CLEARED'), 0),
+                           COALESCE(SUM(t.exit_code = 'TRIAGE_FLAGGED'), 0),
                            COALESCE(SUM(t.exit_code = 'MODEL_CLEAR'), 0),
                            COALESCE(SUM(t.exit_code = 'CRITIC_OVERTURNED'), 0),
                            COALESCE(SUM(t.exit_code = 'MODEL_FLAG'), 0),
@@ -75,6 +76,8 @@ class InspectionMetricsNativeQueries(
                                    WHEN g.judgment = 'FLAG' AND g.rule_viol = 1
                                         AND g.triage_row = 0 AND g.model_row = 0 THEN 'RULE_BLOCKED'
                                    WHEN g.judgment = 'PASS' AND g.triage_clear = 1 THEN 'TRIAGE_CLEARED'
+                                   WHEN g.judgment = 'FLAG' AND g.triage_viol = 1
+                                        AND g.model_viol = 0 THEN 'TRIAGE_FLAGGED'
                                    WHEN g.judgment = 'PASS' AND g.model_clear = 1
                                         AND g.model_viol = 0 THEN 'MODEL_CLEAR'
                                    WHEN g.judgment = 'PASS' AND g.model_viol = 1 THEN 'CRITIC_OVERTURNED'
@@ -108,6 +111,7 @@ class InspectionMetricsNativeQueries(
             row.long(16),
             row.long(17),
             row.long(18),
+            row.long(19),
         )
     }
 
@@ -248,20 +252,21 @@ class InspectionMetricsNativeQueries(
      * 누락률이 노출 게이트의 판단과 갈라진다 — 지표는 누락이라는데 큐에는 안 올라온 상태다.
      *
      * `model_dispatched`는 호출이 실제로 나간 것만 센다. 선별이 건너뛴 것(TRIAGE_CLEAR)·
-     * 스텁 모드(LLM_DISABLED)·기한 만료 표식을 제외한다. 폐기 설계는 이 자리를 "모델 행이 있고
+     * 선별이 위반을 확정해 건너뛴 것(TRIAGE_CERTAIN)·스텁 모드(LLM_DISABLED)·기한 만료 표식을 제외한다. 폐기 설계는 이 자리를 "모델 행이 있고
      * 선별이 통과시키지 않았고 미판정이 아닌 건"으로 잡았는데 스텁 건이 분모에 들어온다 —
      * 그 건의 판정은 실패이지 미판정이 아니라서 걸러지지 않는다. 그러면 3단 검출율이 모델
      * 가용성이 아니라 조립 상태를 재게 된다.
      */
     private fun funnelFlags(window: InspectionMetricsWindow): String {
         val model = "f.perspective IN ($MODEL_PERSPECTIVE_LIST)"
-        val notDispatched = "'$TRIAGE_CLEAR', '$LLM_DISABLED', '$WAIT_LIMIT_EXCEEDED'"
+        val notDispatched = "'$TRIAGE_CLEAR', '$TRIAGE_CERTAIN', '$LLM_DISABLED', '$WAIT_LIMIT_EXCEEDED'"
         return """
             SELECT i.id       AS id,
                    i.judgment AS judgment,
                    COALESCE(MAX(f.perspective = 'RULE' AND f.outcome = 'VIOLATION'), 0)       AS rule_viol,
                    COALESCE(MAX(f.perspective = 'TRIAGE'), 0)                                 AS triage_row,
                    COALESCE(MAX(f.perspective = 'TRIAGE' AND f.outcome = 'CLEAR'), 0)         AS triage_clear,
+                   COALESCE(MAX(f.perspective = 'TRIAGE' AND f.outcome = 'VIOLATION'), 0)     AS triage_viol,
                    COALESCE(MAX(f.perspective = 'TRIAGE' AND f.outcome = 'UNCHECKED'
                                 AND f.skip_reason = '$RULE_HIT'), 0)                          AS rule_hit_bypass,
                    COALESCE(MAX($model AND NOT (f.outcome = 'UNCHECKED'
@@ -338,6 +343,9 @@ class InspectionMetricsNativeQueries(
 
         // 관점 기록의 사유 어휘. AI 레포·기한 정리와의 약속 문자열이라 값으로 비교한다.
         private val TRIAGE_CLEAR = ContentVerdictMessage.TRIAGE_SKIP_REASON
+
+        /** 선별이 위반을 확정해 모델 호출을 건너뛸 때 그 관점 행에 적히는 사유 */
+        private const val TRIAGE_CERTAIN = "TRIAGE_CERTAIN"
         private const val LLM_DISABLED = "LLM_DISABLED"
         private const val RULE_HIT = "RULE_HIT"
 

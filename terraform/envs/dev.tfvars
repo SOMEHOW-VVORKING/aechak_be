@@ -15,6 +15,7 @@ admin_frontend_origins = ["http://localhost:5174"] # 어드민 웹 dev
 ai_desired_count       = 1
 ai_draft_desired_count = 1
 ai_draft_enabled       = true # 호출마다 모델 비용이 난다. 셀러별 20초 쿨다운이 BE에 있다
+ai_triage_enabled      = true # 검수마다 선별 호출이 한 번 나가고, 선별이 끝낸 건은 관점 호출을 건너뛴다
 
 # 배치 스케줄 — 전제가 충족된 넷만 켠다. 적지 않은 넷은 기본값 false로 등재되고,
 # 켜지 못하는 근거는 variables.tf 의 해당 필드 주석에 적혀 있다.

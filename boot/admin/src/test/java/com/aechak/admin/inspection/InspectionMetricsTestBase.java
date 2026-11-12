@@ -40,6 +40,9 @@ abstract class InspectionMetricsTestBase extends IntegrationTestBase {
     /** 선별이 관점 호출을 건너뛸 때 그 관점 행에 적히는 사유. AI 레포와의 약속 문자열이다 */
     protected static final String TRIAGE_SKIP_REASON = "TRIAGE_CLEAR";
 
+    /** 선별이 위반을 확정해 관점 호출을 건너뛸 때 그 관점 행에 적히는 사유 */
+    protected static final String TRIAGE_CERTAIN_SKIP_REASON = "TRIAGE_CERTAIN";
+
     /** 규칙이 적중해 선별에 묻지 않고 바로 승급했을 때 선별 행에 적히는 사유 */
     protected static final String RULE_HIT_SKIP_REASON = "RULE_HIT";
 
@@ -118,6 +121,25 @@ abstract class InspectionMetricsTestBase extends IntegrationTestBase {
         finding(id, InspectionPerspectiveKind.TRIAGE, PerspectiveOutcome.CLEAR, null);
         finding(id, InspectionPerspectiveKind.DISPLAY_ADS, PerspectiveOutcome.UNCHECKED, TRIAGE_SKIP_REASON);
         finding(id, InspectionPerspectiveKind.CONDUCT_TRADE, PerspectiveOutcome.UNCHECKED, TRIAGE_SKIP_REASON);
+        return id;
+    }
+
+    /** 2단 — 선별이 위반을 확정해 관점 호출을 건너뛰었다. 위반은 선별 행에 달린다 */
+    protected long triageFlagged(LocalDateTime settledAt) {
+        long id = bareReview(InspectionJudgment.FLAG, settledAt);
+        finding(id, InspectionPerspectiveKind.RULE, PerspectiveOutcome.CLEAR, null);
+        finding(id, InspectionPerspectiveKind.TRIAGE, PerspectiveOutcome.VIOLATION, null);
+        finding(id, InspectionPerspectiveKind.DISPLAY_ADS, PerspectiveOutcome.UNCHECKED, TRIAGE_CERTAIN_SKIP_REASON);
+        finding(id, InspectionPerspectiveKind.CONDUCT_TRADE, PerspectiveOutcome.UNCHECKED, TRIAGE_CERTAIN_SKIP_REASON);
+        return id;
+    }
+
+    /** 2단 — 단일 방식에서 선별이 위반을 확정했다. 건너뛴 모델 관점이 ALL 한 행으로 적힌다 */
+    protected long triageFlaggedSinglePass(LocalDateTime settledAt) {
+        long id = bareReview(InspectionJudgment.FLAG, settledAt);
+        finding(id, InspectionPerspectiveKind.RULE, PerspectiveOutcome.CLEAR, null);
+        finding(id, InspectionPerspectiveKind.TRIAGE, PerspectiveOutcome.VIOLATION, null);
+        finding(id, InspectionPerspectiveKind.ALL, PerspectiveOutcome.UNCHECKED, TRIAGE_CERTAIN_SKIP_REASON);
         return id;
     }
 

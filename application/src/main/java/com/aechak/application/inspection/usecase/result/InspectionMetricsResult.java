@@ -98,6 +98,9 @@ public record InspectionMetricsResult(
      * {@code bypassedByRuleHitCount}로 따로 센다 — 그 수치가 없으면 1단 통과 건수와 2단 분모
      * 사이에서 건수가 사라진 것처럼 보인다.
      *
+     * <p>{@code flaggedCount}는 선별이 위반을 확정해 끝낸 건이다. 관점 호출이 나가지 않았으므로
+     * 승급에 넣지 않는다.
+     *
      * <p>손익분기 승급률의 정본은 AI 레포의 측정 하네스다. {@code overBreakeven}이 참이면 선별이
      * 비용을 줄이는 장치가 아니라 더하는 장치라는 뜻이고, 그때는 선별을 켜지 않는다.
      */
@@ -105,6 +108,7 @@ public record InspectionMetricsResult(
             String name,
             long enteredCount,
             long clearedCount,
+            long flaggedCount,
             long promotedCount,
             long callFailedCount,
             long bypassedByRuleHitCount,
@@ -119,7 +123,7 @@ public record InspectionMetricsResult(
      * <p>검출율의 분모를 "3단을 탄 건"이 아니라 "응답이 온 건"으로 잡는다. 레이트 리밋으로 못 본
      * 건을 분모에 넣으면 검출율이 모델 품질이 아니라 가용성을 재게 된다. 그 차이는
      * {@code enteredCount - respondedCount}로 보인다. {@code enteredCount}에는 호출이 실제로
-     * 나간 건만 들어온다 — 선별이 건너뛴 건과 스텁 모드 건은 모델 단계에 들어간 적이 없다.
+     * 나간 건만 들어온다 — 선별이 통과나 위반 확정으로 끝낸 건과 스텁 모드 건은 모델 단계에 들어간 적이 없다.
      */
     public record Stage3(
             String name,
@@ -415,13 +419,15 @@ public record InspectionMetricsResult(
         long settled = counts.settledCount();
         // 1단 분모에서 미판정을 뺀다 — 그 건은 AI 응답을 받은 적이 없어 규칙 단계를 탄 적도 없다.
         long stage1Entered = settled - counts.unjudgedCount();
-        long promoted = triage.triagedCount() - triage.clearedCount();
+        // 선별이 통과나 위반 확정으로 끝낸 건은 관점 호출이 나가지 않았으므로 승급이 아니다.
+        long promoted = triage.triagedCount() - triage.clearedCount() - triage.flaggedCount();
         long responded = counts.modelViolationCount() + counts.modelClearCount();
         long upheld = counts.modelViolationCount() - counts.criticOverturnedCount();
 
         List<Exit> exits = List.of(
                 exit(1, "RULE_BLOCKED", "룰 확정 차단", counts.ruleBlockedCount(), settled),
                 exit(2, "TRIAGE_CLEARED", "선별 통과", counts.triageClearedCount(), settled),
+                exit(2, "TRIAGE_FLAGGED", "선별 확정 위반", counts.triageFlaggedCount(), settled),
                 exit(3, "MODEL_CLEAR", "위반 없음", counts.modelClearExitCount(), settled),
                 exit(4, "CRITIC_OVERTURNED", "비평이 뒤집음", counts.criticOverturnedCount(), settled),
                 exit(5, "MODEL_FLAG", "확정 위반", counts.modelFlagCount(), settled),
@@ -439,6 +445,7 @@ public record InspectionMetricsResult(
                         "TRIAGE",
                         triage.triagedCount(),
                         triage.clearedCount(),
+                        triage.flaggedCount(),
                         promoted,
                         triage.callFailedCount(),
                         counts.ruleHitBypassCount(),
